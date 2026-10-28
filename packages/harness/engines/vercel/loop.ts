@@ -1,3 +1,4 @@
+import {registeredTaskDelegationTool} from '../../storage/writer'
 import {RECOVER_REPEATED_WORK_INSTRUCTIONS,REPEATED_WORK_INSTRUCTIONS} from '../../execution/progress'
 import {canFinishResponse,completionFailureCode,FINISH_RESPONSE_INSTRUCTIONS,modelCompletion,type ModelCompletion} from '../../completion'
 import {failureEvent,authoredFailure,toolFailureResult,normalizeFailure,AIFailureError} from '../../failures'
@@ -882,7 +883,7 @@ export function runVercelLoop(
       // handed a call somebody else already fixed reports nothing, and the
       // guardrail line in the tab is the only place a person learns that the
       // rehearsal flag was forced.
-      const args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<
+      let args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<
         string,
         unknown
       >
@@ -891,14 +892,17 @@ export function runVercelLoop(
       const refusal=await rejectToolStep(name,args)
       if(refusal)return bare(refusal)
       // A call the harness made itself is marked on both its events (agent#10 review row 8).
-      const correlation = { ...(session.interactive ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
-      await deliver({ type: 'tool_call', ...correlation, name, args })
+      const correlation = { ...(session.interactive||context.capturesToolFrames||context.runtimeNeedsApproval(name) ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
+      const runtime=await context.prepareRuntimeCall(name,args,correlation.callId??crypto.randomUUID())
+      if(runtime?.requested){await deliver(runtime.requested);return bare({content:[{type:'text',text:APPROVAL_HELD}],isError:true})}
+      if(runtime)args=runtime.args
+      await deliver({ type: 'tool_call', ...correlation, name, args:runtime?.args??args })
       let answer: McpToolResult
       try {
         // Bounded by the policy's per-call deadline as well as by the run: a
         // call past it is a failed result the model reads, not a failed run.
         const limit = context.policy.toolCallMilliseconds
-        answer = await withDeadline(() => callTool(name, args), executionSignal, limit, () => toolTimeout(limit))
+        answer = await withDeadline(signal => runtime?runtime.execute(signal):callTool(name,args), executionSignal, limit, () => toolTimeout(limit))
       } catch (cause) {
         // A run that ended while this was waiting — or before it was
         // dispatched — is the session unwinding, not a tool refusing. The
@@ -942,7 +946,7 @@ export function runVercelLoop(
       if(refusal)return bare(refusal)
       // ADR-0008: an act call of a tool with a source always carries an id, whether or not the run's
       // events carry one, so the decision taken before its call is its own, never another call's.
-      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}
+      const correlation = session.interactive || context.capturesToolFrames || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}
       // ADR-0008: an act call the host's policy asks about is held for the person, never run: its
       // approval_requested in place of the call, and the run's next request is refused.
       const held = await context.approval(tool.name, args, correlation.callId)
@@ -963,7 +967,7 @@ export function runVercelLoop(
           // this run's own messages and reasoning stay as they are. The tool-call deadline does not
           // apply: the batch is bounded by its children's time limits, and by this run's signal
           // (a Stop, the turn's wall clock), which stops the children with it.
-          readDelegationRequest(args)
+          if(!registeredTaskDelegationTool(tool))readDelegationRequest(args)
           answer = await withAbort(() => tool.execute(args, executionSignal), executionSignal)
         } else if (tool.interaction === 'question') {
           const question = readModelQuestion(args)

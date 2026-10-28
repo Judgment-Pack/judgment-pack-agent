@@ -206,6 +206,7 @@ type ChatContext struct {
 	goneSet map[string]bool
 	turns   int
 
+	restoredTurns   map[int]bool
 	disposed        bool
 	tasks           []string
 	taskThreads     map[string]*TaskThread

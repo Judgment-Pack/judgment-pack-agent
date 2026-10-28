@@ -22,7 +22,7 @@ import criticSwitch from './scenarios/critic-switch.json'
 import policyTable from './scenarios/policy-table.json'
 import records from './scenarios/records.json'
 import identity from './scenarios/identity.json'
-import { RECORDED_TOOLS, recordedRuntime, type RecordedRuntime, type ServerObservation } from './scriptedServer'
+import { currentContractReplayTools, recordedRuntime, type RecordedRuntime, type ServerObservation } from './scriptedServer'
 import { REFUTATION_MARKER } from '../refutation'
 import { TEST_CASES_TOOL, runtimeAnswer, type EndpointRequest } from '../testing/scripted'
 import { answerFrom, answerWith, resultsIn, rolesAnswer, type AnswerAs, type Known, type Roles, type Turn } from '../testing/scenarioDriver'
@@ -62,7 +62,7 @@ export function correctionAnswer(answerAs: AnswerAs, beforeCritic?: { call: { re
 /** A runtime serving the recorded five and the test tool, answering each call with `handle`, recording each call. */
 function scenarioRuntime(handle: (call: { name: string; args: Record<string, unknown> }) => unknown): RecordedRuntime {
   const seen: ServerObservation[] = []
-  const tools = [...RECORDED_TOOLS, TEST_CASES_TOOL]
+  const tools = [...currentContractReplayTools(), TEST_CASES_TOOL]
   return {
     seen,
     answer(message) {

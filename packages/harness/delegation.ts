@@ -1,5 +1,6 @@
+import {registerPhysicalModel,registerPhysicalAgent,type PhysicalModelAttempt,type PhysicalAgentAttempt} from './storage/physicalDispatch'
 import {writeRunEvent} from './recordReader'
-import {providerReleaseAttempt,ProviderReleaseUnknown} from './storage/release'
+import {providerReleaseAttempt,composeProviderRelease,ProviderReleaseUnknown} from './storage/release'
 import {durableSession,durableOwner,prepareProviderDispatch,childDurability,ContinuationNotRecoverable} from './storage/writer'
 import type {DurableHandoff} from './storage/handoff'
 import {CheckpointIncrement,mutateCheckpoint} from './execution/mutation'
@@ -22,7 +23,7 @@ import { ContextBudgetError } from './context/policy'
 import { ContextLedger, answer, type Entry } from './context/ledger'
 import { dataMarker, frameData } from './framing'
 import { runModels, type RunModels } from './host'
-import { testCallCapFailure, resolveSessionPolicy, delegatedRoleSession, type ExecutionLink, type SessionContext } from './context/session'
+import { testCallCapFailure, resolveSessionPolicy, delegatedRoleSession, contextualSession, type ExecutionLink, type SessionContext } from './context/session'
 
 /** Shared execution policy. Feature adapters supply capabilities, never larger child allowances. */
 export interface DelegationOptions {
@@ -376,6 +377,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     let releaseFailure:ProviderReleaseUnknown|undefined
     const released=async(required=true)=>{await withAbort(()=>Promise.allSettled([...invocations]),signal);if(required&&releaseFailure)throw releaseFailure}
     let fatal: unknown
+    let restoredParent:SessionContext|undefined
     let checkpointTail = Promise.resolve()
     let batchTail: Promise<unknown> = Promise.resolve()
     let batches = 0
@@ -429,9 +431,15 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     }
     const persistence=session.context?.[durableOwner]
     if(persistence)persistence.writer.decorate=decorate
+    if(persistence&&'agent'in session&&session.context?.taskSteps===true)persistence.writer.attachNativeTaskEnvelope(persistence,{limit:MAX_AGENT_RUNS,childReserve:1+reserve,counts:()=>{
+     const counts=new Map<string,number>([[persistence.writer.id,parentRuns]])
+     for(const batch of batchFigures())for(const child of batch.children)counts.set(child.task,(counts.get(child.task)??0)+(child.agentRuns??0))
+     return [...counts].map(([execution,count])=>({execution,count}))
+    },reserve:scope=>scope.task?1+reserve:0})
+
     const saveHandoff=async()=>{
       const saved=parentCheckpoint??persistence?.writer.checkpoint
-      if(saved&&session.context?.checkpoint){await session.context.checkpoint(decorate(shared.checkpoint(saved)));parentCheckpoint=persistence?.writer.checkpoint??decorate(saved)}
+      if(saved&&session.context?.checkpoint){await session.context.checkpoint(decorate(shared.checkpoint(saved)));parentCheckpoint=persistence?.writer.checkpoint??decorate(saved);if(persistence)persistence.writer.useAcknowledgedRoot(persistence)}
     }
     /**
      * agent#17: the results this batch's children may give an identical later task, kept in the chat
@@ -453,7 +461,8 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       if(signal.aborted)return
       const snapshot=structuredClone(task)
       if(handoff)await saveHandoff()
-      await deliver({type:'delegated_task',task:snapshot,...(task.subagent?{subagent:task.subagent}:{}),provider:shared.context?.recordProvider(shared.context.delegatedRole(task.profile))})
+      const event:Extract<AssistantEvent,{type:'delegated_task'}>={type:'delegated_task',task:snapshot,...(task.subagent?{subagent:task.subagent}:{}),provider:shared.context?.recordProvider(shared.context.delegatedRole(task.profile))}
+      if(persistence?.writer.hasTaskSteps)await deliver(await persistence.writer.commitTaskResult(persistence,event,signal),true);else await deliver(event)
       // Stop is persisted by the owning chat. Do not queue a rejected save
       // after cancellation, when no consumer can observe this transition.
       if(signal.aborted)return
@@ -469,25 +478,25 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       if (task && budget && task.toolCalls>=budget.toolCalls) throw toolInputFailure(`This task has made its ${budget.toolCalls} tool calls, its profile’s budget; this call was not made. Return the findings you have to the parent.`)
       shared.toolCalls++; if (task) task.toolCalls++
     }
-    const accountChild=async(task:DelegatedTask,meter:ChildMeter)=>{
+    const accountChild=async(task:DelegatedTask,meter:ChildMeter,atomic=false)=>{
       const child=meter.contexts.at(-1),parent=shared.context
       if(!child||!parent)return
       parent.execution.mergeChildUsage(child.execution.state.id,child.execution.usage(),parent.delegatedRole(task.profile))
-      if(session.context?.checkpoint){
+      if(session.context?.checkpoint&&!atomic){
         checkpointTail=checkpointTail.then(()=>session.context!.checkpoint!(withFigures(parent.execution.snapshot('running')))).catch(()=>{const error=failureError('storage','storage','not-started');stopParent(error);throw error})
         await checkpointTail
       }
     }
     /** One model request of a child's: within its budget and the response's, checkpointed before it leaves. */
-    const chargeChild = async (task: DelegatedTask, budget: TaskBudget) => {
+    const chargeChild = async (task: DelegatedTask, budget: TaskBudget, atomic=false) => {
       if(task.modelRequests>=budget.modelRequests){refusedBy.set(task.id,'budget');throw new ExecutionPaused()}
       // Hold one request for the parent to answer from the findings.
       try{shared.childRequest(task)}catch(error){refusedBy.set(task.id,'reserve');throw error}
       task.modelRequests++
       // Persist the shared allowance before a child dispatch, so a
       // refresh cannot restore the parent's pre-delegation usage.
-      if(parentCheckpoint)await deliver({type:'execution_checkpoint',durable:true,checkpoint:withFigures(structuredClone(shared.checkpoint(parentCheckpoint)))})
-      await publish(task)
+      if(!atomic&&parentCheckpoint)await deliver({type:'execution_checkpoint',durable:true,checkpoint:withFigures(structuredClone(shared.checkpoint(parentCheckpoint)))})
+      if(!atomic)await publish(task)
     }
     /** Whether a child's one retry may take a request now: its budget's and the response's, and never its own run's last, kept for its answer. */
     const mayRetry = (task: DelegatedTask, budget: TaskBudget, meter: ChildMeter) => task.modelRequests<budget.modelRequests && shared.remaining>SYNTHESIS_RESERVE && (meter.contexts.at(-1)?.execution.remaining ?? 2)>1
@@ -526,13 +535,13 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           throw error
         }
       }})
-      const prepare=async(kind:'model'|'agent',_role:string,recovering:boolean)=>{
-       if(kind==='model'){if(!recovering){if(task){await chargeChild(task,budget!);if(meter)await accountChild(task,meter)}else{shared.parentRequest();parentRequests++}};return}
+      const prepare=async(kind:'model'|'agent',_role:string,recovering:boolean,atomic?:true)=>{
+       if(kind==='model'){if(!recovering){if(task){await chargeChild(task,budget!,atomic);if(meter)await accountChild(task,meter,atomic)}else{shared.parentRequest();parentRequests++}};return}
        if(task&&base.childDefinition&&(childRuns.get(task.id)??0)>=base.childDefinition.bounds.agentRuns&&!recovering)throw toolInputFailure('The declared sub-agent invocation bound was reached.')
        await released()
-       if(!task&&handoff?.state==='answered'){handoff.state='continued';await saveHandoff()}
+       if(!task&&handoff?.state==='answered'){handoff.state='continued';if(!atomic)await saveHandoff()}
        if(!recovering){shared.agentRun(task!==undefined);if(task)childRuns.set(task.id,(childRuns.get(task.id)??0)+1);else parentRuns++}
-       if(task&&meter)await accountChild(task,meter)
+       if(task&&meter)await accountChild(task,meter,atomic)
       }
       const common={...base,context:{...base.context,...(base.context?.[durableOwner]?{[prepareProviderDispatch]:prepare}:{})},signal:base.signal,hostTools:base.hostTools.map(wrapTool),callTool:async(name:string,args:Record<string,unknown>)=>{
         if(offer&&!offer.has(name))throw toolInputFailure('This task was not offered that Runtime tool.')
@@ -541,7 +550,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         claimTool(task,budget);return base.callTool(name,args)}}
       const mark = () => { if (meter) meter.firstByte ??= Date.now() }
       if ('model' in base) {
-        const call: ModelCall=async(suffix,request)=>{
+        const invoke=async(suffix:string,request:Parameters<ModelCall>[1],physical?:PhysicalModelAttempt):Promise<Response>=>{
           base.signal.throwIfAborted()
           const posted=request.method!=='GET'
           if (posted&&!base.context?.[durableOwner]) {
@@ -549,7 +558,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
             else {shared.parentRequest();parentRequests++}
           }
           base.signal.throwIfAborted()
-          const send=()=>base.model.call(suffix,{...request,signal:request.signal?AbortSignal.any([base.signal,request.signal]):base.signal})
+          const send=()=>{const raw:ModelCall=(given,prepared)=>base.model.call(given,physical?prepared:{...prepared,signal:prepared.signal?AbortSignal.any([base.signal,prepared.signal]):base.signal});return physical?physical(raw):raw(suffix,request)}
           let answered=await send()
           if (task && meter && posted) {
             // agent#17: one retry of a transient refusal, before the child's first answer byte and never after.
@@ -558,9 +567,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
               task.retried=again
               void answered.body?.cancel().catch(()=>undefined)
               await waitFor(again.waitMs,base.signal)
-              meter.contexts.at(-1)?.execution.claim()
-              await chargeChild(task,budget!)
-              await accountChild(task,meter)
+              if(!physical){meter.contexts.at(-1)?.execution.claim();await chargeChild(task,budget!);await accountChild(task,meter)}
               base.signal.throwIfAborted()
               answered=await send()
             }
@@ -569,13 +576,15 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           }
           return answered
         }
+        const call:ModelCall=(suffix,request)=>invoke(suffix,request)
+        registerPhysicalModel(call,(suffix,request,physical)=>invoke(suffix,request,physical),base.context?.[durableOwner],base.model.call)
         const bindings=base.policyConnections?Object.fromEntries(Object.entries(base.policyConnections).map(([id,binding])=>[id,'model'in binding?{model:(bind({...base,model:binding.model,policyConnections:undefined},task,budget,offer,meter) as import('./engine').AssistantSession).model}:binding])):undefined
         return {...common,policyConnections:bindings,model:{...base.model,call}} as EngineSession
       }
       // agent#15: a child's run carries the child model the host named, as a critic run carries the critic's.
       const named=task?childModels.get(task.id):undefined
       const bindings=base.policyConnections?Object.fromEntries(Object.entries(base.policyConnections).map(([id,binding])=>[id,'agent'in binding?{agent:(bind({...base,agent:binding.agent,policyConnections:undefined},task,budget,offer,meter) as import('./engine').AgentAssistantSession).agent}:binding])):undefined
-      return {...common,policyConnections:bindings,agent:{...base.agent,run:async(given,callbacks)=>{
+      const invoke=async(given:import('./agent').AgentRequest,callbacks:import('./agent').AgentCallbacks,physical?:PhysicalAgentAttempt):Promise<void>=>{
         const request=named!==undefined&&named!==base.agent.model?{...given,model:named,delegated:true as const}:given
         if(!base.context?.[durableOwner])await prepare('agent',given.phase,false)
         // agent#18: an agent's first event or tool call is its child's first byte.
@@ -586,13 +595,17 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           if(task){task.attempts=attempt;await publish(task)}
           callbacks.signal.throwIfAborted()
           try {
-            const release=providerReleaseAttempt(),capability={...watched,providerRelease:release.capability}
-            const invocation=base.agent.run(request,capability);invocations.add(invocation)
-            let problem:unknown
-            try{await invocation}catch(error){problem=error}finally{invocations.delete(invocation)}
-            const acknowledged=release.finish(),failed=problem===undefined?undefined:normalizeFailure(problem,'agent')
-            if(base.context?.[durableOwner]&&base.context[durableOwner]!.writer.store.durability!=='single-writer-callback'&&!acknowledged&&(task!==undefined||callbacks.signal.aborted)&&failed?.outcome!=='not-started'&&failed?.outcome!=='refused'){releaseFailure??=new ProviderReleaseUnknown();throw releaseFailure}
-            if(problem!==undefined)throw problem
+            const release=providerReleaseAttempt()
+            const execute:import('./agent').AgentRun=async(given,supplied)=>{
+             const capability={...supplied,...(task&&meter?{event:async(event:Parameters<typeof supplied.event>[0])=>{mark();return supplied.event(event)},tool:async(call:Parameters<typeof supplied.tool>[0],signal:AbortSignal)=>{mark();return supplied.tool(call,signal)}}:{}),providerRelease:composeProviderRelease(supplied.providerRelease,release.capability)}
+             const invocation=base.agent.run(named!==undefined&&named!==base.agent.model?{...given,model:named,delegated:true}:given,capability);invocations.add(invocation)
+             let problem:unknown
+             try{await invocation}catch(error){problem=error}finally{invocations.delete(invocation)}
+             const acknowledged=release.finish(),failed=problem===undefined?undefined:normalizeFailure(problem,'agent')
+             if(base.context?.[durableOwner]&&base.context[durableOwner]!.writer.store.durability!=='single-writer-callback'&&!acknowledged&&(task!==undefined||callbacks.signal.aborted)&&failed?.outcome!=='not-started'&&failed?.outcome!=='refused'){releaseFailure??=new ProviderReleaseUnknown();throw releaseFailure}
+             if(problem!==undefined)throw problem
+            }
+            if(physical)await physical(execute);else await execute(request,watched)
             return
           }
           catch(error) {
@@ -601,7 +614,10 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
             await wait(attempt*250,callbacks.signal)
           }
         }
-      }}} as EngineSession
+      }
+      const run:import('./agent').AgentRun=(request,callbacks)=>invoke(request,callbacks)
+      registerPhysicalAgent(run,(request,callbacks,physical)=>invoke(request,callbacks,physical),base.context?.[durableOwner])
+      return {...common,policyConnections:bindings,agent:{...base.agent,run}} as EngineSession
     }
     /**
      * The model a child of `profile` runs on (agent#15): the child model the host names for the
@@ -886,6 +902,8 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       await deliver({type:'message_progress',text:''})
       const tasks: DelegatedTask[]=restoredTasks??planned.map(p=>({...(p.subagent?{subagent:subagentRecord(p.subagent)}:{}),id:crypto.randomUUID(),parentRunId,title:p.request.title,objective:p.request.objective,profile:p.request.profile,state:'queued',createdAt:new Date().toISOString(),modelRequests:0,toolCalls:0,attempts:0,steps:[],budget:{...p.budget},
         ...(p.profile?{model:childModel(p.profile).name}:{}),...(p.references.length?{references:p.references.map(entry=>entry.id)}:{}),...(p.request.resume?{resumes:p.request.resume}:{})}))
+      if(persistence?.writer.hasTaskSteps&&handoff){handoff.tasks=tasks;handoff.state='children'}
+      if(persistence)await persistence.writer.bindTaskDelegation(persistence,request,tasks,batchSignal)
       const started=Date.now()
       running={tasks,number:handoff?.batch??(figures.at(-1)?.batch??0)+1,started}
       if(handoff){handoff.tasks=tasks;handoff.state='children'}
@@ -944,8 +962,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       note: ANSWER_NOTE
     })
     /** The delegation tool, executed in the parent's step: one batch at a time. */
-    const delegate: HostTool = {...delegationTool(profiles),execute:async(args,toolSignal)=>{
-      const request=readDelegationRequest(args)
+    const executeDelegation=async(request:DelegationRequest,toolSignal:AbortSignal):Promise<McpToolResult>=>{
       recordSubagents(request,shared.context?.subagents??[])
       const batchSignal=AbortSignal.any([signal,toolSignal])
       const run=batchTail.then(()=>runBatch(request,batchSignal))
@@ -956,7 +973,9 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       const answered=batchAnswer(tasks)
       commitReuse()
       return answered
-    }}
+    }
+    const delegate:HostTool={...delegationTool(profiles),execute:(args,toolSignal)=>executeDelegation(readDelegationRequest(args),toolSignal)}
+    const taskDelegate=persistence&&session.context?.taskSteps===true?persistence.writer.taskDelegationTool(persistence,executeDelegation):undefined
     const parentLink: ExecutionLink = {attach:context=>{
       shared.attach(context)
       for(const batch of figures)for(const child of batch.children){
@@ -981,12 +1000,18 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       let continued=handoff?.continuation??''
       if(handoff&&['answered','continued'].includes(handoff.state)&&!continued)throw new ContinuationNotRecoverable()
       let execution=session.context?.execution
+      // A restored batch precedes the next provider invocation. Reopen the existing parent
+      // controller first so child claims still charge the original root and step together.
+      if(persistence&&session.context?.taskSteps===true&&handoff&&(handoff.state==='released'||handoff.state==='children')){
+        const opened=await contextualSession(bind({...session,context:{...session.context,chat,link:parentLink},hostTools:[...session.hostTools,delegate,...(taskDelegate?[taskDelegate]:[])]}),engine.id)
+        restoredParent=opened.context
+      }
       for(;;){
         if(handoff&&(handoff.state==='released'||handoff.state==='children')){
           await released()
           let tasks:DelegatedTask[]
           try{tasks=await runBatch(handoff.request,signal,handoff.state==='children'?handoff.tasks:undefined)}catch(error){
-            if(signal.aborted||fatal!==undefined)throw error
+            if(signal.aborted||fatal!==undefined||persistence?.writer.hasTaskSteps)throw error
             const refused=toolFailureResult(error),problem=textOf(refused).slice(0,1000)
             tasks=handoff.request.tasks.map(request=>({id:crypto.randomUUID(),parentRunId,title:request.title,objective:request.objective,profile:request.profile,state:'failed',createdAt:new Date().toISOString(),finishedAt:new Date().toISOString(),modelRequests:0,toolCalls:0,attempts:0,steps:[],problem,failure:normalizeFailure(error,'desk')}))
             handoff.tasks=tasks;handoff.state='children';await saveHandoff()
@@ -996,12 +1021,13 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           handoff.continuation='\n\n'+CONTINUATION+'\n'+frameData(DELEGATE_TOOL,JSON.stringify(result.structuredContent??textOf(result)),dataMarker())
           handoff.state='answered';await saveHandoff();continued=handoff.continuation;commitReuse()
           execution=parentCheckpoint
+          restoredParent?.close();restoredParent=undefined;shared.closed()
         }
         let request:DelegationRequest|undefined,callId:string|undefined,failed=false
         const offered=batches<batchLimit()&&(!agent||shared.mayDelegate())
         const prompt=session.prompt+'\n\n'+(offered?DELEGATION_INSTRUCTIONS+(agent?' '+AGENT_DELEGATION_INSTRUCTIONS:''):DELEGATION_SPENT)+continued
         const hostTools=agent&&!shared.mayAct()?session.hostTools.filter(tool=>!asksApproval(tool)):session.hostTools
-        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{})}})
+        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate,...(taskDelegate?[taskDelegate]:[])]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{})}})
         try{
           for await(let event of engine.start(parent)){
             if(!persistence&&(event.type==='execution_checkpoint'||event.type==='budget_paused'))event={...event,checkpoint:decorate(event.checkpoint)}
@@ -1030,6 +1056,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
 
     return {async *[Symbol.asyncIterator]() {
       void drive().catch(async error=>{if(!signal.aborted&&!isCancelled(error))await deliver(failureEvent(error,'desk'))}).finally(async()=>{
+        restoredParent?.close()
         turn?.release()
         if(!hostChat)chat.dispose()
         try{await deliver({type:'end'})}finally{controller.abort();channel.close()}

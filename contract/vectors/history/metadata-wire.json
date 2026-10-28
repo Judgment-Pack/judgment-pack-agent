@@ -1,0 +1,90 @@
+{
+  "description": "Handwritten feedback and capture metadata, including candidate request/ref pairing; feedback rows shared with fixtures/feedback/candidates.json.",
+  "schema": "history-metadata.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/metadata.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "bad",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z",
+        "remark": "SECRET-123"
+      },
+      "candidateRequested": true
+    },
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "bad",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z",
+        "remark": "SECRET-123"
+      },
+      "candidateRequested": true,
+      "candidate": {
+        "digest": "sha256:b15fa89e6e3a4cc231b4e4de0415ca8d9c00313197bd4cf43e540a34410ca675",
+        "bytes": 816
+      }
+    },
+    {
+      "version": 1,
+      "kind": "capture",
+      "capture": {
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "bytes": 100
+      }
+    },
+    {
+      "version": 1,
+      "kind": "capture",
+      "capture": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 120
+      }
+    }
+  ]
+}

@@ -115,6 +115,14 @@ func retiredPolicyDetail(key, path string) string {
 	return "unknown policy member"
 }
 func policyRead(value any, s policyShape, path, layer string, out map[string]any) error {
+	if path == "routing.rules" || path == "routing.classifier" {
+		candidate := map[string]any{"mode": "auto", "tiers": []string{"validation"}, strings.TrimPrefix(path, "routing."): value}
+		if _, err := ReadRoutingPolicy(candidate); err != nil {
+			return &PolicyRefusal{Member: path, Layer: layer, Detail: "invalid routing declaration"}
+		}
+		out[path] = value
+		return nil
+	}
 	if path == "outputPatterns" || path == "outputAllow" {
 		var err error
 		if path == "outputPatterns" {
@@ -515,6 +523,23 @@ func ResolvePolicy(run, project, table PolicyLayer, host PolicyHost) (ResolvedPo
 		}
 		if float64(used) >= number(name)*number("pace.warnAt") && result.Warning == "" {
 			result.Warning = fmt.Sprintf("%s (%s): project period warning threshold reached", name, members[name].Layer)
+		}
+	}
+	if number("repeatTools.remindAt") > number("repeatTools.stopAt") {
+		return result, refuse("repeatTools.remindAt", "must not exceed stopAt", false)
+	}
+	if members["repeatTools.mode"].Value == "off" {
+		for key := range members {
+			if strings.HasPrefix(key, "repeatTools.") {
+				delete(members, key)
+			}
+		}
+	}
+	if mode, _ := members["routing.mode"].Value.(string); mode == "off" {
+		for key := range members {
+			if strings.HasPrefix(key, "routing.") {
+				delete(members, key)
+			}
 		}
 	}
 	return result, nil

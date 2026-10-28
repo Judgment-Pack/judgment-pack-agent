@@ -10,7 +10,7 @@ import (
 func TestProposalEditsAtomicResumeAndUndo(t *testing.T) {
 	s := modelSession()
 	s.Context = &Input{AcceptedDocuments: []AcceptedDocument{{ID: "pack", Document: json.RawMessage(`{"specVersion":"1","id":"pack","title":"Before","notes":"same same"}`)}}}
-	s.Tools = []RuntimeTool{{Name: "validate"}}
+	s.Tools = []RuntimeTool{{Name: "validate", Meta: &ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: "validate"}}}
 	s.CallTool = func(_ context.Context, name string, args json.RawMessage) (ToolResult, error) {
 		v, _ := ParseJSON(args)
 		doc, _ := ParseJSON([]byte(editString(v.Get("content"))))

@@ -1,0 +1,83 @@
+{
+  "description": "Handwritten exact encoded-result and lossless decimal argument identities, including precision-changing values that float64 conflates.",
+  "cases": [
+    {
+      "name": "argument order and exponent",
+      "leftArgs": "{\"z\":1000,\"a\":0.1}",
+      "rightArgs": "{\"a\":0.10,\"z\":1e3}",
+      "leftResult": "{\"value\":1}",
+      "rightResult": "{\"value\":1}",
+      "same": true
+    },
+    {
+      "name": "adjacent unsafe integer arguments",
+      "leftArgs": "{\"n\":9007199254740992}",
+      "rightArgs": "{\"n\":9007199254740993}",
+      "leftResult": "{}",
+      "rightResult": "{}",
+      "same": false
+    },
+    {
+      "name": "precise fraction arguments",
+      "leftArgs": "{\"n\":0.10000000000000001}",
+      "rightArgs": "{\"n\":0.1}",
+      "leftResult": "{}",
+      "rightResult": "{}",
+      "same": false
+    },
+    {
+      "name": "large exponent equivalence without expansion",
+      "leftArgs": "{\"n\":10e99999}",
+      "rightArgs": "{\"n\":1e100000}",
+      "leftResult": "{}",
+      "rightResult": "{}",
+      "same": true
+    },
+    {
+      "name": "typed numeric arguments",
+      "leftArgs": "{\"n\":1}",
+      "rightArgs": "{\"n\":\"1\"}",
+      "leftResult": "{}",
+      "rightResult": "{}",
+      "same": false
+    },
+    {
+      "name": "duplicate argument final value",
+      "leftArgs": "{\"n\":0,\"n\":1}",
+      "rightArgs": "{\"n\":1}",
+      "leftResult": "{}",
+      "rightResult": "{}",
+      "same": true
+    },
+    {
+      "name": "adjacent unsafe numeric result encodings",
+      "leftArgs": "{}",
+      "rightArgs": "{}",
+      "leftResult": "{\"n\":9007199254740992}",
+      "rightResult": "{\"n\":9007199254740993}",
+      "same": false,
+      "leftStoredResult": "{\"n\":9007199254740992}",
+      "rightStoredResult": "{\"n\":9007199254740992}"
+    },
+    {
+      "name": "result spelling remains exact",
+      "leftArgs": "{}",
+      "rightArgs": "{}",
+      "leftResult": "{\"n\":1.0}",
+      "rightResult": "{\"n\":1}",
+      "same": false,
+      "leftStoredResult": "{\"n\":1}",
+      "rightStoredResult": "{\"n\":1}"
+    },
+    {
+      "name": "result member order remains exact",
+      "leftArgs": "{}",
+      "rightArgs": "{}",
+      "leftResult": "{\"a\":1,\"b\":2}",
+      "rightResult": "{\"b\":2,\"a\":1}",
+      "same": false,
+      "leftStoredResult": "{\"a\":1,\"b\":2}",
+      "rightStoredResult": "{\"a\":1,\"b\":2}"
+    }
+  ]
+}

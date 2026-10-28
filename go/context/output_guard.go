@@ -193,10 +193,16 @@ type outputMatch struct {
 	name              string
 }
 
-func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget, markers ...*RecordMarker) (string, error) {
+func (g *OutputGuard) text(s, where string, record bool, budget *PatternBudget, workspace *matchRangesWorkspace, markers ...*RecordMarker) (string, error) {
 	buckets := [][]outputMatch{}
 	for order, p := range g.patterns {
-		ranges, ok := MatchRanges(p.pattern, s, budget)
+		var ranges [][2]int
+		var ok bool
+		if workspace == nil {
+			ranges, ok = MatchRanges(p.pattern, s, budget)
+		} else {
+			ranges, ok = workspace.match(p.pattern, s, budget)
+		}
 		if !ok {
 			return "", g.refuse(where, "work-bound", record, markers...)
 		}
@@ -259,7 +265,7 @@ func (g *OutputGuard) Text(s, where string, record bool, markers ...*RecordMarke
 	if g.Mode == "off" {
 		return s, nil
 	}
-	return g.text(s, where, record, &PatternBudget{Steps: SearchSteps}, markers...)
+	return g.text(s, where, record, &PatternBudget{Steps: SearchSteps}, nil, markers...)
 }
 func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, markers ...*RecordMarker) (json.RawMessage, error) {
 	g.mu.Lock()
@@ -274,6 +280,7 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, marke
 		return nil, g.refuse(where, "invalid-output", record, markers...)
 	}
 	budget := &PatternBudget{Steps: SearchSteps}
+	var workspace matchRangesWorkspace
 	var walk func(any) (any, error)
 	walk = func(v any) (any, error) {
 		switch x := v.(type) {
@@ -285,7 +292,7 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, marke
 					if !g.emittedLabels[x[span[0]:span[1]]] {
 						continue
 					}
-					clean, err := g.text(x[at:span[0]], where, record, budget, markers...)
+					clean, err := g.text(x[at:span[0]], where, record, budget, &workspace, markers...)
 					if err != nil {
 						return nil, err
 					}
@@ -293,18 +300,18 @@ func (g *OutputGuard) JSON(raw json.RawMessage, where string, record bool, marke
 					out.WriteString(x[span[0]:span[1]])
 					at = span[1]
 				}
-				clean, err := g.text(x[at:], where, record, budget, markers...)
+				clean, err := g.text(x[at:], where, record, budget, &workspace, markers...)
 				if err != nil {
 					return nil, err
 				}
 				out.WriteString(clean)
 				return out.String(), nil
 			}
-			return g.text(x, where, record, budget, markers...)
+			return g.text(x, where, record, budget, &workspace, markers...)
 		case json.Number, bool, nil:
 			if where == "draft edit" {
 				raw, _ := json.Marshal(v)
-				clean, err := g.text(string(raw), where, record, budget, markers...)
+				clean, err := g.text(string(raw), where, record, budget, &workspace, markers...)
 				if err != nil || clean != string(raw) {
 					return clean, err
 				}

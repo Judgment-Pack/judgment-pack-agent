@@ -1,3 +1,4 @@
+import {validRoutingPolicy,type RoutingPolicy} from './turnRoute'
 import {readOutputPatterns,readOutputAllow,type OutputPattern} from './outputGuard'
 /** Host-only policy admission (ADR-0011). No prompt, result or model tool can supply a layer. */
 import schema from './contract/policy-schema.json'
@@ -15,7 +16,9 @@ export type ReasoningValue = 'off' | 'on' | 'ultra' | 'none' | 'minimal' | 'low'
 export interface DiscoveredReasoning { default?: ReasoningValue; supported: ReasoningValue[] }
 export interface PolicyRole { model?: string; reasoning?: string; discovered?: {reasoning: DiscoveredReasoning}; provider?: string; fallback?: string[] }
 export interface PolicyLayer {
-  version?:1
+  version?:1|2
+  repeatTools?:{mode?:'off'|'on';remindAt?:number;stopAt?:number}
+  routing?:Partial<RoutingPolicy>
   compaction?: 'index' | 'summary'
   outputGuard?: 'off' | 'redact' | 'refuse'
   outputPatterns?: OutputPattern[]
@@ -54,6 +57,7 @@ const object = (v: unknown): v is Record<string, unknown> => v !== null && typeo
 const deref = (s: Shape): Shape => s.$ref?.startsWith('#/$defs/') ? (schema.$defs as Record<string, Shape>)[s.$ref.slice(8)]! : s
 function read(value: unknown, shape: Shape, path: string, layer: PolicyLayerName, out: Record<string, unknown>) {
   if(path==='outputPatterns'||path==='outputAllow'){try{out[path]=path==='outputPatterns'?readOutputPatterns(value):readOutputAllow(value);return}catch{throw new PolicyRefusal(path,layer,'invalid output guard configuration')}}
+  if(path==='routing.rules'||path==='routing.classifier'){const candidate={mode:'auto',tiers:['validation'],[path.slice(8)]:value};if(!validRoutingPolicy(candidate))throw new PolicyRefusal(path,layer,'invalid routing declaration');out[path]=structuredClone(value);return}
   shape = deref(shape)
   const refuse = () => { throw new PolicyRefusal(path, layer, 'invalid or unknown policy member') }
   if (shape.type === 'object') {
@@ -198,6 +202,9 @@ export function resolvePolicy(run: PolicyLayer, project: PolicyLayer, table: Pol
     if (used >= Number(limit)) refuse(name, 'project period budget exceeded', true)
     if (used >= Number(limit) * Number(need('pace.warnAt').value)) warning ??= `${name} (${need(name).layer}): project period warning threshold reached`
   }
+  if(Number(members['repeatTools.remindAt']?.value)>Number(members['repeatTools.stopAt']?.value))refuse('repeatTools.remindAt','must not exceed stopAt')
+  if(members['repeatTools.mode']?.value==='off')for(const key of Object.keys(members))if(key.startsWith('repeatTools.'))delete members[key]
+  if(members['routing.mode']?.value==='off')for(const key of Object.keys(members))if(key.startsWith('routing.'))delete members[key]
   return {members, ...(warning ? {warning} : {})}
 }
 

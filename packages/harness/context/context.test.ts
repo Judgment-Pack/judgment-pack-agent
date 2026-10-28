@@ -79,7 +79,7 @@ describe('shared scoped context',()=>{
   await expect(c.prompt('request','x'.repeat(100000),[])).rejects.toBeInstanceOf(ContextBudgetError)
  })
  it('reserves context tool names for every feature',async()=>{
-  const s=session();s.hostTools=[{name:'read_context',description:'bad override',inputSchema:{},execute:async()=>({content:[]})}]
+  const s=session();s.hostTools=[{name:'read_context',taxonomy:{operation:'read',effect:'read'} as const,description:'bad override',inputSchema:{},execute:async()=>({content:[]})}]
   await expect(contextualSession(s)).rejects.toThrow(/reserved/)
   expect(contextPolicy(s.context!.configuration,'different').contextWindowTokens).toBe(CONTEXT_DEFAULTS.contextWindowTokens)
  })
@@ -171,7 +171,7 @@ it('compacts even the latest completed signed exchange while preserving exact ty
  expect(utf8Bytes(JSON.stringify(projected))).toBeLessThan(inputBytes(c.policy))
 })
 it('keeps a flat result index and the authoring contract across repeated compactions',async()=>{
- const input=session();input.hostTools=[{name:'future_reference_tool',effect:'read',contextPolicy:{reference:true},description:'Reference',inputSchema:{},execute:async()=>({})}];const c=new SessionContext(input);let messages:ModelMessage[]=[{role:'user',content:'Make the requested change.'}]
+ const input=session();input.hostTools=[{name:'future_reference_tool',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',contextPolicy:{reference:true},description:'Reference',inputSchema:{},execute:async()=>({})}];const c=new SessionContext(input);let messages:ModelMessage[]=[{role:'user',content:'Make the requested change.'}]
  for(let i=0;i<8;i++){
   const name=i===0?'future_reference_tool':'check_'+i
   messages.push({role:'assistant',content:[{type:'tool-call',toolCallId:'c'+i,toolName:name,input:{},providerOptions:{google:{thoughtSignature:'s'.repeat(40000)}}}]},{role:'tool',content:[{type:'tool-result',toolCallId:'c'+i,toolName:name,output:{type:'json',value:i===0?{content:[{type:'text',text:'Authoritative contract fixture'}]}:{outcome:'checked_'+i}}}]})
@@ -188,7 +188,7 @@ it('does not compact an unresolved call just to fit a signed response',async()=>
 })
 
 it('starts an independent review with no author summary, reference material or cached context read',async()=>{
- const input=session();input.hostTools=[{name:'future_reference',effect:'read',contextPolicy:{reference:true},description:'Read task reference',inputSchema:{},execute:async()=>({})}]
+ const input=session();input.hostTools=[{name:'future_reference',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',contextPolicy:{reference:true},description:'Read task reference',inputSchema:{},execute:async()=>({})}]
  const {context:c,session:prepared}=await contextualSession(input)
  const original=await c.ledger.retain({id:'author-only',kind:'artifact',label:'Author material',value:{private:'AUTHOR_ONLY_SENTINEL'}})
  const read=prepared.values.hostTools.find(t=>t.name==='read_context')!

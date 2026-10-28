@@ -215,6 +215,8 @@ type Request struct {
 	Tier *Value
 	// MaxOutputTokens is the output reserve the budget table states.
 	MaxOutputTokens int
+	// OutputTokenCeiling additionally bounds the physical request, including tier overrides.
+	OutputTokenCeiling int
 	// ReasoningField is the OpenAI-compatible member reasoning streams in and is carried back in,
 	// where the record pins one; "" is not pinned.
 	ReasoningField ReasoningField

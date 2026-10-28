@@ -23,6 +23,7 @@ import placementVector from '../../../../contract/vectors/budget/state-placement
 import { vercel } from './index'
 import { STATE_HEADER, statePlacement } from './loop'
 import { scenario, scriptedModel, scriptedRuntime } from '../../certification'
+import {currentContractReplayTools} from '../../certification/scriptedServer'
 import { bindModelCall, openAssistantConnection, runAssistantSession } from '../../session'
 import { EXECUTION_INSTRUCTIONS } from '../../execution/controller'
 import { modelCompletion, readCompletion } from '../../completion'
@@ -47,11 +48,12 @@ export async function scenarioRun(
   const thinking = endpoint.thinking ?? 'off'
   const model = scriptedModel({ api, answerAs: 'stream', thinking, refuted: false, signatures: 'thought' })
   vi.stubGlobal('fetch', model.fetch)
-  const runtime = await scriptedRuntime()
+  const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
   const events: AssistantEvent[] = []
   const connection = openAssistantConnection({ allowed: scenario.scenarioTools, onEvent: (event) => events.push(event), transport: runtime.transport })
   const bodies: string[] = []
   try {
+    await expect(connection.ready).resolves.toHaveProperty('tools')
     const ready = await connection.ready
     const bound = bindModelCall(api)
     const call: ModelCall = async (suffix, request) => {
@@ -293,7 +295,7 @@ function anthropicTurn(text: string, usage: Json): string {
 }
 
 const PROPOSAL = 'Here it is.\n\n```json\n' + JSON.stringify({ proposal: { kind: 'create', document: { id: 'p' }, unknowns: [] } }) + '\n```\n'
-const TOOLS: McpTool[] = [{ name: 'validate', description: 'check a document', inputSchema: { type: 'object' } }]
+const TOOLS: McpTool[] = [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check a document', inputSchema: { type: 'object' } }]
 
 function session(call: ModelCall, changes: Partial<AssistantSession> = {}): AssistantSession {
   return {

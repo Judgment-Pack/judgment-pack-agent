@@ -14,6 +14,7 @@ package adapter
 import (
 	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/internal/physicaldispatch"
 
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -30,6 +31,15 @@ import (
 // is in flight. Tools are the Runtime tools tools/list served through the gate, those on the
 // allow-list; HostTools are the host's tools, each with its declaration and its function.
 type Run struct {
+	Route         *runcontext.RouteSelection
+	RouteFacts    *runcontext.RouteFacts
+	physicalModel *physicaldispatch.Model
+	// RequestOutputCeiling bounds one encoded model request without changing context policy.
+	// Zero is absent. Opaque native agent routes refuse this control.
+	RequestOutputCeiling int
+	// OpeningProjection preserves a structured opening, reducing only declared source previews.
+	OpeningProjection *runcontext.OpeningProjection
+
 	Policy            runcontext.PolicyLayer
 	PolicyProject     runcontext.PolicyLayer
 	TaskClass         string
@@ -60,6 +70,9 @@ type Run struct {
 	Tools    []contract.ToolOfferRuntimeTool
 	// HostTools are the host's tools; the boundary adds its own context tools beside them.
 	HostTools []runcontext.HostTool
+	// EnrollContext is an optional trusted-host acknowledgement of the detached final
+	// declarations from the actual contextual session. The host enrolls them with Gate.EnrollContext.
+	EnrollContext func(context.Context, ContextOffer) error
 	// Skills are the skills the host declares for the run (ADR-0009), each with the digest the person
 	// approved; the boundary admits, catalogues and loads them. A delegated child's run is handed none.
 	Subagents       []runcontext.Subagent

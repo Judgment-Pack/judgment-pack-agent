@@ -5,7 +5,9 @@
 Schemas:
 
 - `contract/schemas/skill.json`
+- `contract/schemas/admitted-skill-v1.json`
 - `contract/schemas/tool-offer.json`
+- `contract/schemas/tool-taxonomy.json`
 - `contract/schemas/provenance.json`
 
 Package files (`packages/harness`), with the symbols read:
@@ -32,10 +34,36 @@ Closed: a member the schema does not name is refused.
 | `description` | yes | string (min length 1, max length 1024) | What the skill is for, as its author wrote it: untrusted text. The catalogue shows its first line, cut to 160 bytes and framed as retrieved data under the run's marker. |
 | `source` | yes | all of: `tool-offer.json $defs/sourceRecord` / any | Where the skill comes from: tool-offer.json#/$defs/sourceRecord, the record a tool with a source carries, with its kind one a host declares (gateway, mcp, custom or exchange; runtime is refused, as for a tool) and without the members the package sets on a tool's offer (tool, receipt). exchange: a skill whose bytes the host fetched from a Judgment Exchange entry, the entry's id and version the record's id and version. Reported, never a grant. |
 | `instructions` | yes | string (min length 1) | The skill's instructions: text, placed only when the skill is loaded, after the history, under the heading that ranks them with the project's own instructions and after them. Counted with the resources against skillBytes. |
-| `tools` |  | array of string (min length 1, max length 128) (max items 16) | The names of the host's declared tools the skill uses, at most 16: each must be a host tool the host declared for the run (a tool with a source by its wire name), or the skill is withheld at declaration with a guardrail naming the tool. A skill names tools; it carries none of its own and changes no tool's offer, effect class or approval. |
+| `tools` |  | array of string (min length 1, max length 128) (max items 16) | At most 16 unique references to tools admitted for this run: host tools by offered wire name, and Runtime tools only from validated offered _meta. An unknown or withdrawn reference withholds the skill; tools grant no authority and derive the profile and approval pin dependencies. |
 | `resources` |  | array of `$defs/resource` (max items 8) | Small text resources placed with the instructions when the skill is loaded, at most 8, each its name and text. Counted with the instructions against skillBytes. |
 | `pinnedDigest` |  | `$defs/digest` | On the declaration: the digest of the bundle the person approved, pinned by the host when the person approved the skill ($defs/digest). A skill whose bundle does not hash to it is withheld at declaration with a guardrail, until the person re-approves the skill and the host declares the new digest. |
 | `digest` |  | `$defs/digest` | On admission: the digest of the bundle as declared ($defs/digest), which is the pinned one. The skill_loaded event and the checkpoint's loaded set carry it. |
+| `kind` |  | enum `method`, `knowledge`, `procedure`, `review` | Optional author/host classification, untrusted and digest-bound. Absent is unclassified. |
+| `tags` |  | array of string (max length 32) (max items 8) | Optional untrusted search tags, never authority; part of the pin. |
+
+## Current admitted result
+
+Current in-process admission result: the declared skill, its approved bundle digest, computed dependency capability profile, and optional measured bytes. The schema name versions this result; it introduces no version member into declarations. Legacy skill.json remains closed and unchanged. Profile is derived from admitted tool taxonomy and grants no authority.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `id` | yes | `skill.json properties/id` |  |
+| `name` | yes | `skill.json properties/name` |  |
+| `description` | yes | `skill.json properties/description` |  |
+| `source` | yes | `skill.json properties/source` |  |
+| `instructions` | yes | `skill.json properties/instructions` |  |
+| `tools` |  | `skill.json properties/tools` |  |
+| `resources` |  | `skill.json properties/resources` |  |
+| `pinnedDigest` | yes | `skill.json properties/pinnedDigest` |  |
+| `digest` | yes | `skill.json properties/digest` |  |
+| `kind` |  | `skill.json properties/kind` |  |
+| `tags` |  | `skill.json properties/tags` |  |
+| `profile` | yes | `tool-taxonomy.json $defs/profile` |  |
+| `bytes` |  | `skill.json $defs/bytes` |  |
+
+The host declaration retains the closed skill.json shape. Current admission results add the computed profile and optional measured bytes under admitted-skill-v1.json. The schema name versions this in-process result; declarations gain no version field. Historical admitted values remain readable under skill.json.
 
 ### `skill.json $defs/name`
 
@@ -56,7 +84,7 @@ Closed: a member the schema does not name is refused.
 
 ### `skill.json $defs/digest`
 
-The digest of a skill's bundle (ADR-0009): sha256: then the SHA-256, lower-case hex, of the UTF-8 text of the canonical JSON (tool-result.json#/$defs/readCacheKey's: members sorted by name in UTF-16 code units, no whitespace, strings and numbers as JSON.stringify writes them) of {name, description, instructions, tools, resources}, tools and resources the empty list where the skill has none and each resource {name, text} (skillDigest in skills.ts; Go runcontext.SkillDigest). The host computes it when the person approves the skill and declares it as pinnedDigest; the package computes it again at declaration.
+Bundle digest of canonical {name,description,instructions,tools,resources}, plus kind/tags exactly when supplied, plus dependencies for nonempty tools: ordered {name,taxonomy} for each admitted tool. Unknown dependencies cannot be pinned. Classification changes require person re-approval. Existing historical record bytes and stored digest strings are never rewritten.
 
 Type: string (pattern `^sha256:[0-9a-f]{64}$`)
 
@@ -65,6 +93,19 @@ Type: string (pattern `^sha256:[0-9a-f]{64}$`)
 The size a skill is counted at against skillBytes, and that skill_loaded and the checkpoint's loaded set carry: the UTF-8 bytes of its instructions, and of each resource's name and text.
 
 Type: integer (min 0)
+
+## Derived capability profile
+
+### `tool-taxonomy.json $defs/profile`
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `effect` | yes | enum `pure`, `read`, `read-external`, `propose`, `act` |  |
+| `operations` | yes | array of enum `discover`, `read`, `answer`, `check`, `transform`, `evaluate`, `propose`, `act`, `run`, `own-state`, `ask` |  |
+
+The package derives the strongest effect and ordered operation union from admitted tool references, including validated offered Runtime tools. Unknown or withdrawn tools withhold the skill; an empty skill is pure. Kind/tags and dependency taxonomies bind the approval digest. Catalogue lines show the profile, and preset filtering consumes it; author/model profiles are refused.
 
 ## The offer
 
@@ -154,3 +195,13 @@ Named here, never their text. Each is a constant of `skills.ts`.
 | `SKILL_INSTRUCTIONS_END` |
 | `SKILL_OPENING` |
 | `SKILL_CLOSING` |
+
+## Asking well
+
+When the retained tool offer includes `ask_user` as a question with taxonomy `ask` / `pure`, Agent includes the version 1 `asking-well` method. Its only dependency is `ask_user`; its profile is derived as `ask` / `pure`. `askingWellSkill()` (TypeScript) and `AskingWellSkill()` (Go) return the package bundle with the published current pin. Its existing `custom` source `agent-methods`, trust `first-party`, identifies immutable package-owned bytes. This does not introduce a source kind or confer that provenance on host declarations.
+
+The skill tells the model to read available context and tools first, ask only necessary missing information, avoid answered questions, ask one decision at a time, explain what changes, present 2–4 mutually exclusive options with a reasoned recommendation first, and preserve free text and the person's actual choice. Loading remains the model's choice. A recommendation never supplies a user answer. Instructions do not enforce arbitrary model behavior; scripted certification checks delivered instructions and harness behavior, not general live-model quality. The live release comparison gate remains required.
+
+The name `asking-well` is reserved for a host replacement when this question tool is actually offered. Supply exactly one normal declaration with that name, kind `method`, and exactly `tools: ["ask_user"]`, with the host's own provenance and approved digest. The existing digest covers instructions, kind, tools, resources, tags and dependency taxonomy. No profile or digest override is accepted. Wrong kind, dependencies or duplicate replacement declarations refuse configuration before a provider request. A stale pin withholds the replacement without falling back to the package method and refuses startup.
+
+Host declaration order is preserved and the default is appended. Ordinary skill admission, 32-skill catalogue maximum and byte bounds still apply; no host entry is evicted. If the selected method is withheld by admission, pin, dependency, profile or catalogue capacity, a run offering the question tool refuses configuration before a provider request. Other host skills retain their ordinary admission behavior. Neither `allowConversation` nor a child or Plan phase creates a question tool; the method follows the retained actual offer. Children without `ask_user` receive no automatic method. No tool or action authority is granted by a skill.

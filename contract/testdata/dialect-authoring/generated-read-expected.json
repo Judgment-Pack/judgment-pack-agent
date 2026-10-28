@@ -1,0 +1,87 @@
+{
+  "document": {
+    "version": 2,
+    "case": {
+      "facts": [],
+      "evidence": []
+    },
+    "sources": [
+      {
+        "name": "before",
+        "kind": "operation",
+        "profile": "existing",
+        "profileDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "maxAge": 60,
+        "arguments": {
+          "tool": "keep-before"
+        },
+        "read": {
+          "copy": {
+            "facts": [],
+            "evidence": []
+          }
+        }
+      },
+      {
+        "name": "retained-generated",
+        "kind": "operation",
+        "profile": "reviewed-input",
+        "profileDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "maxAge": 60,
+        "arguments": {
+          "tool": "existing-reviewed-frame",
+          "arguments": {
+            "record": "opaque:generated"
+          }
+        },
+        "read": {
+          "unwrap": [
+            "/payload"
+          ],
+          "copy": {
+            "facts": [
+              {
+                "target": "/amount",
+                "source": "/retained",
+                "conversion": {
+                  "contractVersion": "1",
+                  "column": "typed",
+                  "kind": "decimal"
+                }
+              }
+            ],
+            "evidence": [
+              {
+                "requirement": "receipt",
+                "source": "/retained",
+                "availability": {
+                  "contractVersion": "1",
+                  "column": "availability"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "after",
+        "kind": "operation",
+        "profile": "existing",
+        "profileDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "maxAge": 60,
+        "arguments": {
+          "tool": "keep-after"
+        },
+        "read": {
+          "copy": {
+            "facts": [],
+            "evidence": []
+          }
+        }
+      }
+    ],
+    "unmapped": [],
+    "unmappedEvidence": []
+  },
+  "digest": "sha256:bb434e5ca06b10dd8d85341000fce4c9c7b8c8c30b90d5ff69da031177bc71e6"
+}

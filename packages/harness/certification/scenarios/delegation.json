@@ -15,14 +15,22 @@
       "effect": "read",
       "delegation": "read",
       "description": "Read one section of the expense policy.",
-      "result": "Section 4, mileage: paid at the published rate per mile."
+      "result": "Section 4, mileage: paid at the published rate per mile.",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      }
     },
     {
       "name": "read_rates",
       "effect": "read",
       "delegation": "research",
       "description": "Read the published mileage rate for one year.",
-      "result": "The rate for 2026 is 0.58 per mile. Rates are per mile, not per kilometre."
+      "result": "The rate for 2026 is 0.58 per mile. Rates are per mile, not per kilometre.",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      }
     }
   ],
   "children": [

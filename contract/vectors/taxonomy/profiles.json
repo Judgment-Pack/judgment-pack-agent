@@ -1,0 +1,53 @@
+{
+  "description": "Handwritten owner taxonomy schema records; behavior and malformed inputs are in contract/testdata/taxonomy.",
+  "schema": "tool-taxonomy.json#/$defs/profile",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolTaxonomy.ts"
+    ]
+  },
+  "items": [
+    {
+      "effect": "pure",
+      "operations": []
+    },
+    {
+      "effect": "read",
+      "operations": [
+        "read"
+      ]
+    },
+    {
+      "effect": "read-external",
+      "operations": [
+        "discover"
+      ]
+    },
+    {
+      "effect": "propose",
+      "operations": [
+        "propose"
+      ]
+    },
+    {
+      "effect": "act",
+      "operations": [
+        "discover",
+        "read",
+        "answer",
+        "check",
+        "transform",
+        "evaluate",
+        "propose",
+        "act",
+        "run",
+        "own-state",
+        "ask"
+      ]
+    }
+  ]
+}

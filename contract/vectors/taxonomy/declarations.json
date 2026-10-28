@@ -1,0 +1,87 @@
+{
+  "description": "Handwritten owner taxonomy schema records; behavior and malformed inputs are in contract/testdata/taxonomy.",
+  "schema": "tool-taxonomy.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolTaxonomy.ts"
+    ]
+  },
+  "items": [
+    {
+      "operation": "discover",
+      "effect": "pure"
+    },
+    {
+      "operation": "read",
+      "effect": "read"
+    },
+    {
+      "operation": "answer",
+      "effect": "read-external"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "validate"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "check"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "verify"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "test"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "analyze"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "advise"
+    },
+    {
+      "operation": "transform",
+      "effect": "pure"
+    },
+    {
+      "operation": "evaluate",
+      "effect": "act",
+      "experimental": true
+    },
+    {
+      "operation": "propose",
+      "effect": "propose"
+    },
+    {
+      "operation": "act",
+      "effect": "act",
+      "experimental": false
+    },
+    {
+      "operation": "run",
+      "effect": "read"
+    },
+    {
+      "operation": "own-state",
+      "effect": "pure"
+    },
+    {
+      "operation": "ask",
+      "effect": "pure"
+    }
+  ]
+}

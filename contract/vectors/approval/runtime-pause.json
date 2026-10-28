@@ -1,0 +1,69 @@
+{
+  "description": "Handwritten current Runtime approval shape. A serialized binding is reporting and cannot mint a dispatch grant.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/runtimeActions.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 3,
+      "id": "runtime-fixture",
+      "requestKey": "1111111111111111111111111111111111111111111111111111111111111111",
+      "phase": "work",
+      "status": "paused",
+      "unit": "model-requests",
+      "used": 1,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "runtime-fixture",
+        "entries": []
+      },
+      "approval": {
+        "callId": "runtime-call-one",
+        "name": "experimental_evaluate",
+        "tool": "experimental_evaluate",
+        "source": {
+          "kind": "runtime",
+          "id": "runtime",
+          "trust": "first-party",
+          "tool": "experimental_evaluate",
+          "toolListDigest": "sha256:3813eeb66e1a9e9831b7a6ea3e401c4acbaffecd574cfaad1f11b7936105cddf",
+          "identity": {
+            "kind": "connection",
+            "label": "Project editor"
+          },
+          "identityDigest": "sha256:67ccf62e31c9eff1a712c5514ed776a8fb22a702903ac9b244c8702cd6275db4"
+        },
+        "args": {
+          "value": 7,
+          "rehearsal": true
+        },
+        "state": "asked",
+        "runtime": {
+          "owner": {
+            "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "processId": "launch-one",
+            "projectId": "project-one",
+            "projectLabel": "Example project",
+            "sessionId": "server-session-one",
+            "principalDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "principalLabel": "Project editor",
+            "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "scopeLabel": "Evaluate example project"
+          },
+          "admissionDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      }
+    }
+  ]
+}

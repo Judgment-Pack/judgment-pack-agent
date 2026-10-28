@@ -11,7 +11,7 @@ import (
 func TestProposalNumericDraftCustody(t *testing.T) {
 	s := modelSession()
 	s.Context = &Input{AcceptedDocuments: []AcceptedDocument{{ID: "p", Document: json.RawMessage(`{"id":"p","n":1.20,"zero":-0,"nested":{"n":2.500}}`)}}}
-	s.Tools = []RuntimeTool{{Name: "validate"}}
+	s.Tools = []RuntimeTool{{Name: "validate", Meta: &ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: "validate"}}}
 	validated := 0
 	s.CallTool = func(context.Context, string, json.RawMessage) (ToolResult, error) {
 		validated++
@@ -91,7 +91,7 @@ func TestProposalNumericDecodedOutputGuard(t *testing.T) {
 		for _, valid := range []bool{true, false} {
 			s := modelSession()
 			s.Policy = PolicyLayer{"outputGuard": mode}
-			s.Tools = []RuntimeTool{{Name: "validate"}}
+			s.Tools = []RuntimeTool{{Name: "validate", Meta: &ToolTaxonomy{Operation: "check", Effect: "pure", CheckKind: "validate"}}}
 			validations := 0
 			s.CallTool = func(context.Context, string, json.RawMessage) (ToolResult, error) {
 				validations++

@@ -1,0 +1,83 @@
+{
+  "description": "Handwritten commit/event sequence and checkpoint-only successor with independent canonical-body digests. Clock ties do not change storage ordering. Third row records an explicitly closed author turn and private critic scope.",
+  "schema": "history-entry.json",
+  "items": [
+    {
+      "version": 1,
+      "sequence": 1,
+      "eventStart": 1,
+      "eventCount": 1,
+      "commitId": "one",
+      "executionRevision": "revision-one",
+      "recordedAt": "2026-10-25T01:02:03.000Z",
+      "previousDigest": null,
+      "checkpoint": {
+        "digest": "sha256:1da06016289bd76a5ada4f52fc805ae0c394612f17ec6d0f0c29b636473c8a9d",
+        "bytes": 10
+      },
+      "events": [
+        {
+          "digest": "sha256:f58648470054614dd08e09b6410b7535f060f99485e9c8c120c4c5eba2756b16",
+          "bytes": 11
+        }
+      ],
+      "observations": [],
+      "digest": "sha256:b25c2c8ad97850d42c59d3f205a1daf34388c9c395db7f078ccfef65e48990b5"
+    },
+    {
+      "version": 1,
+      "sequence": 2,
+      "eventStart": 2,
+      "eventCount": 0,
+      "commitId": "two",
+      "executionRevision": "revision-two",
+      "recordedAt": "2026-10-25T01:02:03.000Z",
+      "previousDigest": "sha256:b25c2c8ad97850d42c59d3f205a1daf34388c9c395db7f078ccfef65e48990b5",
+      "checkpoint": {
+        "digest": "sha256:1681e707f93a2655bfe62a7e86ef9a01c4928fcd2d79ee6d8ef2218e658b95ad",
+        "bytes": 10
+      },
+      "events": [],
+      "observations": [],
+      "digest": "sha256:47037f077d2c02b85d1449763991bcbc2d38714c458c0978066a0cd696f7bd19"
+    },
+    {
+      "version": 1,
+      "sequence": 3,
+      "eventStart": 2,
+      "eventCount": 0,
+      "commitId": "three",
+      "executionRevision": "revision-three",
+      "recordedAt": "2026-10-25T01:02:03.000Z",
+      "previousDigest": "sha256:47037f077d2c02b85d1449763991bcbc2d38714c458c0978066a0cd696f7bd19",
+      "checkpoint": {
+        "digest": "sha256:1681e707f93a2655bfe62a7e86ef9a01c4928fcd2d79ee6d8ef2218e658b95ad",
+        "bytes": 10
+      },
+      "events": [],
+      "observations": [],
+      "context": {
+        "chatId": "chat",
+        "revision": "chat-revision",
+        "manifest": {
+          "digest": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+          "bytes": 5
+        },
+        "turn": 1,
+        "closed": true,
+        "privateScope": "private-critic"
+      },
+      "digest": "sha256:ccbd34a70373d55227f45b0e9329208ae2113941f56c1b16c34a5bbce97985a3"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/history.ts",
+      "packages/harness/context/chatSnapshot.test.ts"
+    ]
+  }
+}

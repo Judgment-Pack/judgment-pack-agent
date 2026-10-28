@@ -37,7 +37,7 @@ func CapacityAt(with func(adapter.Adapter) adapter.Adapter, capacity int) Scenar
 		Names:    CapacityNames,
 		Run: func(ctx context.Context, server *Server, answerAs string, inner Adapter) ([]Finding, error) {
 			delegate := turn.DelegationTool(turn.TaskProfiles)
-			declared := []runcontext.HostTool{{Name: delegate.Name, Description: delegate.Description, InputSchema: delegate.InputSchema, Interaction: "delegation"}}
+			declared := []runcontext.HostTool{{Name: delegate.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: delegate.Description, InputSchema: delegate.InputSchema, Interaction: "delegation"}}
 			host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "delegation", AnswerAs: answerAs}, declared, true)
 			if err != nil {
 				return nil, err

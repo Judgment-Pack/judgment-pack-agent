@@ -41,7 +41,7 @@ afterEach(() => {
 /** One host tool that reads, answering a fixed text, counting its calls. */
 function readPolicy(calls: { count: number }): HostTool {
   return {
-    name: 'read_policy',
+    name: 'read_policy',taxonomy:{operation:'read',effect:'read'} as const,
     effect: 'read',
     description: 'Read the expense policy.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: true },
@@ -332,7 +332,7 @@ describe('arguments that are not a JSON object', () => {
 describe('a result’s images (agent#5)', () => {
   const PNG = 'iVBORw0KGgo='
   const snapshot: HostTool = {
-    name: 'read_snapshot',
+    name: 'read_snapshot',taxonomy:{operation:'read',effect:'read'} as const,
     effect: 'read',
     description: 'Read the receipt’s snapshot.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: true },

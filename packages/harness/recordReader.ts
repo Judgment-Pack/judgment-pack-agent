@@ -6,6 +6,8 @@ type Shape={ $ref?:string;type?:string|string[];const?:unknown;enum?:unknown[];p
 type Graph=Record<string,Shape>
 export type RecordKind='checkpoint'|'event'|'policy'
 export const RECORD_VERSIONS={checkpoint:2,event:1,policy:1} as const
+/** Read maxima are separate from feature-free writer defaults. */
+const READ_VERSIONS={checkpoint:3,event:2,policy:2} as const
 const files={checkpoint:'checkpoint.json',event:'run-event.json',policy:'policy.json'} as const
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 export class UnsupportedRecordVersion extends Error {
@@ -25,7 +27,7 @@ function versionOf(kind:RecordKind,value:unknown):number{
  const version=value.version
  if(version===undefined&&!Object.hasOwn(value,'version')&&kind!=='checkpoint')return 0
  if(!Number.isSafeInteger(version)||Number(version)<1)return invalid()
- if(Number(version)>RECORD_VERSIONS[kind])throw new UnsupportedRecordVersion(kind,Number(version))
+ if(Number(version)>READ_VERSIONS[kind])throw new UnsupportedRecordVersion(kind,Number(version))
  return Number(version)
 }
 const pointer=(path:string,key:string)=>`${path}/${key.replace(/~/g,'~0').replace(/\//g,'~1')}`
@@ -54,7 +56,7 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
  if(kind==='checkpoint'&&new TextEncoder().encode(JSON.stringify(value)).length>4*1024*1024)return invalid()
  const version=versionOf(kind,value)
  if(recordDepth>4)return invalid()
- const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:shapes.current) as unknown as Graph
+ const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:kind==='checkpoint'&&version===3||kind==='event'&&version===2||kind==='policy'&&version===2?shapes.current:shapes.published) as unknown as Graph
  let work=0
  function walk(file:string,s:Shape,v:unknown,path:string,depth:number):void{
   if(++work>200000||depth>64)return invalid()
@@ -86,18 +88,18 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
  }
  walk(files[kind],graph[files[kind]]!,value,'',0)
  if(kind==='event'&&object(value)&&value.type==='approval_requested'){
-  if(value.purpose==='plan-drift'){if(!object(value.plan)||['name','tool','source','args'].some(k=>Object.hasOwn(value,k)))invalid()}
+  if(value.purpose==='plan-drift'){if(!object(value.plan)||['name','tool','source','args','runtime'].some(k=>Object.hasOwn(value,k)))invalid()}
   else if(value.plan!==undefined||!['name','tool','source','args'].every(k=>Object.hasOwn(value,k)))invalid()
  }
 
- if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!shapes.current['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
+ if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!(version===2?shapes.current:shapes.published)['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
 }
 /** Decode supported wire records without upgrading their bytes, version or metadata. */
 export function readRunEvent(value:unknown):AssistantEvent{checkRecord('event',value);return structuredClone(value) as AssistantEvent}
 export function checkRecordVersion(kind:RecordKind,value:unknown):void{versionOf(kind,value)}
 export function readPolicyLayer(value:unknown):PolicyLayer{checkRecord('policy',value);return structuredClone(value) as PolicyLayer}
 /** Internal unversioned event bodies become current records at the delivery boundary. */
-export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1}{return {...event,version:1}}
+export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2}{return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
 export function versionEvents(events:AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
  return {[Symbol.asyncIterator](){
   const source=events[Symbol.asyncIterator]()

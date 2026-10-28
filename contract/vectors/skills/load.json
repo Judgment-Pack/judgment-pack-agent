@@ -32,7 +32,7 @@
           "trust": "person",
           "version": "4"
         },
-        "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+        "digest": "sha256:1358ca4ca758a6287102f3d1d7198417f19eefe66209ffd7817286ac6cea27aa"
       },
       "bytes": 240
     },
@@ -41,7 +41,7 @@
       "callId": "call_1_1",
       "name": "load_skill",
       "isError": false,
-      "text": "{\"skill\":{\"id\":\"expense-policy\",\"name\":\"expense_policy\",\"source\":{\"kind\":\"custom\",\"id\":\"policies\",\"trust\":\"person\",\"version\":\"4\"},\"digest\":\"sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9\"},\"bytes\":240,\"note\":\"Loaded: its instructions are in the execution state after the history on every later request of this response, at the rank of the project’s own instructions. A skill grants no tool.\"}",
+      "text": "{\"skill\":{\"id\":\"expense-policy\",\"name\":\"expense_policy\",\"source\":{\"kind\":\"custom\",\"id\":\"policies\",\"trust\":\"person\",\"version\":\"4\"},\"digest\":\"sha256:1358ca4ca758a6287102f3d1d7198417f19eefe66209ffd7817286ac6cea27aa\"},\"bytes\":240,\"note\":\"Loaded: its instructions are in the execution state after the history on every later request of this response, at the rank of the project’s own instructions. A skill grants no tool.\"}",
       "structured": {
         "skill": {
           "id": "expense-policy",
@@ -52,7 +52,7 @@
             "trust": "person",
             "version": "4"
           },
-          "digest": "sha256:f6a93d485c5702705a0730234f301d4f474743e918b0926de73b1d05067c25a9"
+          "digest": "sha256:1358ca4ca758a6287102f3d1d7198417f19eefe66209ffd7817286ac6cea27aa"
         },
         "bytes": 240,
         "note": "Loaded: its instructions are in the execution state after the history on every later request of this response, at the rank of the project’s own instructions. A skill grants no tool."

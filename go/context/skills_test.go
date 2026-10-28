@@ -51,6 +51,8 @@ func vectorSkills(t *testing.T) []Skill {
 	return out
 }
 
+var skillHostTaxonomies = map[string]*ToolTaxonomy{"ask_user": {Operation: "ask", Effect: "pure"}, "propose_pack": {Operation: "propose", Effect: "propose"}, "rates__lookup_rate": {Operation: "read", Effect: "read"}, "tracker__create_issue": {Operation: "act", Effect: "act"}}
+
 var skillHostTools = []string{"ask_user", "propose_pack", "rates__lookup_rate", "tracker__create_issue"}
 
 func noticeEvents(notices []SkillNotice) *Value {
@@ -83,16 +85,17 @@ func asValue(t *testing.T, v any) *Value {
 func TestEachSkillsDigestIsTheVectorsAndTheThreeAreAdmitted(t *testing.T) {
 	skills := vectorSkills(t)
 	for _, skill := range skills {
-		if got := SkillDigest(skill); got != skill.PinnedDigest {
+		if got := SkillDigest(skill, skillHostTaxonomies); got != skill.PinnedDigest {
 			t.Fatalf("%s digests to %s, not %s", skill.Name, got, skill.PinnedDigest)
 		}
 	}
-	out, err := DeclareSkills(skills, skillHostTools, Defaults, nil)
+	out, err := DeclareSkills(skills, skillHostTools, Defaults, nil, skillHostTaxonomies)
 	if err != nil || len(out.Withheld) != 0 || len(out.Skills) != 3 {
 		t.Fatalf("%v %+v", err, out)
 	}
 	for at, held := range vectorItems(t, "skills/admitted.json") {
-		if out.Skills[at].Digest != held.Get("digest").Str() || out.Skills[at].Bytes != SkillBytes(skills[at]) {
+		sameAsCurrent(t, "admitted skill profile", out.Skills[at].Profile, held.Get("profile"))
+		if out.Skills[at].Digest != held.Get("digest").Str() || out.Skills[at].Bytes != SkillBytes(skills[at]) || out.Skills[at].Bytes != int(held.Get("bytes").Num()) {
 			t.Fatalf("skill %d admitted as %+v", at, out.Skills[at])
 		}
 	}
@@ -140,7 +143,7 @@ func TestASkillWithAChangedBundleOrAnUndeclaredToolIsWithheldWithTheVectorsGuard
 				tools = append(tools, tool.Str())
 			}
 		}
-		out, err := DeclareSkills([]Skill{skillOf(vector.Get("declaration"))}, tools, Defaults, nil)
+		out, err := DeclareSkills([]Skill{skillOf(vector.Get("declaration"))}, tools, Defaults, nil, skillHostTaxonomies)
 		if err != nil || len(out.Skills) != 0 {
 			t.Fatalf("%s: %v %+v", name, err, out)
 		}
@@ -150,7 +153,7 @@ func TestASkillWithAChangedBundleOrAnUndeclaredToolIsWithheldWithTheVectorsGuard
 	}
 	tight := Defaults
 	tight.SkillBytes = 100
-	out, err := DeclareSkills(vectorSkills(t), skillHostTools, tight, nil)
+	out, err := DeclareSkills(vectorSkills(t), skillHostTools, tight, nil, skillHostTaxonomies)
 	if err != nil || len(out.Skills) != 1 || out.Withheld[0].Detail != "the skill expense_policy is 240 bytes, over skillBytes (100); it is not offered" {
 		t.Fatalf("%v %+v", err, out)
 	}
@@ -158,7 +161,7 @@ func TestASkillWithAChangedBundleOrAnUndeclaredToolIsWithheldWithTheVectorsGuard
 
 func TestTheCatalogueIsTheVectorsSectionAndIsBoundedByCountAndBytes(t *testing.T) {
 	vector := readJSON(t, "contract/vectors/skills/catalogue.json")
-	out, err := DeclareSkills(vectorSkills(t), skillHostTools, Defaults, nil)
+	out, err := DeclareSkills(vectorSkills(t), skillHostTools, Defaults, nil, skillHostTaxonomies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +177,7 @@ func TestTheCatalogueIsTheVectorsSectionAndIsBoundedByCountAndBytes(t *testing.T
 		}
 		skill := Skill{ID: "s-" + itoa(n), Name: "skill_" + itoa(n), Description: "Skill " + itoa(n) + ".", Instructions: "Do step " + itoa(n) + ".",
 			Source: SkillSource{Kind: kind, ID: id, Trust: "person", Version: "1"}}
-		skill.PinnedDigest = SkillDigest(skill)
+		skill.PinnedDigest = SkillDigest(skill, skillHostTaxonomies)
 		forty = append(forty, skill)
 	}
 	admitted, err := DeclareSkills(forty, nil, Defaults, nil)
@@ -197,7 +200,7 @@ func TestTheCatalogueIsTheVectorsSectionAndIsBoundedByCountAndBytes(t *testing.T
 // skillRun is a run's state with the skill sources' rows, and its source gate and skill gate.
 func skillRun(t *testing.T, agentWire bool, limit int) (*SkillGate, *SourceGate, *Execution) {
 	t.Helper()
-	out, err := DeclareSkills(vectorSkills(t), skillHostTools, Defaults, nil)
+	out, err := DeclareSkills(vectorSkills(t), skillHostTools, Defaults, nil, skillHostTaxonomies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +230,19 @@ func loadOrUnload(t *testing.T, tool HostTool, name string) ToolResult {
 func TestLoadSkillAndUnloadSkillAreTheVectors(t *testing.T) {
 	skills, sources, state := skillRun(t, false, 4)
 	for name, held := range map[string]HostTool{"skills/load-skill.json": skills.LoadSkillHost(), "skills/unload-skill.json": skills.UnloadSkillHost()} {
-		if got := asValue(t, held.Declaration()); CanonicalJSON(got) != CanonicalJSON(vectorItems(t, name)[0]) {
+		got := asValue(t, held.Declaration())
+		// Go projects hints at Declaration; direct TS constructors project them on admission.
+		if CanonicalJSON(got.Get("annotations")) != `{"destructiveHint":false,"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}` {
+			t.Fatalf("internal skill hints: %s", got.Text())
+		}
+		projected := Object()
+		for _, key := range got.Keys() {
+			if key != "annotations" {
+				projected.Set(key, got.Get(key))
+			}
+		}
+		got = projected
+		if CanonicalJSON(got) != CanonicalJSON(vectorItems(t, name)[0]) {
 			t.Fatalf("%s: %s", name, got.Text())
 		}
 	}
@@ -312,10 +327,18 @@ func skillsSession(skills []Skill, tools ...string) Session {
 		tools = []string{"ask_user", "rates__lookup_rate"}
 	}
 	for _, name := range tools {
-		held.HostTools = append(held.HostTools, HostTool{Name: name, Description: name, Effect: "read", InputSchema: json.RawMessage(`{"type":"object"}`),
+		held.HostTools = append(held.HostTools, HostTool{Name: name, Taxonomy: skillHostTaxonomies[name], Description: name, Effect: "read", InputSchema: json.RawMessage(`{"type":"object"}`),
 			Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
 				return ResultOf([]Content{TextContent("ok")}, nil), nil
 			}})
+
+		if name == "tracker__create_issue" {
+			tool := &held.HostTools[len(held.HostTools)-1]
+			tool.Name = "create_issue"
+			tool.Effect = ""
+			tool.EffectClass = "act"
+			tool.Source = &ToolSource{Kind: "custom", ID: "tracker", Trust: "person", Version: "1", ToolListDigest: "sha256:8127157d4a08af8c7ea910341ad6fbdced429b0f905ec8f82ad0f4950abbce99"}
+		}
 	}
 	held.Skills = skills
 	held.Context = &Input{CurrentRequest: &CurrentRequest{Message: "Current request", Input: "Current request"}}
@@ -392,7 +415,7 @@ func TestAContinuedRunRestoresTheLoadedSetAndSaysWhatItDidNotRestore(t *testing.
 		t.Fatal(err)
 	}
 	skills := vectorSkills(t)
-	session := skillsSession([]Skill{skills[0], skills[2]}, "rates__lookup_rate", "tracker__create_issue")
+	session := skillsSession([]Skill{skills[0], skills[2]}, "rates__lookup_rate")
 	session.Context.Execution = &checkpoint
 	run, err := ContextualSession(context.Background(), session)
 	if err != nil {
@@ -443,7 +466,7 @@ func TestAReapprovedSkillIsNotRestoredFromTheCheckpoint(t *testing.T) {
 	skills := vectorSkills(t)
 	repinned := skills[0]
 	repinned.Instructions += " Round each amount to the cent."
-	repinned.PinnedDigest = SkillDigest(repinned)
+	repinned.PinnedDigest = SkillDigest(repinned, skillHostTaxonomies)
 	if repinned.PinnedDigest == skills[0].PinnedDigest {
 		t.Fatal("the changed skill hashes to the approved digest")
 	}

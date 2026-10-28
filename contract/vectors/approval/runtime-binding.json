@@ -1,0 +1,29 @@
+{
+  "description": "Handwritten current Runtime approval shape. A serialized binding is reporting and cannot mint a dispatch grant.",
+  "schema": "checkpoint.json#/$defs/runtimeApprovalBinding",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/runtimeActions.ts"
+    ]
+  },
+  "items": [
+    {
+      "owner": {
+        "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "processId": "launch-one",
+        "projectId": "project-one",
+        "projectLabel": "Example project",
+        "sessionId": "server-session-one",
+        "principalDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "principalLabel": "Project editor",
+        "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "scopeLabel": "Evaluate example project"
+      },
+      "admissionDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

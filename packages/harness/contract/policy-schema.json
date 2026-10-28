@@ -507,8 +507,148 @@
       "additionalProperties": false
     },
     "version": {
-      "const": 1,
-      "description": "Policy layer wire format version. Absent only on historical layers; current policy writers emit 1. Metadata is excluded from policy precedence."
+      "const": 2,
+      "description": "Current policy layer format is 2; published policy1 is frozen. Metadata is excluded from precedence."
+    },
+    "routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "rules",
+            "auto"
+          ]
+        },
+        "tiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\u0000-\\u001f]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 128,
+          "minItems": 1
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\u0000-\\u001f]+$"
+              },
+              "when": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[^\\u0000-\\u001f]+$"
+                  },
+                  "attachments": {
+                    "type": "boolean"
+                  },
+                  "artifact": {
+                    "type": "boolean"
+                  },
+                  "turnBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576
+                  },
+                  "maxTurnBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1048576
+                  },
+                  "slash": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[^\\u0000-\\u001f]+$"
+                  }
+                }
+              },
+              "route": {
+                "$ref": "#/$defs/routeSelection"
+              }
+            },
+            "required": [
+              "id",
+              "when",
+              "route"
+            ]
+          }
+        },
+        "classifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "labels": {
+              "type": "object",
+              "minProperties": 1,
+              "maxProperties": 32,
+              "patternProperties": {
+                "^[a-z][a-z0-9_-]{0,31}$": {
+                  "$ref": "#/$defs/routeSelection"
+                }
+              },
+              "additionalProperties": false
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "timeoutMilliseconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          },
+          "required": [
+            "labels",
+            "maxOutputTokens",
+            "timeoutMilliseconds"
+          ]
+        }
+      }
+    },
+    "repeatTools": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "off",
+            "on"
+          ],
+          "default": "off"
+        },
+        "remindAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 400,
+          "default": 1
+        },
+        "stopAt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 400,
+          "default": 5
+        }
+      }
     }
   },
   "additionalProperties": false,
@@ -674,6 +814,93 @@
         "pattern"
       ],
       "additionalProperties": false
+    },
+    "routeSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "route": {
+          "enum": [
+            "direct",
+            "agent"
+          ]
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[^\\u0000-\\u001f]+$"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[^\\u0000-\\u001f]+$"
+          },
+          "uniqueItems": true,
+          "maxItems": 128
+        },
+        "tools": {
+          "oneOf": [
+            {
+              "const": "all"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\u0000-\\u001f]+$"
+              },
+              "uniqueItems": true,
+              "maxItems": 128
+            }
+          ]
+        },
+        "operations": {
+          "oneOf": [
+            {
+              "const": "all"
+            },
+            {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "discover",
+                  "read",
+                  "answer",
+                  "check",
+                  "transform",
+                  "evaluate",
+                  "propose",
+                  "act",
+                  "run",
+                  "own-state",
+                  "ask"
+                ]
+              },
+              "uniqueItems": true,
+              "maxItems": 128
+            }
+          ]
+        },
+        "planning": {
+          "enum": [
+            "offered",
+            "withheld"
+          ]
+        }
+      },
+      "required": [
+        "route",
+        "skills",
+        "tools",
+        "operations",
+        "planning"
+      ]
     }
   }
 }

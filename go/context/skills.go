@@ -65,6 +65,8 @@ type SkillResource struct {
 // Skill is a skill as the host declares it (tool-offer.json#/$defs/skillDeclaration): the bundle,
 // its source and the digest of the bundle the person approved, pinned when the person approved it.
 type Skill struct {
+	Kind         string
+	Tags         []string
 	ID           string
 	Name         string
 	Description  string
@@ -78,6 +80,7 @@ type Skill struct {
 // AdmittedSkill is an admitted skill: its declaration, the digest of its bundle (the pinned one) and
 // its size against SkillBytes.
 type AdmittedSkill struct {
+	Profile CapabilityProfile
 	Skill
 	Digest string
 	Bytes  int
@@ -144,7 +147,14 @@ func SkillBytes(skill Skill) int {
 // SkillDigest is skillDigest (skill.json#/$defs/digest): sha256: and the SHA-256 of the canonical
 // JSON of {name, description, instructions, tools, resources}, tools and resources the empty list
 // where the skill has none.
-func SkillDigest(skill Skill) string {
+func SkillDigest(skill Skill, dependencies ...map[string]*ToolTaxonomy) string {
+	taxonomies := map[string]*ToolTaxonomy{}
+	if len(dependencies) > 0 {
+		taxonomies = dependencies[0]
+	}
+	if _, err := DeriveCapabilityProfile(skill.Tools, taxonomies); err != nil {
+		return ""
+	}
 	tools := Array()
 	for _, tool := range skill.Tools {
 		tools.Append(String(tool))
@@ -155,6 +165,26 @@ func SkillDigest(skill Skill) string {
 	}
 	bundle := ObjectOf("name", String(skill.Name), "description", String(skill.Description), "instructions", String(skill.Instructions),
 		"tools", tools, "resources", resources)
+
+	if skill.Kind != "" {
+		bundle.Set("kind", String(skill.Kind))
+	}
+	if skill.Tags != nil {
+		tags := Array()
+		for _, tag := range skill.Tags {
+			tags.Append(String(tag))
+		}
+		bundle.Set("tags", tags)
+	}
+	if len(skill.Tools) > 0 {
+		deps := Array()
+		for _, name := range skill.Tools {
+			raw, _ := json.Marshal(taxonomies[name])
+			value, _ := ParseJSON(raw)
+			deps.Append(ObjectOf("name", String(name), "taxonomy", value))
+		}
+		bundle.Set("dependencies", deps)
+	}
 	return "sha256:" + ContextDigest(CanonicalJSON(bundle))
 }
 
@@ -183,6 +213,18 @@ func skillSourceProblem(s SkillSource) string {
 // skillProblem is why a skill's declaration cannot be read, or "" (skill.json, closed; a Go
 // declaration cannot carry a member the type does not name).
 func skillProblem(skill Skill) string {
+	if skill.Kind != "" && !taxonomyContains([]string{"method", "knowledge", "procedure", "review"}, skill.Kind) {
+		return "its kind is not method, knowledge, procedure or review"
+	}
+	if len(skill.Tags) > 8 {
+		return "its tags are not at most eight strings of at most 32 characters"
+	}
+	for _, tag := range skill.Tags {
+		if U16Length(tag) > 32 {
+			return "its tags are not at most eight strings of at most 32 characters"
+		}
+	}
+
 	switch {
 	case !sourceID.MatchString(skill.ID):
 		return "its id is not a letter then up to 23 letters, digits and hyphens"
@@ -257,8 +299,12 @@ func sameSkillSource(a SkillSource, b ToolSource) bool {
 // a skill that names a tool not in hostTools (the host's declared tools, a tool with a source by its
 // wire name), whose bytes pass SkillBytes, or whose bundle does not hash to its PinnedDigest, is
 // withheld with a guardrail.
-func DeclareSkills(declared []Skill, hostTools []string, policy Policy, others []ToolSource) (*DeclaredSkills, error) {
+func DeclareSkills(declared []Skill, hostTools []string, policy Policy, others []ToolSource, dependencies ...map[string]*ToolTaxonomy) (*DeclaredSkills, error) {
 	out := &DeclaredSkills{}
+	taxonomies := map[string]*ToolTaxonomy{}
+	if len(dependencies) > 0 {
+		taxonomies = dependencies[0]
+	}
 	names, ids := map[string]bool{}, map[string]bool{}
 	offered := map[string]bool{}
 	for _, name := range hostTools {
@@ -301,7 +347,7 @@ func DeclareSkills(declared []Skill, hostTools []string, policy Policy, others [
 		}
 		unknown := ""
 		for _, tool := range skill.Tools {
-			if !offered[tool] {
+			if !offered[tool] || taxonomies[tool] == nil {
 				unknown = tool
 				break
 			}
@@ -319,7 +365,8 @@ func DeclareSkills(declared []Skill, hostTools []string, policy Policy, others [
 			out.Withheld = append(out.Withheld, SkillNotice{Tool: skill.Name, Detail: fmt.Sprintf("the skill %s is %d bytes, over skillBytes (%d); it is not offered", skill.Name, bytes, policy.SkillBytes)})
 			continue
 		}
-		digest := SkillDigest(skill)
+		profile, _ := DeriveCapabilityProfile(skill.Tools, taxonomies)
+		digest := SkillDigest(skill, taxonomies)
 		if digest != skill.PinnedDigest {
 			out.Withheld = append(out.Withheld, SkillNotice{Tool: skill.Name, Detail: "the skill " + skill.Name + " is not the bundle the person approved (approved " + skill.PinnedDigest +
 				", declared " + digest + "); it is not offered until the person approves it again"})
@@ -328,7 +375,7 @@ func DeclareSkills(declared []Skill, hostTools []string, policy Policy, others [
 		held := skill
 		held.Tools = append([]string(nil), skill.Tools...)
 		held.Resources = append([]SkillResource(nil), skill.Resources...)
-		out.Skills = append(out.Skills, AdmittedSkill{Skill: held, Digest: digest, Bytes: bytes})
+		out.Skills = append(out.Skills, AdmittedSkill{Skill: held, Digest: digest, Bytes: bytes, Profile: profile})
 	}
 	return out, nil
 }
@@ -349,13 +396,16 @@ func FramedSkillLine(skill Skill, marker string) string {
 // name and its line, the frame's constant lines not counted); the skills past either are left out, one
 // guardrail for each source.
 // The section is what the system text carries after the tools described in text, or "".
-func CatalogueSkills(skills []AdmittedSkill, policy Policy, marker string) (string, []AdmittedSkill, []SkillNotice) {
+func CatalogueSkills(skills []AdmittedSkill, policy Policy, marker string, presets ...string) (string, []AdmittedSkill, []SkillNotice) {
 	var catalogued []AdmittedSkill
 	var entries []string
 	bytes := 0
 	cut := map[string]int{}
 	var order []string
 	for _, skill := range skills {
+		if len(presets) > 0 && !ProfileFits(skill.Profile, PresetLimit(presets[0])) {
+			continue
+		}
 		framed := FramedSkillLine(skill.Skill, marker)
 		size := UTF8Bytes(ObjectOf("name", String(skill.Name), "description", String(SkillLine(skill.Skill))).Text())
 		if len(catalogued)+1 > policy.CataloguedSkills || bytes+size > policy.SkillsCatalogueBytes {
@@ -367,7 +417,7 @@ func CatalogueSkills(skills []AdmittedSkill, policy Policy, marker string) (stri
 		}
 		bytes += size
 		catalogued = append(catalogued, skill)
-		entries = append(entries, "- "+skill.Name+"\n"+framed)
+		entries = append(entries, "- "+skill.Name+" ("+skillKindLabel(skill.Kind)+"; "+ProfileLabel(skill.Profile)+")\n"+framed)
 	}
 	var withheld []SkillNotice
 	for _, id := range order {
@@ -539,13 +589,13 @@ func (g *SkillGate) Section() string {
 
 // LoadSkillHost is load_skill: one catalogued skill per call, counted against SkillsPerRun.
 func (g *SkillGate) LoadSkillHost() HostTool {
-	return HostTool{Name: LoadSkill, Effect: "plan", Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema),
+	return HostTool{Name: LoadSkill, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan", Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema),
 		Execute: func(_ context.Context, args json.RawMessage) (ToolResult, error) { return g.load(askedName(args)) }}
 }
 
 // UnloadSkillHost is unload_skill: one loaded skill per call.
 func (g *SkillGate) UnloadSkillHost() HostTool {
-	return HostTool{Name: UnloadSkill, Effect: "plan", Description: UnloadSkillDescription, InputSchema: json.RawMessage(UnloadSkillSchema),
+	return HostTool{Name: UnloadSkill, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan", Description: UnloadSkillDescription, InputSchema: json.RawMessage(UnloadSkillSchema),
 		Execute: func(_ context.Context, args json.RawMessage) (ToolResult, error) { return g.unload(askedName(args)) }}
 }
 
@@ -700,4 +750,11 @@ func (g *SourceGate) Notify(event contract.RunEvent) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.notices = append(g.notices, event)
+}
+
+func skillKindLabel(kind string) string {
+	if kind == "" {
+		return "unclassified"
+	}
+	return kind
 }

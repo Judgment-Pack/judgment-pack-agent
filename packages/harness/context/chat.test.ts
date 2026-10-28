@@ -41,7 +41,7 @@ function sources() {
   const counts = { instructions: 0, tests: 0 }
   const hostTools: HostTool[] = [
     {
-      name: 'get_authoring_instructions',
+      name: 'get_authoring_instructions',taxonomy:{operation:'read',effect:'read'} as const,
       effect: 'read',
       // The Runtime's authoring prompt: immutable for one Runtime, so keyed by it.
       contextPolicy: { immutable: true, reference: true, runtime: true },
@@ -53,7 +53,7 @@ function sources() {
       }
     },
     {
-      name: 'read_pack_tests',
+      name: 'read_pack_tests',taxonomy:{operation:'read',effect:'read'} as const,
       effect: 'read',
       // Saved cases change between turns: a mutable read.
       description: 'Read a pack and its saved cases.',
@@ -579,7 +579,7 @@ describe('the critic, a failed start and a resume, with a chat', () => {
     const failed = await vercelTurn({
       answer: () => streamed(sseTurn({ text: 'unused' })),
       // A host tool that takes a name the boundary reserves: the run fails after it has retained its documents.
-      hostTools: [...hostTools, { name: 'search', description: 'A reserved name.', inputSchema: { type: 'object' }, execute: async () => ({}) }],
+      hostTools: [...hostTools, { name: 'search', taxonomy: { operation: 'discover', effect: 'read' }, description: 'A reserved name.', inputSchema: { type: 'object' }, execute: async () => ({}) }],
       session: { context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat, documents: [{ id: 'conversation', kind: 'history', label: 'The conversation', value: 'Earlier turns. '.repeat(50) }] } }
     })
     expect(failed.requests).toHaveLength(0)

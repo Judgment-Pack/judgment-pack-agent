@@ -1,0 +1,136 @@
+{
+  "description": "Handwritten exact numeric discriminator spellings, shared by generated Go report unions and the strict TypeScript report byte reader. Near-integer spellings are refused before IEEE-754 rounding. Zero version is unsupported even with an exact zero exponent.",
+  "report": {
+    "id": "wire-discriminator",
+    "phase": "work",
+    "status": "complete",
+    "unit": "model-requests",
+    "used": 0,
+    "limit": 20,
+    "grants": [],
+    "plan": [],
+    "explanation": "Finished"
+  },
+  "cases": [
+    {
+      "name": "exact 1",
+      "token": "1",
+      "checkpointVersion": 1,
+      "version": 1
+    },
+    {
+      "name": "exact 1.0",
+      "token": "1.0",
+      "checkpointVersion": 1,
+      "version": 1
+    },
+    {
+      "name": "exact 1e0",
+      "token": "1e0",
+      "checkpointVersion": 1,
+      "version": 1
+    },
+    {
+      "name": "exact 10e-1",
+      "token": "10e-1",
+      "checkpointVersion": 1,
+      "version": 1
+    },
+    {
+      "name": "exact 2",
+      "token": "2",
+      "checkpointVersion": 3,
+      "version": 2
+    },
+    {
+      "name": "exact 2.0",
+      "token": "2.0",
+      "checkpointVersion": 3,
+      "version": 2
+    },
+    {
+      "name": "exact 2e0",
+      "token": "2e0",
+      "checkpointVersion": 3,
+      "version": 2
+    },
+    {
+      "name": "exact 20e-1",
+      "token": "20e-1",
+      "checkpointVersion": 3,
+      "version": 2
+    },
+    {
+      "name": "quoted",
+      "token": "\"1\"",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "null",
+      "token": "null",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "boolean",
+      "token": "true",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "missing",
+      "token": "",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "fractional",
+      "token": "1.5",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "near one rounding",
+      "token": "1.00000000000000001",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "near two rounding",
+      "token": "2.00000000000000001",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "unknown",
+      "token": "3",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "unsafe integer",
+      "token": "9007199254740992",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "huge positive exponent",
+      "token": "1e9999999999999999999999999",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "huge negative exponent",
+      "token": "1e-9999999999999999999999999",
+      "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "zero huge exponent",
+      "token": "0e9999999999999999999999999",
+      "checkpointVersion": 1,
+      "version": 0
+    }
+  ]
+}

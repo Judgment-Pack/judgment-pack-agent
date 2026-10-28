@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "resource": "budget-resource",
+  "scope": {
+    "resource": "budget-resource",
+    "id": "project-scope",
+    "revision": "policy-r1",
+    "limits": {
+      "modelRequests": 2,
+      "inputTokens": 20,
+      "outputTokens": 10
+    }
+  },
+  "first": {
+    "scope": {
+      "resource": "budget-resource",
+      "id": "project-scope",
+      "revision": "policy-r1",
+      "limits": {
+        "modelRequests": 2,
+        "inputTokens": 20,
+        "outputTokens": 10
+      }
+    },
+    "id": "request-1",
+    "root": "root-1",
+    "execution": "run-1",
+    "role": "author",
+    "kind": "model",
+    "requestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "connection": "connection-1",
+    "connectionRevision": "revision-1",
+    "model": "model-1",
+    "upper": {
+      "modelRequests": 1,
+      "inputTokens": 10,
+      "outputTokens": 5
+    }
+  },
+  "reported": {
+    "modelRequests": 1,
+    "inputTokens": 4
+  },
+  "secondUpper": {
+    "modelRequests": 1,
+    "inputTokens": 16,
+    "outputTokens": 5
+  },
+  "evidence": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "assertions": [
+    "under admitted",
+    "partial missing output remains reserved",
+    "exact limits admitted",
+    "another physical request refused",
+    "same id different request conflicts",
+    "read grants no dispatch"
+  ],
+  "schema": "usage-budget.json#/$defs/reservation",
+  "description": "Handwritten atomic admission, exact reservation identity and partial reported usage cases; missing usage remains held.",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/usageBudget.ts",
+      "packages/harness/storage/usageJournal.ts"
+    ]
+  },
+  "items": [
+    {
+      "scope": {
+        "resource": "budget-resource",
+        "id": "project-scope",
+        "revision": "policy-r1",
+        "limits": {
+          "modelRequests": 2,
+          "inputTokens": 20,
+          "outputTokens": 10
+        }
+      },
+      "id": "request-1",
+      "root": "root-1",
+      "execution": "run-1",
+      "role": "author",
+      "kind": "model",
+      "requestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "connection": "connection-1",
+      "connectionRevision": "revision-1",
+      "model": "model-1",
+      "upper": {
+        "modelRequests": 1,
+        "inputTokens": 10,
+        "outputTokens": 5
+      }
+    }
+  ]
+}

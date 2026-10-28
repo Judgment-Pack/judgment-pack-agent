@@ -74,3 +74,36 @@ func TestARandomUUIDIsVersionFour(t *testing.T) {
 		t.Error("two draws gave one uuid")
 	}
 }
+
+func TestValueMemberInsertionKeepsJavaScriptOrder(t *testing.T) {
+	value := Object()
+	for _, key := range []string{"tail", "10", "2", "01", "4294967295", "0", "4294967294", "+1", "1", "2"} {
+		value.Set(key, String(key))
+	}
+	want := `{"0":"0","1":"1","2":"2","10":"10","4294967294":"4294967294","tail":"tail","01":"01","4294967295":"4294967295","+1":"+1"}`
+	if got := value.Text(); got != want {
+		t.Fatalf("member insertion changed JavaScript order: %s", got)
+	}
+	copy := value.Clone()
+	value.Set("2", String("changed")).Set("new", Null())
+	if copy.Text() != want {
+		t.Fatal("member insertion or replacement changed a detached clone")
+	}
+}
+
+func TestValueOrdinaryMemberInsertionAllocationBound(t *testing.T) {
+	names := []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "prompts", "sources", "policy", "usage", "durable", "planState"}
+	shared := String("value")
+	allocations := testing.AllocsPerRun(5, func() {
+		value := Object()
+		for _, name := range names {
+			value.Set(name, shared)
+		}
+		if value.Len() != len(names) || value.Get("schema") != shared || value.Get("planState") != shared {
+			t.Fatal("ordinary members were not retained")
+		}
+	})
+	if allocations > 10 {
+		t.Fatalf("ordinary member insertion allocations: %.0f exceeds 10", allocations)
+	}
+}

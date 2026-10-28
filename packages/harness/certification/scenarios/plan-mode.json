@@ -8,28 +8,48 @@
       "effect": "read",
       "delegation": "read",
       "description": "Read one section of the expense policy.",
-      "result": "Section receipts: a claim above 50 USD is approved only when a receipt is attached."
+      "result": "Section receipts: a claim above 50 USD is approved only when a receipt is attached.",
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read"
+      }
     },
     {
       "name": "propose_pack",
       "effect": "proposal",
-      "description": "Propose a pack for the person to review."
+      "description": "Propose a pack for the person to review.",
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
+      }
     },
     {
       "name": "save_recipe",
       "effect": "workflow",
-      "description": "Save a recipe."
+      "description": "Save a recipe.",
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
+      }
     },
     {
       "name": "remember_note",
       "effect": "memory",
-      "description": "Keep a note in the project's memory."
+      "description": "Keep a note in the project's memory.",
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
+      }
     },
     {
       "name": "propose_plan",
       "effect": "plan",
       "description": "Save a plan for the person to review.",
-      "result": "Plan saved. The person must choose Start work."
+      "result": "Plan saved. The person must choose Start work.",
+      "taxonomy": {
+        "operation": "propose",
+        "effect": "propose"
+      }
     }
   ],
   "turns": [

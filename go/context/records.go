@@ -76,7 +76,7 @@ func RecordRetainUntil(policy RecordsPolicy, now time.Time) string {
 
 // recordTextPaths names only model-derived members. Each member gets its own work budget.
 var recordTextPaths = []string{
-	"durable.dispatches.*.request", "durable.dispatches.*.result", "durable.children.*.checkpoint", "handoff.continuation",
+	"durable.dispatches.*.repeatResultJson", "durable.dispatches.*.request", "durable.dispatches.*.result", "durable.children.*.checkpoint", "handoff.continuation",
 	"text", "explanation", "reason", "plan.*.step", "plan.*.detail",
 	"operations.*.name", "operations.*.args", "approval.name", "approval.tool", "approval.args",
 	"memories.proposed.*.text", "compaction.summaries.*.summary",
@@ -151,6 +151,9 @@ func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard Record
 	version := 1
 	if schema == CheckpointSchema {
 		version = contract.CheckpointVersion
+		if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) || nativePlanRecordFields(out) {
+			version = 3
+		}
 	}
 	out.Set("schema", String(schema)).Set("version", Number(float64(version)))
 	if keep == "" {
@@ -289,5 +292,19 @@ func supportedRecordVersion(v *Value) bool {
 	if n == nil || n.Kind() != KindNumber {
 		return false
 	}
-	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && n.Num() == 2
+	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && (n.Num() == 2 || n.Num() == 3)
+}
+
+func nativePlanRecordFields(value *Value) bool {
+	for _, row := range value.Get("durable").Get("dispatches").Items() {
+		if row.Has("planPause") {
+			return true
+		}
+	}
+	for _, row := range value.Get("planState").Get("decisions").Items() {
+		if row.Has("nativeInvocation") {
+			return true
+		}
+	}
+	return false
 }

@@ -1,0 +1,39 @@
+{
+  "description": "ADR-0019: the first act under a service identity is asked even where the host policy said allow, with the downgrade recorded before approval_requested. Written by hand.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.decide)"
+    ]
+  },
+  "items": [
+    {
+      "type": "guardrail",
+      "tool": "expenses__submit",
+      "action": "rewrote",
+      "reason": "approval downgraded",
+      "detail": "expenses__submit acts as service identity expense-bot; the first act call of this source in a run is asked even though the host policy allowed it."
+    },
+    {
+      "type": "approval_requested",
+      "callId": "identity-1",
+      "name": "expenses__submit",
+      "tool": "submit",
+      "source": {
+        "kind": "gateway",
+        "id": "expenses",
+        "trust": "connected",
+        "version": "4",
+        "toolListDigest": "sha256:93e07ba1f319937f7952ae4d52e7da95769c9fcaa544d801423063ea981637c4",
+        "identity": { "kind": "service", "label": "expense-bot" },
+        "identityDigest": "sha256:825065f93b600dea85b905f0e53d8974bfda1f1257b1a7a0dce98457143a0a9a",
+        "tool": "submit"
+      },
+      "args": { "amount": 12 }
+    }
+  ]
+}

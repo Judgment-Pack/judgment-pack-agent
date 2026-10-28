@@ -1,12 +1,24 @@
-import {ContinuationNotRecoverable} from '../storage/writer'
+import {copyHistoryEnvelope} from '../history/view'
+import {repeatPolicy} from '../repeatTools'
+import {repeatReminder} from '../prompt'
+import {TurnRouteOwner,routingPolicyFromMembers,enforceRouteClassifierCeiling} from '../storage/turnRouteOwner'
+import {installRuntimeActions,type RuntimeCall} from './runtimeActions'
+import {originalNativeCaptureAliases,dispatchSinglePhysicalModel,dispatchPhysicalModel,dispatchPhysicalAgent,observeNativeWitness} from '../storage/physicalDispatch'
+import {usageFromVerifiedResponse} from '../storage/usageResponse'
+import type {UsageBudgetInput,UsageDispatchFacts} from '../storage/usageJournal'
+import {StoredChatScope} from './storedChat'
+import {ContextTurnBindingInvalid} from './chatSnapshot'
+import {runtimeTaxonomyProblem, taxonomyAnnotations} from '../toolTaxonomy'
+import {ContinuationNotRecoverable,ContinuationIdentityChanged} from '../storage/writer'
 import {quarantineModelResponse} from '../storage/model'
-import {durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded,type DurableBinding,type DurableRunInput} from '../storage/writer'
+import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded,type DurableBinding,type DurableRunInput} from '../storage/writer'
 import {sha256} from '../records'
 import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
 import {OutputGuard,RecordsRefused,outputWhere} from '../outputGuard'
 import {Drafts,isEdit,editRefusal,type AcceptedDocument} from '../edits'
 import { REMEMBER, rememberTool, recallMemory, readMemoryLifecycle, nextMemoryRecall, commitMemoryRecall } from '../memories'
+import {nativePlanAttempt,runNativePlanAttempt} from '../storage/nativePlanPause'
 import {canonicalJSON} from './chat'
 import {normalize,wireFor,dialectFor,TIER_MEMBERS,RESPONSE_TOKENS} from '../thinking'
 import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider,type FailoverClass} from '../policy'
@@ -31,8 +43,9 @@ import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity}
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
-import {declareSubagents,catalogueSubagents,subagentOffer,type Subagent} from '../subagents'
+import {declareSubagents,catalogueSubagents,subagentOffer,subagentRecord,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
+import {selectAskingWell,requireAskingWell} from '../askingWell'
 import type {HostTool} from '../engine'
 export interface CurrentRequest {message:string;input:string}
 export interface CompactorRequest {messages:ModelMessage[];digests:string[];maxBytes:number;reasoning?:string;connection:PolicyConnection}
@@ -66,7 +79,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -144,7 +157,7 @@ export function resolveSessionPolicy(session:EngineSession,engine?:AssistantEngi
 /** Copy data while retaining callable capabilities; never retain writable host aliases. */
 function requestCopy<T>(value:T):T {
  if(Array.isArray(value))return value.map(item=>requestCopy(item)) as T
- if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,requestCopy(item)])) as T
+ if(value&&typeof value==='object'){const copy=Object.fromEntries(Object.entries(value).map(([key,item])=>[key,requestCopy(item)]));if(typeof (value as Partial<HostTool>).execute==='function')copyTaskDelegationTool(value as unknown as HostTool,copy as unknown as HostTool);return copy as T}
  return value
 }
 const requestViews=new WeakMap<SessionContext,(role:string)=>import('../engine').RequestModelValues|import('../engine').RequestAgentValues>()
@@ -158,14 +171,16 @@ export function requestSession<T extends EngineSession>(session:T,members:Policy
   const common={member:(name:string)=>admitted.member(name),allowsTool:(name:string,kind:'runtime'|'host',phase:'author'|'critic'|'reformat')=>{
    if(phase==='reformat')return false
    const offered=kind==='runtime'?tools:hostTools
-   return offered.some(tool=>tool.name===name)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))
-  },get tools(){return requestCopy(tools)},get hostTools(){return requestCopy(hostTools)},get provider(){return context?.provider(role)??{connection:String(admitted.value(`models.${role}.provider`)??''),family:'model'in binding?(binding.model.family==='openai-compatible'?'openai':binding.model.family):binding.agent.family??'codex'}},sameBinding:(other:string)=>binding===context?.connection(other)}
+   return offered.some(tool=>tool.name===name)&&(context?.turnRoute?.offers(name,role)??true)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))
+  },get tools(){return requestCopy(tools.filter(t=>context?.turnRoute?.offers(t.name,role)??true))},get hostTools(){return requestCopy(hostTools.filter(t=>context?.turnRoute?.offers(t.name,role)??true))},get provider(){return context?.provider(role)??{connection:String(admitted.value(`models.${role}.provider`)??''),family:'model'in binding?(binding.model.family==='openai-compatible'?'openai':binding.model.family):binding.agent.family??'codex'}},sameBinding:(other:string)=>binding===context?.connection(other)}
   const value=admitted.reasoning(role)
+  const descriptors=Object.getOwnPropertyDescriptors(common)
+  if(context?.turnRoute)descriptors.reasoning={get:()=>{const tier=context.turnRoute?.tier(role)??admitted.reasoning(role);return tier===undefined?undefined:'model'in binding?normalize(tier as import('../host').ThinkingTier,binding.model.family):tier},enumerable:true}
   if('model'in binding){
    const selected=binding.model,call='model'in session?session.model.call:selected.call
-   return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,model:Object.freeze({family:selected.family,model:override??selected.model,call}),get capabilities(){return requestCopy(capabilitiesFor(selected))},...(value===undefined?{}:{reasoning:normalize(value as import('../host').ThinkingTier,selected.family)}),forRole:(next:string)=>view(next) as import('../engine').RequestModelValues,withModel:(name:string)=>view(role,name) as import('../engine').RequestModelValues},Object.getOwnPropertyDescriptors(common))) as unknown as import('../engine').RequestModelValues
+   return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,model:Object.freeze({family:selected.family,model:override??selected.model,call}),get capabilities(){return requestCopy(capabilitiesFor(selected))},...(context?.turnRoute?{get reasoning(){const tier=context.turnRoute?.tier(role)??value;return tier===undefined?undefined:normalize(tier as import('../host').ThinkingTier,selected.family)}}:value===undefined?{}:{reasoning:normalize(value as import('../host').ThinkingTier,selected.family)}),forRole:(next:string)=>view(next) as import('../engine').RequestModelValues,withModel:(name:string)=>view(role,name) as import('../engine').RequestModelValues},descriptors)) as unknown as import('../engine').RequestModelValues
   }
-  return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,agent:Object.freeze({...requestCopy(binding.agent),run:'agent'in session?session.agent.run:binding.agent.run}),...(value===undefined?{}:{reasoning:value as import('../agent').CodexEffort}),forRole:(next:string)=>view(next) as import('../engine').RequestAgentValues},Object.getOwnPropertyDescriptors(common))) as unknown as import('../engine').RequestAgentValues
+  return Object.freeze(Object.defineProperties({member:common.member,sameBinding:common.sameBinding,allowsTool:common.allowsTool,agent:Object.freeze({...requestCopy(binding.agent),run:'agent'in session?session.agent.run:binding.agent.run}),...(context?.turnRoute?{get reasoning(){return (context.turnRoute?.tier(role)??value) as import('../agent').CodexEffort|undefined}}:value===undefined?{}:{reasoning:value as import('../agent').CodexEffort}),forRole:(next:string)=>view(next) as import('../engine').RequestAgentValues},descriptors)) as unknown as import('../engine').RequestAgentValues
  }
  if(context)requestViews.set(context,view)
  const {input,prompt,testPrompt,purpose,replyLanguage,allowConversation,interactive,callTool,signal}=session
@@ -175,6 +190,7 @@ export function requestSession<T extends EngineSession>(session:T,members:Policy
 }
 
 export class SessionContext {
+ turnRoute?:TurnRouteOwner
  output!:OutputGuard
  drafts!:Drafts
 
@@ -220,9 +236,16 @@ export class SessionContext {
   */
  private narrowed:'critic'|'reformat'|null=null
  get storageRole(){return this.narrowed==='reformat'?'reformat':this.criticRunning?'critic':'author'}
+ /** Original writer enrollment only: retained tool frames require call/result correlation. */
+ get capturesToolFrames(){return this.storedBinding?.writer.hasLiveCapture??false}
+ /** Normalize only an exact registered source tool against this context's private writer binding. */
+ taskDelegationRequest(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal){return normalizeTaskDelegation(tool,this.storedBinding?scopeFor(this.storedBinding,this.storageRole):undefined,args,signal)}
  /** agent#10: the guardrail events the critic's refusals earned, for the boundary to put on the stream. */
  private notices:AssistantEvent[]=[]
  /** This run's turn on its chat (agent#8), or none. */
+ private readonly storedBinding?:DurableBinding
+ private privateResumeUsed=false
+ private readonly storedChat?:StoredChatScope
  private readonly turn?:ChatTurn
  /** A delegated child's objective (agent#11): its request text, sent as the first text part of its first message. */
  private readonly objective?:string
@@ -262,8 +285,9 @@ export class SessionContext {
   this.execution.mutate({sourceIdentities:this.execution.state.sourceIdentities??[]})
   // ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated child, in Plan mode or while the critic runs.
   const book={
+   claim:()=>this.claimApproval(),release:()=>this.releaseApproval(),
    current:()=>this.execution.state.approval,
-   ask:(record:import('../execution/state').ApprovalRecord)=>{this.execution.mutate({approval:{...record,marker:this.marker}})},
+   ask:(record:import('../execution/state').ApprovalRecord)=>{if(this.claimApprovalPause&&!this.claimApprovalPause())throw this.refuse(record.name,'The invocation did not claim this approval pause. Nothing was sent.','approval pending');this.execution.mutate({approval:{...record,marker:this.marker}})},
    closed:()=>parent!==undefined?'A delegated child admits reads only, and no act call; this call was not run and nothing was changed'
     :phase==='plan'?'Plan mode admits reads only, and no act call; this call was not run and nothing was changed'
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
@@ -399,7 +423,7 @@ export class SessionContext {
   this.suppliedConnections=new Set(Object.keys(session.policyConnections??{}))
   if(engine)this.named={models:named}
   this.resolvedPolicy=resolved.members;this.requestValues=new RequestValues(resolved.members,role=>this.connection(role));this.paceWarning=resolved.warning
-this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
+this.storedBinding=session.context?.[durableOwner];this.storedChat=session.context?.chat instanceof StoredChatScope?session.context.chat:session.context?.runStore?.context; if(this.storedChat?.ledgerScope)this.storedChat.attachPrivate();this.turn=session.context?.chat?.openTurn();this.objective=session.context?.objective;this.ledger=new ContextLedger(this.policy,this.turn);this.execution=new ExecutionController(session,this.ledger,this.resolvedPolicy);this.execution.recordGuard=()=>((this as unknown as {output?:import('../records').RecordGuard}).output);this.referenceTools=new Set([...session.hostTools.filter(t=>t.contextPolicy?.reference),...session.tools.filter(t=>runtimeToolContextPolicy(t.name).reference)].map(t=>t.name))
   for(const [name,member] of Object.entries(resolved.members))if(name.startsWith('budget.'))Object.assign(this.policy,{[name.slice(7)]:member.value})
   this.policy.criticDefault=String(resolved.members['critic.default']!.value)
   this.authorTier=resolved.members['models.author.reasoning']!.value as CriticTier|undefined
@@ -424,7 +448,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * guardrail `review refused`.
   */
  reviewTool():import('../engine').HostTool{
-  return {name:REQUEST_REVIEW,description:REQUEST_REVIEW_DESCRIPTION,inputSchema:structuredClone(REQUEST_REVIEW_SCHEMA),effect:'plan',execute:async args=>{
+  return {name:REQUEST_REVIEW,taxonomy:{operation:'own-state',effect:'pure'},description:REQUEST_REVIEW_DESCRIPTION,inputSchema:structuredClone(REQUEST_REVIEW_SCHEMA),effect:'plan',execute:async args=>{
    if(args.reason!==undefined&&typeof args.reason!=='string')throw authoredFailure('invalid-tool-input',`${REQUEST_REVIEW} takes one optional reason, a string; nothing was recorded.`,'tool')
    const refused=this.review.ask(this.narrowed===null)
    if(refused!==null){this.notices.push({type:'guardrail',tool:REQUEST_REVIEW,action:'refused',detail:refused,reason:'review refused'});throw new AIFailureError({version:1,code:'tool-failed',source:'tool',outcome:'not-started',detail:refused})}
@@ -445,11 +469,19 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   return index
  }
  /** The run ended: a ledger of its own is cleared, a chat's turn closes and the chat keeps what it holds. */
- close(){this.ledger.release()}
+ close(){const scope=this.storedChat;if(scope instanceof StoredChatScope&&scope.suspend(this.turn)&&this.turn&&this.ledger.detachChatTurn(this.turn))return;this.ledger.release()}
  /** Independent reviewers get a new retrieval scope and no author's working
   * summaries or cached reads. Request accounting and original journals stay. */
  beginIsolatedPhase(){
+  const privateScope=this.storedChat?.ledgerScope,binding=this.storedBinding
+  if(privateScope&&this.storedChat?.restoredPrivatePhase&&!this.privateResumeUsed){
+   if(!binding?.root||this.ledger.scope!==privateScope)throw new ContextTurnBindingInvalid()
+   const recovering=(role:string)=>{const owner=scopeFor(binding,role);return binding.writer.recovering(owner,'model')||binding.writer.recovering(owner,'agent')}
+   if(recovering('author')||recovering('reformat'))throw new ContextTurnBindingInvalid()
+   if(recovering('critic')){this.privateResumeUsed=true;return}
+  }
   this.ledger.isolate()
+  this.storedChat?.enterPrivate(this.ledger.scope,this.turn)
   this.compactedSteps.clear();this.summaries.clear();this.contracts.clear()
   this.execution.clearReadCache()
   this.execution.progress.beginPhase()
@@ -481,6 +513,14 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * policy answers ask, the call then never handed to the host; undefined where the call goes on (run,
   * or refused by the gate with its guardrail).
   */
+ private approvalPreparing=false
+ private claimApproval(){if(this.approvalPreparing)return false;this.approvalPreparing=true;return true}
+ private releaseApproval(){this.approvalPreparing=false}
+ claimApprovalPause?:()=>boolean
+ beginApproval(name:string):()=>void {
+  if(this.execution.state.approval?.state==='asked'||!this.claimApproval())throw this.refuse(name,'One act call already waits for approval. Nothing was sent.','approval pending')
+  return ()=>this.releaseApproval()
+ }
  async approval(name:string,args:Record<string,unknown>,callId?:string):Promise<Extract<AssistantEvent,{type:'approval_requested'}>|undefined>{
   if(this.execution.state.planState?.pending)throw this.refuse(name,'PlanApprovalRequired: this run waits for its plan decision.','approval pending')
   if(!this.sources?.needsApproval(name))return
@@ -495,6 +535,10 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   * execute (`SourceGate.approved`); set by `contextualSession` where the run's approval asks it.
   */
  runApproved?:(signal:AbortSignal)=>Promise<{result:McpToolResult;ran:boolean}>
+ runtimeNeedsApproval:(name:string)=>boolean=()=>false
+ prepareRuntimeCall:(name:string,args:Record<string,unknown>,callId:string)=>Promise<RuntimeCall|undefined>=async()=>undefined
+ runtimeAdmission(offer:unknown,task?:string){return {execution:this.execution.state.id,turn:this.turn?.number??0,role:this.storageRole,...(task?{task}:{}),phase:this.execution.state.phase,effectivePermissions:{policy:this.resolvedPolicy,child:this.memoryChild},finalRuntimeOffer:offer}}
+
  /**
   * A name the session serves but this run was not offered (review row 5): refused
   * before any call is made, whatever the phase, with its own guardrail event.
@@ -519,6 +563,7 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
   */
  admit(name:string,kind:'runtime'|'host',args:Record<string,unknown>={}){
   if(this.execution.state.planState?.pending)throw this.refuse(name,'PlanApprovalRequired: this run waits for its plan decision.','approval pending')
+  if(!this.execution.approvalAsked)this.turnRoute?.require(name,args)
   if(isEdit(name)&&(this.memoryChild||this.narrowed!==null||kind==='runtime'))throw this.refuseUnoffered(name,args)
   if(name===REMEMBER&&(this.memoryChild||this.narrowed!==null||kind==='runtime'))throw this.refuse(name,'Only the author may propose memory.','memory refused')
   // ADR-0010: request_review reaches the author's run only, where the switch offers it; a call
@@ -706,6 +751,19 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
    }
   }
   if(!choice)throw new ContextBudgetError()
+  const historyBinding=this.storedBinding?scopeFor(this.storedBinding,this.storageRole):undefined
+  const recording=historyBinding?await historyBinding.writer.historyRecording(this.signal):false
+  // Retain every consumed public message, including summary-looking input. Equal text
+  // does not prove that an occurrence is an acknowledged earlier replacement.
+  const original=recording?await (async()=>{
+   if(!historyBinding!.writer.checkpoint)await historyBinding!.writer.save(historyBinding!,this.execution.snapshot(),this.signal)
+   const consumed=messages.slice(1,choice.end).map(message=>{
+    const held='providerOptions'in message?(({providerOptions,...publicMessage})=>publicMessage)(message):message
+    if(!Array.isArray(held.content))return held
+    return {...held,content:held.content.filter(part=>part.type!=='reasoning').map(part=>'providerOptions'in part?(({providerOptions,...publicPart})=>publicPart)(part):part)}
+   })
+   return historyBinding!.writer.historyOriginal(historyBinding!,this.ledger.scope,encoded(consumed),'messages',0,this.signal)
+  })():undefined
   const e=await this.ledger.retain({id:'completed-steps',kind:'history',label:'Earlier completed model steps',value:choice.block})
   for(const step of choice.steps.values()){
    for(const key of ['read','arguments']){const read=step[key] as {id:string;path:string}|undefined;if(read?.id==='pending-context-reference')read.id=e.id}
@@ -739,6 +797,10 @@ this.turn=session.context?.chat?.openTurn();this.objective=session.context?.obje
     mode='summary'
    }catch(cause){replacement=choice.summary.content as string;this.notices.push({type:'guardrail',tool:'models.compactor',action:'refused',reason:'compaction refused',detail:`The compactor request failed; the deterministic index was used and the run continued. ${(cause as Error).message}`})}
   }
+  // Publication failures must escape the ordinary summary-compactor fallback above.
+  // These consumers carry no occurrence identity for prior summaries; retain their
+  // public bytes in the original span rather than infer edges from matching text.
+  if(original)await historyBinding!.writer.historyCompaction(historyBinding!,this.ledger.scope,[original],encoded({role:'user',content:replacement}),mode,[],e.digest,this.signal)
   if(mode==='index'&&this.execution.state)this.execution.mutate({compaction:{mode:'index',summaries:[]}})
   this.compactedSteps=choice.steps;this.contracts=choice.contracts;this.summaries.add(choice.summary.content)
   this.summaries.add(replacement)
@@ -808,13 +870,20 @@ function fallbackRequest(values:import('../engine').RequestModelValues,suffix:st
  return {suffix,request:{...request,body:JSON.stringify(body)}}
 }
 export async function contextualSession<T extends EngineSession>(session:T,engine?:AssistantEngine):Promise<{session:RequestSessionFor<T>;context:SessionContext}>{
+ for (const tool of session.tools) {
+  const problem=runtimeTaxonomyProblem(tool._meta,tool.name)
+  if(problem) throw authoredFailure('configuration','Runtime tool taxonomy refused. Nothing was sent.','context')
+ }
+ session={...session,tools:session.tools.map(t=>({...t,taxonomy:structuredClone(t._meta!),_meta:structuredClone(t._meta!),annotations:taxonomyAnnotations(t._meta!.effect)}))}
  // Copy the host's scalar admission input before any asynchronous setup.
  session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}
+ session={...session,...(session.route?{route:structuredClone(session.route)}:{}),...(session.routeFacts?{routeFacts:structuredClone(session.routeFacts)}:{})}
  session=await durableSession(session)
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
+ for(const original of session.hostTools){const copy=declared.hostTools.find(tool=>tool.name===original.name&&tool.execute===original.execute);if(copy)copyTaskDelegationTool(original,copy)}
  // ADR-0009: a skill may name only the host's declared tools, whatever this phase offers of them.
- const declaredNames=declared.hostTools.map(t=>t.name)
+ const declaredNames=[...declared.hostTools,...session.tools].map(t=>t.name)
  session={...session,hostTools:declared.hostTools}
  session=planningSession(session)
  await session.context?.authorize?.(session.signal)
@@ -822,7 +891,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  if(session.subagents?.length){
   const base=resolveSessionPolicy({...session,subagents:undefined},engine)
   const bounds={...base.policy,...Object.fromEntries(Object.entries(base.resolved.members).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value]))}
-  const admittedSkills=await declareSkills(session.skills,declaredNames,bounds,declared.sources)
+  const admittedSkills=await declareSkills(session.skills,declaredNames,bounds,declared.sources,new Map([...declared.hostTools,...session.tools].map(t=>[t.name,t.taxonomy!])))
   admittedSubagents=await declareSubagents(session.subagents,declared.hostTools,admittedSkills.skills,bounds)
   session={...session,subagents:admittedSubagents.subagents.map(({digest:_,...s})=>s)}
  }
@@ -832,15 +901,20 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
- const skills=await declareSkills(session.skills,declaredNames,context.policy,declared.sources)
- declared.sources.push(...skills.sources)
  await context.execution.initialize()
  const persistence=session.context?.[durableOwner]
  const legacyID=legacyCheckpointIdentity(session.context?.checkpoint)
  if(legacyID)context.execution.mutate({id:legacyID})
  if(persistence){
+  await persistence.writer.attachUsage(persistence,session.context?.usageBudget,session.signal)
   if(persistence.root){context.execution.mutate({id:persistence.writer.id});persistence.writer.bind(()=>context.execution.snapshot(),context.execution.storagePolicy,()=>context.execution.storageGuard)}
   else context.execution.mutate({id:persistence.scope.execution})
+ }
+ const repeats=repeatPolicy(context.resolvedPolicy)
+ if(repeats&&!persistence)throw new ContinuationNotRecoverable()
+ if(persistence){
+  persistence.writer.attachRepeatScope(persistence,repeats,{accept:state=>{if(state.stopped)context.execution.mutate({status:'stopped',reason:'RepeatedToolLimit'})},event:event=>context.memoryNotice(event)})
+  if(repeats){persistence.writer.attachRepeatRequestCharge(persistence,async body=>{held();context.execution.claim();await context.execution.recordPrompt(body)});context.execution.progress.beginPhase();context.execution.repeatGuidance=()=>repeatReminder(persistence.writer.repeatState(persistence),context.marker)}
  }
  context.output=new OutputGuard(context.resolvedPolicy,()=>context.execution.state.outputGuard??{},event=>context.memoryNotice(event),counts=>context.execution.mutate({outputGuard:counts}))
  context.output.declaredNames=new Set([...session.tools,...session.hostTools].map(tool=>tool.name))
@@ -883,13 +957,20 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  context.drafts=new Drafts(context.ledger,context.policy,()=>context.execution.state,event=>context.memoryNotice(event),()=>!context.criticRunning&&!session.context?.objective&&!session.childDefinition&&session.context?.phase!=='plan',async(text,signal)=>{context.admit('validate','runtime');signal.throwIfAborted();if(!session.tools.some(t=>t.name==='validate'))throw new Error('Runtime validate is not offered.');return session.callTool('validate',{content:text})},()=>context.marker,(value,where)=>context.output.value(value,where),session.signal,(where,pattern)=>context.output.refuse(where,pattern),patch=>context.execution.mutate(patch))
  await context.drafts.open(session.context?.objective||session.childDefinition?[]:session.context?.acceptedDocuments)
  context.execution.loadedDrafts=()=>context.drafts.section()
+ let offeredCatalogue=false
  if(declared.sources.length){
   const offered=offerSources(session.hostTools,declared.entries,context.policy,context.marker)
   session={...session,hostTools:offered.hostTools}
   declared.withheld.push(...offered.withheld)
-  context.openSources(declared,offered.catalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
+  offeredCatalogue=offered.catalogue
  }
- if(session.skills?.length)context.openSkills(skills,'agent'in session)
+ // The method follows the actual retained question offer, after phase and source projection.
+ const selectedSkills=selectAskingWell(session.skills,session.hostTools)
+ const skills=await declareSkills(selectedSkills,declaredNames,context.policy,declared.sources,new Map([...declared.hostTools,...session.tools].map(t=>[t.name,t.taxonomy!])))
+ requireAskingWell(skills,session.hostTools,context.policy,context.marker)
+ declared.sources.push(...skills.sources)
+ if(declared.sources.length)context.openSources(declared,offeredCatalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
+ if(selectedSkills?.length)context.openSkills(skills,'agent'in session)
  if(admittedSubagents){
   const admitted=admittedSubagents
   const catalogue=catalogueSubagents(admitted.subagents,context.policy,context.marker)
@@ -921,16 +1002,32 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})
- context.execution.proof=()=>{const binding=session.context?.[durableOwner],book=binding?.writer.checkpoint?.durable;return binding&&book?{book,scope:scopeFor(binding,context.storageRole).scope}:undefined}
+ const taskBinding=session.context?.[durableOwner]
+ try{
+ if(session.context?.taskSteps===true||taskBinding&&!taskBinding.root&&taskBinding.writer.hasTaskSteps){
+  if(!taskBinding)throw new ContinuationNotRecoverable()
+  if(taskBinding.root)context.execution.mutate({version:3})
+  context.execution.taskProfiles=()=>context.subagents.map(subagentRecord)
+  taskBinding.writer.attachTaskScope(taskBinding,{snapshot:()=>context.execution.snapshot(),profiles:context.execution.taskProfiles,accept:state=>context.execution.mutate({planState:state.planState}),charge:async(kind,role,request)=>{
+   if(context.execution.approvalAsked)throw new ApprovalPaused()
+   await session.context?.[prepareProviderDispatch]?.(kind,role,false,true)
+   if(kind==='model'){context.execution.claim();const descriptor=JSON.parse(request);await context.execution.recordPrompt(typeof descriptor.body==='string'?descriptor.body:request)}else await context.execution.recordPrompt(request)
+  }},taskBinding.root?session.context?.taskStepEnvelope:undefined)
+  if(taskBinding.root)await taskBinding.writer.restoreTaskEvidence(taskBinding,session.signal)
+ }else if(session.context?.taskStepEnvelope||taskBinding?.writer.hasTaskSteps||taskBinding?.writer.checkpoint?.planState?.taskSchedule||taskBinding?.writer.checkpoint?.planState?.taskEnvelope)throw new ContinuationIdentityChanged()
+ }catch(error){context.close();throw error}
+ context.execution.proof=()=>{const binding=session.context?.[durableOwner],book=binding?.writer.checkpoint?.durable;return binding&&book?{book,scope:scopeFor(binding,context.storageRole).scope,...(binding.writer.hasTaskSteps?{children:binding.writer.taskCompletionProof(binding)}:{})}:undefined}
  context.execution.publishPlan=async(state,event)=>{
   const guarded=context.output.value(event,'message')
   if(canonicalJSON(guarded)!==canonicalJSON(event))throw new ContinuationNotRecoverable()
   const binding=session.context?.[durableOwner]
-  if(binding)context.memoryNotice(await binding.writer.commitPlan(scopeFor(binding,context.storageRole),state,event,session.signal))
+  if(binding){context.memoryNotice(await binding.writer.commitPlan(scopeFor(binding,context.storageRole),state,event,session.signal));if(binding.root&&(binding.writer.hasTaskSteps||event.type==='plan_drift_decided'))context.execution.mutate({planState:binding.writer.checkpoint!.planState})}
   else{await session.context?.checkpoint?.(state);context.memoryNotice(event)}
  }
  await context.execution.publishPlanDecision()
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>({...tool,execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const routePolicy=routingPolicyFromMembers(context.resolvedPolicy)
+ if(routePolicy&&!session.childDefinition&&!session.context?.objective)context.turnRoute=new TurnRouteOwner(context,session,routePolicy,hostTools)
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
  const approval=context.execution.state.approval
  if(context.execution.approvalStep==='execute'&&approval){
@@ -938,10 +1035,18 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   context.runApproved=signal=>context.sources?context.sources.approved(approval,signal,declaredTool===undefined?undefined:(given,bounded)=>context.execution.wrapRead(declaredTool.name,a=>executeHost(declaredTool,context.output.value(a,'tool argument'),bounded,approval.callId),declaredTool.contextPolicy,false)(given))
    :Promise.resolve({result:{isError:true,content:[{type:'text',text:`${approval.name} is no longer offered; the call was not run and nothing was changed.`}]},ran:false})
  }
+ installRuntimeActions(context,session,()=>context.runtimeAdmission(session.tools.map(t=>({name:t.name,...(t.description===undefined?{}:{description:t.description}),...(t.inputSchema===undefined?{}:{inputSchema:t.inputSchema}),taxonomy:t._meta})),session.context?.[durableOwner]?.scope.task))
  // ADR-0008: while an act call waits for the person's decision, no request is sent: the run ends paused.
  const held=()=>{if(context.execution.approvalAsked)throw new ApprovalPaused()}
  const providerSource=(role:string)=>{const id=context.provider(role).connection;return `sha256:${sha256(canonicalJSON({id,revision:session.context?.connectionRevisions?.[id]??(id===session.context?.connection?.connectionId?session.context?.connection?.connectionRevision??null:null)}))}`}
+ const usageFacts=(binding:DurableBinding,providerRole:string,kind:'model'|'agent',source:string,model:string,family:string,descriptor:string,body:string):UsageDispatchFacts=>{
+  const id=context.provider(providerRole).connection
+  const revision=session.context?.connectionRevisions?.[id]??(id===session.context?.connection?.connectionId?session.context?.connection?.connectionRevision:undefined)
+  // Exact host binding revision is mandatory for a durable budget claim; no invented default.
+  return {...binding.scope,kind,source,tool:model,model,family,descriptor,connection:id,connectionRevision:revision??'',request:new TextEncoder().encode(body)}
+ }
  const model='model'in session?{...session.model,call:async(suffix:string,request:import('../engine').ModelRequest)=>{
+  context.turnRoute?.assertDispatch()
   await session.context?.authorize?.(session.signal)
   const role=context.criticRunning?'critic':'author',binding=context.connection(role)
   const selected=binding&&'model'in binding?binding.model:session.model
@@ -949,22 +1054,38 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    const rebuilt=fallbackRequest(requestViews.get(context)!(role) as import('../engine').RequestModelValues,suffix,request)
    suffix=rebuilt.suffix;request=rebuilt.request
   }
-  context.execution.useConnection(context.provider(role).connection,role,selected.model)
+  if(context.turnRoute?.classifying)request={...request,body:enforceRouteClassifierCeiling(selected.family,request.body,context.turnRoute.policy.classifier!.maxOutputTokens)}
+  const physicalRole=context.turnRoute?.classifying?'classifier':context.storageRole
+  context.execution.useConnection(context.provider(role).connection,context.turnRoute?.classifying?'classifier':role,selected.model)
   const persistence=session.context?.[durableOwner]
-  if(persistence){const source=providerSource(role);const prepared=JSON.parse(persistence.writer.prepared(scopeFor(persistence,context.storageRole),'model',source,selected.model,canonicalJSON({suffix,method:request.method,body:request.body})));suffix=prepared.suffix;request={...request,method:prepared.method,body:prepared.body}}
+  if(persistence){const source=providerSource(role);const prepared=JSON.parse(persistence.writer.prepared(scopeFor(persistence,physicalRole),'model',source,selected.model,canonicalJSON({suffix,method:request.method,body:request.body})));suffix=prepared.suffix;request={...request,method:prepared.method,body:prepared.body}}
+  const dispatchSignal=request.signal?AbortSignal.any([session.signal,request.signal]):session.signal
+  const descriptor=canonicalJSON({suffix,method:request.method,body:request.body})
+  const attempt=async(send:import('../engine').ModelCall):Promise<Response>=>{
+  dispatchSignal.throwIfAborted()
+  let usageTicket:object|undefined
+  if(persistence?.writer.hasUsageBudget){held();const scoped=scopeFor(persistence,physicalRole);usageTicket=await persistence.writer.prepareUsage(scoped,usageFacts(scoped,role,'model',providerSource(role),selected.model,selected.family,descriptor,request.body),dispatchSignal)}
   if(request.method!=='GET'){
-   await session.context?.[prepareProviderDispatch]?.('model',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'model')===true)
-   held();if(!persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'model')){context.execution.claim();await context.execution.recordPrompt(request.body)}
-   try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused)||context.execution.state.requestCap!==undefined)throw failureError('storage','storage','not-started')}
+   if(persistence?.writer.hasTaskSteps){held()}
+   else{
+    await session.context?.[prepareProviderDispatch]?.('model',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,physicalRole),'model')===true)
+    held();if(!persistence?.writer.repeatRequestChargeInstalled(scopeFor(persistence,physicalRole))&&!persistence?.writer.recovering(scopeFor(persistence,physicalRole),'model')){context.execution.claim();await context.execution.recordPrompt(request.body)}
+    try{await session.context?.checkpoint?.(context.execution.snapshot())}catch(error){if(!(error instanceof RecordsRefused)||context.execution.state.requestCap!==undefined)throw failureError('storage','storage','not-started')}
+   }
   }
   const durable=session.context?.[durableOwner]
-  if(!durable)return selected.call(suffix,request)
-  const dispatchSignal=request.signal?AbortSignal.any([session.signal,request.signal]):session.signal
-  return durable.writer.invokeModel(scopeFor(durable,context.storageRole),providerSource(role),selected.model,canonicalJSON({suffix,method:request.method,body:request.body}),async raw=>{await session.context?.authorize?.(dispatchSignal);dispatchSignal.throwIfAborted();const prepared=JSON.parse(raw);return selected.call(prepared.suffix,{...request,method:prepared.method,body:prepared.body,signal:dispatchSignal})},response=>quarantineModelResponse(selected.family,response,dispatchSignal),dispatchSignal)
+  if(!durable)return send(suffix,request)
+  const response=await durable.writer.invokeModel(scopeFor(durable,physicalRole),providerSource(role),selected.model,descriptor,async raw=>{await session.context?.authorize?.(dispatchSignal);dispatchSignal.throwIfAborted();const prepared=JSON.parse(raw);return send(prepared.suffix,{...request,method:prepared.method,body:prepared.body,signal:dispatchSignal})},async response=>{const held=await quarantineModelResponse(selected.family,response,dispatchSignal);return durable.writer.hasUsageBudget?{...held,usage:await usageFromVerifiedResponse(selected.family,held.response)}:held},dispatchSignal,usageTicket)
+  await context.turnRoute?.observeResponse(selected.family,response,dispatchSignal)
+  return response
+  }
+  if(context.turnRoute?.classifying&&persistence)return dispatchSinglePhysicalModel(selected.call,attempt,scopeFor(persistence,physicalRole))
+  return persistence&&(persistence.writer.hasUsageBudget||persistence.writer.hasTaskSteps)?dispatchPhysicalModel(selected.call,suffix,request,attempt,scopeFor(persistence,physicalRole)):attempt(selected.call)
  }}:undefined
  const agent='agent'in session?{...session.agent,run:async(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks)=>{
+  context.turnRoute?.assertDispatch()
   await session.context?.authorize?.(callbacks.signal);held()
-  const role=request.phase==='critic'?'critic':'author',original=request
+  const role=request.phase==='critic'?'critic':'author',original=request,captureAliases=originalNativeCaptureAliases(request)
   let binding=context.connection(role),selected=binding&&'agent'in binding?binding.agent:session.agent
   const prepare=()=>{
    const switched=context.provider(role).connection!==context.resolvedPolicy[`models.${role}.provider`]!.value
@@ -979,14 +1100,19 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   let preparedBody=prepare()
   const persistence=session.context?.[durableOwner]
   if(persistence){const source=providerSource(role);preparedBody=persistence.writer.prepared(scopeFor(persistence,context.storageRole),'agent',source,selected.model,preparedBody);request=JSON.parse(preparedBody)}
-  await context.execution.recordPrompt(preparedBody)
-  await session.context?.[prepareProviderDispatch]?.('agent',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'agent')===true)
+  if(!persistence?.writer.hasTaskSteps)await context.execution.recordPrompt(preparedBody)
+  if(!persistence?.writer.hasUsageBudget&&!persistence?.writer.hasTaskSteps)await session.context?.[prepareProviderDispatch]?.('agent',context.storageRole,persistence?.writer.recovering(scopeFor(persistence,context.storageRole),'agent')===true)
   let reached=false
   const watched={...callbacks,
    event:async(event:import('../agent').AgentEvent)=>{reached=true;return callbacks.event(event)},
    tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{reached=true;return callbacks.tool(call,signal)}
   }
-  const send=()=>{const binding=session.context?.[durableOwner];return binding?binding.writer.invoke(scopeFor(binding,context.storageRole),'agent',providerSource(role),selected.model,JSON.stringify(request),true,async raw=>{await session.context?.authorize?.(callbacks.signal);return selected.run(JSON.parse(raw),watched)},()=>false,()=>[],session.signal):selected.run(request,watched)}
+  const send=async()=>{const attempt=async(run:import('../agent').AgentRun)=>{callbacks.signal.throwIfAborted();const binding=session.context?.[durableOwner],scoped=binding?scopeFor(binding,context.storageRole):undefined,descriptor=JSON.stringify(request),plan=binding&&session.allowConversation?nativePlanAttempt(context,scoped!):undefined;const ticket=binding?.writer.hasUsageBudget?await binding.writer.prepareUsage(scoped!,usageFacts(scoped!,role,'agent',providerSource(role),request.model??selected.model,'native',descriptor,descriptor),callbacks.signal):undefined;if(binding?.writer.hasUsageBudget&&!binding.writer.hasTaskSteps)await session.context?.[prepareProviderDispatch]?.('agent',context.storageRole,false);return binding?binding.writer.invoke(scoped!,'agent',providerSource(role),selected.model,descriptor,true,async(raw,witness,claim,captureFrame)=>{await session.context?.authorize?.(callbacks.signal);const supplied={...watched,event:async(event:import('../agent').AgentEvent)=>{if((event.type==='text'||event.type==='message')&&event.text.length>0)observeNativeWitness(witness);return watched.event(event)},tool:async(call:import('../agent').AgentToolCall,signal:AbortSignal)=>{observeNativeWitness(witness);return watched.tool(call,signal)}};const execute=(observed:import('../agent').AgentCallbacks)=>runNativePlanAttempt(plan,observed,owned=>context.turnRoute?context.turnRoute.nativeAttempt(JSON.parse(raw),owned,run,witness,claim):run(JSON.parse(raw),owned));if(!captureFrame)return execute(supplied)
+   const steps:({event:import('../agent').AgentEvent}|{tool:import('../agent').AgentToolCall})[]=[],pending=new Set<Promise<unknown>>();let live=true,failed=false
+   const track=<T>(operation:()=>Promise<T>)=>{if(!live){captureFrame('');return operation()}const work=operation();pending.add(work);void work.then(()=>pending.delete(work),()=>{failed=true;pending.delete(work)});return work}
+   const observe=(step:(typeof steps)[number])=>{try{steps.push(copyHistoryEnvelope(step) as (typeof steps)[number])}catch{failed=true}}
+   const observed={...supplied,event:(event:import('../agent').AgentEvent)=>track(()=>{observe({event});return supplied.event(event)}),tool:(call:import('../agent').AgentToolCall,signal:AbortSignal)=>track(()=>{observe({tool:call});return supplied.tool(call,signal)})}
+   try{await execute(observed);live=false;await Promise.allSettled([...pending]);if(!failed)captureFrame(canonicalJSON({steps}))}finally{live=false}},()=>false,()=>[],session.signal,ticket,captureAliases,plan):run(request,watched)};return persistence&&(persistence.writer.hasUsageBudget||persistence.writer.hasTaskSteps)?dispatchPhysicalAgent(selected.run,request,watched,attempt,scopeFor(persistence,context.storageRole)):attempt(selected.run)}
   try{return await send()}catch(cause){
    const failure=normalizeFailure(cause,'agent')
    if(reached||!(['unavailable','rate-limited','timeout'] as const).includes(failure.code as FailoverClass))throw cause
@@ -1003,7 +1129,9 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   }
  }}:undefined
  context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
- const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
+ const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{if(context.runtimeNeedsApproval(name))throw context.refuse(name,'Runtime action requires an exact approved attempt. Nothing was sent.','approval refused');context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
  context.requestValues=new RequestValues(context.resolvedPolicy,role=>context.connection(role))
- return {context,session:requestSession(prepared,context.resolvedPolicy,context)}
+ const resolved=requestSession(prepared,context.resolvedPolicy,context)
+ if(context.turnRoute)await context.turnRoute.initialize(resolved)
+ return {context,session:resolved}
 }

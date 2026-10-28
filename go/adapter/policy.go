@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"context"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/internal/physicaldispatch"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
@@ -13,6 +14,7 @@ import (
 
 // PolicyConnection is a host-bound connection. Policy names IDs, never URLs or credentials.
 type PolicyConnection struct {
+	physicalModel   *physicaldispatch.Model
 	ModelName, Wire string
 	Capabilities    *contract.CapabilityEndpointCapabilities
 	Model           relay.Call
@@ -51,7 +53,7 @@ func PolicyBinding(run *Run, members runcontext.PolicyMembers, named runcontext.
 	if run.Context != nil && run.Context.Connection != "" {
 		current = run.Context.Connection
 	}
-	own := PolicyConnection{ModelName: run.ModelName, Wire: run.Wire, Model: run.Model, Agent: run.Agent, Capabilities: run.Capabilities}
+	own := PolicyConnection{physicalModel: run.physicalModel, ModelName: run.ModelName, Wire: run.Wire, Model: run.Model, Agent: run.Agent, Capabilities: run.Capabilities}
 	if id == current {
 		if model, ok := members["models."+role+".model"].Value.(string); ok && (model == named.Critic || model == named.Child) {
 			// A subordinate model stays on the selected connection even if its

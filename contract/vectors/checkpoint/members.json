@@ -51,13 +51,16 @@
     "childUsage": "controller",
     "requestCap": "controller",
     "durable": "controller",
-    "planState": "controller"
+    "planState": "controller",
+    "usageBudget": "controller",
+    "repeatTools": "controller",
+    "turnRoute": "controller"
   },
   "items": [
     {
       "schema": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",
-      "version": 2,
-      "digest": "sha256:1f5c8b436a9c1722f9cd154019755a32bfe3bff669d7c6a6d87aa020759b81db",
+      "version": 3,
+      "digest": "sha256:0019e83a5486942dd856a475b5608d1bdadc8511264f4996cb24f2d79fa707fc",
       "retainUntil": "2099-01-01T00:00:00.000Z",
       "id": "member-run",
       "requestKey": "3b0c960691f0932f5358380767d469d78cfa6929ea224133d29d4903eb966b0a",
@@ -351,6 +354,50 @@
             "diff": []
           }
         ]
+      },
+      "usageBudget": {
+        "version": 1,
+        "scope": {
+          "resource": "member-resource",
+          "id": "member-scope",
+          "revision": "one",
+          "limits": {
+            "modelRequests": 2
+          }
+        },
+        "entries": [],
+        "refusals": []
+      },
+      "repeatTools": {
+        "executions": [
+          {
+            "execution": "member-run",
+            "remindAt": 2,
+            "stopAt": 4,
+            "count": 0,
+            "reminded": false,
+            "stopped": false,
+            "seen": [],
+            "reminderDelivered": false
+          }
+        ]
+      },
+      "turnRoute": {
+        "route": "direct",
+        "tier": "off",
+        "skills": [],
+        "tools": [],
+        "operations": [
+          "read"
+        ],
+        "planning": "withheld",
+        "version": 1,
+        "decidedBy": "host",
+        "reason": "member fixture",
+        "bindingDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "catalogueDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "widened": false,
+        "refusals": []
       }
     }
   ]

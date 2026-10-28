@@ -2,7 +2,9 @@ package eino_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -34,7 +36,7 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 		case "notifications/initialized":
 			return nil, nil
 		case "tools/list":
-			return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"tools":[{"name":"get_schema","inputSchema":{"type":"object"}}]}}`), nil
+			return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{"tools":[{"name":"get_schema","_meta":{"operation":"read","effect":"read"},"inputSchema":{"type":"object"}}]}}`), nil
 		}
 		return json.RawMessage(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{}}`), nil
 	}
@@ -51,8 +53,12 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := false
+	// Pin the handwritten declaration independently of the production fingerprint.
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(`[{"description":"Writes a note.","inputSchema":{"properties":{},"type":"object"},"name":"write_note","taxonomy":{"effect":"act","operation":"act"}}]`)))
 	note := runcontext.HostTool{
-		Name: "write_note", Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
+		Name: "write_note", EffectClass: "act", Approval: "required",
+		Source:  &runcontext.ToolSource{Kind: "custom", ID: "notes", Trust: "person", Version: "1", ToolListDigest: digest, CurrentDigest: func(context.Context) (string, error) { return digest, nil }},
+		Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`),
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			ran = true
 			return runcontext.ToolResult{}, nil
@@ -63,7 +69,7 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 		bodies = append(bodies, string(request.Body))
 		if len(bodies) == 1 {
 			return openAIStream(map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "call_note", "type": "function",
-				"function": map[string]any{"name": "write_note", "arguments": "{}"}}}}, "tool_calls"), nil
+				"function": map[string]any{"name": "notes__write_note", "arguments": "{}"}}}}, "tool_calls"), nil
 		}
 		return openAIStream(map[string]any{"content": "Done."}, "stop"), nil
 	}
@@ -79,18 +85,18 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 	if ran {
 		t.Fatal("the host ran a tool the gate does not admit")
 	}
-	if len(bodies) != 2 || !strings.Contains(bodies[0], `"write_note"`) {
-		t.Fatalf("%d requests; the first offered write_note: %t", len(bodies), len(bodies) > 0 && strings.Contains(bodies[0], `"write_note"`))
+	if len(bodies) != 2 || !strings.Contains(bodies[0], `"notes__write_note"`) {
+		t.Fatalf("%d requests; the first offered notes__write_note: %t", len(bodies), len(bodies) > 0 && strings.Contains(bodies[0], `"notes__write_note"`))
 	}
 	var order []string
 	refused := ""
 	for _, event := range events {
 		switch {
-		case event.ToolCall != nil && event.ToolCall.Name == "write_note":
+		case event.ToolCall != nil && event.ToolCall.Name == "notes__write_note":
 			order = append(order, "call")
-		case event.Guardrail != nil && event.Guardrail.Tool == "write_note":
+		case event.Guardrail != nil && event.Guardrail.Tool == "notes__write_note":
 			order = append(order, "guardrail "+event.Guardrail.Action)
-		case event.ToolResult != nil && event.ToolResult.Name == "write_note":
+		case event.ToolResult != nil && event.ToolResult.Name == "notes__write_note":
 			order = append(order, "result")
 			refused = string(mustMarshal(t, event.ToolResult))
 		}
@@ -98,7 +104,7 @@ func TestAHostToolTheGateDoesNotAdmitIsNotRun(t *testing.T) {
 	if strings.Join(order, ", ") != "call, guardrail refused, result" {
 		t.Fatalf("the events were %v", order)
 	}
-	if !strings.Contains(bodies[1], "write_note") || !strings.Contains(refused, "write_note") {
+	if !strings.Contains(bodies[1], "notes__write_note") || !strings.Contains(refused, "notes__write_note") {
 		t.Fatalf("the refusal the model read: %s", refused)
 	}
 }

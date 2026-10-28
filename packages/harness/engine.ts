@@ -73,6 +73,9 @@ import type { NormalizedThinking } from './thinking'
 
 /** One tool exactly as `tools/list` served it. Nothing is re-declared. */
 export interface McpTool {
+  _meta?: import('./toolTaxonomy').ToolTaxonomy
+  taxonomy?: import('./toolTaxonomy').ToolTaxonomy
+  annotations?: ReturnType<typeof import('./toolTaxonomy').taxonomyAnnotations>
   name: string
   description?: string
   inputSchema?: unknown
@@ -121,6 +124,9 @@ export type CallTool = (name: string, args: Record<string, unknown>) => Promise<
  * so the narrowing notice a served schema can earn never fires for one.
  */
 export interface HostTool {
+  taxonomy?: import('./toolTaxonomy').ToolTaxonomy
+  taxonomyLimit?: import('./toolTaxonomy').TaxonomyLimit
+  annotations?: ReturnType<typeof import('./toolTaxonomy').taxonomyAnnotations>
  /** Host-authenticated artifact observations from the actual result; never model narration. */
  artifacts?:(result:McpToolResult,args:Record<string,unknown>)=>import('./storage/writer').ArtifactObservation[]
 
@@ -209,6 +215,9 @@ export type ModelCall = (suffix: string, request: ModelRequest) => Promise<Respo
 
 declare const requestSessionBoundary: unique symbol
 
+/** Host-owned recording output, separate from raw model-policy declarations. */
+export interface CorpusOutput {manifest:import('./corpus').CorpusManifest;guard:import('./corpus').CorpusRedactor;sink:import('./corpus').CorpusSink}
+
 export interface AssistantSession {
   /** A resolved RequestSession carries the incompatible side of this private brand. */
   readonly [requestSessionBoundary]?:never
@@ -217,7 +226,10 @@ export interface AssistantSession {
   /** ADR-0022: opt this run into a redacted evaluation-corpus recording. */
   record?: true
   /** Host-owned destination and the opened output guard for an opted-in recording. */
-  corpus?: {manifest:import('./corpus').CorpusManifest;guard:import('./corpus').CorpusRedactor;sink:import('./corpus').CorpusSink}
+  corpus?: CorpusOutput
+  /** Host-only route preference; policy must explicitly enable routing. */
+  route?:import('./turnRoute').RouteSelection
+  routeFacts?:Pick<import('./turnRoute').RouteFacts,'mode'|'attachments'|'artifact'>
   policy?: import('./policy').PolicyLayer
   policyProject?: import('./policy').PolicyLayer
   taskClass?: import('./policy').TaskClass
@@ -288,7 +300,8 @@ export interface AssistantSession {
    * The skills the host declares for the run (ADR-0009, `skills.ts`), beside its host tools: each a
    * bundle of instructions from a source, with the digest the person approved (`pinnedDigest`). The
    * package admits each, lists the admitted ones in the system text, and loads one on the model's
-   * `load_skill` call; a skill grants no tool. Absent or empty, the run has no skills. An ad hoc delegated
+   * `load_skill` call; a skill grants no tool. An actual ask_user offer also catalogues the pinned
+   * asking-well method; its reserved name permits an explicit host method replacement. An ad hoc delegated
    * child is handed no skills; a declared subagent is handed exactly its definition's skills.
    */
   skills?: import('./skills').SkillDeclaration[]
@@ -324,8 +337,9 @@ export interface AssistantSession {
  * the runner interleaves them. An engine that emitted its own would be
  * reporting on a guard it does not hold.
  */
-export type AssistantEvent = ({version?:1} & AssistantEventBody)
+export type AssistantEvent = ({version?:1|2} & AssistantEventBody)
 type AssistantEventBody =
+  | import('./repeatTools').RepeatDetected
   | ({type:'plan_revised';execution:string}&import('./execution/plan').PlanRevision)
   | ({type:'plan_drift_decided';execution:string}&import('./execution/plan').PlanDecision)
   | {type:'plan_departed';execution:string;revision:string;acceptedRevision:string;explanation:string;departures:import('./execution/plan').Departure[]}
@@ -339,7 +353,7 @@ type AssistantEventBody =
    * ADR-0008: an act call paused for the person's decision, in place of its `tool_call`: never run,
    * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
    */
-  | { type: 'approval_requested'; purpose?:'tool-call'; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
+  | { type: 'approval_requested'; purpose?:'tool-call'; runtime?:import('./runtimeActions').RuntimeApprovalBinding; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
   /**
    * ADR-0009: a skill loaded by the model's `load_skill` call, between that call and its result: the
    * skill as a load names it (never its instructions) and its bytes. Carried on the host's stream.
@@ -353,6 +367,7 @@ type AssistantEventBody =
   | { type: 'memory_proposed'; memory: import('./memories').Memory }
   | { type: 'memory_recalled'; ids: string[]; digests: string[]; bytes: number }
   | { type: 'policy_resolved'; members: import('./policy').PolicyMembers }
+  | {type:'route_decided'|'route_widened';route:import('./turnRoute').TurnRoute}
   | { type: 'connection_switched'; role:string; from:string; to:string; reason:import('./policy').FailoverClass }
   | { type: 'usage'; usage:import('./execution/state').UsageLedger }
   | {type:'recorded';id:string;bytes:number}

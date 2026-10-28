@@ -300,7 +300,7 @@ describe('resilience and capacity (agent#17)',()=>{
 
  it('never sends a child’s request again after the first byte of its answers: a 503 on its second request fails it',async()=>{
   let childRequests=0
-  const readTool={name:'read_page',delegation:'read' as const,description:'Read a page.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'Page.'}]}))}
+  const readTool={name:'read_page',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read' as const,description:'Read a page.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:'Page.'}]}))}
   const {call}=scripted(one=>{
    if(isChild(one)){childRequests++;return childRequests===1?sse({tool:{name:'read_page',args:{},id:'call_page'}}):overloaded()}
    return toolMessages(one).length===0?delegateCall([{title:'Check',objective:'Check the page.',profile:'review'}]):sse({text:['The check could not finish.']})
@@ -506,7 +506,7 @@ describe('the review’s rules',()=>{
  it('does not reuse a result whose child read through a tool: the draft it read changed, and the same task runs again',async()=>{
   const chat=new ChatContext()
   let draft='v1'
-  const readDraft={name:'read_draft',delegation:'read' as const,description:'Read the draft.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:`The draft (${draft}).`}]}))}
+  const readDraft={name:'read_draft',taxonomy:{operation:'read',effect:'read'} as const,delegation:'read' as const,description:'Read the draft.',inputSchema:{type:'object'},execute:vi.fn(async()=>({content:[{type:'text' as const,text:`The draft (${draft}).`}]}))}
   const run=async()=>{
    const {sent,call}=scripted(one=>{
     if(isChild(one))return toolMessages(one).length===0?sse({tool:{name:'read_draft',args:{},id:'call_read'}}):sse({text:[`The draft (${draft}) has no gap.`]})

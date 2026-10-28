@@ -1,3 +1,4 @@
+import {validateTaskGraph} from '../taskSteps'
 import {canonicalJSON} from '../context/chat'
 import {toolInputFailure} from '../failures'
 import {sha256} from '../records'
@@ -6,15 +7,18 @@ import type {TaskStep} from './state'
 import {revisePlan,validPlanState,type IdentifiedPlan,type StepEvidence,type CompletionRefusal,type Departure,type AcceptedPlan} from './plan'
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const exact=(v:Record<string,unknown>,keys:string[])=>Object.keys(v).every(k=>keys.includes(k))
+export interface PlanProof {book:DurableBook;scope:DurableScope;children?:import('../taskSteps').TaskCompletionEvidence[]}
 const id=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=256
 export const contentDigest=(value:unknown)=>`sha256:${sha256(canonicalJSON(value))}`
 export function readEvidence(value:unknown):StepEvidence|undefined{
- if(!object(value)||!exact(value,['operations','artifacts'])||!Array.isArray(value.operations)||!Array.isArray(value.artifacts)||value.operations.length+value.artifacts.length>20||!value.operations.every(id)||new Set(value.operations).size!==value.operations.length)return
+ if(!object(value)||!exact(value,['operations','artifacts','child'])||!Array.isArray(value.operations)||!Array.isArray(value.artifacts)||value.operations.length+value.artifacts.length>20||!value.operations.every(id)||new Set(value.operations).size!==value.operations.length)return
  if(!value.artifacts.every(a=>object(a)&&exact(a,['kind','id','digest'])&&['artifact','dialect'].includes(String(a.kind))&&id(a.id)&&typeof a.digest==='string'&&/^sha256:[a-f0-9]{64}$/.test(a.digest))||new Set(value.artifacts.map(a=>canonicalJSON(a))).size!==value.artifacts.length)return
+ if(value.child!==undefined&&(!object(value.child)||!exact(value.child,['task','checkpointDigest','resultDigest','eventDigest','commitId'])||!id(value.child.task)||value.child.task.length>100||!id(value.child.commitId)||value.child.commitId.length>100||!['checkpointDigest','resultDigest','eventDigest'].every(key=>typeof (value.child as Record<string,unknown>)[key]==='string'&&/^sha256:[a-f0-9]{64}$/.test(String((value.child as Record<string,unknown>)[key])))))return
  return structuredClone(value) as unknown as StepEvidence
 }
-export function evidenceFailure(evidence:StepEvidence,proof:{book:DurableBook;scope:DurableScope}|undefined):CompletionRefusal|undefined{
+export function evidenceFailure(evidence:StepEvidence,proof:PlanProof|undefined):CompletionRefusal|undefined{
  if(!proof)return 'evidence-unavailable'
+ if(evidence.child)return 'wrong-scope'
  if(evidence.operations.length+evidence.artifacts.length===0)return 'missing-evidence'
  const scope=canonicalJSON(proof.scope),same=(s:DurableScope)=>canonicalJSON(s)===scope
  for(const id of evidence.operations){
@@ -27,11 +31,12 @@ export function evidenceFailure(evidence:StepEvidence,proof:{book:DurableBook;sc
   if(!proof.book.observations.some(o=>(o.kind==='artifact-read'||o.kind==='artifact-produced')&&same(o.scope)&&o.artifact?.kind===artifact.kind&&o.artifact.id===artifact.id&&o.artifact.digest===artifact.digest&&proof.book.dispatches.some(d=>d.id===o.dispatchId&&same(d.scope)&&d.state==='result'&&!d.failure&&['host','runtime'].includes(d.kind)&&d.result!==undefined&&!(object(d.result)&&d.result.isError===true))))return 'unobserved-revision'
  }
 }
-export function closePlan(current:IdentifiedPlan,args:Record<string,unknown>,proof:{book:DurableBook;scope:DurableScope}|undefined):{next?:IdentifiedPlan;reason?:CompletionRefusal}{
+export function closePlan(current:IdentifiedPlan,args:Record<string,unknown>,proof:PlanProof|undefined):{next?:IdentifiedPlan;reason?:CompletionRefusal}{
  if(!exact(args,['id','expectedRevision','outcome','evidence','reason'])||!id(args.id)||typeof args.expectedRevision!=='string'||!['completed','not-needed'].includes(String(args.outcome)))return {reason:'invalid-input'}
  if(args.expectedRevision!==current.planState.revision)return {reason:'revision-changed'}
- const active=current.plan.find(s=>s.status==='in_progress')
- if(!active||active.id!==args.id)return {reason:'active-step-required'}
+ const delegated=current.planState.taskSchedule?.rows.find(row=>row.id===args.id)?.child
+ const active=current.plan.find(s=>s.id===args.id&&(s.status==='in_progress'||delegated&&s.status==='pending'&&args.outcome==='completed'))
+ if(!active)return {reason:'active-step-required'}
  let next:TaskStep
  if(args.outcome==='not-needed'){
   if(args.evidence!==undefined||typeof args.reason!=='string'||!args.reason.trim()||args.reason.length>1500)return {reason:'invalid-input'}
@@ -39,7 +44,13 @@ export function closePlan(current:IdentifiedPlan,args:Record<string,unknown>,pro
  }else{
   const evidence=readEvidence(args.evidence)
   if(args.reason!==undefined||!evidence)return {reason:'invalid-input'}
-  const reason=evidenceFailure(evidence,proof);if(reason)return {reason}
+  if(delegated){
+   const child=evidence.child,verified=proof?.children?.find(row=>row.step===active.id&&row.task===delegated.task&&row.planRevision===delegated.planRevision)
+   if(!child||evidence.operations.length||evidence.artifacts.length)return {reason:'missing-evidence'}
+   if(!verified)return {reason:'evidence-unavailable'}
+   const expected={task:verified.task,checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId}
+   if(canonicalJSON(child)!==canonicalJSON(expected)||canonicalJSON(delegated.result)!==canonicalJSON({checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId}))return {reason:'wrong-scope'}
+  }else{const reason=evidenceFailure(evidence,proof);if(reason)return {reason}}
   next={...active,status:'completed',evidence}
  }
  return {next:revisePlan(current,current.plan.map(s=>s.id===active.id?next:s),args.outcome==='completed'?'Active step completed with recorded evidence.':'Active step closed as not-needed.',true)}
@@ -85,8 +96,9 @@ export function appendRefusal(current:IdentifiedPlan,reason:CompletionRefusal,st
 
 export function validRecordedStep(value:unknown):boolean{
  if(!object(value))return false
+ if(value.dependsOn!==undefined||value.budget!==undefined||value.delegation!==undefined){try{validateTaskGraph([{id:'step-1',...(value.dependsOn===undefined?{}:{dependsOn:[]}),...(value.budget===undefined?{}:{budget:value.budget}),...(value.delegation===undefined?{}:{delegation:value.delegation})}]);if(value.dependsOn!==undefined&&(!Array.isArray(value.dependsOn)||value.dependsOn.length>19||new Set(value.dependsOn).size!==value.dependsOn.length||!value.dependsOn.every(d=>typeof d==='string'&&/^step-[1-9][0-9]{0,15}$/.test(d))))return false}catch{return false}}
  if(value.origin!==undefined&&(!object(value.origin)||!exact(value.origin,['plan','revision','index'])||!id(value.origin.plan)||typeof value.origin.revision!=='string'||!/^sha256:[a-f0-9]{64}$/.test(value.origin.revision)||!Number.isSafeInteger(value.origin.index)||Number(value.origin.index)<0||Number(value.origin.index)>19))return false
- if(value.evidence!==undefined){const evidence=readEvidence(value.evidence);if(value.status!=='completed'||!evidence||evidence.operations.length+evidence.artifacts.length<1)return false}
+ if(value.evidence!==undefined){const evidence=readEvidence(value.evidence);if(value.status!=='completed'||!evidence||evidence.operations.length+evidence.artifacts.length+(evidence.child?1:0)<1)return false}
  if(value.status==='not-needed')return typeof value.notNeededReason==='string'&&!!value.notNeededReason.trim()&&value.notNeededReason.length<=1500&&value.evidence===undefined
  return value.notNeededReason===undefined
 }
@@ -120,7 +132,7 @@ export function validPlanExtensions(plan:TaskStep[],state:Record<string,unknown>
   if(!validPlanState(candidate.plan,candidate.planState)||candidate.planState.history.at(-1)?.previous!==state.revision||canonicalJSON(changedDepartures({plan,planState:state as unknown as IdentifiedPlan['planState']},candidate,p.explanation))!==canonicalJSON(p.departures)||!p.departures.some(v=>(policy as string[]??['removed']).includes(String((v as Record<string,unknown>).kind))))return false
   try{
    const prior={plan,planState:{...state} as unknown as IdentifiedPlan['planState']};delete prior.planState.pending
-   const ids=new Set(plan.map(step=>step.id)),incoming=candidate.plan.map(step=>({...(ids.has(step.id)?{id:step.id}:{}),step:step.step,status:step.status,...(step.detail===undefined?{}:{detail:step.detail})}))
+   const ids=new Set(plan.map(step=>step.id)),incoming=candidate.plan.map(step=>({...(ids.has(step.id)?{id:step.id}:{}),step:step.step,status:step.status,...(step.detail===undefined?{}:{detail:step.detail}),...(step.dependsOn===undefined?{}:{dependsOn:structuredClone(step.dependsOn)}),...(step.budget===undefined?{}:{budget:structuredClone(step.budget)}),...(step.delegation===undefined?{}:{delegation:structuredClone(step.delegation)})}))
    const expected=revisePlan(prior,incoming,p.explanation),saved=expected.planState
    saved.departures??=[];saved.departuresDiscarded??=0;saved.departures.push({revision:saved.revision,explanation:p.explanation,changes:p.departures as Departure[]})
    if(saved.departures.length>32){saved.departures.shift();saved.departuresDiscarded++}
@@ -131,15 +143,15 @@ export function validPlanExtensions(plan:TaskStep[],state:Record<string,unknown>
  return true
 }
 
-export function validPlanInput(value:unknown):value is TaskStep[]{
- return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&exact(s,['id','step','status','detail'])&&(s.id===undefined||typeof s.id==='string'&&/^step-[1-9][0-9]{0,15}$/.test(s.id))&&typeof s.step==='string'&&!!s.step.trim()&&s.step.length<=1000&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||typeof s.detail==='string'&&s.detail.length<=1500))&&value.filter(s=>s.status==='in_progress').length<=1
+export function validPlanInput(value:unknown,configured=false):value is TaskStep[]{
+ return Array.isArray(value)&&value.length>0&&value.length<=20&&value.every(s=>object(s)&&exact(s,configured?['id','step','status','detail','dependsOn','budget','delegation']:['id','step','status','detail'])&&validRecordedStep(s)&&(s.id===undefined||typeof s.id==='string'&&/^step-[1-9][0-9]{0,15}$/.test(s.id))&&typeof s.step==='string'&&!!s.step.trim()&&s.step.length<=1000&&['pending','in_progress','completed','not-needed'].includes(String(s.status))&&(s.detail===undefined||typeof s.detail==='string'&&s.detail.length<=1500))&&value.filter(s=>s.status==='in_progress').length<=1
 }
 
 /** Only acknowledged evidence in this trusted run/role/task is exposed to the model. */
-export function availablePlanEvidence(proof:{book:DurableBook;scope:DurableScope}|undefined){
+export function availablePlanEvidence(proof:PlanProof|undefined){
  if(!proof)return {available:false as const,operations:[],artifacts:[]}
  const operations=proof.book.dispatches.filter(d=>!evidenceFailure({operations:[d.id],artifacts:[]},proof)).map(d=>({id:d.id,tool:d.tool}))
  const artifacts:StepEvidence['artifacts']=[]
  for(const row of proof.book.observations)if(row.artifact&&!evidenceFailure({operations:[],artifacts:[row.artifact]},proof)&&!artifacts.some(a=>a.kind===row.artifact!.kind&&a.id===row.artifact!.id&&a.digest===row.artifact!.digest))artifacts.push({kind:row.artifact.kind,id:row.artifact.id,digest:row.artifact.digest})
- return {available:true as const,operations,artifacts}
+ return {available:true as const,operations,artifacts,...(proof.children?.length?{children:structuredClone(proof.children)}:{})}
 }

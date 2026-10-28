@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -86,10 +87,15 @@ type RunStore interface {
 }
 
 // Hooks inject faults for conformance tests. They must not call the same store recursively.
-type MemoryRunStoreOptions struct{ BeforeCommit, AfterCommit func() error }
+type MemoryRunStoreOptions struct {
+	BeforeCommit, AfterCommit func() error
+	Now                       func() time.Time
+}
 type heldRunCommit struct {
-	input   RunCommit
-	receipt RunReceipt
+	input          RunCommit
+	receipt        RunReceipt
+	historyInput   string
+	historyReceipt RunHistoryReceipt
 }
 type heldRun struct {
 	head    RunHead
@@ -102,10 +108,11 @@ type MemoryRunStore struct {
 	options     MemoryRunStoreOptions
 	acknowledge func(context.Context, []byte) error
 	durability  string
+	history     *memoryHistoryJournal
 }
 
 func NewMemoryRunStore(options MemoryRunStoreOptions) *MemoryRunStore {
-	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory}
+	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now)}
 }
 func (m *MemoryRunStore) Durability() string { return m.durability }
 func validStorageID(id string) bool {
@@ -184,43 +191,56 @@ func (m *MemoryRunStore) Load(ctx context.Context, id string) (*RunHead, error) 
 	return &head, nil
 }
 func (m *MemoryRunStore) Commit(ctx context.Context, input RunCommit) (RunReceipt, error) {
+	receipt, _, err := m.commitTransaction(ctx, input, nil)
+	return receipt, err
+}
+func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit, extra *RunHistoryCommit) (RunReceipt, RunHistoryReceipt, error) {
 	if err := ctx.Err(); err != nil {
-		return RunReceipt{}, err
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	frozen, err := freezeRunCommit(input)
 	if err != nil {
-		return RunReceipt{}, err
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return RunReceipt{}, err
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	held := m.runs[frozen.RunID]
 	if prior, ok := held.commits[frozen.CommitID]; ok {
-		if !identicalRunCommit(prior.input, frozen) {
-			return RunReceipt{}, &StorageCommitMismatch{}
+		if !identicalRunCommit(prior.input, frozen) || prior.historyInput != historyInputText(extra) {
+			return RunReceipt{}, RunHistoryReceipt{}, &StorageCommitMismatch{}
 		}
-		return prior.receipt, nil
+		return prior.receipt, historyClone(prior.historyReceipt), nil
 	}
 	if held.head.Revision != frozen.ExpectedRevision {
-		return RunReceipt{}, &StorageConflict{ExpectedRevision: frozen.ExpectedRevision, ActualRevision: held.head.Revision}
+		return RunReceipt{}, RunHistoryReceipt{}, &StorageConflict{ExpectedRevision: frozen.ExpectedRevision, ActualRevision: held.head.Revision}
+	}
+	receipt := RunReceipt{Revision: rand.Text(), CommitID: frozen.CommitID}
+	checkpoint := frozen.Checkpoint
+	if checkpoint == nil {
+		checkpoint = held.head.Checkpoint
+	}
+	prepared, err := m.history.prepare(frozen, receipt, checkpoint, extra)
+	if err != nil {
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	if m.options.BeforeCommit != nil {
 		if err = m.options.BeforeCommit(); err != nil {
-			return RunReceipt{}, err
+			return RunReceipt{}, RunHistoryReceipt{}, err
 		}
 	}
 	if err = ctx.Err(); err != nil {
-		return RunReceipt{}, err
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	if m.acknowledge != nil && frozen.Checkpoint != nil {
 		if err = m.acknowledge(ctx, bytes.Clone(frozen.Checkpoint)); err != nil {
-			return RunReceipt{}, err
+			return RunReceipt{}, RunHistoryReceipt{}, err
 		}
 	}
 	if err = ctx.Err(); err != nil {
-		return RunReceipt{}, err
+		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	events := append([]StoredRunEvent{}, held.events...)
 	cursor := held.head.Cursor
@@ -228,24 +248,22 @@ func (m *MemoryRunStore) Commit(ctx context.Context, input RunCommit) (RunReceip
 		cursor = rand.Text()
 		events = append(events, StoredRunEvent{Cursor: cursor, Bytes: raw})
 	}
-	receipt := RunReceipt{Revision: rand.Text(), Cursor: cursor, CommitID: frozen.CommitID}
-	checkpoint := frozen.Checkpoint
-	if checkpoint == nil {
-		checkpoint = held.head.Checkpoint
-	}
+	receipt.Cursor = cursor
+	historyReceipt := RunHistoryReceipt{RunReceipt: receipt, History: prepared.view.head}
 	commits := make(map[string]heldRunCommit, len(held.commits)+1)
 	for id, commit := range held.commits {
 		commits[id] = commit
 	}
-	commits[frozen.CommitID] = heldRunCommit{input: frozen, receipt: receipt}
+	commits[frozen.CommitID] = heldRunCommit{input: frozen, receipt: receipt, historyInput: historyInputText(extra), historyReceipt: historyReceipt}
 	// All validation/acknowledgement precedes the single publication under the store lock.
 	m.runs[frozen.RunID] = heldRun{head: RunHead{RunReceipt: receipt, RunID: frozen.RunID, Checkpoint: checkpoint}, events: events, commits: commits}
+	m.history.publish(prepared)
 	if m.options.AfterCommit != nil {
 		if err = m.options.AfterCommit(); err != nil {
-			return RunReceipt{}, err
+			return RunReceipt{}, RunHistoryReceipt{}, err
 		}
 	}
-	return receipt, nil
+	return receipt, historyClone(historyReceipt), nil
 }
 func (m *MemoryRunStore) ReadEvents(ctx context.Context, id, after string, limit int) (RunEventPage, error) {
 	if err := ctx.Err(); err != nil {
@@ -306,5 +324,8 @@ func NewCheckpointCallbackRunStore[T any](callback func(context.Context, T) erro
 		}
 		return callback(ctx, state)
 	}
-	return m
+	return &checkpointCallbackStore{RunStore: m}
 }
+
+// Deliberately exposes only the legacy port, never the history/context capability.
+type checkpointCallbackStore struct{ RunStore }

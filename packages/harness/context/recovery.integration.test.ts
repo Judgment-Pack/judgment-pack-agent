@@ -12,8 +12,8 @@ it('finishes a focused edit with large Gemini signatures and a searchable schema
  const session=base();session.prompt+='\nEarlier context '.repeat(12000)
  const original={id:'current-pack',version:'0.1.0',exception:{onUnknown:'escalate'}},updated={...original,version:'0.1.1',exception:{onUnknown:'ignore'}}
  let calls=0,authorReads=0,evaluations=0
- session.hostTools=[{name:'get_authoring_instructions',contextPolicy:{immutable:true,reference:true},description:'Read contract',effect:'read',inputSchema:{type:'object',properties:{}},execute:async()=>{authorReads++;return answer({instructions:'Keep the current pack identity and decimal strings.'})}}]
- session.tools=[{name:'get_schema',inputSchema:{type:'object',properties:{}}},{name:'experimental_evaluate',inputSchema:{type:'object',properties:{pack:{type:'string'},facts:{type:'string'},rehearsal:{type:'boolean'}}}}]
+ session.hostTools=[{name:'get_authoring_instructions',taxonomy:{operation:'read',effect:'read'} as const,contextPolicy:{immutable:true,reference:true},description:'Read contract',effect:'read',inputSchema:{type:'object',properties:{}},execute:async()=>{authorReads++;return answer({instructions:'Keep the current pack identity and decimal strings.'})}}]
+ session.tools=[{name:'get_schema',_meta:{operation:'read',effect:'read'} as const,inputSchema:{type:'object',properties:{}}},{name:'experimental_evaluate',_meta:{operation:'evaluate',effect:'pure',experimental:true} as const,inputSchema:{type:'object',properties:{pack:{type:'string'},facts:{type:'string'},rehearsal:{type:'boolean'}}}}]
  session.callTool=async(name,args)=>{
   if(name==='get_schema')return {content:[{type:'text',text:JSON.stringify({$defs:{condition:{operator:'equals',description:'schema '.repeat(4000)}}})}],structuredContent:{status:'ok'}}
   expect(name).toBe('experimental_evaluate');expect(args.rehearsal).toBe(true);evaluations++;return answer({outcome:'set-aside',facts:{decimal:'24',flag:false}})
@@ -92,8 +92,8 @@ it.each(families.flatMap(family=>topics.map(topic=>({family,topic}))))('$family 
  session.prompt='Current task: '+topic+'\n'+'Older discussion '.repeat(5000)
  let calls=0
  session.hostTools=[
-  {name:'future_reference',effect:'read',contextPolicy:{immutable:true,reference:true},description:'Read the task reference',inputSchema:{type:'object',properties:{}},execute:async()=>answer({reference:'REFERENCE FOR '+topic,rule:'Preserve approved scope. '.repeat(60)})},
-  {name:'future_inspect',effect:'read',description:'Inspect current work',inputSchema:{type:'object',properties:{}},execute:async()=>answer({status:'ready',zero:0,flag:false,nothing:null,decimal:'24',details:'detail '.repeat(1400)})}
+  {name:'future_reference',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',contextPolicy:{immutable:true,reference:true},description:'Read the task reference',inputSchema:{type:'object',properties:{}},execute:async()=>answer({reference:'REFERENCE FOR '+topic,rule:'Preserve approved scope. '.repeat(60)})},
+  {name:'future_inspect',taxonomy:{operation:'read',effect:'read'} as const,effect:'read',description:'Inspect current work',inputSchema:{type:'object',properties:{}},execute:async()=>answer({status:'ready',zero:0,flag:false,nothing:null,decimal:'24',details:'detail '.repeat(1400)})}
  ]
  session.model.call=async(_path,wire)=>{
   calls++;expect(calls).toBeLessThanOrEqual(3)

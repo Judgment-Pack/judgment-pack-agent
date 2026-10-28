@@ -6,8 +6,8 @@
     "kind": "mcp",
     "id": "tracker",
     "trust": "public",
-    "pinned": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
-    "changed": "sha256:b21afe32bfe6a6df87e27e1560795aff35e3e69620a47059d7ee6d5b4242c4c8"
+    "pinned": "sha256:7a7e9a0d68ac9b897b2a11a1361610eceee7f0a4715b5159df2696cf6ccc685e",
+    "changed": "sha256:3da48350bd95d4cc6a0a6bfb2eebdaee7fb58ee2899fbcd9ed0edf01a6bee230"
   },
   "server": [
     {
@@ -23,6 +23,10 @@
         "required": [
           "repository"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -42,6 +46,10 @@
           "repository",
           "number"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -64,6 +72,10 @@
           "repository",
           "title"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -89,6 +101,10 @@
           "repository",
           "number"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -108,6 +124,10 @@
           "repository",
           "number"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -131,6 +151,10 @@
           "number",
           "body"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -150,6 +174,10 @@
           "repository",
           "number"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -165,6 +193,10 @@
         "required": [
           "repository"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -188,6 +220,10 @@
           "number",
           "label"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -211,6 +247,10 @@
           "number",
           "label"
         ]
+      },
+      "taxonomy": {
+        "operation": "act",
+        "effect": "act"
       }
     },
     {
@@ -226,6 +266,10 @@
         "required": [
           "repository"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -245,6 +289,10 @@
           "repository",
           "number"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -260,6 +308,10 @@
         "required": [
           "repository"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -275,6 +327,10 @@
         "required": [
           "query"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -290,6 +346,10 @@
         "required": [
           "repository"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -305,6 +365,10 @@
         "required": [
           "login"
         ]
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     },
     {
@@ -314,6 +378,10 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
       }
     }
   ],
@@ -330,6 +398,10 @@
       "required": [
         "repository"
       ]
+    },
+    "taxonomy": {
+      "operation": "act",
+      "effect": "act"
     }
   },
   "custom": {
@@ -339,7 +411,8 @@
       "kind": "custom",
       "id": "rates",
       "trust": "person",
-      "version": "3"
+      "version": "3",
+      "toolListDigest": "sha256:0006620de61db10973996235ffa00576ad9124f2749f64601d764b44e06b562f"
     },
     "effectClass": "read",
     "inputSchema": {
@@ -353,7 +426,11 @@
         "region"
       ]
     },
-    "result": "EU: 0.30 EUR per kilometre (2026)."
+    "result": "EU: 0.30 EUR per kilometre (2026).",
+    "taxonomy": {
+      "operation": "read",
+      "effect": "read"
+    }
   },
   "issue": "Issue 41 opened: Missing mileage rate.",
   "turns": [

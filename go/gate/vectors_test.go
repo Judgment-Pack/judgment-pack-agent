@@ -26,20 +26,29 @@ var families = []string{"tool-offer", "tool-call", "tool-result", "approval", "b
 var beyond = []string{"scenario/expense-reimbursement.json", "framing/injection-refused.json", "budget/harness-defaults.json"}
 
 var notTheGates = map[string]string{
-	"tool-offer/agent-wire-offer.json":  "the codex engine's aliases for the offer on the agent wire: the adapter's encoding of an offer the gate decided (scenario-offer.json)",
-	"tool-offer/host-declarations.json": "host tool declarations: the session of phase-offers.json, held there",
-	"tool-offer/propose-pack.json":      "propose_pack as a host declares it: the session of phase-offers.json, held there",
-	"tool-call/host-presentation.json":  "a host-owned presentation the host consumer adds to a tool_call event; not a call the gate decides",
-	"tool-call/text-call.json":          "a call made in text, which the adapter reads (extractToolCall) and then dispatches as a native call",
-	"tool-result/attachments.json":      "documents a host hands a run to retain: the context ledger's",
-	"tool-result/image-read.json":       "read_window's answer for an image: the context reader's",
-	"tool-result/image-result.json":     "tool results that carry images: what a tool answered, after the gate",
-	"tool-result/search-arguments.json": "arguments to search, a host context tool the boundary runs, not a Runtime call",
-	"tool-result/search.json":           "search's answer: the context ledger's",
-	"tool-result/text-result.json":      "the messages that carry a text call's result back: the adapter's encoding",
-	"bounds/rate-limited-retried.json":  "the model request's retry: the adapter's, on the relay",
-	"bounds/tool-timeout.json":          "the tool-call deadline: the adapter's dispatch",
-	"bounds/turn-clock.json":            "the turn's wall clock: the adapter's loop",
+	"tool-offer/taxonomy-limits.json":             "a host taxonomy ceiling, held by go/context/TestTaxonomyLimitSharedHostAdmission through DeclareSources admission and independent operation/effect withholding, not a Runtime wire decision",
+	"tool-offer/descriptor-snapshot-current.json": "the source boundary's current descriptor snapshot and approval, held by go/context/descriptor_sources_test.go through DeclareSources and SourceGate rather than Runtime wire admission",
+	"tool-call/source-calls-current.json":         "current source decoration after host-tool admission, held against SourceGate.Decorate by go/context/sources_test.go",
+	"tool-result/loaded-schema-current.json":      "current load_tool result, held through SourceGate.LoadToolHost by go/context/sources_test.go",
+	"tool-result/source-results-current.json":     "current source result decoration, held through SourceGate.Decorate by go/context/sources_test.go",
+	"approval/pause-current.json":                 "the source-boundary approval pause, held by go/certification/scenarios_approval.go scenario 8 rather than Runtime wire admission",
+	"approval/runtime-binding.json":               "a serialized Runtime admission binding, held by go/context/TestRuntimeActionCurrentBinding against the pause and request; structural reporting cannot supply the private connector grant",
+	"approval/runtime-pause.json":                 "a checkpoint3 Runtime pause, held by go/context/TestRuntimeActionCurrentRecords through ReadExecution and frozen-version refusal",
+	"approval/runtime-request.json":               "an event2 Runtime approval request, held by go/context/TestRuntimeActionCurrentRecords through CheckRecord and frozen-version refusal",
+	"tool-offer/agent-wire-offer.json":            "the codex engine's aliases for the offer on the agent wire: the adapter's encoding of an offer the gate decided (scenario-offer.json)",
+	"tool-offer/host-declarations.json":           "host tool declarations: the session of phase-offers.json, held there",
+	"tool-offer/propose-pack.json":                "propose_pack as a host declares it: the session of phase-offers.json, held there",
+	"tool-call/host-presentation.json":            "a host-owned presentation the host consumer adds to a tool_call event; not a call the gate decides",
+	"tool-call/text-call.json":                    "a call made in text, which the adapter reads (extractToolCall) and then dispatches as a native call",
+	"tool-result/attachments.json":                "documents a host hands a run to retain: the context ledger's",
+	"tool-result/image-read.json":                 "read_window's answer for an image: the context reader's",
+	"tool-result/image-result.json":               "tool results that carry images: what a tool answered, after the gate",
+	"tool-result/search-arguments.json":           "arguments to search, a host context tool the boundary runs, not a Runtime call",
+	"tool-result/search.json":                     "search's answer: the context ledger's",
+	"tool-result/text-result.json":                "the messages that carry a text call's result back: the adapter's encoding",
+	"bounds/rate-limited-retried.json":            "the model request's retry: the adapter's, on the relay",
+	"bounds/tool-timeout.json":                    "the tool-call deadline: the adapter's dispatch",
+	"bounds/turn-clock.json":                      "the turn's wall clock: the adapter's loop",
 	// ADR-0006: tools with a source are host tools, held by the boundary's source gate
 	// (go/context, sources_test.go), not by the gate on the Runtime's wire.
 	"tool-offer/source-declarations.json": "host tool declarations with a source: the boundary's (go/context, DeclareSources)",
@@ -548,10 +557,10 @@ func replayVector(session replay) func(t *testing.T, name string, vector vectorF
 		g := New(Options{Runtime: runtime, Granted: session.granted, Emit: func(event contract.RunEvent) { produced = append(produced, event) }})
 		var offer contract.ToolOffer
 		for _, tool := range session.runtime {
-			offer.Tools = append(offer.Tools, contract.ToolOfferRuntimeTool{Name: tool})
+			offer.Tools = append(offer.Tools, fixtureRuntimeTool(t, tool))
 		}
 		for _, tool := range session.host {
-			offer.HostTools = append(offer.HostTools, contract.ToolOfferHostTool{Name: tool})
+			offer.HostTools = append(offer.HostTools, fixtureHostTool(t, tool))
 		}
 		g.SetOffer(offer)
 		want := []json.RawMessage{}

@@ -6,8 +6,9 @@ import "github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 // RequestValues is the closed, complete admitted member book shared by adapters
 // and standalone compaction. A new policy member cannot inherit a raw default.
 type RequestValues struct {
-	members  PolicyMembers
-	families map[string]string
+	routeTier func(string) string
+	members   PolicyMembers
+	families  map[string]string
 }
 
 // NewRequestValues is the sole conversion of resolved policy into request values.
@@ -38,7 +39,15 @@ func copyRequestMember(member PolicyMember) PolicyMember {
 }
 
 // Member returns a detached admitted member, including members added later.
-func (v *RequestValues) Member(name string) PolicyMember { return copyRequestMember(v.members[name]) }
+func (v *RequestValues) Member(name string) PolicyMember {
+	member := copyRequestMember(v.members[name])
+	if v.routeTier != nil && name == "models.author.reasoning" {
+		if tier := v.routeTier("author"); tier != "" {
+			member.Value = tier
+		}
+	}
+	return member
+}
 func (v *RequestValues) Reasoning(role string) string {
 	value, _ := v.Member("models." + role + ".reasoning").Value.(string)
 	return value
@@ -59,6 +68,9 @@ func (v *RequestValues) Provider(role string) *contract.ProvenanceProvider {
 	return &contract.ProvenanceProvider{Connection: id, Family: family}
 }
 func (c *SessionContext) RequestValues() *RequestValues {
-	c.requestValuesOnce.Do(func() { c.requestValues = NewRequestValues(c.ResolvedPolicy, c.ProviderFamilies) })
+	c.requestValuesOnce.Do(func() {
+		c.requestValues = NewRequestValues(c.ResolvedPolicy, c.ProviderFamilies)
+		c.requestValues.routeTier = c.RouteTier
+	})
 	return c.requestValues
 }

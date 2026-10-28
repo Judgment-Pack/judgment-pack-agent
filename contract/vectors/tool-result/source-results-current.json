@@ -1,0 +1,69 @@
+{
+  "description": "tool_result events of tools with a source (ADR-0006): a gateway connection's read, with the receipt the host's answer gave; the person's proposal, held for the review card and not run (proposed); and a call of the MCP server's tool after its tool list changed, refused before the host. Each carries its source record as its tool_call did. The event is never framed; the model is shown the answer framed (or, for the refusal, the failure). Written by hand; scenario 7 holds every engine's events to the shape and toolSources.test.ts the receipt and the proposal.",
+  "schema": "tool-result.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.call, SourceGate.decorate, PROPOSED)",
+      "packages/harness/context/managed.ts"
+    ]
+  },
+  "items": [
+    {
+      "type": "tool_result",
+      "name": "databricks__query_table",
+      "isError": false,
+      "text": "{\"rows\":[{\"region\":\"EU\",\"rate\":0.3}]}",
+      "source": {
+        "kind": "gateway",
+        "id": "databricks",
+        "trust": "connected",
+        "version": "rev-7",
+        "toolListDigest": "sha256:7bbab1d7db7d654c47673af2bb8102bf6cb50ae94bd9af8c2fc5d15c18bf5c37",
+        "tool": "query_table",
+        "receipt": "rcpt_7f3a9c"
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "rates__submit_expense",
+      "isError": false,
+      "text": "Proposed for the person’s review: this call was not run. The person accepts or rejects it after this response, and the host runs it only on acceptance. Do not repeat it; say in your answer what you proposed and why.",
+      "source": {
+        "kind": "custom",
+        "id": "rates",
+        "trust": "person",
+        "version": "3",
+        "toolListDigest": "sha256:055a857bea79e66cf9ed7026b3617ee7ada87c8d158b4d3422d7ae138f8fdb71",
+        "tool": "submit_expense"
+      },
+      "proposed": true
+    },
+    {
+      "type": "tool_result",
+      "callId": "c-2",
+      "name": "tracker__create_issue",
+      "isError": true,
+      "text": "the tool list tracker serves is no longer the one the person approved (sha256:75f93593e43883a9866be0c7af493e23c6e6561190d3161f8ee6263a43d22916); its tools are refused until the person approves the new list, and this call was not run",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "permission",
+          "source": "tool",
+          "outcome": "not-started",
+          "detail": "the tool list tracker serves is no longer the one the person approved (sha256:75f93593e43883a9866be0c7af493e23c6e6561190d3161f8ee6263a43d22916); its tools are refused until the person approves the new list, and this call was not run"
+        }
+      },
+      "source": {
+        "kind": "mcp",
+        "id": "tracker",
+        "trust": "public",
+        "toolListDigest": "sha256:75f93593e43883a9866be0c7af493e23c6e6561190d3161f8ee6263a43d22916",
+        "tool": "create_issue"
+      }
+    }
+  ]
+}

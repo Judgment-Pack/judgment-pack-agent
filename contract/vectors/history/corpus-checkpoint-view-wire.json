@@ -1,0 +1,249 @@
+{
+  "description": "Handwritten exact, derived and frozen historical display views shared with fixtures/history/corpus-checkpoint-view.json; derived records do not grant resume authority.",
+  "schema": "corpus-checkpoint-view.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/history/corpusCheckpointView.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "kind": "corpus-checkpoint-view",
+      "source": {
+        "digest": "sha256:b9098ae2eb22759ae29710cbeb4bc45744d3586aa171c6530c02f6afd611efc1",
+        "bytes": 1353
+      },
+      "sourceVersion": 3,
+      "derived": {
+        "digest": "sha256:b9098ae2eb22759ae29710cbeb4bc45744d3586aa171c6530c02f6afd611efc1",
+        "bytes": 1353
+      },
+      "representation": "exact",
+      "document": {
+        "context": {
+          "entries": [],
+          "scope": "fixture-context"
+        },
+        "explanation": "Finished",
+        "grants": [],
+        "id": "fixture-run",
+        "limit": 1,
+        "operations": [],
+        "phase": "work",
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "First secret prose",
+            "status": "pending"
+          },
+          {
+            "id": "step-2",
+            "step": "Next",
+            "status": "pending",
+            "dependsOn": [
+              "step-1"
+            ]
+          }
+        ],
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "complete",
+        "unit": "provider-managed",
+        "used": 0,
+        "version": 3,
+        "planState": {
+          "revision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+          "sequence": 0,
+          "nextId": 3,
+          "discarded": 0,
+          "history": [],
+          "taskSchedule": {
+            "version": 1,
+            "binding": {
+              "run": "fixture-run",
+              "execution": "fixture-run",
+              "planRevision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+              "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "unit": "provider-managed"
+            },
+            "definitionDigest": "sha256:b84ed6a5dd2111820574c3fa793e3168d3ba8151aa275b910aaeed5e19dc0565",
+            "rows": [
+              {
+                "id": "step-1",
+                "claims": []
+              },
+              {
+                "id": "step-2",
+                "claims": []
+              }
+            ]
+          },
+          "taskEnvelope": {
+            "run": "fixture-run",
+            "execution": "fixture-run",
+            "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "configuration": {
+              "id": "host-envelope",
+              "revision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "unit": "provider-invocations",
+              "limit": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "kind": "corpus-checkpoint-view",
+      "source": {
+        "digest": "sha256:b9098ae2eb22759ae29710cbeb4bc45744d3586aa171c6530c02f6afd611efc1",
+        "bytes": 1353
+      },
+      "sourceVersion": 3,
+      "derived": {
+        "digest": "sha256:59e3cb4e2ad3cb55626448c50910e09f2ff119ae0171580e35e87c2682fc0b40",
+        "bytes": 1352
+      },
+      "representation": "derived",
+      "document": {
+        "context": {
+          "entries": [],
+          "scope": "fixture-context"
+        },
+        "explanation": "Finished",
+        "grants": [],
+        "id": "fixture-run",
+        "limit": 1,
+        "operations": [],
+        "phase": "work",
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "[redacted: prose]",
+            "status": "pending"
+          },
+          {
+            "id": "step-2",
+            "step": "Next",
+            "status": "pending",
+            "dependsOn": [
+              "step-1"
+            ]
+          }
+        ],
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "status": "complete",
+        "unit": "provider-managed",
+        "used": 0,
+        "version": 3,
+        "planState": {
+          "revision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+          "sequence": 0,
+          "nextId": 3,
+          "discarded": 0,
+          "history": [],
+          "taskSchedule": {
+            "version": 1,
+            "binding": {
+              "run": "fixture-run",
+              "execution": "fixture-run",
+              "planRevision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+              "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "unit": "provider-managed"
+            },
+            "definitionDigest": "sha256:b84ed6a5dd2111820574c3fa793e3168d3ba8151aa275b910aaeed5e19dc0565",
+            "rows": [
+              {
+                "id": "step-1",
+                "claims": []
+              },
+              {
+                "id": "step-2",
+                "claims": []
+              }
+            ]
+          },
+          "taskEnvelope": {
+            "run": "fixture-run",
+            "execution": "fixture-run",
+            "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "configuration": {
+              "id": "host-envelope",
+              "revision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "unit": "provider-invocations",
+              "limit": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "kind": "corpus-checkpoint-view",
+      "source": {
+        "digest": "sha256:67800c60708d1f55a7d6f05674f6ec15bc2f18c47a2802cb34ed7e216d6a9124",
+        "bytes": 305
+      },
+      "sourceVersion": 1,
+      "derived": {
+        "digest": "sha256:67800c60708d1f55a7d6f05674f6ec15bc2f18c47a2802cb34ed7e216d6a9124",
+        "bytes": 305
+      },
+      "representation": "exact",
+      "document": {
+        "version": 1,
+        "id": "legacy-view",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "complete",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "operations": [],
+        "context": {
+          "scope": "legacy-context",
+          "entries": []
+        }
+      }
+    },
+    {
+      "version": 1,
+      "kind": "corpus-checkpoint-view",
+      "source": {
+        "digest": "sha256:d175247d016bc6707ae0281fceeea7954aaae504647540181f2a6bd58c1394a1",
+        "bytes": 305
+      },
+      "sourceVersion": 2,
+      "derived": {
+        "digest": "sha256:d175247d016bc6707ae0281fceeea7954aaae504647540181f2a6bd58c1394a1",
+        "bytes": 305
+      },
+      "representation": "exact",
+      "document": {
+        "version": 2,
+        "id": "legacy-view",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "complete",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "operations": [],
+        "context": {
+          "scope": "legacy-context",
+          "entries": []
+        }
+      }
+    }
+  ]
+}

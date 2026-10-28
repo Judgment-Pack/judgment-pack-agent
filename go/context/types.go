@@ -3,6 +3,8 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
@@ -167,6 +169,11 @@ func (r ToolResult) Clone() ToolResult {
 // HostTool is a host tool's declaration and its implementation (HostTool in engine.ts). Effect,
 // Interaction and Delegation are "" where the host declares none.
 type HostTool struct {
+	// Original-writer capability; absent from every public declaration and wire format.
+	taskDelegation *taskDelegationRegistration
+	Taxonomy       *wire.ToolTaxonomy
+	TaxonomyLimit  *TaxonomyLimit
+	Annotations    map[string]bool
 	// Artifacts authenticates artifact observations from an actual host result, never narration.
 	Artifacts func(ToolResult, json.RawMessage) []ArtifactObservation
 
@@ -202,6 +209,14 @@ type HostTool struct {
 // Declaration is the tool as the offer declares it to the model (tool-offer.json#/$defs/hostTool).
 func (t HostTool) Declaration() contract.ToolOfferHostTool {
 	out := contract.ToolOfferHostTool{Name: t.Name, Description: t.Description, InputSchema: t.InputSchema}
+	if t.Taxonomy != nil {
+		raw, _ := json.Marshal(t.Taxonomy)
+		_ = json.Unmarshal(raw, &out.Taxonomy)
+	}
+	if t.Taxonomy != nil {
+		raw, _ := json.Marshal(TaxonomyAnnotations(t.Taxonomy.Effect))
+		_ = json.Unmarshal(raw, &out.Annotations)
+	}
 	if t.Effect != "" {
 		effect := t.Effect
 		out.Effect = &effect
@@ -248,7 +263,11 @@ func (t HostTool) Declaration() contract.ToolOfferHostTool {
 
 // RuntimeTool is one tool of the Runtime this session serves, by name (the member of
 // session.tools this package reads).
-type RuntimeTool struct{ Name string }
+type RuntimeTool struct {
+	Offer *contract.ToolOfferRuntimeTool
+	Name  string
+	Meta  *ToolTaxonomy
+}
 
 // CurrentRequest is the person's latest message and the workspace context supplied with it
 // (CurrentRequest in session.ts).
@@ -313,6 +332,11 @@ type SteerInput struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
+	Capture *LiveCaptureConfig
+	// TaskSteps explicitly enables package-owned task scheduling; it grants no authority.
+	TaskSteps         bool
+	TaskStepEnvelope  *TaskStepEnvelope
+	UsageBudget       *UsageBudgetInput
 	checkpointProfile bool
 	checkpointRunID   string
 	RunStore          *DurableRunInput
@@ -390,6 +414,8 @@ type AgentSession struct {
 // Session is one run as the harness is handed it (EngineSession in engine.ts), in the members
 // this package reads. Model and Agent are exclusive: a run is on one capability or the other.
 type Session struct {
+	Route              *RouteSelection
+	RouteFacts         *RouteFacts
 	Policy             PolicyLayer
 	PolicyProject      PolicyLayer
 	TaskClass          string
@@ -403,6 +429,7 @@ type Session struct {
 	TestPrompt        string
 	Tools             []RuntimeTool
 	HostTools         []HostTool
+	RuntimeCalls      *gate.Calls
 	CallTool          func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error)
 	Model             *ModelSession
 	Agent             *AgentSession

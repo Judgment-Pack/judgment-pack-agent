@@ -11,7 +11,7 @@ import {checkRecord,writeRunEvent} from '../recordReader'
 import {failureEvent} from '../failures'
 import {withDelegation} from '../delegation'
 const signal=()=>new AbortController().signal
-const session=(store:RunStore,id:string,execute:AssistantSession['hostTools'][number]['execute'],resume=false):AssistantSession=>({prompt:'Work',testPrompt:'',tools:[],hostTools:[{name:'save_object',effect:'workflow',description:'Save',inputSchema:{},execute,artifacts:()=>[{kind:'artifact',id:'opaque-artifact',digest:'sha256:'+'a'.repeat(64)}]}],callTool:vi.fn(async()=>({content:[]})),model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('done'))},signal:signal(),context:{currentRequest:{message:'Work',input:'Work'},runStore:{store,id,...(resume?{resume:true}:{})}}})
+const session=(store:RunStore,id:string,execute:AssistantSession['hostTools'][number]['execute'],resume=false):AssistantSession=>({prompt:'Work',testPrompt:'',tools:[],hostTools:[{name:'save_object',taxonomy:{operation:'own-state',effect:'pure'},effect:'workflow',description:'Save',inputSchema:{},execute,artifacts:()=>[{kind:'artifact',id:'opaque-artifact',digest:'sha256:'+'a'.repeat(64)}]}],callTool:vi.fn(async()=>({content:[]})),model:{family:'openai-compatible',model:'fixture',call:vi.fn(async()=>new Response('done'))},signal:signal(),context:{currentRequest:{message:'Work',input:'Work'},runStore:{store,id,...(resume?{resume:true}:{})}}})
 async function run(store:RunStore,id:string,execute:AssistantSession['hostTools'][number]['execute'],resume=false){
  const events:AssistantEvent[]=[]
  for await(const event of managedContext(session(store,id,execute,resume),async function*(prepared){

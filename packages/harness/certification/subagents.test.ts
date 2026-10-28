@@ -13,7 +13,7 @@ const report='Child evidence.\n```report\n'+JSON.stringify({summary:'Evidence ch
 async function play(engine:Engine,restored?:import('../execution/state').ExecutionCheckpoint,changed=false,mode?:string){
  const agent=engine.id==='codex'
  const skill:SkillDeclaration={id:'evidence',name:'evidence',description:'Check evidence.',instructions:'SKILL EVIDENCE RULE: cite supplied sources.',source:{kind:'custom',id:'project',version:'1',trust:'person'},tools:['lookup'],pinnedDigest:''}
- skill.pinnedDigest=await skillDigest(skill)
+ skill.pinnedDigest=await skillDigest(skill,new Map([['lookup',{operation:'read',effect:'read'} as const]]))
  const definition={...structuredClone(definitionVector.items[0]),model:'fixture',reasoning:'low',skills:['evidence'],bounds:{...definitionVector.items[0]!.bounds,modelRequests:5,bytes:24000}} as SubagentDeclaration
  definition.pinnedDigest=await subagentDigest(definition)
  if(mode){
@@ -29,7 +29,7 @@ async function play(engine:Engine,restored?:import('../execution/state').Executi
  const requests:any[]=[],toolResults:unknown[]=[],events:AssistantEvent[]=[];let parent=restored||['tool','skill','bounds','digest'].includes(mode??'')?1:0,child=0,reads=0
  const selectedTask=mode==='taskBounds'?{...task,bounds:{bytes:999999}}:task
  const steps=[{name:'load_skill',arguments:{name:'evidence'}},{name:'lookup',arguments:{}},{name:'delegate_tasks',arguments:{tasks:[task]}}]
- const common={policy:{models:{'child.auditor':{reasoning:agent?'none':'off'}}},context:{...(restored?{execution:restored}:{}),currentRequest:{message:'Delegate the evidence check.',input:'Delegate the evidence check.'}},prompt:'Delegate the evidence check.',testPrompt:'',tools:[],hostTools:[{name:'lookup',effect:'read' as const,description:'Read evidence.',inputSchema:{type:'object',properties:{}},execute:async()=>{reads++;return {content:[{type:'text' as const,text:'EVIDENCE: supplied facts.'}]}}}],skills:[skill],subagents:restored?(mode?.startsWith('lower-')?[definition]:changed?[{...definition,instructions:definition.instructions+' Changed.'}]:[]):[definition],callTool:async()=>({isError:true,content:[{type:'text' as const,text:'refused'}]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const}
+ const common={policy:{models:{'child.auditor':{reasoning:agent?'none':'off'}}},context:{...(restored?{execution:restored}:{}),currentRequest:{message:'Delegate the evidence check.',input:'Delegate the evidence check.'}},prompt:'Delegate the evidence check.',testPrompt:'',tools:[],hostTools:[{name:'lookup',taxonomy:{operation:'read',effect:'read'} as const,effect:'read' as const,description:'Read evidence.',inputSchema:{type:'object',properties:{}},execute:async()=>{reads++;return {content:[{type:'text' as const,text:'EVIDENCE: supplied facts.'}]}}}],skills:[skill],subagents:restored?(mode?.startsWith('lower-')?[definition]:changed?[{...definition,instructions:definition.instructions+' Changed.'}]:[]):[definition],callTool:async()=>({isError:true,content:[{type:'text' as const,text:'refused'}]}),signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const}
  let session:EngineSession
  if(agent)session={...common,effort:'low',agent:{model:'fixture',run:async(request,callbacks)=>{
   requests.push(request);const isChild=request.instructions.includes(definition.instructions)

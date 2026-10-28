@@ -22,7 +22,13 @@ const filesUnder=(directory,accept)=>{
  return files
 }
 
-const exportTarget=value=>typeof value==='string'?value:value?.default
+const exportTarget=value=>value===null?null:typeof value==='string'?value:value?.default
+// Node gives exact subpaths precedence, then the longest matching pattern prefix
+// and pattern. A null winner excludes a file even when a broader pattern finds it.
+function exportKey(exports,subpath){
+ if(Object.hasOwn(exports,subpath))return subpath
+ return Object.keys(exports).filter(key=>{const at=key.indexOf('*');return at>=0&&subpath.startsWith(key.slice(0,at))&&subpath.endsWith(key.slice(at+1))&&subpath.length>=key.length-1}).sort((a,b)=>b.indexOf('*')-a.indexOf('*')||b.length-a.length)[0]
+}
 const inside=(root,target)=>{const path=relative(root,target);return path===''||(!isAbsolute(path)&&path!=='..'&&!path.startsWith(`..${sep}`))}
 const displayed=(root,path)=>inside(root,path)?relative(root,path):path
 
@@ -82,13 +88,13 @@ export function packageEntrypoints(packageRoot){
  const entries=[]
  for(const key of namedExports)if(!manifest.exports?.[key])throw Error(`package export ${key} is missing its runtime target`)
  for(const [key,value] of Object.entries(manifest.exports??{})){
-  if(key.includes('*'))continue
+  if(key.includes('*')||exportTarget(value)===null)continue
   const target=exportTarget(value)
   if(typeof target!=='string')throw Error(`package export ${key} is missing its runtime target`)
   entries.push({specifier:`${manifest.name}${key.slice(1)}`,target:resolveLocalImport(root,join(root,'package.json'),target)})
  }
  for(const [key,value] of Object.entries(manifest.exports??{})){
-  if(!key.includes('*'))continue
+  if(!key.includes('*')||exportTarget(value)===null)continue
   const target=exportTarget(value)
   if(typeof target!=='string'||!target.includes('*'))throw Error(`package export ${key} has no wildcard runtime target`)
   const [prefix,suffix]=target.split('*')
@@ -96,7 +102,9 @@ export function packageEntrypoints(packageRoot){
    const packaged=`./${relative(root,file).split(sep).join('/')}`
    if(!packaged.startsWith(prefix)||!packaged.endsWith(suffix))continue
    const wildcard=packaged.slice(prefix.length,packaged.length-suffix.length)
-   entries.push({specifier:`${manifest.name}${key.slice(1).replace('*',wildcard)}`,target:realpathSync(file)})
+   const subpath=key.replace('*',wildcard)
+   if(exportKey(manifest.exports,subpath)!==key)continue
+   entries.push({specifier:`${manifest.name}${subpath.slice(1)}`,target:realpathSync(file)})
   }
  }
  return entries
@@ -227,6 +235,44 @@ console.log('packed memory lifecycle: public native/browser resume, deletion, di
  return execFileSync(process.execPath,[consumer],{cwd:projectRoot,encoding:'utf8',env:{...process.env,NODE_OPTIONS:''},stdio:'pipe'})
 }
 
+/** Exercise the public retained-reader route from the actual installed tarball. */
+export function runReportConsumer(projectRoot){
+ const consumer=join(projectRoot,'run-report-consumer.mjs')
+ const reports=JSON.parse(readFileSync(new URL('../../../contract/vectors/report/reports.json',import.meta.url),'utf8')).items
+ const retained=JSON.parse(readFileSync(new URL('../../../contract/vectors/report/retained.json',import.meta.url),'utf8'))
+ const plans=['checkpoints','extended-checkpoints'].flatMap(name=>JSON.parse(readFileSync(new URL('../../../contract/vectors/plan/'+name+'.json',import.meta.url),'utf8')).items)
+ const frozen=readFileSync(new URL('../../../contract/records/run-report-v1.json',import.meta.url),'utf8')
+ const installedRoot=join(projectRoot,'node_modules','@judgment-pack','harness')
+ if(readFileSync(join(installedRoot,'contract','run-report-v1.json'),'utf8')!==frozen)throw Error('packed report v1 source schema differs from its frozen source')
+ if(JSON.stringify(JSON.parse(readFileSync(join(installedRoot,'dist','contract','run-report-v1.json'),'utf8')))!==JSON.stringify(JSON.parse(frozen)))throw Error('packed runtime report v1 graph differs from its frozen source')
+ writeFileSync(consumer,`import assert from 'node:assert/strict'
+import {readRunReport,canonicalRunReport,projectRunReport,RunReportInvalid,RunReportOverflow,MAX_RUN_REPORT_BYTES} from '@judgment-pack/harness/contract'
+import {readRunReport as directReader} from '@judgment-pack/harness/runReport'
+import {readExecution} from '@judgment-pack/harness/execution/state'
+assert.equal(readRunReport,directReader)
+const reports=${JSON.stringify(reports)},retained=${JSON.stringify(retained)}
+for(const value of [...reports,...retained.items]){
+ const expected=canonicalRunReport(value)
+ for(const input of [value,expected,new TextEncoder().encode(expected)])assert.equal(canonicalRunReport(readRunReport(input)),expected)
+}
+for(const fixture of ${JSON.stringify(plans)}){
+ const cp=readExecution({...fixture,status:'stopped'}),value=projectRunReport(cp),expected=canonicalRunReport(value)
+ assert.equal(canonicalRunReport(readRunReport(expected)),expected)
+}
+for(const row of retained.invalid){
+ const value=structuredClone(row.base===undefined?reports[1]:retained.items[row.base]);let target=value
+ for(const key of row.path.slice(0,-1))target=target[key]
+ const key=row.path.at(-1);if(row.remove)delete target[key];else target[key]=row.value
+ assert.throws(()=>readRunReport(value),RunReportInvalid,row.name)
+ assert.throws(()=>readRunReport(JSON.stringify(value)),RunReportInvalid,row.name)
+}
+assert.throws(()=>readRunReport(' '.repeat(MAX_RUN_REPORT_BYTES+1)),RunReportOverflow)
+assert.equal(canonicalRunReport({version:1,status:'running',extra:true}),'{"extra":true,"status":"running","version":1}')
+console.log('packed retained run report: public contract/direct exports, frozen schema, shared reports, Plan/evidence and refusals passed')
+`)
+ return execFileSync(process.execPath,[consumer],{cwd:projectRoot,encoding:'utf8',env:{...process.env,NODE_OPTIONS:''},stdio:'pipe'})
+}
+
 export function validateDeclarations(projectRoot,packageRoot,entries){
  // Check every local declaration edge ourselves. The consumer uses the package's
  // existing skipLibCheck policy for dependency declaration bodies.
@@ -268,6 +314,7 @@ export async function packedSmoke({bodyParserOnly=false,undiciOnly=false}={}){
   if(bodyParserOnly){console.log('packed body-parser: fresh and existing-lock SDK/Express paths passed');return}
   nativeEntrypoints(temporary,entries)
   process.stdout.write(memoryLifecycleConsumer(temporary))
+  process.stdout.write(runReportConsumer(temporary))
   await bundleEntrypoints(temporary,installedRoot,entries)
   validateDeclarations(temporary,installedRoot,entries)
   const installed=join(installedRoot,'contract','schemas','corpus-entry.json')

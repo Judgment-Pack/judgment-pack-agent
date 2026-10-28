@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
@@ -43,27 +42,19 @@ type pauseFile struct {
 
 // pauseServer is scenario 7's scripted MCP server as one external system across every run of the
 // scenario: the calls it ran, what the policy was asked, and the order the host's acknowledged
-// writes and the server's runs happened in. choreograph holds the agent capability's two calls made
-// at once to the order the model engines make them in: the first call's served-list check (by its
-// call id, the step's first) waits until the second has reached its own, and the second's waits
-// until the policy has answered the first, each for at most two seconds.
+// writes and the server's runs happened in. The agent's parallel callbacks have no
+// list-order guarantee. A served-list observation happens after the approval claim,
+// so delaying CurrentDigest cannot determine that claim's owner. Either handwritten
+// call may win; the checks bind its exact arguments and continuation to that owner.
 type pauseServer struct {
-	mu       sync.Mutex
-	executed int
-	asked    []runcontext.ApprovalRequest
-	log      []string
-
-	choreograph bool
-	digests     atomic.Int32
-	second      chan struct{}
-	first       chan struct{}
-	once        sync.Once
-	secondOnce  sync.Once
+	mu           sync.Mutex
+	executed     int
+	executedArgs []json.RawMessage
+	asked        []runcontext.ApprovalRequest
+	log          []string
 }
 
-func newPauseServer(choreograph bool) *pauseServer {
-	return &pauseServer{choreograph: choreograph, second: make(chan struct{}), first: make(chan struct{})}
-}
+func newPauseServer() *pauseServer { return &pauseServer{} }
 
 func (s *pauseServer) note(line string) {
 	s.mu.Lock()
@@ -84,25 +75,9 @@ func pauseTools(file sourcesFile, asked string, server *pauseServer) []runcontex
 	for _, listed := range file.Server {
 		held := listed
 		out = append(out, runcontext.HostTool{
-			Name: held.Name, Description: held.Description, InputSchema: held.InputSchema,
-			Source: &runcontext.ToolSource{Kind: "mcp", ID: "tracker", Trust: "public", ToolListDigest: file.Tracker.Pinned,
-				CurrentDigest: func(ctx context.Context) (string, error) {
-					if server.choreograph && held.Name == asked && server.digests.Add(1) <= 2 {
-						if strings.HasSuffix(runcontext.CallIDOf(ctx), "-1") {
-							select {
-							case <-server.second:
-							case <-time.After(2 * time.Second):
-							}
-						} else {
-							server.secondOnce.Do(func() { close(server.second) })
-							select {
-							case <-server.first:
-							case <-time.After(2 * time.Second):
-							}
-						}
-					}
-					return file.Tracker.Pinned, nil
-				}},
+			Name: held.Name, Taxonomy: held.Taxonomy, Description: held.Description, InputSchema: held.InputSchema,
+			Source: &runcontext.ToolSource{Kind: "mcp", ID: "tracker", Trust: "public", ToolListDigest: file.Tracker.Pinned, VerifyReceipt: trackerReceipt(held.Name, file.Tracker.Pinned, file.Issue),
+				CurrentDigest: func(context.Context) (string, error) { return file.Tracker.Pinned, nil }},
 			Approve: func(call runcontext.ApprovalRequest) string {
 				server.mu.Lock()
 				server.asked = append(server.asked, call)
@@ -110,11 +85,11 @@ func pauseTools(file sourcesFile, asked string, server *pauseServer) []runcontex
 				if held.Name != asked {
 					return "allow"
 				}
-				server.once.Do(func() { close(server.first) })
 				return "ask"
 			},
-			Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+			Execute: func(_ context.Context, args json.RawMessage) (runcontext.ToolResult, error) {
 				server.mu.Lock()
+				server.executedArgs = append(server.executedArgs, append(json.RawMessage(nil), args...))
 				server.executed++
 				server.log = append(server.log, "execute")
 				server.mu.Unlock()
@@ -202,8 +177,8 @@ func lastCheckpointOf(events []contract.RunEvent) *contract.Checkpoint {
 
 // approvalScenario plays scenario 8 with play: the pausing run, then each continued run from the
 // paused checkpoint's JSON text, the server's runs counted after each.
-func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*paused, error) {
-	out := &paused{server: newPauseServer(choreograph)}
+func approvalScenario(ctx context.Context, play pausePlay) (*paused, error) {
+	out := &paused{server: newPauseServer()}
 	if err := ScenarioFile("approval-pause", &out.file); err != nil {
 		return nil, err
 	}
@@ -216,7 +191,6 @@ func approvalScenario(ctx context.Context, play pausePlay, choreograph bool) (*p
 	if out.pausing, err = play(ctx, out.file.Pausing, tools(), request(), nil); err != nil {
 		return nil, err
 	}
-	out.server.choreograph = false
 	out.counts = append(out.counts, out.server.ran())
 	var last *contract.Checkpoint
 	for _, event := range out.pausing.Events {
@@ -458,12 +432,50 @@ func expectedCurrentEvents(raw json.RawMessage) []byte {
 	return out
 }
 
+// pauseExpectedArguments selects from the original handwritten calls, rather than
+// accepting arguments supplied by an emitted approval. Model turns are ordered;
+// native parallel callbacks may acquire the original claim in either order.
+func pauseExpectedArguments(file pauseFile, requested *contract.RunEventApprovalRequested, concurrent bool) (json.RawMessage, json.RawMessage, bool) {
+	var calls []turnCall
+	for _, turn := range file.Pausing {
+		if len(turn.Calls) > 0 {
+			if calls != nil {
+				return nil, nil, false
+			}
+			calls = turn.Calls
+		}
+	}
+	if len(calls) != 2 || calls[0].Tool != "tracker__create_issue" || calls[1].Tool != calls[0].Tool ||
+		!sameJSON(calls[0].Arguments, file.Asked.Arguments) || sameJSON(calls[0].Arguments, calls[1].Arguments) {
+		return nil, nil, false
+	}
+	for index, call := range calls {
+		if (!concurrent && index != 0) || !sameJSON([]byte(comparisonJSON(requested.Args)), call.Arguments) {
+			continue
+		}
+		return call.Arguments, calls[1-index].Arguments, true
+	}
+	return nil, nil, false
+}
+
+// Only the independently selected original call's arguments vary in the shared
+// pause vector. Every other field, including the durable approval, is still exact.
+func withPauseArguments(raw json.RawMessage, args json.RawMessage) []byte {
+	var value map[string]json.RawMessage
+	if json.Unmarshal(raw, &value) != nil {
+		return nil
+	}
+	value["args"] = args
+	out, _ := json.Marshal(value)
+	return out
+}
+
 // pauseAgainstVector compares the pausing run's last three events with approval/pause.json's items:
 // the same approval_requested, the checkpoint durable and paused with the same approval, then end,
 // the call id and the framing marker being the run's own; the checkpoint's other members (its id, operations, figures) are
 // each run's. It answers what differs, or "".
-func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *contract.RunEventExecutionCheckpoint, end contract.RunEvent) string {
-	vector, err := approvalVector("pause.json")
+func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *contract.RunEventExecutionCheckpoint, end contract.RunEvent, args json.RawMessage) string {
+	vector, err := approvalVector("pause-current.json")
 	if err != nil {
 		return err.Error()
 	}
@@ -482,11 +494,11 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 		return err.Error()
 	}
 	switch {
-	case !sameJSON(legacyIdentityJSON(requested), withCallID(expectedCurrentEvent(items[0]), requested.CallID)):
+	case !sameJSON(legacyIdentityJSON(requested), withCallID(withPauseArguments(expectedCurrentEvent(items[0]), args), requested.CallID)):
 		return "approval_requested was " + comparisonJSON(requested)
 	case emitted.Durable == nil || *emitted.Durable != checkpoint.Durable || emitted.Checkpoint.Status != checkpoint.Checkpoint.Status:
 		return "the checkpoint was " + comparisonJSON(emitted)
-	case !sameJSON(legacyIdentityJSON(emitted.Checkpoint.Approval), withMarker(withCallID(checkpoint.Checkpoint.Approval, requested.CallID), markerOf(emitted.Checkpoint.Approval))):
+	case !sameJSON(legacyIdentityJSON(emitted.Checkpoint.Approval), withMarker(withCallID(withPauseArguments(checkpoint.Checkpoint.Approval, args), requested.CallID), markerOf(emitted.Checkpoint.Approval))):
 		return "the checkpoint's approval was " + comparisonJSON(emitted.Checkpoint.Approval)
 	case !sameJSON([]byte(comparisonJSON(end)), expectedCurrentEvent(items[2])):
 		return "the last event was " + comparisonJSON(end)
@@ -499,7 +511,6 @@ func pauseAgainstVector(requested *contract.RunEventApprovalRequested, emitted *
 func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 	var out []Finding
 	record := `{"id":"tracker","identity":{"kind":"connection","label":"tracker"},"identityDigest":"sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2","kind":"mcp","tool":"create_issue","toolListDigest":"` + state.sources.Tracker.Pinned + `","trust":"public"}`
-	asked := state.file.Asked.Arguments
 	count := func(at int) int {
 		if at < len(state.counts) {
 			return state.counts[at]
@@ -514,7 +525,12 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			requested = append(requested, event.ApprovalRequested)
 		}
 	}
-	if len(requested) != 1 || requested[0].Name == nil || *requested[0].Name != "tracker__create_issue" || requested[0].Tool == nil || *requested[0].Tool != "create_issue" ||
+	var asked, pending json.RawMessage
+	ownerValid := false
+	if len(requested) == 1 {
+		asked, pending, ownerValid = pauseExpectedArguments(state.file, requested[0], agent)
+	}
+	if !ownerValid || len(requested) != 1 || requested[0].Name == nil || *requested[0].Name != "tracker__create_issue" || requested[0].Tool == nil || *requested[0].Tool != "create_issue" ||
 		!sameJSON([]byte(comparisonJSON(requested[0].Source)), []byte(record)) || !sameJSON([]byte(comparisonJSON(requested[0].Args)), asked) {
 		f.fail("approval_requested was %s", comparisonJSON(requested))
 	} else {
@@ -535,7 +551,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			saved.Durable == nil || !*saved.Durable || saved.Checkpoint.Status != "paused" || saved.Checkpoint.Approval == nil ||
 			saved.Checkpoint.Approval.State != "asked" || saved.Checkpoint.Approval.CallID != requested[0].CallID {
 			f.fail("the run did not end with the paused checkpoint, durable, and end")
-		} else if detail := pauseAgainstVector(requested[0], saved, events[n-1]); detail != "" {
+		} else if detail := pauseAgainstVector(requested[0], saved, events[n-1], asked); detail != "" {
 			f.fail("against approval/pause.json: %s", detail)
 		}
 	}
@@ -555,7 +571,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 			continue
 		}
 		calls++
-		if !strings.Contains(string(event.ToolCall.Args), "Mileage rate for the UK") || event.ToolCall.Source == nil ||
+		if !sameJSON(event.ToolCall.Args, pending) || event.ToolCall.CallID == nil || len(requested) != 1 || *event.ToolCall.CallID == requested[0].CallID || event.ToolCall.Source == nil ||
 			at+2 >= len(flow) || flow[at+1].Guardrail == nil || flow[at+1].Guardrail.Reason == nil || *flow[at+1].Guardrail.Reason != "approval pending" ||
 			flow[at+1].Guardrail.Action != "refused" || flow[at+2].ToolResult == nil || !flow[at+2].ToolResult.IsError ||
 			comparisonJSON(flow[at+2].ToolResult.CallID) != comparisonJSON(event.ToolCall.CallID) {
@@ -655,6 +671,22 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 		len(state.approved.Sent) != 0 || count(3) != 1 {
 		f.fail("the approved run: %v, %d sent, %d calls run", state.approvedLog, len(state.approved.Sent), count(3))
 	}
+	state.server.mu.Lock()
+	executedArgs := append([]json.RawMessage(nil), state.server.executedArgs...)
+	state.server.mu.Unlock()
+	if len(executedArgs) != 1 || !sameJSON(executedArgs[0], asked) {
+		f.fail("the approved owner executed different arguments: %s", comparisonJSON(executedArgs))
+	}
+	for _, run := range []*pauseRun{state.refused, state.approved, state.restarted} {
+		for _, event := range runEvents(run) {
+			if saved := event.ExecutionCheckpoint; saved != nil && saved.Checkpoint.Approval != nil {
+				approval := saved.Checkpoint.Approval
+				if approval.CallID != callID || !sameJSON([]byte(comparisonJSON(approval.Args)), asked) {
+					f.fail("a continued checkpoint changed approval ownership: %s", comparisonJSON(approval))
+				}
+			}
+		}
+	}
 	out = append(out, f.list...)
 
 	f = &findings{check: prefix + "restart"}
@@ -662,7 +694,7 @@ func approvalPauseFindings(state *paused, prefix string, agent bool) []Finding {
 		f.fail("the approved run wrote no executed checkpoint to restart from")
 	} else {
 		data, _, ok := approvalData(continuationIn(state.restarted))
-		if count(4) != 1 || writtenAt(state.restarted.Events, "approved") != nil || !ok || data["approved"] != true || resultText(data) != state.sources.Issue {
+		if count(4) != 1 || writtenAt(state.restarted.Events, "approved") != nil || !ok || data["approved"] != true || data["callId"] != callID || resultText(data) != state.sources.Issue {
 			f.fail("the restart: %d calls run, continuation %q", count(4), continuationIn(state.restarted))
 		}
 		if last := lastCheckpointOf(state.restarted.Events); last == nil || last.Approval == nil || last.Approval.State != "answered" || len(errorsOf(state.restarted.Events)) > 0 {
@@ -763,7 +795,7 @@ func ApprovalPauseWith(with func(Adapter) Adapter) ScenarioCheck {
 			if err := ScenarioFile("approval-pause", &file); err != nil {
 				return nil, err
 			}
-			declared := pauseTools(sources, file.Asked.Tool, newPauseServer(false))
+			declared := pauseTools(sources, file.Asked.Tool, newPauseServer())
 			scenario, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "approval-pause", AnswerAs: answerAs}, declared, true)
 			if err != nil {
 				return nil, err
@@ -796,7 +828,7 @@ func ApprovalPauseWith(with func(Adapter) Adapter) ScenarioCheck {
 				}
 				return out, nil
 			}
-			state, err := approvalScenario(ctx, play, false)
+			state, err := approvalScenario(ctx, play)
 			if err != nil {
 				return nil, err
 			}
@@ -852,6 +884,43 @@ func openingOf(request EndpointRequest) []string {
 // invocations (the TypeScript suite's agent engine makes the same ones).
 var AgentApprovalNames = []string{"8 agent pause", "8 agent pending", "8 agent wrong", "8 agent refused", "8 agent approved", "8 agent restart", "8 agent continuation", "8 agent figures"}
 
+// parallelApprovalFixture holds the original approval claim at its unlocked list
+// observer until the sibling callback publishes its refusal. Either call can own
+// the claim; the fixture needs both callbacks admitted before the owner pauses.
+func parallelApprovalFixture(ctx context.Context, tools []runcontext.HostTool, asked string, emit func(contract.RunEvent)) ([]runcontext.HostTool, func(contract.RunEvent)) {
+	pending := make(chan struct{})
+	var observed sync.Once
+	tools = append([]runcontext.HostTool(nil), tools...)
+	for i := range tools {
+		if tools[i].Name != asked || tools[i].Source == nil || tools[i].Source.CurrentDigest == nil {
+			continue
+		}
+		source := *tools[i].Source
+		check := source.CurrentDigest
+		source.CurrentDigest = func(given context.Context) (string, error) {
+			digest, err := check(given)
+			if err != nil {
+				return digest, err
+			}
+			select {
+			case <-pending:
+				return digest, nil
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-given.Done():
+				return "", given.Err()
+			}
+		}
+		tools[i].Source = &source
+	}
+	return tools, func(event contract.RunEvent) {
+		emit(event)
+		if result := event.ToolResult; result != nil && result.Name == "tracker__"+asked && result.IsError {
+			observed.Do(func() { close(pending) })
+		}
+	}
+}
+
 // agentApprovalChecks is scenario 8 on the agent capability, through the coordinator the caller
 // binds (with), each run's invocations played by the binding's provider-run function. The pausing
 // invocation makes its two calls at once.
@@ -864,7 +933,7 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 	if err := ScenarioFile("approval-pause", &file); err != nil {
 		return nil, err
 	}
-	scenario, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "approval-pause", AnswerAs: "stream"}, pauseTools(sources, file.Asked.Tool, newPauseServer(false)), true)
+	scenario, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "approval-pause", AnswerAs: "stream"}, pauseTools(sources, file.Asked.Tool, newPauseServer()), true)
 	if err != nil {
 		return nil, err
 	}
@@ -877,9 +946,13 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 	children := scenarioChildren(scenario)
 	play := func(ctx context.Context, turns []sourcesTurn, tools []runcontext.HostTool, input *runcontext.Input, stop func()) (*pauseRun, error) {
 		steps := sourcesSteps(turns)
+		emit := scenario.emit
+		if input.Execution == nil {
+			tools, emit = parallelApprovalFixture(ctx, tools, file.Asked.Tool, emit)
+		}
 		watch := &monitor{}
 		run := &Run{ModelName: parentModel, Gate: scenario.gate.Calls(), Tools: scenario.offer.Tools, Prompt: file.Request, AllowConversation: true, Interactive: true,
-			HostTools: tools, Context: input, Emit: pauseEmitter(scenario.emit, stop), Children: children,
+			HostTools: tools, Context: input, Emit: pauseEmitter(emit, stop), Children: children,
 			Agent: &adapter.Agent{Model: parentModel, Run: watch.wrap(host.Bind(func(adapter.AgentRequest, int) AgentPlay { return AgentPlay{Steps: steps} }))}}
 		seal := sealNetwork()
 		_ = runner.Run(ctx, run)
@@ -894,7 +967,7 @@ func agentApprovalChecks(ctx context.Context, server *Server, host AgentHost, wi
 		}
 		return out, nil
 	}
-	state, err := approvalScenario(ctx, play, true)
+	state, err := approvalScenario(ctx, play)
 	if err != nil {
 		return nil, err
 	}

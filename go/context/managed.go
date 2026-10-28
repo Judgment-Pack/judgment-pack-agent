@@ -459,6 +459,16 @@ func (b *Boundary) persist(events []contract.RunEvent) ([]contract.RunEvent, boo
 		b.ended = true
 		return append(output, currentEvents([]contract.RunEvent{failure.Event(err, "storage"), {End: &contract.RunEventEnd{Type: "end"}}})...), true
 	}
+	for i, event := range output {
+		if event.End != nil {
+			if binding := b.run.Context.Persistence("author"); binding != nil {
+				if recorded := binding.Writer.finishCapture(b.run.Context.outputContext, *binding, b.run.Context.ResolvedPolicy); recorded != nil {
+					output = append(output[:i], append([]contract.RunEvent{contract.StampEvent(*recorded)}, output[i:]...)...)
+				}
+			}
+			break
+		}
+	}
 	return output, false
 }
 func (b *Boundary) Open() []contract.RunEvent { output, _ := b.persist(b.open()); return output }

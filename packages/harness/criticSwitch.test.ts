@@ -156,7 +156,7 @@ describe('request_review, the model’s ask (ADR-0010)', () => {
     const names = session.values.hostTools.map((tool) => tool.name)
     expect(names.at(-1)).toBe(REQUEST_REVIEW)
     const offered = session.values.hostTools.find((tool) => tool.name === REQUEST_REVIEW)!
-    expect({ name: offered.name, description: offered.description, inputSchema: offered.inputSchema, effect: offered.effect }).toEqual(requestReview.items[0])
+    expect({ name: offered.name, description: offered.description, inputSchema: offered.inputSchema, effect: offered.effect, taxonomy: offered.taxonomy, annotations: offered.annotations }).toEqual(requestReview.items[0])
   })
 
   it.each([

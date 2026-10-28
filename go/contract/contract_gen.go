@@ -6,250 +6,399 @@ import "encoding/json"
 
 // Registry maps the address a vector names its schema by to a new value of its Go type.
 var Registry = map[string]func() any{
-	"approval.json":                                 func() any { return new(Approval) },
-	"approval.json#/$defs/grant":                    func() any { return new(ApprovalGrant) },
-	"approval.json#/$defs/request":                  func() any { return new(ApprovalRequest) },
-	"approval.json#/$defs/action":                   func() any { return new(string) },
-	"budget.json":                                   func() any { return new(Budget) },
-	"budget.json#/$defs/modelBudget":                func() any { return new(BudgetModelBudget) },
-	"budget.json#/$defs/configuration":              func() any { return new(BudgetConfiguration) },
-	"budget.json#/$defs/requestAllowance":           func() any { return new(BudgetRequestAllowance) },
-	"budget.json#/$defs/toolCallAllowance":          func() any { return new(BudgetToolCallAllowance) },
-	"budget.json#/$defs/budgetIncreaseAnswer":       func() any { return new(BudgetBudgetIncreaseAnswer) },
-	"budget.json#/$defs/deskLimits":                 func() any { return new(BudgetDeskLimits) },
-	"budget.json#/$defs/stateLocation":              func() any { return new(BudgetStateLocation) },
-	"budget.json#/$defs/hostPart":                   func() any { return new(BudgetHostPart) },
-	"capability.json":                               func() any { return new(Capability) },
-	"capability.json#/$defs/reasoning":              func() any { return new(CapabilityReasoning) },
-	"capability.json#/$defs/streamingQuirks":        func() any { return new(CapabilityStreamingQuirks) },
-	"capability.json#/$defs/geminiModelPath":        func() any { return new(CapabilityGeminiModelPath) },
-	"capability.json#/$defs/endpointCapabilities":   func() any { return new(CapabilityEndpointCapabilities) },
-	"checkpoint.json":                               func() any { return new(Checkpoint) },
-	"checkpoint.json#/$defs/grant":                  func() any { return new(CheckpointGrant) },
-	"checkpoint.json#/$defs/taskStep":               func() any { return new(CheckpointTaskStep) },
-	"checkpoint.json#/$defs/operation":              func() any { return new(CheckpointOperation) },
-	"checkpoint.json#/$defs/retainedEntry":          func() any { return new(CheckpointRetainedEntry) },
-	"checkpoint.json#/$defs/handoff":                func() any { return new(CheckpointHandoff) },
-	"checkpoint.json#/$defs/approval":               func() any { return new(CheckpointApproval) },
-	"checkpoint.json#/$defs/approvalDecision":       func() any { return new(CheckpointApprovalDecision) },
-	"checkpoint.json#/$defs/approvalContinuation":   func() any { return new(string) },
-	"checkpoint.json#/$defs/draftDocument":          func() any { return new(CheckpointDraftDocument) },
-	"checkpoint.json#/$defs/draft":                  func() any { return new(CheckpointDraft) },
-	"checkpoint.json#/$defs/sourceIdentity":         func() any { return new(CheckpointSourceIdentity) },
-	"checkpoint.json#/$defs/durableScope":           func() any { return new(CheckpointDurableScope) },
-	"checkpoint.json#/$defs/artifactObservation":    func() any { return new(CheckpointArtifactObservation) },
-	"checkpoint.json#/$defs/durableDispatch":        func() any { return new(CheckpointDurableDispatch) },
-	"checkpoint.json#/$defs/durableObservation":     func() any { return new(CheckpointDurableObservation) },
-	"checkpoint.json#/$defs/durableBook":            func() any { return new(CheckpointDurableBook) },
-	"checkpoint.json#/$defs/planChange":             func() any { return new(CheckpointPlanChange) },
-	"checkpoint.json#/$defs/planRevision":           func() any { return new(CheckpointPlanRevision) },
-	"checkpoint.json#/$defs/planState":              func() any { return new(CheckpointPlanState) },
-	"checkpoint.json#/$defs/stepEvidence":           func() any { return new(CheckpointStepEvidence) },
-	"checkpoint.json#/$defs/planOrigin":             func() any { return new(CheckpointPlanOrigin) },
-	"checkpoint.json#/$defs/acceptedPlan":           func() any { return new(CheckpointAcceptedPlan) },
-	"checkpoint.json#/$defs/planDeparture":          func() any { return new(CheckpointPlanDeparture) },
-	"checkpoint.json#/$defs/planDepartureRecord":    func() any { return new(CheckpointPlanDepartureRecord) },
-	"checkpoint.json#/$defs/planRefusal":            func() any { return new(CheckpointPlanRefusal) },
-	"checkpoint.json#/$defs/pendingDeparture":       func() any { return new(CheckpointPendingDeparture) },
-	"checkpoint.json#/$defs/planDecision":           func() any { return new(CheckpointPlanDecision) },
-	"corpus-entry.json":                             func() any { return new(CorpusEntry) },
-	"delegated-task.json":                           func() any { return new(DelegatedTask) },
-	"delegated-task.json#/$defs/uuid":               func() any { return new(string) },
-	"delegated-task.json#/$defs/time":               func() any { return new(string) },
-	"delegated-task.json#/$defs/state":              func() any { return new(string) },
-	"delegated-task.json#/$defs/request":            func() any { return new(DelegatedTaskRequest) },
-	"delegated-task.json#/$defs/taskRequest":        func() any { return new(DelegatedTaskTaskRequest) },
-	"delegated-task.json#/$defs/profile":            func() any { return new(DelegatedTaskProfile) },
-	"delegated-task.json#/$defs/budget":             func() any { return new(DelegatedTaskBudget) },
-	"delegated-task.json#/$defs/resultCursor":       func() any { return new(DelegatedTaskResultCursor) },
-	"delegated-task.json#/$defs/answer":             func() any { return new(DelegatedTaskAnswer) },
-	"delegated-task.json#/$defs/answerTask":         func() any { return new(DelegatedTaskAnswerTask) },
-	"delegated-task.json#/$defs/brief":              func() any { return new(DelegatedTaskBrief) },
-	"delegated-task.json#/$defs/briefReference":     func() any { return new(DelegatedTaskBriefReference) },
-	"delegated-task.json#/$defs/earlierWork":        func() any { return new(DelegatedTaskEarlierWork) },
-	"delegated-task.json#/$defs/continuation":       func() any { return new(string) },
-	"delegated-task.json#/$defs/citation":           func() any { return new(DelegatedTaskCitation) },
-	"delegated-task.json#/$defs/analyzeFinding":     func() any { return new(DelegatedTaskAnalyzeFinding) },
-	"delegated-task.json#/$defs/reviewFinding":      func() any { return new(DelegatedTaskReviewFinding) },
-	"delegated-task.json#/$defs/researchFinding":    func() any { return new(DelegatedTaskResearchFinding) },
-	"delegated-task.json#/$defs/authorTestFinding":  func() any { return new(DelegatedTaskAuthorTestFinding) },
-	"delegated-task.json#/$defs/openQuestion":       func() any { return new(DelegatedTaskOpenQuestion) },
-	"delegated-task.json#/$defs/analyzeReport":      func() any { return new(DelegatedTaskAnalyzeReport) },
-	"delegated-task.json#/$defs/reviewReport":       func() any { return new(DelegatedTaskReviewReport) },
-	"delegated-task.json#/$defs/researchReport":     func() any { return new(DelegatedTaskResearchReport) },
-	"delegated-task.json#/$defs/authorTestReport":   func() any { return new(DelegatedTaskAuthorTestReport) },
-	"delegated-task.json#/$defs/report":             func() any { return new(DelegatedTaskReport) },
-	"delegated-task.json#/$defs/hostRequest":        func() any { return new(DelegatedTaskHostRequest) },
-	"export.json":                                   func() any { return new(Export) },
-	"export.json#/$defs/record":                     func() any { return new(ExportRecord) },
-	"failure.json":                                  func() any { return new(Failure) },
-	"failure.json#/$defs/code":                      func() any { return new(string) },
-	"failure.json#/$defs/source":                    func() any { return new(string) },
-	"failure.json#/$defs/outcome":                   func() any { return new(string) },
-	"failure.json#/$defs/recovery":                  func() any { return new(string) },
-	"failure.json#/$defs/catalogueEntry":            func() any { return new(FailureCatalogueEntry) },
-	"failure.json#/$defs/toolFailureContent":        func() any { return new(FailureToolFailureContent) },
-	"memory.json":                                   func() any { return new(Memory) },
-	"memory.json#/$defs/answer":                     func() any { return new([]Memory) },
-	"memory.json#/$defs/lifecycleUpdate":            func() any { return new(MemoryLifecycleUpdate) },
-	"memory.json#/$defs/lifecycleAnswer":            func() any { return new([]MemoryLifecycleUpdate) },
-	"policy.json":                                   func() any { return new(Policy) },
-	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
-	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
-	"policy.json#/$defs/discovered":                 func() any { return new(PolicyDiscovered) },
-	"policy.json#/$defs/reasoningValue":             func() any { return new(string) },
-	"policy.json#/$defs/resolved":                   func() any { return new(map[string]PolicyMember) },
-	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
-	"policy.json#/$defs/outputPattern":              func() any { return new(PolicyOutputPattern) },
-	"provenance.json":                               func() any { return new(Provenance) },
-	"provenance.json#/$defs/recordDigest":           func() any { return new(string) },
-	"provenance.json#/$defs/retainUntil":            func() any { return new(string) },
-	"provenance.json#/$defs/completion":             func() any { return new(ProvenanceCompletion) },
-	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
-	"provenance.json#/$defs/sha256":                 func() any { return new(string) },
-	"provenance.json#/$defs/requestKey":             func() any { return new(string) },
-	"provenance.json#/$defs/promptDigest":           func() any { return new(ProvenancePromptDigest) },
-	"provenance.json#/$defs/compactionSummary":      func() any { return new(ProvenanceCompactionSummary) },
-	"provenance.json#/$defs/compactionReport":       func() any { return new(ProvenanceCompactionReport) },
-	"provenance.json#/$defs/queuedSteer":            func() any { return new(ProvenanceQueuedSteer) },
-	"provenance.json#/$defs/deliveredSteer":         func() any { return new(ProvenanceDeliveredSteer) },
-	"provenance.json#/$defs/steerReport":            func() any { return new(ProvenanceSteerReport) },
-	"provenance.json#/$defs/engine":                 func() any { return new(string) },
-	"provenance.json#/$defs/criticFigures":          func() any { return new(ProvenanceCriticFigures) },
-	"provenance.json#/$defs/tokenFigures":           func() any { return new(ProvenanceTokenFigures) },
-	"provenance.json#/$defs/childFigures":           func() any { return new(ProvenanceChildFigures) },
-	"provenance.json#/$defs/figuresTotal":           func() any { return new(ProvenanceFiguresTotal) },
-	"provenance.json#/$defs/batchFigures":           func() any { return new(ProvenanceBatchFigures) },
-	"provenance.json#/$defs/parentFigures":          func() any { return new(ProvenanceParentFigures) },
-	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
-	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
-	"provenance.json#/$defs/identityFigures":        func() any { return new(ProvenanceIdentityFigures) },
-	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
-	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
-	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
-	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
-	"provenance.json#/$defs/provider":               func() any { return new(ProvenanceProvider) },
-	"provenance.json#/$defs/crossProvider":          func() any { return new(ProvenanceCrossProvider) },
-	"provenance.json#/$defs/usage":                  func() any { return new(UsageRow) },
-	"provenance.json#/$defs/memoryRecall":           func() any { return new(ProvenanceMemoryRecall) },
-	"provenance.json#/$defs/memories":               func() any { return new(ProvenanceMemories) },
-	"provenance.json#/$defs/edit":                   func() any { return new(ProvenanceEdit) },
-	"provenance.json#/$defs/edits":                  func() any { return new([]ProvenanceEdit) },
-	"provenance.json#/$defs/outputGuard":            func() any { return new(map[string]int64) },
-	"provenance.json#/$defs/recordFigures":          func() any { return new(ProvenanceRecordFigures) },
-	"question.json":                                 func() any { return new(Question) },
-	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
-	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
-	"question.json#/$defs/saved":                    func() any { return new(QuestionSaved) },
-	"question.json#/$defs/formatFailure":            func() any { return new(QuestionFormatFailure) },
-	"run-event.json":                                func() any { return new(RunEvent) },
-	"run-event.json#/$defs/steered":                 func() any { return new(RunEventSteered) },
-	"run-event.json#/$defs/compacted":               func() any { return new(RunEventCompacted) },
-	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
-	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
-	"run-event.json#/$defs/approval_requested":      func() any { return new(RunEventApprovalRequested) },
-	"run-event.json#/$defs/skill_loaded":            func() any { return new(RunEventSkillLoaded) },
-	"run-event.json#/$defs/skill_unloaded":          func() any { return new(RunEventSkillUnloaded) },
-	"run-event.json#/$defs/retry":                   func() any { return new(RunEventRetry) },
-	"run-event.json#/$defs/response_recovery":       func() any { return new(RunEventResponseRecovery) },
-	"run-event.json#/$defs/delegation_requested":    func() any { return new(RunEventDelegationRequested) },
-	"run-event.json#/$defs/delegated_task":          func() any { return new(RunEventDelegatedTask) },
-	"run-event.json#/$defs/user_question":           func() any { return new(RunEventUserQuestion) },
-	"run-event.json#/$defs/reasoning":               func() any { return new(RunEventReasoning) },
-	"run-event.json#/$defs/message":                 func() any { return new(RunEventMessage) },
-	"run-event.json#/$defs/message_progress":        func() any { return new(RunEventMessageProgress) },
-	"run-event.json#/$defs/guardrail":               func() any { return new(RunEventGuardrail) },
-	"run-event.json#/$defs/thinking_unavailable":    func() any { return new(RunEventThinkingUnavailable) },
-	"run-event.json#/$defs/critic_decided":          func() any { return new(RunEventCriticDecided) },
-	"run-event.json#/$defs/critique":                func() any { return new(RunEventCritique) },
-	"run-event.json#/$defs/proposal":                func() any { return new(RunEventProposal) },
-	"run-event.json#/$defs/error":                   func() any { return new(RunEventError) },
-	"run-event.json#/$defs/end":                     func() any { return new(RunEventEnd) },
-	"run-event.json#/$defs/caseOutcome":             func() any { return new(RunEventCaseOutcome) },
-	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
-	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
-	"run-event.json#/$defs/policy_resolved":         func() any { return new(RunEventPolicyResolved) },
-	"run-event.json#/$defs/memory_proposed":         func() any { return new(RunEventMemoryProposed) },
-	"run-event.json#/$defs/memory_recalled":         func() any { return new(RunEventMemoryRecalled) },
-	"run-event.json#/$defs/edit_applied":            func() any { return new(RunEventEditApplied) },
-	"run-event.json#/$defs/edit_refused":            func() any { return new(RunEventEditRefused) },
-	"run-event.json#/$defs/output_guarded":          func() any { return new(RunEventOutputGuarded) },
-	"run-event.json#/$defs/export_written":          func() any { return new(RunEventExportWritten) },
-	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
-	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
-	"run-event.json#/$defs/recorded":                func() any { return new(RunEventRecorded) },
-	"run-event.json#/$defs/plan_revised":            func() any { return new(RunEventPlanRevised) },
-	"run-event.json#/$defs/plan_departed":           func() any { return new(RunEventPlanDeparted) },
-	"run-event.json#/$defs/plan_completion_refused": func() any { return new(RunEventPlanCompletionRefused) },
-	"run-event.json#/$defs/plan_drift_decided":      func() any { return new(RunEventPlanDriftDecided) },
-	"run-report.json":                               func() any { return new(RunReport) },
-	"skill.json":                                    func() any { return new(Skill) },
-	"skill.json#/$defs/name":                        func() any { return new(string) },
-	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
-	"skill.json#/$defs/digest":                      func() any { return new(string) },
-	"skill.json#/$defs/bytes":                       func() any { return new(int64) },
-	"subagent.json":                                 func() any { return new(Subagent) },
-	"subagent.json#/$defs/record":                   func() any { return new(SubagentRecord) },
-	"tool-call.json":                                func() any { return new(ToolCall) },
-	"tool-call.json#/$defs/mcpCall":                 func() any { return new(ToolCallMCPCall) },
-	"tool-call.json#/$defs/agentWireCall":           func() any { return new(ToolCallAgentWireCall) },
-	"tool-call.json#/$defs/testCasesArguments":      func() any { return new(ToolCallTestCasesArguments) },
-	"tool-call.json#/$defs/textToolCall":            func() any { return new(ToolCallTextToolCall) },
-	"tool-offer.json":                               func() any { return new(ToolOffer) },
-	"tool-offer.json#/$defs/runtimeTool":            func() any { return new(ToolOfferRuntimeTool) },
-	"tool-offer.json#/$defs/hostTool":               func() any { return new(ToolOfferHostTool) },
-	"tool-offer.json#/$defs/proposePack":            func() any { return new(ToolOfferProposePack) },
-	"tool-offer.json#/$defs/agentWireTool":          func() any { return new(ToolOfferAgentWireTool) },
-	"tool-offer.json#/$defs/runtimeCeiling":         func() any { return new(string) },
-	"tool-offer.json#/$defs/reservedName":           func() any { return new(string) },
-	"tool-offer.json#/$defs/criticTools":            func() any { return new(string) },
-	"tool-offer.json#/$defs/effectClass":            func() any { return new(string) },
-	"tool-offer.json#/$defs/approvalPolicy":         func() any { return new(string) },
-	"tool-offer.json#/$defs/identity":               func() any { return new(ToolOfferIdentity) },
-	"tool-offer.json#/$defs/sourceRecord":           func() any { return new(ToolOfferSourceRecord) },
-	"tool-offer.json#/$defs/toolListDigest":         func() any { return new(string) },
-	"tool-offer.json#/$defs/wireName":               func() any { return new(string) },
-	"tool-offer.json#/$defs/nameMapping":            func() any { return new(ToolOfferNameMapping) },
-	"tool-offer.json#/$defs/sourceDeclaration":      func() any { return new(ToolOfferSourceDeclaration) },
-	"tool-offer.json#/$defs/catalogueEntry":         func() any { return new(ToolOfferCatalogueEntry) },
-	"tool-offer.json#/$defs/loadTool":               func() any { return new(ToolOfferLoadTool) },
-	"tool-offer.json#/$defs/loadedSchema":           func() any { return new(ToolOfferLoadedSchema) },
-	"tool-offer.json#/$defs/skillDeclaration":       func() any { return new(json.RawMessage) },
-	"tool-offer.json#/$defs/skillCatalogueEntry":    func() any { return new(ToolOfferSkillCatalogueEntry) },
-	"tool-offer.json#/$defs/loadSkill":              func() any { return new(ToolOfferLoadSkill) },
-	"tool-offer.json#/$defs/unloadSkill":            func() any { return new(ToolOfferUnloadSkill) },
-	"tool-offer.json#/$defs/loadedSkill":            func() any { return new(ToolOfferLoadedSkill) },
-	"tool-offer.json#/$defs/criticMode":             func() any { return new(string) },
-	"tool-offer.json#/$defs/criticReasoning":        func() any { return new(string) },
-	"tool-offer.json#/$defs/requestReview":          func() any { return new(ToolOfferRequestReview) },
-	"tool-offer.json#/$defs/subagentCatalogueEntry": func() any { return new(ToolOfferSubagentCatalogueEntry) },
-	"tool-offer.json#/$defs/remember":               func() any { return new(ToolOfferRemember) },
-	"tool-offer.json#/$defs/propose_edit":           func() any { return new(ToolOfferProposeEdit) },
-	"tool-offer.json#/$defs/propose_delete":         func() any { return new(ToolOfferProposeDelete) },
-	"tool-offer.json#/$defs/propose_insert":         func() any { return new(ToolOfferProposeInsert) },
-	"tool-offer.json#/$defs/undo_edit":              func() any { return new(ToolOfferUndoEdit) },
-	"tool-offer.json#/$defs/draftId":                func() any { return new(string) },
-	"tool-result.json":                              func() any { return new(ToolResult) },
-	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
-	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
-	"tool-result.json#/$defs/referenceEnvelope":     func() any { return new(ToolResultReferenceEnvelope) },
-	"tool-result.json#/$defs/unavailableEnvelope":   func() any { return new(ToolResultUnavailableEnvelope) },
-	"tool-result.json#/$defs/readContextArguments":  func() any { return new(ToolResultReadContextArguments) },
-	"tool-result.json#/$defs/readArguments":         func() any { return new(ToolResultReadArguments) },
-	"tool-result.json#/$defs/readResult":            func() any { return new(ToolResultReadResult) },
-	"tool-result.json#/$defs/imagePart":             func() any { return new(ToolResultImagePart) },
-	"tool-result.json#/$defs/imageReadResult":       func() any { return new(ToolResultImageReadResult) },
-	"tool-result.json#/$defs/attachment":            func() any { return new(ToolResultAttachment) },
-	"tool-result.json#/$defs/searchArguments":       func() any { return new(ToolResultSearchArguments) },
-	"tool-result.json#/$defs/searchResult":          func() any { return new(ToolResultSearchResult) },
-	"tool-result.json#/$defs/agentWireAnswer":       func() any { return new(ToolResultAgentWireAnswer) },
-	"tool-result.json#/$defs/framedData":            func() any { return new(string) },
-	"tool-result.json#/$defs/textToolResultMessage": func() any { return new(ToolResultTextToolResultMessage) },
-	"tool-result.json#/$defs/turnIndex":             func() any { return new(ToolResultTurnIndex) },
-	"tool-result.json#/$defs/readCacheKey":          func() any { return new(ToolResultReadCacheKey) },
-	"usage.json":                                    func() any { return new(Usage) },
-	"usage.json#/$defs/tokens":                      func() any { return new(UsageTokens) },
-	"usage.json#/$defs/row":                         func() any { return new(UsageRow) },
+	"admitted-skill-v1.json":                                    func() any { return new(AdmittedSkillV1) },
+	"approval.json":                                             func() any { return new(Approval) },
+	"approval.json#/$defs/grant":                                func() any { return new(ApprovalGrant) },
+	"approval.json#/$defs/request":                              func() any { return new(ApprovalRequest) },
+	"approval.json#/$defs/action":                               func() any { return new(string) },
+	"budget.json":                                               func() any { return new(Budget) },
+	"budget.json#/$defs/modelBudget":                            func() any { return new(BudgetModelBudget) },
+	"budget.json#/$defs/configuration":                          func() any { return new(BudgetConfiguration) },
+	"budget.json#/$defs/requestAllowance":                       func() any { return new(BudgetRequestAllowance) },
+	"budget.json#/$defs/toolCallAllowance":                      func() any { return new(BudgetToolCallAllowance) },
+	"budget.json#/$defs/budgetIncreaseAnswer":                   func() any { return new(BudgetBudgetIncreaseAnswer) },
+	"budget.json#/$defs/deskLimits":                             func() any { return new(BudgetDeskLimits) },
+	"budget.json#/$defs/stateLocation":                          func() any { return new(BudgetStateLocation) },
+	"budget.json#/$defs/hostPart":                               func() any { return new(BudgetHostPart) },
+	"capability.json":                                           func() any { return new(Capability) },
+	"capability.json#/$defs/reasoning":                          func() any { return new(CapabilityReasoning) },
+	"capability.json#/$defs/streamingQuirks":                    func() any { return new(CapabilityStreamingQuirks) },
+	"capability.json#/$defs/geminiModelPath":                    func() any { return new(CapabilityGeminiModelPath) },
+	"capability.json#/$defs/endpointCapabilities":               func() any { return new(CapabilityEndpointCapabilities) },
+	"chat-context-snapshot.json":                                func() any { return new(ChatContextSnapshot) },
+	"checkpoint.json":                                           func() any { return new(Checkpoint) },
+	"checkpoint.json#/$defs/grant":                              func() any { return new(CheckpointGrant) },
+	"checkpoint.json#/$defs/taskStep":                           func() any { return new(CheckpointTaskStep) },
+	"checkpoint.json#/$defs/operation":                          func() any { return new(CheckpointOperation) },
+	"checkpoint.json#/$defs/retainedEntry":                      func() any { return new(CheckpointRetainedEntry) },
+	"checkpoint.json#/$defs/handoff":                            func() any { return new(CheckpointHandoff) },
+	"checkpoint.json#/$defs/approval":                           func() any { return new(CheckpointApproval) },
+	"checkpoint.json#/$defs/approvalDecision":                   func() any { return new(CheckpointApprovalDecision) },
+	"checkpoint.json#/$defs/approvalContinuation":               func() any { return new(string) },
+	"checkpoint.json#/$defs/draftDocument":                      func() any { return new(CheckpointDraftDocument) },
+	"checkpoint.json#/$defs/draft":                              func() any { return new(CheckpointDraft) },
+	"checkpoint.json#/$defs/sourceIdentity":                     func() any { return new(CheckpointSourceIdentity) },
+	"checkpoint.json#/$defs/durableScope":                       func() any { return new(CheckpointDurableScope) },
+	"checkpoint.json#/$defs/artifactObservation":                func() any { return new(CheckpointArtifactObservation) },
+	"checkpoint.json#/$defs/durableDispatch":                    func() any { return new(CheckpointDurableDispatch) },
+	"checkpoint.json#/$defs/durableObservation":                 func() any { return new(CheckpointDurableObservation) },
+	"checkpoint.json#/$defs/durableBook":                        func() any { return new(CheckpointDurableBook) },
+	"checkpoint.json#/$defs/planChange":                         func() any { return new(CheckpointPlanChange) },
+	"checkpoint.json#/$defs/planRevision":                       func() any { return new(CheckpointPlanRevision) },
+	"checkpoint.json#/$defs/planState":                          func() any { return new(CheckpointPlanState) },
+	"checkpoint.json#/$defs/stepEvidence":                       func() any { return new(CheckpointStepEvidence) },
+	"checkpoint.json#/$defs/planOrigin":                         func() any { return new(CheckpointPlanOrigin) },
+	"checkpoint.json#/$defs/acceptedPlan":                       func() any { return new(CheckpointAcceptedPlan) },
+	"checkpoint.json#/$defs/planDeparture":                      func() any { return new(CheckpointPlanDeparture) },
+	"checkpoint.json#/$defs/planDepartureRecord":                func() any { return new(CheckpointPlanDepartureRecord) },
+	"checkpoint.json#/$defs/planRefusal":                        func() any { return new(CheckpointPlanRefusal) },
+	"checkpoint.json#/$defs/pendingDeparture":                   func() any { return new(CheckpointPendingDeparture) },
+	"checkpoint.json#/$defs/planDecision":                       func() any { return new(CheckpointPlanDecision) },
+	"checkpoint.json#/$defs/runtimeExecutionOwner":              func() any { return new(CheckpointRuntimeExecutionOwner) },
+	"checkpoint.json#/$defs/runtimeApprovalBinding":             func() any { return new(CheckpointRuntimeApprovalBinding) },
+	"checkpoint.json#/$defs/taskStepShare":                      func() any { return new(CheckpointTaskStepShare) },
+	"checkpoint.json#/$defs/taskScheduleBinding":                func() any { return new(CheckpointTaskScheduleBinding) },
+	"checkpoint.json#/$defs/taskStepClaim":                      func() any { return new(CheckpointTaskStepClaim) },
+	"checkpoint.json#/$defs/taskChildResult":                    func() any { return new(CheckpointTaskChildResult) },
+	"checkpoint.json#/$defs/taskChildBinding":                   func() any { return new(CheckpointTaskChildBinding) },
+	"checkpoint.json#/$defs/taskStepRow":                        func() any { return new(CheckpointTaskStepRow) },
+	"checkpoint.json#/$defs/taskSchedule":                       func() any { return new(CheckpointTaskSchedule) },
+	"checkpoint.json#/$defs/taskExecutionEnvelope":              func() any { return new(CheckpointTaskExecutionEnvelope) },
+	"checkpoint.json#/$defs/taskEnvelopeBinding":                func() any { return new(CheckpointTaskEnvelopeBinding) },
+	"checkpoint.json#/$defs/taskPendingDelegation":              func() any { return new(CheckpointTaskPendingDelegation) },
+	"checkpoint.json#/$defs/taskCompletionEvidence":             func() any { return new(CheckpointTaskCompletionEvidence) },
+	"checkpoint.json#/$defs/repeatObservation":                  func() any { return new(CheckpointRepeatObservation) },
+	"checkpoint.json#/$defs/repeatExecution":                    func() any { return new(CheckpointRepeatExecution) },
+	"checkpoint.json#/$defs/repeatTools":                        func() any { return new(CheckpointRepeatTools) },
+	"checkpoint.json#/$defs/taskCoordinatorBinding":             func() any { return new(CheckpointTaskCoordinatorBinding) },
+	"checkpoint.json#/$defs/nativePlanPause":                    func() any { return new(CheckpointNativePlanPause) },
+	"checkpoint.json#/$defs/nativePlanInvocation":               func() any { return new(CheckpointNativePlanInvocation) },
+	"corpus-candidate.json":                                     func() any { return new(CorpusCandidate) },
+	"corpus-checkpoint-view.json":                               func() any { return new(CorpusCheckpointView) },
+	"corpus-checkpoint-view.json#/$defs/v1.failure.json":        func() any { return new(CorpusCheckpointViewV1FailureJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.subagent.json":       func() any { return new(CorpusCheckpointViewV1SubagentJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.policy.json":         func() any { return new(CorpusCheckpointViewV1PolicyJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.skill.json":          func() any { return new(CorpusCheckpointViewV1SkillJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.tool-offer.json":     func() any { return new(CorpusCheckpointViewV1ToolOfferJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.delegated-task.json": func() any { return new(CorpusCheckpointViewV1DelegatedTaskJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.usage.json":          func() any { return new(CorpusCheckpointViewV1UsageJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.memory.json":         func() any { return new(CorpusCheckpointViewV1MemoryJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.provenance.json":     func() any { return new(CorpusCheckpointViewV1ProvenanceJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.tool-result.json":    func() any { return new(CorpusCheckpointViewV1ToolResultJSON) },
+	"corpus-checkpoint-view.json#/$defs/v1.checkpoint.json":     func() any { return new(CorpusCheckpointViewV1CheckpointJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.failure.json":        func() any { return new(CorpusCheckpointViewV2FailureJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.subagent.json":       func() any { return new(CorpusCheckpointViewV2SubagentJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.policy.json":         func() any { return new(CorpusCheckpointViewV2PolicyJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.skill.json":          func() any { return new(CorpusCheckpointViewV2SkillJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.tool-offer.json":     func() any { return new(CorpusCheckpointViewV2ToolOfferJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.delegated-task.json": func() any { return new(CorpusCheckpointViewV2DelegatedTaskJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.usage.json":          func() any { return new(CorpusCheckpointViewV2UsageJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.memory.json":         func() any { return new(CorpusCheckpointViewV2MemoryJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.provenance.json":     func() any { return new(CorpusCheckpointViewV2ProvenanceJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.tool-result.json":    func() any { return new(CorpusCheckpointViewV2ToolResultJSON) },
+	"corpus-checkpoint-view.json#/$defs/v2.checkpoint.json":     func() any { return new(CorpusCheckpointViewV2CheckpointJSON) },
+	"corpus-checkpoint-view.json#/$defs/document":               func() any { return new(json.RawMessage) },
+	"corpus-entry.json":                                         func() any { return new(CorpusEntry) },
+	"delegated-task.json":                                       func() any { return new(DelegatedTask) },
+	"delegated-task.json#/$defs/uuid":                           func() any { return new(string) },
+	"delegated-task.json#/$defs/time":                           func() any { return new(string) },
+	"delegated-task.json#/$defs/state":                          func() any { return new(string) },
+	"delegated-task.json#/$defs/request":                        func() any { return new(DelegatedTaskRequest) },
+	"delegated-task.json#/$defs/taskRequest":                    func() any { return new(DelegatedTaskTaskRequest) },
+	"delegated-task.json#/$defs/profile":                        func() any { return new(DelegatedTaskProfile) },
+	"delegated-task.json#/$defs/budget":                         func() any { return new(DelegatedTaskBudget) },
+	"delegated-task.json#/$defs/resultCursor":                   func() any { return new(DelegatedTaskResultCursor) },
+	"delegated-task.json#/$defs/answer":                         func() any { return new(DelegatedTaskAnswer) },
+	"delegated-task.json#/$defs/answerTask":                     func() any { return new(DelegatedTaskAnswerTask) },
+	"delegated-task.json#/$defs/brief":                          func() any { return new(DelegatedTaskBrief) },
+	"delegated-task.json#/$defs/briefReference":                 func() any { return new(DelegatedTaskBriefReference) },
+	"delegated-task.json#/$defs/earlierWork":                    func() any { return new(DelegatedTaskEarlierWork) },
+	"delegated-task.json#/$defs/continuation":                   func() any { return new(string) },
+	"delegated-task.json#/$defs/citation":                       func() any { return new(DelegatedTaskCitation) },
+	"delegated-task.json#/$defs/analyzeFinding":                 func() any { return new(DelegatedTaskAnalyzeFinding) },
+	"delegated-task.json#/$defs/reviewFinding":                  func() any { return new(DelegatedTaskReviewFinding) },
+	"delegated-task.json#/$defs/researchFinding":                func() any { return new(DelegatedTaskResearchFinding) },
+	"delegated-task.json#/$defs/authorTestFinding":              func() any { return new(DelegatedTaskAuthorTestFinding) },
+	"delegated-task.json#/$defs/openQuestion":                   func() any { return new(DelegatedTaskOpenQuestion) },
+	"delegated-task.json#/$defs/analyzeReport":                  func() any { return new(DelegatedTaskAnalyzeReport) },
+	"delegated-task.json#/$defs/reviewReport":                   func() any { return new(DelegatedTaskReviewReport) },
+	"delegated-task.json#/$defs/researchReport":                 func() any { return new(DelegatedTaskResearchReport) },
+	"delegated-task.json#/$defs/authorTestReport":               func() any { return new(DelegatedTaskAuthorTestReport) },
+	"delegated-task.json#/$defs/report":                         func() any { return new(DelegatedTaskReport) },
+	"delegated-task.json#/$defs/hostRequest":                    func() any { return new(DelegatedTaskHostRequest) },
+	"dialect-authoring.json":                                    func() any { return new(DialectAuthoring) },
+	"dialect-authoring.json#/$defs/opaque":                      func() any { return new(string) },
+	"dialect-authoring.json#/$defs/column":                      func() any { return new(string) },
+	"dialect-authoring.json#/$defs/digest":                      func() any { return new(string) },
+	"dialect-authoring.json#/$defs/conversion":                  func() any { return new(DialectAuthoringConversion) },
+	"dialect-authoring.json#/$defs/read":                        func() any { return new(DialectAuthoringRead) },
+	"dialect-authoring.json#/$defs/fact":                        func() any { return new(DialectAuthoringFact) },
+	"dialect-authoring.json#/$defs/evidence":                    func() any { return new(DialectAuthoringEvidence) },
+	"dialect-authoring.json#/$defs/propose":                     func() any { return new(DialectAuthoringPropose) },
+	"dialect-draft.json":                                        func() any { return new(DialectDraft) },
+	"dialect-draft.json#/$defs/conversion":                      func() any { return new(DialectDraftConversion) },
+	"dialect-draft.json#/$defs/fact":                            func() any { return new(DialectDraftFact) },
+	"dialect-draft.json#/$defs/evidence":                        func() any { return new(DialectDraftEvidence) },
+	"dialect-draft.json#/$defs/sample":                          func() any { return new(DialectDraftSample) },
+	"dialect-draft.json#/$defs/research":                        func() any { return new(DialectDraftResearch) },
+	"dialect-draft.json#/$defs/column":                          func() any { return new(DialectDraftColumn) },
+	"dialect-draft.json#/$defs/candidate":                       func() any { return new(DialectDraftCandidate) },
+	"dialect-draft.json#/$defs/result":                          func() any { return new(DialectDraftResult) },
+	"dialect-draft.json#/$defs/failure":                         func() any { return new(DialectDraftFailure) },
+	"dialect-draft.json#/$defs/check":                           func() any { return new(DialectDraftCheck) },
+	"dialect-draft.json#/$defs/checkpoint":                      func() any { return new(DialectDraftCheckpoint) },
+	"dialect-draft.json#/$defs/ack":                             func() any { return new(DialectDraftAck) },
+	"dialect-draft.json#/$defs/lineage":                         func() any { return new(DialectDraftLineage) },
+	"dialect-draft.json#/$defs/originalField":                   func() any { return new(DialectDraftOriginalField) },
+	"dialect-draft.json#/$defs/originalRevision":                func() any { return new(DialectDraftOriginalRevision) },
+	"dialect-draft.json#/$defs/conversionContract":              func() any { return new(DialectDraftConversionContract) },
+	"dialect-draft.json#/$defs/retainedRead":                    func() any { return new(DialectDraftRetainedRead) },
+	"export.json":                                               func() any { return new(Export) },
+	"export.json#/$defs/record":                                 func() any { return new(ExportRecord) },
+	"failure.json":                                              func() any { return new(Failure) },
+	"failure.json#/$defs/code":                                  func() any { return new(string) },
+	"failure.json#/$defs/source":                                func() any { return new(string) },
+	"failure.json#/$defs/outcome":                               func() any { return new(string) },
+	"failure.json#/$defs/recovery":                              func() any { return new(string) },
+	"failure.json#/$defs/catalogueEntry":                        func() any { return new(FailureCatalogueEntry) },
+	"failure.json#/$defs/toolFailureContent":                    func() any { return new(FailureToolFailureContent) },
+	"feedback.json":                                             func() any { return new(Feedback) },
+	"feedback.json#/$defs/view":                                 func() any { return new(FeedbackView) },
+	"history-chunk.json":                                        func() any { return new(HistoryChunk) },
+	"history-entry.json":                                        func() any { return new(HistoryEntry) },
+	"history-metadata.json":                                     func() any { return new(HistoryMetadata) },
+	"history-relation-evidence.json":                            func() any { return new(HistoryRelationEvidence) },
+	"memory.json":                                               func() any { return new(Memory) },
+	"memory.json#/$defs/answer":                                 func() any { return new([]Memory) },
+	"memory.json#/$defs/lifecycleUpdate":                        func() any { return new(MemoryLifecycleUpdate) },
+	"memory.json#/$defs/lifecycleAnswer":                        func() any { return new([]MemoryLifecycleUpdate) },
+	"policy.json":                                               func() any { return new(Policy) },
+	"policy.json#/$defs/role":                                   func() any { return new(PolicyRole) },
+	"policy.json#/$defs/member":                                 func() any { return new(PolicyMember) },
+	"policy.json#/$defs/discovered":                             func() any { return new(PolicyDiscovered) },
+	"policy.json#/$defs/reasoningValue":                         func() any { return new(string) },
+	"policy.json#/$defs/resolved":                               func() any { return new(map[string]PolicyMember) },
+	"policy.json#/$defs/paceUsed":                               func() any { return new(PolicyPaceUsed) },
+	"policy.json#/$defs/outputPattern":                          func() any { return new(PolicyOutputPattern) },
+	"policy.json#/$defs/routeSelection":                         func() any { return new(PolicyRouteSelection) },
+	"provenance.json":                                           func() any { return new(Provenance) },
+	"provenance.json#/$defs/recordDigest":                       func() any { return new(string) },
+	"provenance.json#/$defs/retainUntil":                        func() any { return new(string) },
+	"provenance.json#/$defs/completion":                         func() any { return new(ProvenanceCompletion) },
+	"provenance.json#/$defs/tokens":                             func() any { return new(int64) },
+	"provenance.json#/$defs/sha256":                             func() any { return new(string) },
+	"provenance.json#/$defs/requestKey":                         func() any { return new(string) },
+	"provenance.json#/$defs/promptDigest":                       func() any { return new(ProvenancePromptDigest) },
+	"provenance.json#/$defs/compactionSummary":                  func() any { return new(ProvenanceCompactionSummary) },
+	"provenance.json#/$defs/compactionReport":                   func() any { return new(ProvenanceCompactionReport) },
+	"provenance.json#/$defs/queuedSteer":                        func() any { return new(ProvenanceQueuedSteer) },
+	"provenance.json#/$defs/deliveredSteer":                     func() any { return new(ProvenanceDeliveredSteer) },
+	"provenance.json#/$defs/steerReport":                        func() any { return new(ProvenanceSteerReport) },
+	"provenance.json#/$defs/engine":                             func() any { return new(string) },
+	"provenance.json#/$defs/criticFigures":                      func() any { return new(ProvenanceCriticFigures) },
+	"provenance.json#/$defs/tokenFigures":                       func() any { return new(ProvenanceTokenFigures) },
+	"provenance.json#/$defs/childFigures":                       func() any { return new(ProvenanceChildFigures) },
+	"provenance.json#/$defs/figuresTotal":                       func() any { return new(ProvenanceFiguresTotal) },
+	"provenance.json#/$defs/batchFigures":                       func() any { return new(ProvenanceBatchFigures) },
+	"provenance.json#/$defs/parentFigures":                      func() any { return new(ProvenanceParentFigures) },
+	"provenance.json#/$defs/delegationReport":                   func() any { return new(ProvenanceDelegationReport) },
+	"provenance.json#/$defs/sourceFigures":                      func() any { return new(ProvenanceSourceFigures) },
+	"provenance.json#/$defs/identityFigures":                    func() any { return new(ProvenanceIdentityFigures) },
+	"provenance.json#/$defs/skillLoad":                          func() any { return new(ProvenanceSkillLoad) },
+	"provenance.json#/$defs/criticReason":                       func() any { return new(string) },
+	"provenance.json#/$defs/criticDecision":                     func() any { return new(ProvenanceCriticDecision) },
+	"provenance.json#/$defs/policy":                             func() any { return new(map[string]PolicyMember) },
+	"provenance.json#/$defs/provider":                           func() any { return new(ProvenanceProvider) },
+	"provenance.json#/$defs/crossProvider":                      func() any { return new(ProvenanceCrossProvider) },
+	"provenance.json#/$defs/usage":                              func() any { return new(UsageRow) },
+	"provenance.json#/$defs/memoryRecall":                       func() any { return new(ProvenanceMemoryRecall) },
+	"provenance.json#/$defs/memories":                           func() any { return new(ProvenanceMemories) },
+	"provenance.json#/$defs/edit":                               func() any { return new(ProvenanceEdit) },
+	"provenance.json#/$defs/edits":                              func() any { return new([]ProvenanceEdit) },
+	"provenance.json#/$defs/outputGuard":                        func() any { return new(map[string]int64) },
+	"provenance.json#/$defs/recordFigures":                      func() any { return new(ProvenanceRecordFigures) },
+	"question.json":                                             func() any { return new(Question) },
+	"question.json#/$defs/option":                               func() any { return new(QuestionOption) },
+	"question.json#/$defs/draft":                                func() any { return new(QuestionDraft) },
+	"question.json#/$defs/saved":                                func() any { return new(QuestionSaved) },
+	"question.json#/$defs/formatFailure":                        func() any { return new(QuestionFormatFailure) },
+	"run-archive-view.json":                                     func() any { return new(RunArchiveView) },
+	"run-archive.json":                                          func() any { return new(RunArchive) },
+	"run-archive.json#/$defs/ref":                               func() any { return new(RunArchiveRef) },
+	"run-archive.json#/$defs/representation":                    func() any { return new(RunArchiveRepresentation) },
+	"run-archive.json#/$defs/head":                              func() any { return new(RunArchiveHead) },
+	"run-capture.json":                                          func() any { return new(RunCapture) },
+	"run-event.json":                                            func() any { return new(RunEvent) },
+	"run-event.json#/$defs/steered":                             func() any { return new(RunEventSteered) },
+	"run-event.json#/$defs/compacted":                           func() any { return new(RunEventCompacted) },
+	"run-event.json#/$defs/execution_checkpoint":                func() any { return new(RunEventExecutionCheckpoint) },
+	"run-event.json#/$defs/budget_paused":                       func() any { return new(RunEventBudgetPaused) },
+	"run-event.json#/$defs/approval_requested":                  func() any { return new(RunEventApprovalRequested) },
+	"run-event.json#/$defs/skill_loaded":                        func() any { return new(RunEventSkillLoaded) },
+	"run-event.json#/$defs/skill_unloaded":                      func() any { return new(RunEventSkillUnloaded) },
+	"run-event.json#/$defs/retry":                               func() any { return new(RunEventRetry) },
+	"run-event.json#/$defs/response_recovery":                   func() any { return new(RunEventResponseRecovery) },
+	"run-event.json#/$defs/delegation_requested":                func() any { return new(RunEventDelegationRequested) },
+	"run-event.json#/$defs/delegated_task":                      func() any { return new(RunEventDelegatedTask) },
+	"run-event.json#/$defs/user_question":                       func() any { return new(RunEventUserQuestion) },
+	"run-event.json#/$defs/reasoning":                           func() any { return new(RunEventReasoning) },
+	"run-event.json#/$defs/message":                             func() any { return new(RunEventMessage) },
+	"run-event.json#/$defs/message_progress":                    func() any { return new(RunEventMessageProgress) },
+	"run-event.json#/$defs/guardrail":                           func() any { return new(RunEventGuardrail) },
+	"run-event.json#/$defs/thinking_unavailable":                func() any { return new(RunEventThinkingUnavailable) },
+	"run-event.json#/$defs/critic_decided":                      func() any { return new(RunEventCriticDecided) },
+	"run-event.json#/$defs/critique":                            func() any { return new(RunEventCritique) },
+	"run-event.json#/$defs/proposal":                            func() any { return new(RunEventProposal) },
+	"run-event.json#/$defs/error":                               func() any { return new(RunEventError) },
+	"run-event.json#/$defs/end":                                 func() any { return new(RunEventEnd) },
+	"run-event.json#/$defs/caseOutcome":                         func() any { return new(RunEventCaseOutcome) },
+	"run-event.json#/$defs/caseComparison":                      func() any { return new(RunEventCaseComparison) },
+	"run-event.json#/$defs/criticCase":                          func() any { return new(RunEventCriticCase) },
+	"run-event.json#/$defs/policy_resolved":                     func() any { return new(RunEventPolicyResolved) },
+	"run-event.json#/$defs/memory_proposed":                     func() any { return new(RunEventMemoryProposed) },
+	"run-event.json#/$defs/memory_recalled":                     func() any { return new(RunEventMemoryRecalled) },
+	"run-event.json#/$defs/edit_applied":                        func() any { return new(RunEventEditApplied) },
+	"run-event.json#/$defs/edit_refused":                        func() any { return new(RunEventEditRefused) },
+	"run-event.json#/$defs/output_guarded":                      func() any { return new(RunEventOutputGuarded) },
+	"run-event.json#/$defs/export_written":                      func() any { return new(RunEventExportWritten) },
+	"run-event.json#/$defs/connection_switched":                 func() any { return new(RunEventConnectionSwitched) },
+	"run-event.json#/$defs/usage":                               func() any { return new(RunEventUsage) },
+	"run-event.json#/$defs/recorded":                            func() any { return new(RunEventRecorded) },
+	"run-event.json#/$defs/plan_revised":                        func() any { return new(RunEventPlanRevised) },
+	"run-event.json#/$defs/plan_departed":                       func() any { return new(RunEventPlanDeparted) },
+	"run-event.json#/$defs/plan_completion_refused":             func() any { return new(RunEventPlanCompletionRefused) },
+	"run-event.json#/$defs/plan_drift_decided":                  func() any { return new(RunEventPlanDriftDecided) },
+	"run-event.json#/$defs/route_decided":                       func() any { return new(RunEventRouteDecided) },
+	"run-event.json#/$defs/route_widened":                       func() any { return new(RunEventRouteWidened) },
+	"run-event.json#/$defs/repeat_detected":                     func() any { return new(RunEventRepeatDetected) },
+	"run-report-v2.json":                                        func() any { return new(RunReportV2) },
+	"run-report-v2.json#/$defs/total":                           func() any { return new(RunReportV2Total) },
+	"run-report-v2.json#/$defs/totals":                          func() any { return new(RunReportV2Totals) },
+	"run-report-v2.json#/$defs/oldSourceTaskStep":               func() any { return new(json.RawMessage) },
+	"run-report-v2.json#/$defs/oldSourcePlanState":              func() any { return new(RunReportV2OldSourcePlanState) },
+	"run-report.json":                                           func() any { return new(RunReport) },
+	"skill.json":                                                func() any { return new(Skill) },
+	"skill.json#/$defs/name":                                    func() any { return new(string) },
+	"skill.json#/$defs/resource":                                func() any { return new(SkillResource) },
+	"skill.json#/$defs/digest":                                  func() any { return new(string) },
+	"skill.json#/$defs/bytes":                                   func() any { return new(int64) },
+	"subagent.json":                                             func() any { return new(Subagent) },
+	"subagent.json#/$defs/record":                               func() any { return new(SubagentRecord) },
+	"tool-call.json":                                            func() any { return new(ToolCall) },
+	"tool-call.json#/$defs/mcpCall":                             func() any { return new(ToolCallMCPCall) },
+	"tool-call.json#/$defs/agentWireCall":                       func() any { return new(ToolCallAgentWireCall) },
+	"tool-call.json#/$defs/testCasesArguments":                  func() any { return new(ToolCallTestCasesArguments) },
+	"tool-call.json#/$defs/textToolCall":                        func() any { return new(ToolCallTextToolCall) },
+	"tool-offer.json":                                           func() any { return new(ToolOffer) },
+	"tool-offer.json#/$defs/runtimeTool":                        func() any { return new(ToolOfferRuntimeTool) },
+	"tool-offer.json#/$defs/hostTool":                           func() any { return new(ToolOfferHostTool) },
+	"tool-offer.json#/$defs/proposePack":                        func() any { return new(ToolOfferProposePack) },
+	"tool-offer.json#/$defs/agentWireTool":                      func() any { return new(ToolOfferAgentWireTool) },
+	"tool-offer.json#/$defs/runtimeCeiling":                     func() any { return new(string) },
+	"tool-offer.json#/$defs/reservedName":                       func() any { return new(string) },
+	"tool-offer.json#/$defs/criticTools":                        func() any { return new(string) },
+	"tool-offer.json#/$defs/effectClass":                        func() any { return new(string) },
+	"tool-offer.json#/$defs/approvalPolicy":                     func() any { return new(string) },
+	"tool-offer.json#/$defs/identity":                           func() any { return new(ToolOfferIdentity) },
+	"tool-offer.json#/$defs/sourceRecord":                       func() any { return new(ToolOfferSourceRecord) },
+	"tool-offer.json#/$defs/toolListDigest":                     func() any { return new(string) },
+	"tool-offer.json#/$defs/wireName":                           func() any { return new(string) },
+	"tool-offer.json#/$defs/nameMapping":                        func() any { return new(ToolOfferNameMapping) },
+	"tool-offer.json#/$defs/sourceDeclaration":                  func() any { return new(ToolOfferSourceDeclaration) },
+	"tool-offer.json#/$defs/catalogueEntry":                     func() any { return new(ToolOfferCatalogueEntry) },
+	"tool-offer.json#/$defs/loadTool":                           func() any { return new(ToolOfferLoadTool) },
+	"tool-offer.json#/$defs/loadedSchema":                       func() any { return new(ToolOfferLoadedSchema) },
+	"tool-offer.json#/$defs/skillDeclaration":                   func() any { return new(json.RawMessage) },
+	"tool-offer.json#/$defs/skillCatalogueEntry":                func() any { return new(ToolOfferSkillCatalogueEntry) },
+	"tool-offer.json#/$defs/loadSkill":                          func() any { return new(ToolOfferLoadSkill) },
+	"tool-offer.json#/$defs/unloadSkill":                        func() any { return new(ToolOfferUnloadSkill) },
+	"tool-offer.json#/$defs/loadedSkill":                        func() any { return new(ToolOfferLoadedSkill) },
+	"tool-offer.json#/$defs/criticMode":                         func() any { return new(string) },
+	"tool-offer.json#/$defs/criticReasoning":                    func() any { return new(string) },
+	"tool-offer.json#/$defs/requestReview":                      func() any { return new(ToolOfferRequestReview) },
+	"tool-offer.json#/$defs/subagentCatalogueEntry":             func() any { return new(ToolOfferSubagentCatalogueEntry) },
+	"tool-offer.json#/$defs/remember":                           func() any { return new(ToolOfferRemember) },
+	"tool-offer.json#/$defs/propose_edit":                       func() any { return new(ToolOfferProposeEdit) },
+	"tool-offer.json#/$defs/propose_delete":                     func() any { return new(ToolOfferProposeDelete) },
+	"tool-offer.json#/$defs/propose_insert":                     func() any { return new(ToolOfferProposeInsert) },
+	"tool-offer.json#/$defs/undo_edit":                          func() any { return new(ToolOfferUndoEdit) },
+	"tool-offer.json#/$defs/draftId":                            func() any { return new(string) },
+	"tool-result.json":                                          func() any { return new(ToolResult) },
+	"tool-result.json#/$defs/mcpToolResult":                     func() any { return new(ToolResultMCPToolResult) },
+	"tool-result.json#/$defs/reference":                         func() any { return new(ToolResultReference) },
+	"tool-result.json#/$defs/referenceEnvelope":                 func() any { return new(ToolResultReferenceEnvelope) },
+	"tool-result.json#/$defs/unavailableEnvelope":               func() any { return new(ToolResultUnavailableEnvelope) },
+	"tool-result.json#/$defs/readContextArguments":              func() any { return new(ToolResultReadContextArguments) },
+	"tool-result.json#/$defs/readArguments":                     func() any { return new(ToolResultReadArguments) },
+	"tool-result.json#/$defs/readResult":                        func() any { return new(ToolResultReadResult) },
+	"tool-result.json#/$defs/imagePart":                         func() any { return new(ToolResultImagePart) },
+	"tool-result.json#/$defs/imageReadResult":                   func() any { return new(ToolResultImageReadResult) },
+	"tool-result.json#/$defs/attachment":                        func() any { return new(ToolResultAttachment) },
+	"tool-result.json#/$defs/searchArguments":                   func() any { return new(ToolResultSearchArguments) },
+	"tool-result.json#/$defs/searchResult":                      func() any { return new(ToolResultSearchResult) },
+	"tool-result.json#/$defs/agentWireAnswer":                   func() any { return new(ToolResultAgentWireAnswer) },
+	"tool-result.json#/$defs/framedData":                        func() any { return new(string) },
+	"tool-result.json#/$defs/textToolResultMessage":             func() any { return new(ToolResultTextToolResultMessage) },
+	"tool-result.json#/$defs/turnIndex":                         func() any { return new(ToolResultTurnIndex) },
+	"tool-result.json#/$defs/readCacheKey":                      func() any { return new(ToolResultReadCacheKey) },
+	"tool-taxonomy.json":                                        func() any { return new(ToolTaxonomy) },
+	"tool-taxonomy.json#/$defs/profile":                         func() any { return new(ToolTaxonomyProfile) },
+	"turn-route.json":                                           func() any { return new(TurnRoute) },
+	"turn-route.json#/$defs/selection":                          func() any { return new(TurnRouteSelection) },
+	"turn-route.json#/$defs/policy":                             func() any { return new(TurnRoutePolicy) },
+	"turn-route.json#/$defs/classifier":                         func() any { return new(TurnRouteClassifier) },
+	"usage-budget.json":                                         func() any { return new(UsageBudget) },
+	"usage-budget.json#/$defs/amounts":                          func() any { return new(UsageBudgetAmounts) },
+	"usage-budget.json#/$defs/scope":                            func() any { return new(UsageBudgetScope) },
+	"usage-budget.json#/$defs/reservation":                      func() any { return new(UsageBudgetReservation) },
+	"usage-budget.json#/$defs/receipt":                          func() any { return new(UsageBudgetReceipt) },
+	"usage-budget.json#/$defs/entry":                            func() any { return new(UsageBudgetEntry) },
+	"usage-budget.json#/$defs/refusal":                          func() any { return new(UsageBudgetRefusal) },
+	"usage.json":                                                func() any { return new(Usage) },
+	"usage.json#/$defs/tokens":                                  func() any { return new(UsageTokens) },
+	"usage.json#/$defs/row":                                     func() any { return new(UsageRow) },
+}
+
+// From admitted-skill-v1.json. Current in-process admission result: the declared skill, its
+// approved bundle digest, computed dependency capability profile, and optional measured bytes. The
+// schema name versions this result; it introduces no version member into declarations. Legacy
+// skill.json remains closed and unchanged. Profile is derived from admitted tool taxonomy and
+// grants no authority.
+type AdmittedSkillV1 struct {
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	Description  string              `json:"description"`
+	Source       SkillSource         `json:"source"`
+	Instructions string              `json:"instructions"`
+	Tools        []string            `json:"tools,omitzero"`
+	Resources    []SkillResource     `json:"resources,omitzero"`
+	PinnedDigest string              `json:"pinnedDigest"`
+	Digest       string              `json:"digest"`
+	Kind         *string             `json:"kind,omitzero"`
+	Tags         []string            `json:"tags,omitzero"`
+	Profile      ToolTaxonomyProfile `json:"profile"`
+	Bytes        *int64              `json:"bytes,omitzero"`
+}
+
+var admittedSkillV1Members = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest", "kind", "tags", "profile", "bytes"}
+
+// UnmarshalJSON decodes a AdmittedSkillV1 object and refuses a member the closed schema does not name.
+func (v *AdmittedSkillV1) UnmarshalJSON(data []byte) error {
+	type plain AdmittedSkillV1
+	var p plain
+	extra, err := decodeObject(data, &p, admittedSkillV1Members, true)
+	if err != nil {
+		return errorf("AdmittedSkillV1: %w", err)
+	}
+	*v = AdmittedSkillV1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a AdmittedSkillV1 object.
+func (v AdmittedSkillV1) MarshalJSON() ([]byte, error) {
+	type plain AdmittedSkillV1
+	return encodeObject(plain(v), nil)
 }
 
 // From approval.json. The approval state the host holds for one chat: Ask me (manual) or Auto
@@ -1122,6 +1271,336 @@ func (v CapabilityTiers) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From chat-context-snapshot.json. Complete canonical v1 chat state. Ordered opaque JSON source
+// strings preserve request bytes. Native readers additionally enforce digests, table
+// aliases/reachability, scope, sums, ordering and active-turn relationships.
+type ChatContextSnapshot struct {
+	Version    int64                              `json:"version"`
+	Scope      string                             `json:"scope"`
+	Turns      int64                              `json:"turns"`
+	Disposed   bool                               `json:"disposed"`
+	Size       int64                              `json:"size"`
+	Entries    []ChatContextSnapshotEntriesItem   `json:"entries"`
+	Ages       []ChatContextSnapshotAgesItem      `json:"ages"`
+	Results    []ChatContextSnapshotResultsItem   `json:"results"`
+	Cache      []ChatContextSnapshotCacheItem     `json:"cache"`
+	Gone       []string                           `json:"gone"`
+	Visibility [][]string                         `json:"visibility"`
+	Evictions  []ChatContextSnapshotEvictionsItem `json:"evictions"`
+	Evicted    []int64                            `json:"evicted"`
+	Threads    []ChatContextSnapshotThreadsItem   `json:"threads"`
+	Tasks      []ChatContextSnapshotTasksItem     `json:"tasks"`
+	Reusable   []ChatContextSnapshotReusableItem  `json:"reusable"`
+	Open       []ChatContextSnapshotOpenItem      `json:"open"`
+}
+
+var chatContextSnapshotMembers = []string{"version", "scope", "turns", "disposed", "size", "entries", "ages", "results", "cache", "gone", "visibility", "evictions", "evicted", "threads", "tasks", "reusable", "open"}
+
+// UnmarshalJSON decodes a ChatContextSnapshot object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshot) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshot
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshot: %w", err)
+	}
+	*v = ChatContextSnapshot(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshot object.
+func (v ChatContextSnapshot) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshot
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/ages/items.
+type ChatContextSnapshotAgesItem struct {
+	ID   string `json:"id"`
+	Turn int64  `json:"turn"`
+}
+
+var chatContextSnapshotAgesItemMembers = []string{"id", "turn"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotAgesItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotAgesItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotAgesItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotAgesItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotAgesItem: %w", err)
+	}
+	*v = ChatContextSnapshotAgesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotAgesItem object.
+func (v ChatContextSnapshotAgesItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotAgesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/cache/items.
+type ChatContextSnapshotCacheItem struct {
+	Key   string `json:"key"`
+	Entry string `json:"entry"`
+}
+
+var chatContextSnapshotCacheItemMembers = []string{"key", "entry"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotCacheItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotCacheItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotCacheItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotCacheItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotCacheItem: %w", err)
+	}
+	*v = ChatContextSnapshotCacheItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotCacheItem object.
+func (v ChatContextSnapshotCacheItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotCacheItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/entries/items.
+type ChatContextSnapshotEntriesItem struct {
+	ID        string  `json:"id"`
+	Kind      string  `json:"kind"`
+	Label     string  `json:"label"`
+	ValueJSON string  `json:"valueJSON"`
+	Bytes     int64   `json:"bytes"`
+	Digest    string  `json:"digest"`
+	Revision  *string `json:"revision,omitzero"`
+}
+
+var chatContextSnapshotEntriesItemMembers = []string{"id", "kind", "label", "valueJSON", "bytes", "digest", "revision"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotEntriesItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotEntriesItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotEntriesItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotEntriesItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotEntriesItem: %w", err)
+	}
+	*v = ChatContextSnapshotEntriesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotEntriesItem object.
+func (v ChatContextSnapshotEntriesItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotEntriesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/evictions/items.
+type ChatContextSnapshotEvictionsItem struct {
+	Tool      string `json:"tool"`
+	Arguments string `json:"arguments"`
+	Bytes     int64  `json:"bytes"`
+}
+
+var chatContextSnapshotEvictionsItemMembers = []string{"tool", "arguments", "bytes"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotEvictionsItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotEvictionsItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotEvictionsItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotEvictionsItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotEvictionsItem: %w", err)
+	}
+	*v = ChatContextSnapshotEvictionsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotEvictionsItem object.
+func (v ChatContextSnapshotEvictionsItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotEvictionsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/open/items.
+type ChatContextSnapshotOpenItem struct {
+	Number     int64    `json:"number"`
+	Referenced []string `json:"referenced"`
+	Visible    *int64   `json:"visible,omitzero"`
+	Offered    []int64  `json:"offered"`
+}
+
+var chatContextSnapshotOpenItemMembers = []string{"number", "referenced", "visible", "offered"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotOpenItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotOpenItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotOpenItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotOpenItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotOpenItem: %w", err)
+	}
+	*v = ChatContextSnapshotOpenItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotOpenItem object.
+func (v ChatContextSnapshotOpenItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotOpenItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/results/items.
+type ChatContextSnapshotResultsItem struct {
+	Tool      string `json:"tool"`
+	Arguments string `json:"arguments"`
+	Entry     string `json:"entry"`
+	Bytes     int64  `json:"bytes"`
+	FirstLine string `json:"firstLine"`
+	Turn      int64  `json:"turn"`
+}
+
+var chatContextSnapshotResultsItemMembers = []string{"tool", "arguments", "entry", "bytes", "firstLine", "turn"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotResultsItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotResultsItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotResultsItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotResultsItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotResultsItem: %w", err)
+	}
+	*v = ChatContextSnapshotResultsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotResultsItem object.
+func (v ChatContextSnapshotResultsItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotResultsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/reusable/items.
+type ChatContextSnapshotReusableItem struct {
+	Key   string                               `json:"key"`
+	Value ChatContextSnapshotReusableItemValue `json:"value"`
+}
+
+var chatContextSnapshotReusableItemMembers = []string{"key", "value"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotReusableItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotReusableItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotReusableItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotReusableItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotReusableItem: %w", err)
+	}
+	*v = ChatContextSnapshotReusableItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotReusableItem object.
+func (v ChatContextSnapshotReusableItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotReusableItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/reusable/items/properties/value.
+type ChatContextSnapshotReusableItemValue struct {
+	Task          string `json:"task"`
+	Model         string `json:"model"`
+	Text          string `json:"text"`
+	QuestionsJSON string `json:"questionsJSON"`
+}
+
+var chatContextSnapshotReusableItemValueMembers = []string{"task", "model", "text", "questionsJSON"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotReusableItemValue object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotReusableItemValue) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotReusableItemValue
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotReusableItemValueMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotReusableItemValue: %w", err)
+	}
+	*v = ChatContextSnapshotReusableItemValue(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotReusableItemValue object.
+func (v ChatContextSnapshotReusableItemValue) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotReusableItemValue
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/tasks/items.
+type ChatContextSnapshotTasksItem struct {
+	ID     string `json:"id"`
+	Thread int64  `json:"thread"`
+}
+
+var chatContextSnapshotTasksItemMembers = []string{"id", "thread"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotTasksItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotTasksItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotTasksItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotTasksItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotTasksItem: %w", err)
+	}
+	*v = ChatContextSnapshotTasksItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotTasksItem object.
+func (v ChatContextSnapshotTasksItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotTasksItem
+	return encodeObject(plain(v), nil)
+}
+
+// From chat-context-snapshot.json#/properties/threads/items.
+type ChatContextSnapshotThreadsItem struct {
+	Profile       string `json:"profile"`
+	Title         string `json:"title"`
+	ExchangesJSON string `json:"exchangesJSON"`
+	Visible       *int64 `json:"visible,omitzero"`
+}
+
+var chatContextSnapshotThreadsItemMembers = []string{"profile", "title", "exchangesJSON", "visible"}
+
+// UnmarshalJSON decodes a ChatContextSnapshotThreadsItem object and refuses a member the closed schema does not name.
+func (v *ChatContextSnapshotThreadsItem) UnmarshalJSON(data []byte) error {
+	type plain ChatContextSnapshotThreadsItem
+	var p plain
+	extra, err := decodeObject(data, &p, chatContextSnapshotThreadsItemMembers, true)
+	if err != nil {
+		return errorf("ChatContextSnapshotThreadsItem: %w", err)
+	}
+	*v = ChatContextSnapshotThreadsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ChatContextSnapshotThreadsItem object.
+func (v ChatContextSnapshotThreadsItem) MarshalJSON() ([]byte, error) {
+	type plain ChatContextSnapshotThreadsItem
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json. A local record of one execution, carried whole on execution_checkpoint and
 // budget_paused events and handed back to resume: the request allowance and the grants that raised
 // it, the task plan, every operation with its exact arguments and result, the completions, and the
@@ -1181,9 +1660,12 @@ type Checkpoint struct {
 	RequestCap       *int64                      `json:"requestCap,omitzero"`
 	Durable          *CheckpointDurableBook      `json:"durable,omitzero"`
 	PlanState        *CheckpointPlanState        `json:"planState,omitzero"`
+	UsageBudget      *UsageBudget                `json:"usageBudget,omitzero"`
+	TurnRoute        *TurnRoute                  `json:"turnRoute,omitzero"`
+	RepeatTools      *CheckpointRepeatTools      `json:"repeatTools,omitzero"`
 }
 
-var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap", "durable", "planState"}
+var checkpointMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap", "durable", "planState", "usageBudget", "turnRoute", "repeatTools"}
 
 // UnmarshalJSON decodes a Checkpoint object and refuses a member the closed schema does not name.
 func (v *Checkpoint) UnmarshalJSON(data []byte) error {
@@ -1312,19 +1794,20 @@ func (v CheckpointAcceptedPlanValidatedReferencesItem) MarshalJSON() ([]byte, er
 // and never shown in it; absent from a checkpoint written before it was carried, where the
 // continued run draws a fresh one. Closed.
 type CheckpointApproval struct {
-	CallID    string                     `json:"callId"`
-	Name      string                     `json:"name"`
-	Tool      string                     `json:"tool"`
-	Source    ToolOfferSourceRecord      `json:"source"`
-	Args      map[string]json.RawMessage `json:"args"`
-	State     string                     `json:"state"`
-	DecidedAt *string                    `json:"decidedAt,omitzero"`
-	Note      *string                    `json:"note,omitzero"`
-	Result    *ToolResultMCPToolResult   `json:"result,omitzero"`
-	Marker    *string                    `json:"marker,omitzero"`
+	CallID    string                            `json:"callId"`
+	Name      string                            `json:"name"`
+	Tool      string                            `json:"tool"`
+	Source    ToolOfferSourceRecord             `json:"source"`
+	Args      map[string]json.RawMessage        `json:"args"`
+	State     string                            `json:"state"`
+	DecidedAt *string                           `json:"decidedAt,omitzero"`
+	Note      *string                           `json:"note,omitzero"`
+	Result    *ToolResultMCPToolResult          `json:"result,omitzero"`
+	Marker    *string                           `json:"marker,omitzero"`
+	Runtime   *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
 }
 
-var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker"}
+var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker", "runtime"}
 
 // UnmarshalJSON decodes a CheckpointApproval object and refuses a member the closed schema does not name.
 func (v *CheckpointApproval) UnmarshalJSON(data []byte) error {
@@ -1643,22 +2126,24 @@ func (v CheckpointDurableBookPendingHandoff) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/durableDispatch.
 type CheckpointDurableDispatch struct {
-	ID            string                          `json:"id"`
-	Scope         CheckpointDurableScope          `json:"scope"`
-	Kind          string                          `json:"kind"`
-	Source        string                          `json:"source"`
-	Tool          string                          `json:"tool"`
-	Fingerprint   string                          `json:"fingerprint"`
-	Request       string                          `json:"request"`
-	RequestDigest string                          `json:"requestDigest"`
-	State         string                          `json:"state"`
-	Read          bool                            `json:"read"`
-	Result        json.RawMessage                 `json:"result,omitzero"`
-	Failure       *Failure                        `json:"failure,omitzero"`
-	Artifacts     []CheckpointArtifactObservation `json:"artifacts,omitzero"`
+	ID               string                          `json:"id"`
+	Scope            CheckpointDurableScope          `json:"scope"`
+	Kind             string                          `json:"kind"`
+	Source           string                          `json:"source"`
+	Tool             string                          `json:"tool"`
+	Fingerprint      string                          `json:"fingerprint"`
+	Request          string                          `json:"request"`
+	RequestDigest    string                          `json:"requestDigest"`
+	State            string                          `json:"state"`
+	Read             bool                            `json:"read"`
+	Result           json.RawMessage                 `json:"result,omitzero"`
+	Failure          *Failure                        `json:"failure,omitzero"`
+	Artifacts        []CheckpointArtifactObservation `json:"artifacts,omitzero"`
+	RepeatResultJSON *string                         `json:"repeatResultJson,omitzero"`
+	PlanPause        *CheckpointNativePlanPause      `json:"planPause,omitzero"`
 }
 
-var checkpointDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts"}
+var checkpointDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts", "repeatResultJson", "planPause"}
 
 // UnmarshalJSON decodes a CheckpointDurableDispatch object and refuses a member the closed schema does not name.
 func (v *CheckpointDurableDispatch) UnmarshalJSON(data []byte) error {
@@ -1870,6 +2355,63 @@ func (v CheckpointHandoff) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/nativePlanInvocation. Exact earlier released Plan-pause invocation
+// selected by an acknowledged explicit decision. It grants no allowance or automatic replay.
+type CheckpointNativePlanInvocation struct {
+	DispatchID    string `json:"dispatchId"`
+	RequestDigest string `json:"requestDigest"`
+}
+
+var checkpointNativePlanInvocationMembers = []string{"dispatchId", "requestDigest"}
+
+// UnmarshalJSON decodes a CheckpointNativePlanInvocation object and refuses a member the closed schema does not name.
+func (v *CheckpointNativePlanInvocation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointNativePlanInvocation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointNativePlanInvocationMembers, true)
+	if err != nil {
+		return errorf("CheckpointNativePlanInvocation: %w", err)
+	}
+	*v = CheckpointNativePlanInvocation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointNativePlanInvocation object.
+func (v CheckpointNativePlanInvocation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointNativePlanInvocation
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/nativePlanPause. Original invocation release and package-owned Plan
+// pause retained by the original writer; unknown outcome remains unknown. Not a dispatch grant.
+type CheckpointNativePlanPause struct {
+	CallID            string `json:"callId"`
+	Revision          string `json:"revision"`
+	CandidateRevision string `json:"candidateRevision"`
+}
+
+var checkpointNativePlanPauseMembers = []string{"callId", "revision", "candidateRevision"}
+
+// UnmarshalJSON decodes a CheckpointNativePlanPause object and refuses a member the closed schema does not name.
+func (v *CheckpointNativePlanPause) UnmarshalJSON(data []byte) error {
+	type plain CheckpointNativePlanPause
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointNativePlanPauseMembers, true)
+	if err != nil {
+		return errorf("CheckpointNativePlanPause: %w", err)
+	}
+	*v = CheckpointNativePlanPause(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointNativePlanPause object.
+func (v CheckpointNativePlanPause) MarshalJSON() ([]byte, error) {
+	type plain CheckpointNativePlanPause
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/$defs/operation. One tool call as the host journaled it from the tool_call
 // and tool_result events.
 type CheckpointOperation struct {
@@ -1992,14 +2534,15 @@ func (v CheckpointPlanChange) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/planDecision.
 type CheckpointPlanDecision struct {
-	CallID            string  `json:"callId"`
-	Revision          string  `json:"revision"`
-	CandidateRevision string  `json:"candidateRevision"`
-	Approved          bool    `json:"approved"`
-	Note              *string `json:"note,omitzero"`
+	CallID            string                          `json:"callId"`
+	Revision          string                          `json:"revision"`
+	CandidateRevision string                          `json:"candidateRevision"`
+	Approved          bool                            `json:"approved"`
+	Note              *string                         `json:"note,omitzero"`
+	NativeInvocation  *CheckpointNativePlanInvocation `json:"nativeInvocation,omitzero"`
 }
 
-var checkpointPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note"}
+var checkpointPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note", "nativeInvocation"}
 
 // UnmarshalJSON decodes a CheckpointPlanDecision object and refuses a member the closed schema does not name.
 func (v *CheckpointPlanDecision) UnmarshalJSON(data []byte) error {
@@ -2164,23 +2707,26 @@ func (v CheckpointPlanRevision) MarshalJSON() ([]byte, error) {
 
 // From checkpoint.json#/$defs/planState.
 type CheckpointPlanState struct {
-	Revision            string                          `json:"revision"`
-	Sequence            int64                           `json:"sequence"`
-	NextID              int64                           `json:"nextId"`
-	Discarded           int64                           `json:"discarded"`
-	History             []CheckpointPlanRevision        `json:"history"`
-	Accepted            *CheckpointAcceptedPlan         `json:"accepted,omitzero"`
-	DriftPolicy         []string                        `json:"driftPolicy,omitzero"`
-	Departures          []CheckpointPlanDepartureRecord `json:"departures,omitzero"`
-	DeparturesDiscarded *int64                          `json:"departuresDiscarded,omitzero"`
-	Pending             *CheckpointPendingDeparture     `json:"pending,omitzero"`
-	Refusals            []CheckpointPlanRefusal         `json:"refusals,omitzero"`
-	RefusalsDiscarded   *int64                          `json:"refusalsDiscarded,omitzero"`
-	Decisions           []CheckpointPlanDecision        `json:"decisions,omitzero"`
-	DecisionsDiscarded  *int64                          `json:"decisionsDiscarded,omitzero"`
+	Revision            string                            `json:"revision"`
+	Sequence            int64                             `json:"sequence"`
+	NextID              int64                             `json:"nextId"`
+	Discarded           int64                             `json:"discarded"`
+	History             []CheckpointPlanRevision          `json:"history"`
+	Accepted            *CheckpointAcceptedPlan           `json:"accepted,omitzero"`
+	DriftPolicy         []string                          `json:"driftPolicy,omitzero"`
+	Departures          []CheckpointPlanDepartureRecord   `json:"departures,omitzero"`
+	DeparturesDiscarded *int64                            `json:"departuresDiscarded,omitzero"`
+	Pending             *CheckpointPendingDeparture       `json:"pending,omitzero"`
+	Refusals            []CheckpointPlanRefusal           `json:"refusals,omitzero"`
+	RefusalsDiscarded   *int64                            `json:"refusalsDiscarded,omitzero"`
+	Decisions           []CheckpointPlanDecision          `json:"decisions,omitzero"`
+	DecisionsDiscarded  *int64                            `json:"decisionsDiscarded,omitzero"`
+	TaskSchedule        *CheckpointTaskSchedule           `json:"taskSchedule,omitzero"`
+	TaskEnvelope        *CheckpointTaskEnvelopeBinding    `json:"taskEnvelope,omitzero"`
+	TaskCoordinator     *CheckpointTaskCoordinatorBinding `json:"taskCoordinator,omitzero"`
 }
 
-var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded"}
+var checkpointPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded", "taskSchedule", "taskEnvelope", "taskCoordinator"}
 
 // UnmarshalJSON decodes a CheckpointPlanState object and refuses a member the closed schema does not name.
 func (v *CheckpointPlanState) UnmarshalJSON(data []byte) error {
@@ -2198,6 +2744,92 @@ func (v *CheckpointPlanState) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointPlanState object.
 func (v CheckpointPlanState) MarshalJSON() ([]byte, error) {
 	type plain CheckpointPlanState
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/repeatExecution.
+type CheckpointRepeatExecution struct {
+	Execution         string                        `json:"execution"`
+	RemindAt          int64                         `json:"remindAt"`
+	StopAt            int64                         `json:"stopAt"`
+	Count             int64                         `json:"count"`
+	Reminded          bool                          `json:"reminded"`
+	Stopped           bool                          `json:"stopped"`
+	Seen              []CheckpointRepeatObservation `json:"seen"`
+	ReminderDelivered bool                          `json:"reminderDelivered"`
+}
+
+var checkpointRepeatExecutionMembers = []string{"execution", "remindAt", "stopAt", "count", "reminded", "stopped", "seen", "reminderDelivered"}
+
+// UnmarshalJSON decodes a CheckpointRepeatExecution object and refuses a member the closed schema does not name.
+func (v *CheckpointRepeatExecution) UnmarshalJSON(data []byte) error {
+	type plain CheckpointRepeatExecution
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointRepeatExecutionMembers, true)
+	if err != nil {
+		return errorf("CheckpointRepeatExecution: %w", err)
+	}
+	*v = CheckpointRepeatExecution(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointRepeatExecution object.
+func (v CheckpointRepeatExecution) MarshalJSON() ([]byte, error) {
+	type plain CheckpointRepeatExecution
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/repeatObservation.
+type CheckpointRepeatObservation struct {
+	DispatchID string `json:"dispatchId"`
+	KeyDigest  string `json:"keyDigest"`
+}
+
+var checkpointRepeatObservationMembers = []string{"dispatchId", "keyDigest"}
+
+// UnmarshalJSON decodes a CheckpointRepeatObservation object and refuses a member the closed schema does not name.
+func (v *CheckpointRepeatObservation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointRepeatObservation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointRepeatObservationMembers, true)
+	if err != nil {
+		return errorf("CheckpointRepeatObservation: %w", err)
+	}
+	*v = CheckpointRepeatObservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointRepeatObservation object.
+func (v CheckpointRepeatObservation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointRepeatObservation
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/repeatTools.
+type CheckpointRepeatTools struct {
+	Executions []CheckpointRepeatExecution `json:"executions"`
+}
+
+var checkpointRepeatToolsMembers = []string{"executions"}
+
+// UnmarshalJSON decodes a CheckpointRepeatTools object and refuses a member the closed schema does not name.
+func (v *CheckpointRepeatTools) UnmarshalJSON(data []byte) error {
+	type plain CheckpointRepeatTools
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointRepeatToolsMembers, true)
+	if err != nil {
+		return errorf("CheckpointRepeatTools: %w", err)
+	}
+	*v = CheckpointRepeatTools(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointRepeatTools object.
+func (v CheckpointRepeatTools) MarshalJSON() ([]byte, error) {
+	type plain CheckpointRepeatTools
 	return encodeObject(plain(v), nil)
 }
 
@@ -2235,6 +2867,69 @@ func (v CheckpointRetainedEntry) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From checkpoint.json#/$defs/runtimeApprovalBinding. Runtime-specific exact admission binding
+// carried only by current checkpoint3/event2. A record is not a dispatch grant. Closed.
+type CheckpointRuntimeApprovalBinding struct {
+	Owner           CheckpointRuntimeExecutionOwner `json:"owner"`
+	AdmissionDigest string                          `json:"admissionDigest"`
+}
+
+var checkpointRuntimeApprovalBindingMembers = []string{"owner", "admissionDigest"}
+
+// UnmarshalJSON decodes a CheckpointRuntimeApprovalBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointRuntimeApprovalBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointRuntimeApprovalBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointRuntimeApprovalBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointRuntimeApprovalBinding: %w", err)
+	}
+	*v = CheckpointRuntimeApprovalBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointRuntimeApprovalBinding object.
+func (v CheckpointRuntimeApprovalBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointRuntimeApprovalBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/runtimeExecutionOwner. The trusted host observation of the actual
+// immutable Runtime execution. Labels are descriptive and never grant authority. Closed.
+type CheckpointRuntimeExecutionOwner struct {
+	ArtifactDigest  string `json:"artifactDigest"`
+	ProcessID       string `json:"processId"`
+	ProjectID       string `json:"projectId"`
+	ProjectLabel    string `json:"projectLabel"`
+	SessionID       string `json:"sessionId"`
+	PrincipalDigest string `json:"principalDigest"`
+	PrincipalLabel  string `json:"principalLabel"`
+	ScopeDigest     string `json:"scopeDigest"`
+	ScopeLabel      string `json:"scopeLabel"`
+}
+
+var checkpointRuntimeExecutionOwnerMembers = []string{"artifactDigest", "processId", "projectId", "projectLabel", "sessionId", "principalDigest", "principalLabel", "scopeDigest", "scopeLabel"}
+
+// UnmarshalJSON decodes a CheckpointRuntimeExecutionOwner object and refuses a member the closed schema does not name.
+func (v *CheckpointRuntimeExecutionOwner) UnmarshalJSON(data []byte) error {
+	type plain CheckpointRuntimeExecutionOwner
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointRuntimeExecutionOwnerMembers, true)
+	if err != nil {
+		return errorf("CheckpointRuntimeExecutionOwner: %w", err)
+	}
+	*v = CheckpointRuntimeExecutionOwner(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointRuntimeExecutionOwner object.
+func (v CheckpointRuntimeExecutionOwner) MarshalJSON() ([]byte, error) {
+	type plain CheckpointRuntimeExecutionOwner
+	return encodeObject(plain(v), nil)
+}
+
 // From checkpoint.json#/$defs/sourceIdentity.
 type CheckpointSourceIdentity struct {
 	Source         string `json:"source"`
@@ -2268,9 +2963,10 @@ func (v CheckpointSourceIdentity) MarshalJSON() ([]byte, error) {
 type CheckpointStepEvidence struct {
 	Operations []string                              `json:"operations"`
 	Artifacts  []CheckpointStepEvidenceArtifactsItem `json:"artifacts"`
+	Child      *CheckpointTaskCompletionEvidence     `json:"child,omitzero"`
 }
 
-var checkpointStepEvidenceMembers = []string{"operations", "artifacts"}
+var checkpointStepEvidenceMembers = []string{"operations", "artifacts", "child"}
 
 // UnmarshalJSON decodes a CheckpointStepEvidence object and refuses a member the closed schema does not name.
 func (v *CheckpointStepEvidence) UnmarshalJSON(data []byte) error {
@@ -2319,18 +3015,294 @@ func (v CheckpointStepEvidenceArtifactsItem) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From checkpoint.json#/$defs/taskStep.
-type CheckpointTaskStep struct {
-	Step            string                  `json:"step"`
-	Status          string                  `json:"status"`
-	Detail          *string                 `json:"detail,omitzero"`
-	ID              *string                 `json:"id,omitzero"`
-	Origin          *CheckpointPlanOrigin   `json:"origin,omitzero"`
-	Evidence        *CheckpointStepEvidence `json:"evidence,omitzero"`
-	NotNeededReason *string                 `json:"notNeededReason,omitzero"`
+// From checkpoint.json#/$defs/taskChildBinding.
+type CheckpointTaskChildBinding struct {
+	Task         string                     `json:"task"`
+	Execution    string                     `json:"execution"`
+	PlanRevision string                     `json:"planRevision"`
+	Profile      SubagentRecord             `json:"profile"`
+	Result       *CheckpointTaskChildResult `json:"result,omitzero"`
 }
 
-var checkpointTaskStepMembers = []string{"step", "status", "detail", "id", "origin", "evidence", "notNeededReason"}
+var checkpointTaskChildBindingMembers = []string{"task", "execution", "planRevision", "profile", "result"}
+
+// UnmarshalJSON decodes a CheckpointTaskChildBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskChildBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskChildBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskChildBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskChildBinding: %w", err)
+	}
+	*v = CheckpointTaskChildBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskChildBinding object.
+func (v CheckpointTaskChildBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskChildBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskChildResult.
+type CheckpointTaskChildResult struct {
+	CheckpointDigest string `json:"checkpointDigest"`
+	ResultDigest     string `json:"resultDigest"`
+	EventDigest      string `json:"eventDigest"`
+	CommitID         string `json:"commitId"`
+}
+
+var checkpointTaskChildResultMembers = []string{"checkpointDigest", "resultDigest", "eventDigest", "commitId"}
+
+// UnmarshalJSON decodes a CheckpointTaskChildResult object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskChildResult) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskChildResult
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskChildResultMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskChildResult: %w", err)
+	}
+	*v = CheckpointTaskChildResult(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskChildResult object.
+func (v CheckpointTaskChildResult) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskChildResult
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskCompletionEvidence. Exact acknowledged successful child
+// evidence; caller strings alone cannot establish completion.
+type CheckpointTaskCompletionEvidence struct {
+	Task             string `json:"task"`
+	CheckpointDigest string `json:"checkpointDigest"`
+	ResultDigest     string `json:"resultDigest"`
+	EventDigest      string `json:"eventDigest"`
+	CommitID         string `json:"commitId"`
+}
+
+var checkpointTaskCompletionEvidenceMembers = []string{"task", "checkpointDigest", "resultDigest", "eventDigest", "commitId"}
+
+// UnmarshalJSON decodes a CheckpointTaskCompletionEvidence object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskCompletionEvidence) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskCompletionEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskCompletionEvidenceMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskCompletionEvidence: %w", err)
+	}
+	*v = CheckpointTaskCompletionEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskCompletionEvidence object.
+func (v CheckpointTaskCompletionEvidence) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskCompletionEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskCoordinatorBinding. Original package native-delegation ceiling
+// and child reserve, pinned before first dispatch; separate from host taskEnvelope configuration.
+// Retained facts permit metadata-only Plan decisions and never grant dispatch.
+type CheckpointTaskCoordinatorBinding struct {
+	Version      int64  `json:"version"`
+	Owner        string `json:"owner"`
+	Run          string `json:"run"`
+	Execution    string `json:"execution"`
+	ScopeDigest  string `json:"scopeDigest"`
+	Limit        int64  `json:"limit"`
+	ChildReserve int64  `json:"childReserve"`
+}
+
+var checkpointTaskCoordinatorBindingMembers = []string{"version", "owner", "run", "execution", "scopeDigest", "limit", "childReserve"}
+
+// UnmarshalJSON decodes a CheckpointTaskCoordinatorBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskCoordinatorBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskCoordinatorBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskCoordinatorBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskCoordinatorBinding: %w", err)
+	}
+	*v = CheckpointTaskCoordinatorBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskCoordinatorBinding object.
+func (v CheckpointTaskCoordinatorBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskCoordinatorBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskEnvelopeBinding.
+type CheckpointTaskEnvelopeBinding struct {
+	Run           string                          `json:"run"`
+	Execution     string                          `json:"execution"`
+	ScopeDigest   string                          `json:"scopeDigest"`
+	Configuration CheckpointTaskExecutionEnvelope `json:"configuration"`
+}
+
+var checkpointTaskEnvelopeBindingMembers = []string{"run", "execution", "scopeDigest", "configuration"}
+
+// UnmarshalJSON decodes a CheckpointTaskEnvelopeBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskEnvelopeBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskEnvelopeBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskEnvelopeBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskEnvelopeBinding: %w", err)
+	}
+	*v = CheckpointTaskEnvelopeBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskEnvelopeBinding object.
+func (v CheckpointTaskEnvelopeBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskEnvelopeBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskExecutionEnvelope. Explicit immutable host-configured provider
+// invocation ceiling. No available or spent balance is accepted.
+type CheckpointTaskExecutionEnvelope struct {
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
+	Unit     string `json:"unit"`
+	Limit    int64  `json:"limit"`
+}
+
+var checkpointTaskExecutionEnvelopeMembers = []string{"id", "revision", "unit", "limit"}
+
+// UnmarshalJSON decodes a CheckpointTaskExecutionEnvelope object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskExecutionEnvelope) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskExecutionEnvelope
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskExecutionEnvelopeMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskExecutionEnvelope: %w", err)
+	}
+	*v = CheckpointTaskExecutionEnvelope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskExecutionEnvelope object.
+func (v CheckpointTaskExecutionEnvelope) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskExecutionEnvelope
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskPendingDelegation. Original-writer association acknowledged
+// before native release or model child admission. An interrupted association never grants
+// redispatch.
+type CheckpointTaskPendingDelegation struct {
+	PlanRevision  string   `json:"planRevision"`
+	RequestDigest string   `json:"requestDigest"`
+	Steps         []string `json:"steps"`
+}
+
+var checkpointTaskPendingDelegationMembers = []string{"planRevision", "requestDigest", "steps"}
+
+// UnmarshalJSON decodes a CheckpointTaskPendingDelegation object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskPendingDelegation) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskPendingDelegation
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskPendingDelegationMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskPendingDelegation: %w", err)
+	}
+	*v = CheckpointTaskPendingDelegation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskPendingDelegation object.
+func (v CheckpointTaskPendingDelegation) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskPendingDelegation
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskSchedule.
+type CheckpointTaskSchedule struct {
+	Version          int64                            `json:"version"`
+	Binding          CheckpointTaskScheduleBinding    `json:"binding"`
+	DefinitionDigest string                           `json:"definitionDigest"`
+	Rows             []CheckpointTaskStepRow          `json:"rows"`
+	Pending          *CheckpointTaskPendingDelegation `json:"pending,omitzero"`
+}
+
+var checkpointTaskScheduleMembers = []string{"version", "binding", "definitionDigest", "rows", "pending"}
+
+// UnmarshalJSON decodes a CheckpointTaskSchedule object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskSchedule) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskSchedule
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskScheduleMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskSchedule: %w", err)
+	}
+	*v = CheckpointTaskSchedule(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskSchedule object.
+func (v CheckpointTaskSchedule) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskSchedule
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskScheduleBinding.
+type CheckpointTaskScheduleBinding struct {
+	Run          string `json:"run"`
+	Execution    string `json:"execution"`
+	PlanRevision string `json:"planRevision"`
+	ScopeDigest  string `json:"scopeDigest"`
+	Unit         string `json:"unit"`
+}
+
+var checkpointTaskScheduleBindingMembers = []string{"run", "execution", "planRevision", "scopeDigest", "unit"}
+
+// UnmarshalJSON decodes a CheckpointTaskScheduleBinding object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskScheduleBinding) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskScheduleBinding
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskScheduleBindingMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskScheduleBinding: %w", err)
+	}
+	*v = CheckpointTaskScheduleBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskScheduleBinding object.
+func (v CheckpointTaskScheduleBinding) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskScheduleBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskStep.
+type CheckpointTaskStep struct {
+	Step            string                   `json:"step"`
+	Status          string                   `json:"status"`
+	Detail          *string                  `json:"detail,omitzero"`
+	ID              *string                  `json:"id,omitzero"`
+	Origin          *CheckpointPlanOrigin    `json:"origin,omitzero"`
+	Evidence        *CheckpointStepEvidence  `json:"evidence,omitzero"`
+	NotNeededReason *string                  `json:"notNeededReason,omitzero"`
+	DependsOn       []string                 `json:"dependsOn,omitzero"`
+	Budget          *CheckpointTaskStepShare `json:"budget,omitzero"`
+	Delegation      *SubagentRecord          `json:"delegation,omitzero"`
+}
+
+var checkpointTaskStepMembers = []string{"step", "status", "detail", "id", "origin", "evidence", "notNeededReason", "dependsOn", "budget", "delegation"}
 
 // UnmarshalJSON decodes a CheckpointTaskStep object and refuses a member the closed schema does not name.
 func (v *CheckpointTaskStep) UnmarshalJSON(data []byte) error {
@@ -2348,6 +3320,7352 @@ func (v *CheckpointTaskStep) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a CheckpointTaskStep object.
 func (v CheckpointTaskStep) MarshalJSON() ([]byte, error) {
 	type plain CheckpointTaskStep
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskStepClaim.
+type CheckpointTaskStepClaim struct {
+	ID            string `json:"id"`
+	RequestDigest string `json:"requestDigest"`
+	State         string `json:"state"`
+}
+
+var checkpointTaskStepClaimMembers = []string{"id", "requestDigest", "state"}
+
+// UnmarshalJSON decodes a CheckpointTaskStepClaim object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskStepClaim) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskStepClaim
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskStepClaimMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskStepClaim: %w", err)
+	}
+	*v = CheckpointTaskStepClaim(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskStepClaim object.
+func (v CheckpointTaskStepClaim) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskStepClaim
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskStepRow.
+type CheckpointTaskStepRow struct {
+	ID     string                      `json:"id"`
+	Limit  *int64                      `json:"limit,omitzero"`
+	Claims []CheckpointTaskStepClaim   `json:"claims"`
+	Child  *CheckpointTaskChildBinding `json:"child,omitzero"`
+}
+
+var checkpointTaskStepRowMembers = []string{"id", "limit", "claims", "child"}
+
+// UnmarshalJSON decodes a CheckpointTaskStepRow object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskStepRow) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskStepRow
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskStepRowMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskStepRow: %w", err)
+	}
+	*v = CheckpointTaskStepRow(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskStepRow object.
+func (v CheckpointTaskStepRow) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskStepRow
+	return encodeObject(plain(v), nil)
+}
+
+// From checkpoint.json#/$defs/taskStepShare.
+type CheckpointTaskStepShare struct {
+	Requests int64 `json:"requests"`
+}
+
+var checkpointTaskStepShareMembers = []string{"requests"}
+
+// UnmarshalJSON decodes a CheckpointTaskStepShare object and refuses a member the closed schema does not name.
+func (v *CheckpointTaskStepShare) UnmarshalJSON(data []byte) error {
+	type plain CheckpointTaskStepShare
+	var p plain
+	extra, err := decodeObject(data, &p, checkpointTaskStepShareMembers, true)
+	if err != nil {
+		return errorf("CheckpointTaskStepShare: %w", err)
+	}
+	*v = CheckpointTaskStepShare(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CheckpointTaskStepShare object.
+func (v CheckpointTaskStepShare) MarshalJSON() ([]byte, error) {
+	type plain CheckpointTaskStepShare
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-candidate.json.
+type CorpusCandidate struct {
+	Version        int64                 `json:"version"`
+	ID             string                `json:"id"`
+	Status         string                `json:"status"`
+	RunID          string                `json:"runId"`
+	FeedbackDigest string                `json:"feedbackDigest"`
+	ArchiveDigest  string                `json:"archiveDigest"`
+	SourceView     string                `json:"sourceView"`
+	Feedback       Feedback              `json:"feedback"`
+	Review         CorpusCandidateReview `json:"review"`
+	Replay         CorpusCandidateReplay `json:"replay"`
+}
+
+var corpusCandidateMembers = []string{"version", "id", "status", "runId", "feedbackDigest", "archiveDigest", "sourceView", "feedback", "review", "replay"}
+
+// UnmarshalJSON decodes a CorpusCandidate object and refuses a member the closed schema does not name.
+func (v *CorpusCandidate) UnmarshalJSON(data []byte) error {
+	type plain CorpusCandidate
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCandidateMembers, true)
+	if err != nil {
+		return errorf("CorpusCandidate: %w", err)
+	}
+	*v = CorpusCandidate(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCandidate object.
+func (v CorpusCandidate) MarshalJSON() ([]byte, error) {
+	type plain CorpusCandidate
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-candidate.json#/properties/replay.
+type CorpusCandidateReplay struct {
+	Kind   string `json:"kind"`
+	Reason string `json:"reason"`
+}
+
+var corpusCandidateReplayMembers = []string{"kind", "reason"}
+
+// UnmarshalJSON decodes a CorpusCandidateReplay object and refuses a member the closed schema does not name.
+func (v *CorpusCandidateReplay) UnmarshalJSON(data []byte) error {
+	type plain CorpusCandidateReplay
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCandidateReplayMembers, true)
+	if err != nil {
+		return errorf("CorpusCandidateReplay: %w", err)
+	}
+	*v = CorpusCandidateReplay(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCandidateReplay object.
+func (v CorpusCandidateReplay) MarshalJSON() ([]byte, error) {
+	type plain CorpusCandidateReplay
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-candidate.json#/properties/review.
+type CorpusCandidateReview struct {
+	Report   CorpusCandidateReviewReport         `json:"report"`
+	Messages []CorpusCandidateReviewMessagesItem `json:"messages"`
+}
+
+var corpusCandidateReviewMembers = []string{"report", "messages"}
+
+// UnmarshalJSON decodes a CorpusCandidateReview object and refuses a member the closed schema does not name.
+func (v *CorpusCandidateReview) UnmarshalJSON(data []byte) error {
+	type plain CorpusCandidateReview
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCandidateReviewMembers, true)
+	if err != nil {
+		return errorf("CorpusCandidateReview: %w", err)
+	}
+	*v = CorpusCandidateReview(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCandidateReview object.
+func (v CorpusCandidateReview) MarshalJSON() ([]byte, error) {
+	type plain CorpusCandidateReview
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-candidate.json#/properties/review/properties/messages/items.
+type CorpusCandidateReviewMessagesItem struct {
+	Sequence int64  `json:"sequence"`
+	Text     string `json:"text"`
+}
+
+var corpusCandidateReviewMessagesItemMembers = []string{"sequence", "text"}
+
+// UnmarshalJSON decodes a CorpusCandidateReviewMessagesItem object and refuses a member the closed schema does not name.
+func (v *CorpusCandidateReviewMessagesItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCandidateReviewMessagesItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCandidateReviewMessagesItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCandidateReviewMessagesItem: %w", err)
+	}
+	*v = CorpusCandidateReviewMessagesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCandidateReviewMessagesItem object.
+func (v CorpusCandidateReviewMessagesItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCandidateReviewMessagesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-candidate.json#/properties/review/properties/report.
+//
+// A union: exactly one member is set. An object is decoded by its "version" member.
+type CorpusCandidateReviewReport struct {
+	// RunReport is set where version is 1.
+	RunReport *RunReport
+	// RunReportV2 is set where version is 2.
+	RunReportV2 *RunReportV2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *CorpusCandidateReviewReport) UnmarshalJSON(data []byte) error {
+	*v = CorpusCandidateReviewReport{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, view, err := memberInteger(data, "version")
+		if err != nil {
+			return errorf("CorpusCandidateReviewReport: %w", err)
+		}
+		switch tag {
+		case 1:
+			v.RunReport = new(RunReport)
+			return json.Unmarshal(view, v.RunReport)
+		case 2:
+			v.RunReportV2 = new(RunReportV2)
+			return json.Unmarshal(view, v.RunReportV2)
+		}
+		return errorf("CorpusCandidateReviewReport: no member has version %d", tag)
+	}
+	return errorf("CorpusCandidateReviewReport: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v CorpusCandidateReviewReport) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.RunReport != nil {
+		set = append(set, v.RunReport)
+	}
+	if v.RunReportV2 != nil {
+		set = append(set, v.RunReportV2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("CorpusCandidateReviewReport: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From corpus-checkpoint-view.json. A closed display graph. Source labels preserve the original
+// checkpoint identity; derived hashes the actual canonical document. Derived Plan prose does not
+// issue native revision or resume authority. Semantic readers require sourceVersion to match
+// document.version, derived digest and bytes to match actual canonical bytes, and exact to pass
+// the native reader. Frozen structural definitions explicitly close named objects to match the
+// native record readers; declared arbitrary payloads/maps remain open.
+type CorpusCheckpointView struct {
+	Version        int64           `json:"version"`
+	Kind           string          `json:"kind"`
+	Source         RunArchiveRef   `json:"source"`
+	SourceVersion  int64           `json:"sourceVersion"`
+	Derived        RunArchiveRef   `json:"derived"`
+	Representation string          `json:"representation"`
+	Document       json.RawMessage `json:"document"`
+}
+
+var corpusCheckpointViewMembers = []string{"version", "kind", "source", "sourceVersion", "derived", "representation", "document"}
+
+// UnmarshalJSON decodes a CorpusCheckpointView object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointView) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointView
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointView: %w", err)
+	}
+	*v = CorpusCheckpointView(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointView object.
+func (v CorpusCheckpointView) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointView
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json.
+type CorpusCheckpointViewV1CheckpointJSON struct {
+	Schema           *string                                               `json:"schema,omitzero"`
+	Version          int64                                                 `json:"version"`
+	Digest           *string                                               `json:"digest,omitzero"`
+	RetainUntil      *string                                               `json:"retainUntil,omitzero"`
+	ID               string                                                `json:"id"`
+	RequestKey       string                                                `json:"requestKey"`
+	Phase            string                                                `json:"phase"`
+	Status           string                                                `json:"status"`
+	Unit             string                                                `json:"unit"`
+	Used             int64                                                 `json:"used"`
+	Limit            int64                                                 `json:"limit"`
+	Grants           []CorpusCheckpointViewV1CheckpointJSONGrant           `json:"grants"`
+	Plan             []CorpusCheckpointViewV1CheckpointJSONTaskStep        `json:"plan"`
+	Explanation      string                                                `json:"explanation"`
+	Operations       []CorpusCheckpointViewV1CheckpointJSONOperation       `json:"operations"`
+	Completions      []CorpusCheckpointViewV1ProvenanceJSON                `json:"completions,omitzero"`
+	Context          CorpusCheckpointViewV1CheckpointJSONContext           `json:"context"`
+	Reason           *string                                               `json:"reason,omitzero"`
+	TestCalls        *int64                                                `json:"testCalls,omitzero"`
+	Delegation       *CorpusCheckpointViewV1ProvenanceJSONDelegationReport `json:"delegation,omitzero"`
+	Handoff          *CorpusCheckpointViewV1CheckpointJSONHandoff          `json:"handoff,omitzero"`
+	Approval         *CorpusCheckpointViewV1CheckpointJSONApproval         `json:"approval,omitzero"`
+	Prompts          []CorpusCheckpointViewV1ProvenanceJSONPromptDigest    `json:"prompts,omitzero"`
+	Sources          []CorpusCheckpointViewV1ProvenanceJSONSourceFigures   `json:"sources,omitzero"`
+	Skills           []CorpusCheckpointViewV1ProvenanceJSONSkillLoad       `json:"skills,omitzero"`
+	Critic           *CorpusCheckpointViewV1CheckpointJSONCritic           `json:"critic,omitzero"`
+	Policy           map[string]CorpusCheckpointViewV1PolicyJSONMember     `json:"policy,omitzero"`
+	CrossProvider    []CorpusCheckpointViewV1ProvenanceJSONCrossProvider   `json:"crossProvider,omitzero"`
+	Compaction       *CorpusCheckpointViewV1ProvenanceJSONCompactionReport `json:"compaction,omitzero"`
+	Memories         *CorpusCheckpointViewV1ProvenanceJSONMemories         `json:"memories,omitzero"`
+	Draft            *CorpusCheckpointViewV1CheckpointJSONDraft            `json:"draft,omitzero"`
+	OutputGuard      map[string]int64                                      `json:"outputGuard,omitzero"`
+	Records          *CorpusCheckpointViewV1ProvenanceJSONRecordFigures    `json:"records,omitzero"`
+	SourceIdentities []CorpusCheckpointViewV1CheckpointJSONSourceIdentity  `json:"sourceIdentities,omitzero"`
+	Steers           *CorpusCheckpointViewV1ProvenanceJSONSteerReport      `json:"steers,omitzero"`
+	Usage            *CorpusCheckpointViewV1UsageJSON                      `json:"usage,omitzero"`
+	Failover         []CorpusCheckpointViewV1CheckpointJSONFailoverItem    `json:"failover,omitzero"`
+	ChildUsage       []CorpusCheckpointViewV1CheckpointJSONChildUsageItem  `json:"childUsage,omitzero"`
+	RequestCap       *int64                                                `json:"requestCap,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSON object.
+func (v CorpusCheckpointViewV1CheckpointJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/approval.
+type CorpusCheckpointViewV1CheckpointJSONApproval struct {
+	CallID    string                                             `json:"callId"`
+	Name      string                                             `json:"name"`
+	Tool      string                                             `json:"tool"`
+	Source    CorpusCheckpointViewV1ToolOfferJSONSourceRecord    `json:"source"`
+	Args      map[string]json.RawMessage                         `json:"args"`
+	State     string                                             `json:"state"`
+	DecidedAt *string                                            `json:"decidedAt,omitzero"`
+	Note      *string                                            `json:"note,omitzero"`
+	Result    *CorpusCheckpointViewV1ToolResultJSONMCPToolResult `json:"result,omitzero"`
+	Marker    *string                                            `json:"marker,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONApproval object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONApproval) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONApproval
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONApprovalMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONApproval: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONApproval(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONApproval object.
+func (v CorpusCheckpointViewV1CheckpointJSONApproval) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONApproval
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/properties/childUsage/items.
+type CorpusCheckpointViewV1CheckpointJSONChildUsageItem struct {
+	ID    string                          `json:"id"`
+	Usage CorpusCheckpointViewV1UsageJSON `json:"usage"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONChildUsageItemMembers = []string{"id", "usage"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONChildUsageItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONChildUsageItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONChildUsageItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONChildUsageItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONChildUsageItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONChildUsageItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONChildUsageItem object.
+func (v CorpusCheckpointViewV1CheckpointJSONChildUsageItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONChildUsageItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/properties/context.
+type CorpusCheckpointViewV1CheckpointJSONContext struct {
+	Scope   string                                              `json:"scope"`
+	Entries []CorpusCheckpointViewV1CheckpointJSONRetainedEntry `json:"entries"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONContextMembers = []string{"scope", "entries"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONContext object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONContext) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONContext
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONContextMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONContext: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONContext(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONContext object.
+func (v CorpusCheckpointViewV1CheckpointJSONContext) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONContext
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/properties/critic.
+type CorpusCheckpointViewV1CheckpointJSONCritic struct {
+	Mode      string  `json:"mode"`
+	Ran       *bool   `json:"ran,omitzero"`
+	Reason    *string `json:"reason,omitzero"`
+	Reasoning *string `json:"reasoning,omitzero"`
+	Trigger   *string `json:"trigger,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONCriticMembers = []string{"mode", "ran", "reason", "reasoning", "trigger"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONCritic object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONCritic) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONCritic
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONCriticMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONCritic: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONCritic object.
+func (v CorpusCheckpointViewV1CheckpointJSONCritic) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/draft.
+type CorpusCheckpointViewV1CheckpointJSONDraft struct {
+	Documents []CorpusCheckpointViewV1CheckpointJSONDraftDocument `json:"documents"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONDraftMembers = []string{"documents"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONDraft object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONDraft) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONDraft
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONDraftMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONDraft: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONDraft(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONDraft object.
+func (v CorpusCheckpointViewV1CheckpointJSONDraft) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONDraft
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/draftDocument.
+type CorpusCheckpointViewV1CheckpointJSONDraftDocument struct {
+	ID     string                                     `json:"id"`
+	Digest string                                     `json:"digest"`
+	Edits  []CorpusCheckpointViewV1ProvenanceJSONEdit `json:"edits"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONDraftDocumentMembers = []string{"id", "digest", "edits"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONDraftDocument object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONDraftDocument) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONDraftDocument
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONDraftDocumentMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONDraftDocument: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONDraftDocument(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONDraftDocument object.
+func (v CorpusCheckpointViewV1CheckpointJSONDraftDocument) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONDraftDocument
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/properties/failover/items.
+type CorpusCheckpointViewV1CheckpointJSONFailoverItem struct {
+	Role       string                                                        `json:"role"`
+	Connection string                                                        `json:"connection"`
+	History    []CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem `json:"history"`
+	Consumed   int64                                                         `json:"consumed"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONFailoverItemMembers = []string{"role", "connection", "history", "consumed"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONFailoverItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONFailoverItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONFailoverItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONFailoverItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONFailoverItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONFailoverItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONFailoverItem object.
+func (v CorpusCheckpointViewV1CheckpointJSONFailoverItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONFailoverItem
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/properties/failover/items/properties/history/items.
+type CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItemMembers = []string{"from", "to", "reason"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem object.
+func (v CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONFailoverItemHistoryItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/grant.
+type CorpusCheckpointViewV1CheckpointJSONGrant struct {
+	From int64  `json:"from"`
+	To   int64  `json:"to"`
+	At   string `json:"at"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONGrantMembers = []string{"from", "to", "at"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONGrant object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONGrant) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONGrant
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONGrantMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONGrant: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONGrant(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONGrant object.
+func (v CorpusCheckpointViewV1CheckpointJSONGrant) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONGrant
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/handoff.
+type CorpusCheckpointViewV1CheckpointJSONHandoff struct {
+	CallID  string                                         `json:"callId"`
+	Batch   int64                                          `json:"batch"`
+	State   string                                         `json:"state"`
+	Request CorpusCheckpointViewV1DelegatedTaskJSONRequest `json:"request"`
+	Tasks   []CorpusCheckpointViewV1DelegatedTaskJSON      `json:"tasks"`
+	Answer  *CorpusCheckpointViewV1DelegatedTaskJSONAnswer `json:"answer,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONHandoffMembers = []string{"callId", "batch", "state", "request", "tasks", "answer"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONHandoff object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONHandoff) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONHandoff
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONHandoffMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONHandoff: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONHandoff(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONHandoff object.
+func (v CorpusCheckpointViewV1CheckpointJSONHandoff) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONHandoff
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/operation.
+type CorpusCheckpointViewV1CheckpointJSONOperation struct {
+	ID     string                                             `json:"id"`
+	Name   string                                             `json:"name"`
+	Args   json.RawMessage                                    `json:"args"`
+	Status string                                             `json:"status"`
+	Result *CorpusCheckpointViewV1ToolResultJSONMCPToolResult `json:"result,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONOperationMembers = []string{"id", "name", "args", "status", "result"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONOperation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONOperation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONOperation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONOperationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONOperation: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONOperation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONOperation object.
+func (v CorpusCheckpointViewV1CheckpointJSONOperation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONOperation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/retainedEntry.
+type CorpusCheckpointViewV1CheckpointJSONRetainedEntry struct {
+	ID       string          `json:"id"`
+	Kind     string          `json:"kind"`
+	Label    string          `json:"label"`
+	Value    json.RawMessage `json:"value"`
+	Revision *string         `json:"revision,omitzero"`
+	Bytes    int64           `json:"bytes"`
+	Digest   string          `json:"digest"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONRetainedEntryMembers = []string{"id", "kind", "label", "value", "revision", "bytes", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONRetainedEntry object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONRetainedEntry) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONRetainedEntry
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONRetainedEntryMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONRetainedEntry: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONRetainedEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONRetainedEntry object.
+func (v CorpusCheckpointViewV1CheckpointJSONRetainedEntry) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONRetainedEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/sourceIdentity.
+type CorpusCheckpointViewV1CheckpointJSONSourceIdentity struct {
+	Source         string `json:"source"`
+	IdentityDigest string `json:"identityDigest"`
+	Withheld       bool   `json:"withheld"`
+	ServiceAsked   bool   `json:"serviceAsked"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONSourceIdentityMembers = []string{"source", "identityDigest", "withheld", "serviceAsked"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONSourceIdentity object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONSourceIdentity) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONSourceIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONSourceIdentityMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONSourceIdentity: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONSourceIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONSourceIdentity object.
+func (v CorpusCheckpointViewV1CheckpointJSONSourceIdentity) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONSourceIdentity
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.checkpoint.json/$defs/taskStep.
+type CorpusCheckpointViewV1CheckpointJSONTaskStep struct {
+	Step   string  `json:"step"`
+	Status string  `json:"status"`
+	Detail *string `json:"detail,omitzero"`
+}
+
+var corpusCheckpointViewV1CheckpointJSONTaskStepMembers = []string{"step", "status", "detail"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1CheckpointJSONTaskStep object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1CheckpointJSONTaskStep) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1CheckpointJSONTaskStep
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1CheckpointJSONTaskStepMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1CheckpointJSONTaskStep: %w", err)
+	}
+	*v = CorpusCheckpointViewV1CheckpointJSONTaskStep(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1CheckpointJSONTaskStep object.
+func (v CorpusCheckpointViewV1CheckpointJSONTaskStep) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1CheckpointJSONTaskStep
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json.
+type CorpusCheckpointViewV1DelegatedTaskJSON struct {
+	ID            string                                               `json:"id"`
+	ParentRunID   string                                               `json:"parentRunId"`
+	Title         string                                               `json:"title"`
+	Objective     string                                               `json:"objective"`
+	Profile       string                                               `json:"profile"`
+	State         string                                               `json:"state"`
+	CreatedAt     string                                               `json:"createdAt"`
+	FinishedAt    *string                                              `json:"finishedAt,omitzero"`
+	ModelRequests int64                                                `json:"modelRequests"`
+	ToolCalls     int64                                                `json:"toolCalls"`
+	Attempts      int64                                                `json:"attempts"`
+	Steps         []CorpusCheckpointViewV1DelegatedTaskJSONStepsItem   `json:"steps"`
+	Result        *string                                              `json:"result,omitzero"`
+	Problem       *string                                              `json:"problem,omitzero"`
+	Failure       *CorpusCheckpointViewV1FailureJSON                   `json:"failure,omitzero"`
+	Budget        *CorpusCheckpointViewV1DelegatedTaskJSONBudget       `json:"budget,omitzero"`
+	Model         *string                                              `json:"model,omitzero"`
+	References    []string                                             `json:"references,omitzero"`
+	Resumes       *string                                              `json:"resumes,omitzero"`
+	More          *CorpusCheckpointViewV1DelegatedTaskJSONResultCursor `json:"more,omitzero"`
+	Summarized    *bool                                                `json:"summarized,omitzero"`
+	Report        *CorpusCheckpointViewV1DelegatedTaskJSONReport       `json:"report,omitzero"`
+	Partial       *bool                                                `json:"partial,omitzero"`
+	Reused        *string                                              `json:"reused,omitzero"`
+	Retried       *CorpusCheckpointViewV1DelegatedTaskJSONRetried      `json:"retried,omitzero"`
+	Tokens        *CorpusCheckpointViewV1ProvenanceJSONTokenFigures    `json:"tokens,omitzero"`
+	FirstByteMs   *int64                                               `json:"firstByteMs,omitzero"`
+	DurationMs    *int64                                               `json:"durationMs,omitzero"`
+	Subagent      *CorpusCheckpointViewV1SubagentJSONRecord            `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONMembers = []string{"id", "parentRunId", "title", "objective", "profile", "state", "createdAt", "finishedAt", "modelRequests", "toolCalls", "attempts", "steps", "result", "problem", "failure", "budget", "model", "references", "resumes", "more", "summarized", "report", "partial", "reused", "retried", "tokens", "firstByteMs", "durationMs", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSON object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/analyzeFinding.
+type CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding struct {
+	Text      string   `json:"text"`
+	Citations []string `json:"citations,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAnalyzeFindingMembers = []string{"text", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAnalyzeFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/analyzeReport.
+type CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport struct {
+	Summary       string                                                  `json:"summary"`
+	Findings      []CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV1DelegatedTaskJSONCitation       `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion   `json:"openQuestions"`
+	Confidence    string                                                  `json:"confidence"`
+	NotDone       []string                                                `json:"notDone"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAnalyzeReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAnalyzeReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/answer.
+type CorpusCheckpointViewV1DelegatedTaskJSONAnswer struct {
+	Tasks []CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask `json:"tasks"`
+	Note  string                                              `json:"note"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAnswerMembers = []string{"tasks", "note"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAnswer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAnswerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAnswer: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAnswer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswer object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAnswer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/answerTask.
+type CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask struct {
+	ID         string                                                `json:"id"`
+	Title      string                                                `json:"title"`
+	Objective  string                                                `json:"objective"`
+	Profile    string                                                `json:"profile"`
+	References []string                                              `json:"references,omitzero"`
+	State      string                                                `json:"state"`
+	Resumes    *string                                               `json:"resumes,omitzero"`
+	Report     *CorpusCheckpointViewV1DelegatedTaskJSONReport        `json:"report,omitzero"`
+	ReportCut  *bool                                                 `json:"reportCut,omitzero"`
+	Result     *string                                               `json:"result,omitzero"`
+	More       *CorpusCheckpointViewV1DelegatedTaskJSONResultCursor  `json:"more,omitzero"`
+	Summarized *bool                                                 `json:"summarized,omitzero"`
+	Partial    *bool                                                 `json:"partial,omitzero"`
+	Reused     *string                                               `json:"reused,omitzero"`
+	Problem    *string                                               `json:"problem,omitzero"`
+	Used       CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed `json:"used"`
+	Budget     *CorpusCheckpointViewV1DelegatedTaskJSONBudget        `json:"budget,omitzero"`
+	Subagent   *CorpusCheckpointViewV1SubagentJSONRecord             `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAnswerTaskMembers = []string{"id", "title", "objective", "profile", "references", "state", "resumes", "report", "reportCut", "result", "more", "summarized", "partial", "reused", "problem", "used", "budget", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAnswerTaskMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswerTask
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/answerTask/properties/used.
+type CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed struct {
+	ModelRequests int64 `json:"modelRequests"`
+	ToolCalls     int64 `json:"toolCalls"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsedMembers = []string{"modelRequests", "toolCalls"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAnswerTaskUsed
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/authorTestFinding.
+type CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding struct {
+	Text   string  `json:"text"`
+	Check  string  `json:"check"`
+	Status string  `json:"status"`
+	Case   *string `json:"case,omitzero"`
+	Fix    *string `json:"fix,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAuthorTestFindingMembers = []string{"text", "check", "status", "case", "fix"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAuthorTestFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/authorTestReport.
+type CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport struct {
+	Summary       string                                                     `json:"summary"`
+	Findings      []CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV1DelegatedTaskJSONCitation          `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion      `json:"openQuestions"`
+	Confidence    string                                                     `json:"confidence"`
+	NotDone       []string                                                   `json:"notDone"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONAuthorTestReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONAuthorTestReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/budget.
+type CorpusCheckpointViewV1DelegatedTaskJSONBudget struct {
+	ModelRequests int64 `json:"modelRequests"`
+	ToolCalls     int64 `json:"toolCalls"`
+	Milliseconds  int64 `json:"milliseconds"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONBudgetMembers = []string{"modelRequests", "toolCalls", "milliseconds"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONBudget object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONBudget) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONBudget
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONBudgetMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONBudget: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONBudget object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONBudget) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/citation.
+type CorpusCheckpointViewV1DelegatedTaskJSONCitation struct {
+	ID    string  `json:"id"`
+	Quote *string `json:"quote,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONCitationMembers = []string{"id", "quote"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONCitation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONCitation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONCitation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONCitationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONCitation: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONCitation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONCitation object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONCitation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONCitation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/openQuestion.
+type CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion struct {
+	Kind string  `json:"kind"`
+	Text string  `json:"text"`
+	Ref  *string `json:"ref,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONOpenQuestionMembers = []string{"kind", "text", "ref"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONOpenQuestionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/report.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type CorpusCheckpointViewV1DelegatedTaskJSONReport struct {
+	CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport    *CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport
+	CorpusCheckpointViewV1DelegatedTaskJSONReviewReport     *CorpusCheckpointViewV1DelegatedTaskJSONReviewReport
+	CorpusCheckpointViewV1DelegatedTaskJSONResearchReport   *CorpusCheckpointViewV1DelegatedTaskJSONResearchReport
+	CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport *CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONReport) UnmarshalJSON(data []byte) error {
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONReport{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV1DelegatedTaskJSONReviewReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV1DelegatedTaskJSONReviewReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV1DelegatedTaskJSONResearchReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV1DelegatedTaskJSONResearchReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONReport: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONReport{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONReport) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport != nil {
+		set = append(set, v.CorpusCheckpointViewV1DelegatedTaskJSONAnalyzeReport)
+	}
+	if v.CorpusCheckpointViewV1DelegatedTaskJSONReviewReport != nil {
+		set = append(set, v.CorpusCheckpointViewV1DelegatedTaskJSONReviewReport)
+	}
+	if v.CorpusCheckpointViewV1DelegatedTaskJSONResearchReport != nil {
+		set = append(set, v.CorpusCheckpointViewV1DelegatedTaskJSONResearchReport)
+	}
+	if v.CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport != nil {
+		set = append(set, v.CorpusCheckpointViewV1DelegatedTaskJSONAuthorTestReport)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("CorpusCheckpointViewV1DelegatedTaskJSONReport: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/request.
+type CorpusCheckpointViewV1DelegatedTaskJSONRequest struct {
+	Tasks []CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest `json:"tasks"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONRequestMembers = []string{"tasks"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONRequest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONRequest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONRequest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONRequestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONRequest: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONRequest object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONRequest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONRequest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/researchFinding.
+type CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding struct {
+	Text      string   `json:"text"`
+	Citations []string `json:"citations"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONResearchFindingMembers = []string{"text", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONResearchFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/researchReport.
+type CorpusCheckpointViewV1DelegatedTaskJSONResearchReport struct {
+	Summary       string                                                   `json:"summary"`
+	Findings      []CorpusCheckpointViewV1DelegatedTaskJSONResearchFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV1DelegatedTaskJSONCitation        `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion    `json:"openQuestions"`
+	Confidence    string                                                   `json:"confidence"`
+	NotDone       []string                                                 `json:"notDone"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONResearchReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONResearchReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONResearchReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResearchReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONResearchReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONResearchReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONResearchReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONResearchReport object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONResearchReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResearchReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/resultCursor.
+type CorpusCheckpointViewV1DelegatedTaskJSONResultCursor struct {
+	ReadWith        string `json:"readWith"`
+	ID              string `json:"id"`
+	Cursor          string `json:"cursor"`
+	TotalCharacters int64  `json:"totalCharacters"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONResultCursorMembers = []string{"readWith", "id", "cursor", "totalCharacters"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONResultCursor object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONResultCursor) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResultCursor
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONResultCursorMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONResultCursor: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONResultCursor(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONResultCursor object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONResultCursor) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONResultCursor
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/properties/retried.
+type CorpusCheckpointViewV1DelegatedTaskJSONRetried struct {
+	Failure CorpusCheckpointViewV1FailureJSON `json:"failure"`
+	WaitMs  int64                             `json:"waitMs"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONRetriedMembers = []string{"failure", "waitMs"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONRetried object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONRetried) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONRetried
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONRetriedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONRetried: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONRetried(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONRetried object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONRetried) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONRetried
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/reviewFinding.
+type CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding struct {
+	Text      string   `json:"text"`
+	Severity  string   `json:"severity"`
+	Citations []string `json:"citations,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONReviewFindingMembers = []string{"text", "severity", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONReviewFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/reviewReport.
+type CorpusCheckpointViewV1DelegatedTaskJSONReviewReport struct {
+	Summary       string                                                 `json:"summary"`
+	Findings      []CorpusCheckpointViewV1DelegatedTaskJSONReviewFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV1DelegatedTaskJSONCitation      `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV1DelegatedTaskJSONOpenQuestion  `json:"openQuestions"`
+	Confidence    string                                                 `json:"confidence"`
+	NotDone       []string                                               `json:"notDone"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONReviewReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONReviewReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONReviewReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONReviewReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONReviewReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONReviewReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONReviewReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONReviewReport object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONReviewReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONReviewReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/properties/steps/items.
+type CorpusCheckpointViewV1DelegatedTaskJSONStepsItem struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONStepsItemMembers = []string{"name", "state"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONStepsItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONStepsItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONStepsItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONStepsItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONStepsItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONStepsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONStepsItem object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONStepsItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONStepsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.delegated-task.json/$defs/taskRequest.
+type CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest struct {
+	Title      string                                    `json:"title"`
+	Objective  string                                    `json:"objective"`
+	Profile    string                                    `json:"profile"`
+	References []string                                  `json:"references,omitzero"`
+	Resume     *string                                   `json:"resume,omitzero"`
+	Summarize  *bool                                     `json:"summarize,omitzero"`
+	Subagent   *CorpusCheckpointViewV1SubagentJSONRecord `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV1DelegatedTaskJSONTaskRequestMembers = []string{"title", "objective", "profile", "references", "resume", "summarize", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1DelegatedTaskJSONTaskRequestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest: %w", err)
+	}
+	*v = CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest object.
+func (v CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1DelegatedTaskJSONTaskRequest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.failure.json.
+type CorpusCheckpointViewV1FailureJSON struct {
+	Version    int64                                           `json:"version"`
+	Code       string                                          `json:"code"`
+	Source     string                                          `json:"source"`
+	Outcome    string                                          `json:"outcome"`
+	Status     *int64                                          `json:"status,omitzero"`
+	RequestID  *string                                         `json:"requestId,omitzero"`
+	RetryAt    *string                                         `json:"retryAt,omitzero"`
+	Detail     *string                                         `json:"detail,omitzero"`
+	Completion *CorpusCheckpointViewV1ProvenanceJSONCompletion `json:"completion,omitzero"`
+}
+
+var corpusCheckpointViewV1FailureJSONMembers = []string{"version", "code", "source", "outcome", "status", "requestId", "retryAt", "detail", "completion"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1FailureJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1FailureJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1FailureJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1FailureJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1FailureJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1FailureJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1FailureJSON object.
+func (v CorpusCheckpointViewV1FailureJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1FailureJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.memory.json.
+type CorpusCheckpointViewV1MemoryJSON struct {
+	ID        string                                 `json:"id"`
+	Kind      string                                 `json:"kind"`
+	Text      string                                 `json:"text"`
+	Source    CorpusCheckpointViewV1MemoryJSONSource `json:"source"`
+	Scope     string                                 `json:"scope"`
+	Digest    string                                 `json:"digest"`
+	CreatedAt string                                 `json:"createdAt"`
+	State     string                                 `json:"state"`
+	ExpiresAt *string                                `json:"expiresAt,omitzero"`
+}
+
+var corpusCheckpointViewV1MemoryJSONMembers = []string{"id", "kind", "text", "source", "scope", "digest", "createdAt", "state", "expiresAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1MemoryJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1MemoryJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1MemoryJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1MemoryJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1MemoryJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1MemoryJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1MemoryJSON object.
+func (v CorpusCheckpointViewV1MemoryJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1MemoryJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.memory.json/properties/source.
+type CorpusCheckpointViewV1MemoryJSONSource struct {
+	Run        string `json:"run"`
+	ProposedBy string `json:"proposedBy"`
+}
+
+var corpusCheckpointViewV1MemoryJSONSourceMembers = []string{"run", "proposedBy"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1MemoryJSONSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1MemoryJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1MemoryJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1MemoryJSONSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1MemoryJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV1MemoryJSONSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1MemoryJSONSource object.
+func (v CorpusCheckpointViewV1MemoryJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1MemoryJSONSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json.
+type CorpusCheckpointViewV1PolicyJSON struct {
+	Compaction     *string                                         `json:"compaction,omitzero"`
+	Records        *CorpusCheckpointViewV1PolicyJSONRecords        `json:"records,omitzero"`
+	Budget         *CorpusCheckpointViewV1PolicyJSONBudget         `json:"budget,omitzero"`
+	Critic         *CorpusCheckpointViewV1PolicyJSONCritic         `json:"critic,omitzero"`
+	Models         *CorpusCheckpointViewV1PolicyJSONModels         `json:"models,omitzero"`
+	Concurrency    *CorpusCheckpointViewV1PolicyJSONConcurrency    `json:"concurrency,omitzero"`
+	Pace           *CorpusCheckpointViewV1PolicyJSONPace           `json:"pace,omitzero"`
+	TaskClass      *string                                         `json:"taskClass,omitzero"`
+	OutputGuard    *string                                         `json:"outputGuard,omitzero"`
+	OutputPatterns []CorpusCheckpointViewV1PolicyJSONOutputPattern `json:"outputPatterns,omitzero"`
+	OutputAllow    []string                                        `json:"outputAllow,omitzero"`
+	Failover       *CorpusCheckpointViewV1PolicyJSONFailover       `json:"failover,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSON object.
+func (v CorpusCheckpointViewV1PolicyJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/budget.
+type CorpusCheckpointViewV1PolicyJSONBudget struct {
+	Version                  *int64 `json:"version,omitzero"`
+	MaxInputBytes            *int64 `json:"maxInputBytes,omitzero"`
+	ContextWindowTokens      *int64 `json:"contextWindowTokens,omitzero"`
+	OutputTokens             *int64 `json:"outputTokens,omitzero"`
+	ToolResultBytes          *int64 `json:"toolResultBytes,omitzero"`
+	ReadBytes                *int64 `json:"readBytes,omitzero"`
+	RetainedBytes            *int64 `json:"retainedBytes,omitzero"`
+	RecentMessages           *int64 `json:"recentMessages,omitzero"`
+	SummaryBytes             *int64 `json:"summaryBytes,omitzero"`
+	HistoryBytes             *int64 `json:"historyBytes,omitzero"`
+	BriefBytes               *int64 `json:"briefBytes,omitzero"`
+	MemoryBytes              *int64 `json:"memoryBytes,omitzero"`
+	TurnMilliseconds         *int64 `json:"turnMilliseconds,omitzero"`
+	ToolCallMilliseconds     *int64 `json:"toolCallMilliseconds,omitzero"`
+	ImagesPerRequest         *int64 `json:"imagesPerRequest,omitzero"`
+	ImageBytesPerRequest     *int64 `json:"imageBytesPerRequest,omitzero"`
+	TestCallsPerTurn         *int64 `json:"testCallsPerTurn,omitzero"`
+	TestPackBytes            *int64 `json:"testPackBytes,omitzero"`
+	TestMatrixBytes          *int64 `json:"testMatrixBytes,omitzero"`
+	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
+	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
+	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
+	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
+	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
+	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
+	CataloguedTools          *int64 `json:"cataloguedTools,omitzero"`
+	CatalogueBytes           *int64 `json:"catalogueBytes,omitzero"`
+	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
+	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
+	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
+	SkillBytes               *int64 `json:"skillBytes,omitzero"`
+	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
+	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
+	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
+	CataloguedSubagents      *int64 `json:"cataloguedSubagents,omitzero"`
+	SubagentCatalogueBytes   *int64 `json:"subagentCatalogueBytes,omitzero"`
+	MemoryProposalBytes      *int64 `json:"memoryProposalBytes,omitzero"`
+	MemoryProposalsPerRun    *int64 `json:"memoryProposalsPerRun,omitzero"`
+	SteerBytes               *int64 `json:"steerBytes,omitzero"`
+	SteersPerRun             *int64 `json:"steersPerRun,omitzero"`
+	EditsPerTurn             *int64 `json:"editsPerTurn,omitzero"`
+	EditBytes                *int64 `json:"editBytes,omitzero"`
+	ProposalBytes            *int64 `json:"proposalBytes,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONBudget object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONBudget) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONBudget
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONBudgetMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONBudget: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONBudget object.
+func (v CorpusCheckpointViewV1PolicyJSONBudget) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/concurrency.
+type CorpusCheckpointViewV1PolicyJSONConcurrency struct {
+	Children *int64 `json:"children,omitzero"`
+	Requests *int64 `json:"requests,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONConcurrencyMembers = []string{"children", "requests"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONConcurrency object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONConcurrency) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONConcurrency
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONConcurrencyMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONConcurrency: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONConcurrency(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONConcurrency object.
+func (v CorpusCheckpointViewV1PolicyJSONConcurrency) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONConcurrency
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/critic.
+type CorpusCheckpointViewV1PolicyJSONCritic struct {
+	Default        *string `json:"default,omitzero"`
+	ReasoningFloor *string `json:"reasoningFloor,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONCriticMembers = []string{"default", "reasoningFloor"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONCritic object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONCritic) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONCritic
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONCriticMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONCritic: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONCritic object.
+func (v CorpusCheckpointViewV1PolicyJSONCritic) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/discovered.
+type CorpusCheckpointViewV1PolicyJSONDiscovered struct {
+	Reasoning CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning `json:"reasoning"`
+}
+
+var corpusCheckpointViewV1PolicyJSONDiscoveredMembers = []string{"reasoning"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONDiscovered object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONDiscovered) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONDiscovered
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONDiscoveredMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONDiscovered: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONDiscovered(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONDiscovered object.
+func (v CorpusCheckpointViewV1PolicyJSONDiscovered) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONDiscovered
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/discovered/properties/reasoning.
+type CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning struct {
+	Default   *string  `json:"default,omitzero"`
+	Supported []string `json:"supported"`
+}
+
+var corpusCheckpointViewV1PolicyJSONDiscoveredReasoningMembers = []string{"default", "supported"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONDiscoveredReasoningMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning object.
+func (v CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONDiscoveredReasoning
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/failover.
+type CorpusCheckpointViewV1PolicyJSONFailover struct {
+	Classes []string `json:"classes,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONFailoverMembers = []string{"classes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONFailover object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONFailover) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONFailover
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONFailoverMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONFailover: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONFailover(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONFailover object.
+func (v CorpusCheckpointViewV1PolicyJSONFailover) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONFailover
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/member.
+type CorpusCheckpointViewV1PolicyJSONMember struct {
+	Value  json.RawMessage `json:"value,omitzero"`
+	Layer  string          `json:"layer"`
+	Source *string         `json:"source,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONMemberMembers = []string{"value", "layer", "source"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONMember object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONMember) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONMember
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONMemberMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONMember: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONMember(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONMember object.
+func (v CorpusCheckpointViewV1PolicyJSONMember) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONMember
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/models.
+type CorpusCheckpointViewV1PolicyJSONModels struct {
+	Author      *CorpusCheckpointViewV1PolicyJSONRole              `json:"author,omitzero"`
+	Critic      *CorpusCheckpointViewV1PolicyJSONRole              `json:"critic,omitzero"`
+	Compactor   *CorpusCheckpointViewV1PolicyJSONRole              `json:"compactor,omitzero"`
+	TaskClasses *CorpusCheckpointViewV1PolicyJSONModelsTaskClasses `json:"taskClasses,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV1PolicyJSONModelsMembers = []string{"author", "critic", "compactor", "taskClasses"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONModels object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONModels) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONModels
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONModelsMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONModels: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONModels(p)
+	if err := checkPatternMembers(extra, []string{"^(child|subagent)\\.[A-Za-z0-9_-]+$"}); err != nil {
+		return err
+	}
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONModels object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV1PolicyJSONModels) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONModels
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/models/properties/taskClasses.
+type CorpusCheckpointViewV1PolicyJSONModelsTaskClasses struct {
+	Routine  *string `json:"routine,omitzero"`
+	Material *string `json:"material,omitzero"`
+	Boundary *string `json:"boundary,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONModelsTaskClassesMembers = []string{"routine", "material", "boundary"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONModelsTaskClasses object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONModelsTaskClasses) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONModelsTaskClasses
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONModelsTaskClassesMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONModelsTaskClasses: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONModelsTaskClasses(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONModelsTaskClasses object.
+func (v CorpusCheckpointViewV1PolicyJSONModelsTaskClasses) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONModelsTaskClasses
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/outputPattern.
+type CorpusCheckpointViewV1PolicyJSONOutputPattern struct {
+	Name    string `json:"name"`
+	Pattern string `json:"pattern"`
+}
+
+var corpusCheckpointViewV1PolicyJSONOutputPatternMembers = []string{"name", "pattern"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONOutputPattern object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONOutputPattern) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONOutputPattern
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONOutputPatternMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONOutputPattern: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONOutputPattern(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONOutputPattern object.
+func (v CorpusCheckpointViewV1PolicyJSONOutputPattern) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONOutputPattern
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/pace.
+type CorpusCheckpointViewV1PolicyJSONPace struct {
+	RequestsPerDay    Nullable[int64] `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay Nullable[int64] `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       Nullable[int64] `json:"bytesPerDay,omitzero"`
+	WarnAt            *float64        `json:"warnAt,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONPaceMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay", "warnAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONPace object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONPace) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONPace
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONPaceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONPace: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONPace(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONPace object.
+func (v CorpusCheckpointViewV1PolicyJSONPace) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONPace
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/paceUsed.
+type CorpusCheckpointViewV1PolicyJSONPaceUsed struct {
+	RequestsPerDay    *int64 `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay *int64 `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       *int64 `json:"bytesPerDay,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONPaceUsedMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONPaceUsed object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONPaceUsed) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONPaceUsed
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONPaceUsedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONPaceUsed: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONPaceUsed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONPaceUsed object.
+func (v CorpusCheckpointViewV1PolicyJSONPaceUsed) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONPaceUsed
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/properties/records.
+type CorpusCheckpointViewV1PolicyJSONRecords struct {
+	RetainDays    *int64  `json:"retainDays,omitzero"`
+	RedactOnStore *bool   `json:"redactOnStore,omitzero"`
+	ExportFormat  *string `json:"exportFormat,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONRecordsMembers = []string{"retainDays", "redactOnStore", "exportFormat"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONRecords object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONRecords) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONRecords
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONRecordsMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONRecords: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONRecords(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONRecords object.
+func (v CorpusCheckpointViewV1PolicyJSONRecords) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONRecords
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.policy.json/$defs/role.
+type CorpusCheckpointViewV1PolicyJSONRole struct {
+	Model      *string                                     `json:"model,omitzero"`
+	Reasoning  *string                                     `json:"reasoning,omitzero"`
+	Discovered *CorpusCheckpointViewV1PolicyJSONDiscovered `json:"discovered,omitzero"`
+	Provider   *string                                     `json:"provider,omitzero"`
+	Fallback   []string                                    `json:"fallback,omitzero"`
+}
+
+var corpusCheckpointViewV1PolicyJSONRoleMembers = []string{"model", "reasoning", "discovered", "provider", "fallback"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1PolicyJSONRole object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1PolicyJSONRole) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1PolicyJSONRole
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1PolicyJSONRoleMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1PolicyJSONRole: %w", err)
+	}
+	*v = CorpusCheckpointViewV1PolicyJSONRole(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1PolicyJSONRole object.
+func (v CorpusCheckpointViewV1PolicyJSONRole) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1PolicyJSONRole
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json.
+type CorpusCheckpointViewV1ProvenanceJSON struct {
+	Schema      *string                                            `json:"schema,omitzero"`
+	Version     *int64                                             `json:"version,omitzero"`
+	Digest      *string                                            `json:"digest,omitzero"`
+	RetainUntil *string                                            `json:"retainUntil,omitzero"`
+	Request     int64                                              `json:"request"`
+	Phase       string                                             `json:"phase"`
+	Result      CorpusCheckpointViewV1ProvenanceJSONCompletion     `json:"result"`
+	Attempt     *int64                                             `json:"attempt,omitzero"`
+	Failure     *CorpusCheckpointViewV1FailureJSON                 `json:"failure,omitzero"`
+	WaitMs      *int64                                             `json:"waitMs,omitzero"`
+	Records     *CorpusCheckpointViewV1ProvenanceJSONRecordFigures `json:"records,omitzero"`
+	Connection  *string                                            `json:"connection,omitzero"`
+	Role        *string                                            `json:"role,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records", "connection", "role"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSON object.
+func (v CorpusCheckpointViewV1ProvenanceJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/batchFigures.
+type CorpusCheckpointViewV1ProvenanceJSONBatchFigures struct {
+	Batch    int64                                              `json:"batch"`
+	Children []CorpusCheckpointViewV1ProvenanceJSONChildFigures `json:"children"`
+	Total    CorpusCheckpointViewV1ProvenanceJSONFiguresTotal   `json:"total"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONBatchFiguresMembers = []string{"batch", "children", "total"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONBatchFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONBatchFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONBatchFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONBatchFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONBatchFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONBatchFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONBatchFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONBatchFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONBatchFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/childFigures.
+type CorpusCheckpointViewV1ProvenanceJSONChildFigures struct {
+	Task          string                                            `json:"task"`
+	Batch         int64                                             `json:"batch"`
+	Profile       string                                            `json:"profile"`
+	Model         *string                                           `json:"model,omitzero"`
+	State         string                                            `json:"state"`
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	ToolCalls     int64                                             `json:"toolCalls"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV1ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+	FirstByteMs   *int64                                            `json:"firstByteMs,omitzero"`
+	DurationMs    int64                                             `json:"durationMs"`
+	Partial       *bool                                             `json:"partial,omitzero"`
+	Reused        *bool                                             `json:"reused,omitzero"`
+	Subagent      *CorpusCheckpointViewV1SubagentJSONRecord         `json:"subagent,omitzero"`
+	Problem       *string                                           `json:"problem,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONChildFiguresMembers = []string{"task", "batch", "profile", "model", "state", "modelRequests", "toolCalls", "agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused", "subagent", "problem"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONChildFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONChildFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONChildFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONChildFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONChildFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONChildFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONChildFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONChildFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONChildFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/compactionReport.
+type CorpusCheckpointViewV1ProvenanceJSONCompactionReport struct {
+	Mode      string                                                  `json:"mode"`
+	Summaries []CorpusCheckpointViewV1ProvenanceJSONCompactionSummary `json:"summaries"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONCompactionReportMembers = []string{"mode", "summaries"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONCompactionReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONCompactionReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompactionReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONCompactionReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONCompactionReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONCompactionReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONCompactionReport object.
+func (v CorpusCheckpointViewV1ProvenanceJSONCompactionReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompactionReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/compactionSummary.
+type CorpusCheckpointViewV1ProvenanceJSONCompactionSummary struct {
+	Digest  string   `json:"digest"`
+	Turns   int64    `json:"turns"`
+	Bytes   int64    `json:"bytes"`
+	Summary string   `json:"summary"`
+	Digests []string `json:"digests"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONCompactionSummaryMembers = []string{"digest", "turns", "bytes", "summary", "digests"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONCompactionSummary object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONCompactionSummary) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompactionSummary
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONCompactionSummaryMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONCompactionSummary: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONCompactionSummary(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONCompactionSummary object.
+func (v CorpusCheckpointViewV1ProvenanceJSONCompactionSummary) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompactionSummary
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/completion.
+type CorpusCheckpointViewV1ProvenanceJSONCompletion struct {
+	FinishReason     string `json:"finishReason"`
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONCompletionMembers = []string{"finishReason", "inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONCompletion object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONCompletion) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompletion
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONCompletionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONCompletion: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONCompletion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONCompletion object.
+func (v CorpusCheckpointViewV1ProvenanceJSONCompletion) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCompletion
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/crossProvider.
+type CorpusCheckpointViewV1ProvenanceJSONCrossProvider struct {
+	Role      string                                       `json:"role"`
+	Relation  string                                       `json:"relation"`
+	Author    CorpusCheckpointViewV1ProvenanceJSONProvider `json:"author"`
+	Provider  CorpusCheckpointViewV1ProvenanceJSONProvider `json:"provider"`
+	Continued *bool                                        `json:"continued,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONCrossProviderMembers = []string{"role", "relation", "author", "provider", "continued"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONCrossProvider object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONCrossProvider) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCrossProvider
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONCrossProviderMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONCrossProvider: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONCrossProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONCrossProvider object.
+func (v CorpusCheckpointViewV1ProvenanceJSONCrossProvider) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONCrossProvider
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/delegationReport.
+type CorpusCheckpointViewV1ProvenanceJSONDelegationReport struct {
+	Batches []CorpusCheckpointViewV1ProvenanceJSONBatchFigures `json:"batches"`
+	Parent  CorpusCheckpointViewV1ProvenanceJSONParentFigures  `json:"parent"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONDelegationReportMembers = []string{"batches", "parent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONDelegationReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONDelegationReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONDelegationReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONDelegationReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONDelegationReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONDelegationReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONDelegationReport object.
+func (v CorpusCheckpointViewV1ProvenanceJSONDelegationReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONDelegationReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/deliveredSteer.
+type CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer struct {
+	Bytes     int64 `json:"bytes"`
+	AtRequest int64 `json:"atRequest"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONDeliveredSteerMembers = []string{"bytes", "atRequest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONDeliveredSteerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer object.
+func (v CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/edit.
+type CorpusCheckpointViewV1ProvenanceJSONEdit struct {
+	Type     string `json:"type"`
+	Document string `json:"document"`
+	Line     int64  `json:"line"`
+	Bytes    int64  `json:"bytes"`
+	Valid    bool   `json:"valid"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONEditMembers = []string{"type", "document", "line", "bytes", "valid"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONEdit object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONEdit) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONEdit
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONEditMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONEdit: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONEdit(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONEdit object.
+func (v CorpusCheckpointViewV1ProvenanceJSONEdit) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONEdit
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/figuresTotal.
+type CorpusCheckpointViewV1ProvenanceJSONFiguresTotal struct {
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	ToolCalls     int64                                             `json:"toolCalls"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV1ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+	DurationMs    int64                                             `json:"durationMs"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONFiguresTotalMembers = []string{"modelRequests", "toolCalls", "agentRuns", "tokens", "durationMs"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONFiguresTotal object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONFiguresTotal) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONFiguresTotal
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONFiguresTotalMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONFiguresTotal: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONFiguresTotal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONFiguresTotal object.
+func (v CorpusCheckpointViewV1ProvenanceJSONFiguresTotal) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONFiguresTotal
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/identityFigures.
+type CorpusCheckpointViewV1ProvenanceJSONIdentityFigures struct {
+	Identity CorpusCheckpointViewV1ToolOfferJSONIdentity `json:"identity"`
+	Calls    int64                                       `json:"calls"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONIdentityFiguresMembers = []string{"identity", "calls"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONIdentityFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONIdentityFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONIdentityFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONIdentityFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONIdentityFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONIdentityFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONIdentityFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONIdentityFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONIdentityFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/memories.
+type CorpusCheckpointViewV1ProvenanceJSONMemories struct {
+	Proposed []CorpusCheckpointViewV1MemoryJSON                 `json:"proposed"`
+	Recalled []CorpusCheckpointViewV1ProvenanceJSONMemoryRecall `json:"recalled"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONMemoriesMembers = []string{"proposed", "recalled"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONMemories object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONMemories) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONMemories
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONMemoriesMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONMemories: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONMemories(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONMemories object.
+func (v CorpusCheckpointViewV1ProvenanceJSONMemories) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONMemories
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/memoryRecall.
+type CorpusCheckpointViewV1ProvenanceJSONMemoryRecall struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Kind   string `json:"kind"`
+	State  string `json:"state"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONMemoryRecallMembers = []string{"id", "digest", "kind", "state"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONMemoryRecall object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONMemoryRecall) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONMemoryRecall
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONMemoryRecallMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONMemoryRecall: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONMemoryRecall(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONMemoryRecall object.
+func (v CorpusCheckpointViewV1ProvenanceJSONMemoryRecall) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONMemoryRecall
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/parentFigures.
+type CorpusCheckpointViewV1ProvenanceJSONParentFigures struct {
+	Model         string                                            `json:"model"`
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV1ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONParentFiguresMembers = []string{"model", "modelRequests", "agentRuns", "tokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONParentFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONParentFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONParentFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONParentFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONParentFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONParentFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONParentFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONParentFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONParentFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/promptDigest.
+type CorpusCheckpointViewV1ProvenanceJSONPromptDigest struct {
+	Request int64  `json:"request"`
+	Sha256  string `json:"sha256"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONPromptDigestMembers = []string{"request", "sha256"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONPromptDigest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONPromptDigest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONPromptDigest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONPromptDigestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONPromptDigest: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONPromptDigest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONPromptDigest object.
+func (v CorpusCheckpointViewV1ProvenanceJSONPromptDigest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONPromptDigest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/provider.
+type CorpusCheckpointViewV1ProvenanceJSONProvider struct {
+	Connection string `json:"connection"`
+	Family     string `json:"family"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONProviderMembers = []string{"connection", "family"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONProvider object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONProvider) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONProvider
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONProviderMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONProvider: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONProvider object.
+func (v CorpusCheckpointViewV1ProvenanceJSONProvider) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONProvider
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/queuedSteer.
+type CorpusCheckpointViewV1ProvenanceJSONQueuedSteer struct {
+	Text  string `json:"text"`
+	Bytes int64  `json:"bytes"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONQueuedSteerMembers = []string{"text", "bytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONQueuedSteer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONQueuedSteer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONQueuedSteer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONQueuedSteerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONQueuedSteer: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONQueuedSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONQueuedSteer object.
+func (v CorpusCheckpointViewV1ProvenanceJSONQueuedSteer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONQueuedSteer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/recordFigures.
+type CorpusCheckpointViewV1ProvenanceJSONRecordFigures struct {
+	Redactions map[string]int64 `json:"redactions"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONRecordFiguresMembers = []string{"redactions"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONRecordFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONRecordFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONRecordFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONRecordFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONRecordFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONRecordFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONRecordFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONRecordFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONRecordFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/skillLoad.
+type CorpusCheckpointViewV1ProvenanceJSONSkillLoad struct {
+	ID       string `json:"id"`
+	Digest   string `json:"digest"`
+	Bytes    int64  `json:"bytes"`
+	LoadedAt string `json:"loadedAt"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONSkillLoadMembers = []string{"id", "digest", "bytes", "loadedAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONSkillLoad object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONSkillLoad) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSkillLoad
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONSkillLoadMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONSkillLoad: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONSkillLoad(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONSkillLoad object.
+func (v CorpusCheckpointViewV1ProvenanceJSONSkillLoad) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSkillLoad
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/sourceFigures.
+type CorpusCheckpointViewV1ProvenanceJSONSourceFigures struct {
+	Source       string                                                `json:"source"`
+	Kind         string                                                `json:"kind"`
+	Calls        int64                                                 `json:"calls"`
+	Refused      int64                                                 `json:"refused"`
+	Proposed     int64                                                 `json:"proposed"`
+	Bytes        int64                                                 `json:"bytes"`
+	Milliseconds int64                                                 `json:"milliseconds"`
+	Skills       *int64                                                `json:"skills,omitzero"`
+	Identities   []CorpusCheckpointViewV1ProvenanceJSONIdentityFigures `json:"identities,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills", "identities"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONSourceFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONSourceFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSourceFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONSourceFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONSourceFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONSourceFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONSourceFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONSourceFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSourceFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/steerReport.
+type CorpusCheckpointViewV1ProvenanceJSONSteerReport struct {
+	Queued    []CorpusCheckpointViewV1ProvenanceJSONQueuedSteer    `json:"queued"`
+	Delivered []CorpusCheckpointViewV1ProvenanceJSONDeliveredSteer `json:"delivered"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONSteerReportMembers = []string{"queued", "delivered"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONSteerReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONSteerReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSteerReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONSteerReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONSteerReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONSteerReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONSteerReport object.
+func (v CorpusCheckpointViewV1ProvenanceJSONSteerReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONSteerReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.provenance.json/$defs/tokenFigures.
+type CorpusCheckpointViewV1ProvenanceJSONTokenFigures struct {
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV1ProvenanceJSONTokenFiguresMembers = []string{"inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ProvenanceJSONTokenFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ProvenanceJSONTokenFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ProvenanceJSONTokenFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ProvenanceJSONTokenFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ProvenanceJSONTokenFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ProvenanceJSONTokenFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ProvenanceJSONTokenFigures object.
+func (v CorpusCheckpointViewV1ProvenanceJSONTokenFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ProvenanceJSONTokenFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.skill.json.
+type CorpusCheckpointViewV1SkillJSON struct {
+	ID           string                                    `json:"id"`
+	Name         string                                    `json:"name"`
+	Description  string                                    `json:"description"`
+	Source       CorpusCheckpointViewV1SkillJSONSource     `json:"source"`
+	Instructions string                                    `json:"instructions"`
+	Tools        []string                                  `json:"tools,omitzero"`
+	Resources    []CorpusCheckpointViewV1SkillJSONResource `json:"resources,omitzero"`
+	PinnedDigest *string                                   `json:"pinnedDigest,omitzero"`
+	Digest       *string                                   `json:"digest,omitzero"`
+}
+
+var corpusCheckpointViewV1SkillJSONMembers = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SkillJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SkillJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SkillJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SkillJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SkillJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SkillJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SkillJSON object.
+func (v CorpusCheckpointViewV1SkillJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SkillJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.skill.json/$defs/resource.
+type CorpusCheckpointViewV1SkillJSONResource struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+var corpusCheckpointViewV1SkillJSONResourceMembers = []string{"name", "text"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SkillJSONResource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SkillJSONResource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SkillJSONResource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SkillJSONResourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SkillJSONResource: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SkillJSONResource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SkillJSONResource object.
+func (v CorpusCheckpointViewV1SkillJSONResource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SkillJSONResource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.skill.json/properties/source.
+type CorpusCheckpointViewV1SkillJSONSource struct {
+	Kind           string                                       `json:"kind"`
+	ID             string                                       `json:"id"`
+	Version        *string                                      `json:"version,omitzero"`
+	ToolListDigest *string                                      `json:"toolListDigest,omitzero"`
+	Trust          string                                       `json:"trust"`
+	Identity       *CorpusCheckpointViewV1ToolOfferJSONIdentity `json:"identity,omitzero"`
+	IdentityDigest *string                                      `json:"identityDigest,omitzero"`
+	Tool           *string                                      `json:"tool,omitzero"`
+	Receipt        *string                                      `json:"receipt,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV1SkillJSONSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SkillJSONSource object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV1SkillJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SkillJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SkillJSONSourceMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SkillJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SkillJSONSource(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SkillJSONSource object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV1SkillJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SkillJSONSource
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.subagent.json.
+type CorpusCheckpointViewV1SubagentJSON struct {
+	ID           string                                   `json:"id"`
+	Name         string                                   `json:"name"`
+	Purpose      string                                   `json:"purpose"`
+	Instructions string                                   `json:"instructions"`
+	Source       CorpusCheckpointViewV1SubagentJSONSource `json:"source"`
+	Tools        []string                                 `json:"tools"`
+	Skills       []string                                 `json:"skills"`
+	Model        string                                   `json:"model"`
+	Reasoning    string                                   `json:"reasoning"`
+	Bounds       CorpusCheckpointViewV1SubagentJSONBounds `json:"bounds"`
+	PinnedDigest string                                   `json:"pinnedDigest"`
+	Digest       *string                                  `json:"digest,omitzero"`
+}
+
+var corpusCheckpointViewV1SubagentJSONMembers = []string{"id", "name", "purpose", "instructions", "source", "tools", "skills", "model", "reasoning", "bounds", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SubagentJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SubagentJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SubagentJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SubagentJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SubagentJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SubagentJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SubagentJSON object.
+func (v CorpusCheckpointViewV1SubagentJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SubagentJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.subagent.json/properties/bounds.
+type CorpusCheckpointViewV1SubagentJSONBounds struct {
+	ModelRequests int64 `json:"modelRequests"`
+	AgentRuns     int64 `json:"agentRuns"`
+	ToolCalls     int64 `json:"toolCalls"`
+	Bytes         int64 `json:"bytes"`
+	Milliseconds  int64 `json:"milliseconds"`
+	ResultBytes   int64 `json:"resultBytes"`
+}
+
+var corpusCheckpointViewV1SubagentJSONBoundsMembers = []string{"modelRequests", "agentRuns", "toolCalls", "bytes", "milliseconds", "resultBytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SubagentJSONBounds object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SubagentJSONBounds) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SubagentJSONBounds
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SubagentJSONBoundsMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SubagentJSONBounds: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SubagentJSONBounds(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SubagentJSONBounds object.
+func (v CorpusCheckpointViewV1SubagentJSONBounds) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SubagentJSONBounds
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.subagent.json/$defs/record.
+type CorpusCheckpointViewV1SubagentJSONRecord struct {
+	ID     string                                         `json:"id"`
+	Digest string                                         `json:"digest"`
+	Source CorpusCheckpointViewV1SubagentJSONRecordSource `json:"source"`
+}
+
+var corpusCheckpointViewV1SubagentJSONRecordMembers = []string{"id", "digest", "source"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SubagentJSONRecord object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SubagentJSONRecord) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SubagentJSONRecord
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SubagentJSONRecordMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SubagentJSONRecord: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SubagentJSONRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SubagentJSONRecord object.
+func (v CorpusCheckpointViewV1SubagentJSONRecord) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SubagentJSONRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.subagent.json/$defs/record/properties/source.
+type CorpusCheckpointViewV1SubagentJSONRecordSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var corpusCheckpointViewV1SubagentJSONRecordSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SubagentJSONRecordSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SubagentJSONRecordSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SubagentJSONRecordSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SubagentJSONRecordSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SubagentJSONRecordSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SubagentJSONRecordSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SubagentJSONRecordSource object.
+func (v CorpusCheckpointViewV1SubagentJSONRecordSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SubagentJSONRecordSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.subagent.json/properties/source.
+type CorpusCheckpointViewV1SubagentJSONSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var corpusCheckpointViewV1SubagentJSONSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1SubagentJSONSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1SubagentJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1SubagentJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1SubagentJSONSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1SubagentJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV1SubagentJSONSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1SubagentJSONSource object.
+func (v CorpusCheckpointViewV1SubagentJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1SubagentJSONSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-offer.json.
+type CorpusCheckpointViewV1ToolOfferJSON struct {
+	Tools            []CorpusCheckpointViewV1ToolOfferJSONRuntimeTool `json:"tools"`
+	HostTools        []CorpusCheckpointViewV1ToolOfferJSONHostTool    `json:"hostTools"`
+	Skills           []json.RawMessage                                `json:"skills,omitzero"`
+	Critic           *string                                          `json:"critic,omitzero"`
+	CriticProject    *string                                          `json:"criticProject,omitzero"`
+	CriticReasoning  *string                                          `json:"criticReasoning,omitzero"`
+	ExistingPack     *bool                                            `json:"existingPack,omitzero"`
+	ReviewerAssigned *bool                                            `json:"reviewerAssigned,omitzero"`
+	Policy           *CorpusCheckpointViewV1PolicyJSON                `json:"policy,omitzero"`
+	PolicyProject    *CorpusCheckpointViewV1PolicyJSON                `json:"policyProject,omitzero"`
+	TaskClass        *string                                          `json:"taskClass,omitzero"`
+	PaceUsed         *CorpusCheckpointViewV1PolicyJSONPaceUsed        `json:"paceUsed,omitzero"`
+	Subagents        []json.RawMessage                                `json:"subagents,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "policy", "policyProject", "taskClass", "paceUsed", "subagents"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSON object.
+func (v CorpusCheckpointViewV1ToolOfferJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/hostTool.
+type CorpusCheckpointViewV1ToolOfferJSONHostTool struct {
+	Name          string                                                    `json:"name"`
+	Description   string                                                    `json:"description"`
+	InputSchema   json.RawMessage                                           `json:"inputSchema"`
+	Effect        *string                                                   `json:"effect,omitzero"`
+	Interaction   *string                                                   `json:"interaction,omitzero"`
+	Delegation    *string                                                   `json:"delegation,omitzero"`
+	ContextPolicy *CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *CorpusCheckpointViewV1ToolOfferJSONSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                                                   `json:"effectClass,omitzero"`
+	Approval      *string                                                   `json:"approval,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONHostTool object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONHostTool) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostTool
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONHostToolMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONHostTool: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONHostTool(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONHostTool object.
+func (v CorpusCheckpointViewV1ToolOfferJSONHostTool) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostTool
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/hostTool/properties/contextPolicy.
+type CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy struct {
+	Immutable *bool `json:"immutable,omitzero"`
+	Reference *bool `json:"reference,omitzero"`
+	Runtime   *bool `json:"runtime,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONHostToolContextPolicyMembers = []string{"immutable", "reference", "runtime"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONHostToolContextPolicyMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy object.
+func (v CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostToolContextPolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/hostTool/properties/presentation.
+type CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation struct {
+	Provider string `json:"provider"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONHostToolPresentationMembers = []string{"provider"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONHostToolPresentationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation object.
+func (v CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONHostToolPresentation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/identity.
+type CorpusCheckpointViewV1ToolOfferJSONIdentity struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONIdentityMembers = []string{"kind", "label"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONIdentity object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONIdentity) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONIdentityMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONIdentity: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONIdentity object.
+func (v CorpusCheckpointViewV1ToolOfferJSONIdentity) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONIdentity
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/runtimeTool.
+type CorpusCheckpointViewV1ToolOfferJSONRuntimeTool struct {
+	Name        string          `json:"name"`
+	Description *string         `json:"description,omitzero"`
+	InputSchema json.RawMessage `json:"inputSchema,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONRuntimeToolMembers = []string{"name", "description", "inputSchema"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONRuntimeTool object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONRuntimeTool) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONRuntimeTool
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONRuntimeToolMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONRuntimeTool: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONRuntimeTool(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONRuntimeTool object.
+func (v CorpusCheckpointViewV1ToolOfferJSONRuntimeTool) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONRuntimeTool
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-offer.json/$defs/sourceRecord.
+type CorpusCheckpointViewV1ToolOfferJSONSourceRecord struct {
+	Kind           string                                       `json:"kind"`
+	ID             string                                       `json:"id"`
+	Version        *string                                      `json:"version,omitzero"`
+	ToolListDigest *string                                      `json:"toolListDigest,omitzero"`
+	Trust          string                                       `json:"trust"`
+	Identity       *CorpusCheckpointViewV1ToolOfferJSONIdentity `json:"identity,omitzero"`
+	IdentityDigest *string                                      `json:"identityDigest,omitzero"`
+	Tool           *string                                      `json:"tool,omitzero"`
+	Receipt        *string                                      `json:"receipt,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolOfferJSONSourceRecordMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolOfferJSONSourceRecord object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolOfferJSONSourceRecord) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolOfferJSONSourceRecord
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolOfferJSONSourceRecordMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolOfferJSONSourceRecord: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolOfferJSONSourceRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolOfferJSONSourceRecord object.
+func (v CorpusCheckpointViewV1ToolOfferJSONSourceRecord) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolOfferJSONSourceRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-result.json.
+type CorpusCheckpointViewV1ToolResultJSON struct {
+	Type       string                                           `json:"type"`
+	CallID     *string                                          `json:"callId,omitzero"`
+	Name       string                                           `json:"name"`
+	IsError    bool                                             `json:"isError"`
+	Text       string                                           `json:"text"`
+	Structured json.RawMessage                                  `json:"structured,omitzero"`
+	Origin     *string                                          `json:"origin,omitzero"`
+	Source     *CorpusCheckpointViewV1ToolOfferJSONSourceRecord `json:"source,omitzero"`
+	Proposed   *bool                                            `json:"proposed,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolResultJSONMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin", "source", "proposed"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolResultJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolResultJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolResultJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolResultJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolResultJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolResultJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolResultJSON object.
+func (v CorpusCheckpointViewV1ToolResultJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolResultJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-result.json/$defs/imagePart.
+type CorpusCheckpointViewV1ToolResultJSONImagePart struct {
+	Kind      string  `json:"kind"`
+	MediaType string  `json:"mediaType"`
+	Bytes     *string `json:"bytes,omitzero"`
+	Reference *string `json:"reference,omitzero"`
+}
+
+var corpusCheckpointViewV1ToolResultJSONImagePartMembers = []string{"kind", "mediaType", "bytes", "reference"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolResultJSONImagePart object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1ToolResultJSONImagePart) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolResultJSONImagePart
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolResultJSONImagePartMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolResultJSONImagePart: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolResultJSONImagePart(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolResultJSONImagePart object.
+func (v CorpusCheckpointViewV1ToolResultJSONImagePart) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolResultJSONImagePart
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.tool-result.json/$defs/mcpToolResult.
+type CorpusCheckpointViewV1ToolResultJSONMCPToolResult struct {
+	Content           []CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem `json:"content,omitzero"`
+	IsError           *bool                                                          `json:"isError,omitzero"`
+	StructuredContent json.RawMessage                                                `json:"structuredContent,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV1ToolResultJSONMCPToolResultMembers = []string{"content", "isError", "structuredContent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolResultJSONMCPToolResult object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV1ToolResultJSONMCPToolResult) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolResultJSONMCPToolResult
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolResultJSONMCPToolResultMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolResultJSONMCPToolResult: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolResultJSONMCPToolResult(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolResultJSONMCPToolResult object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV1ToolResultJSONMCPToolResult) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolResultJSONMCPToolResult
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v1.tool-result.json/$defs/mcpToolResult/properties/content/items.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem struct {
+	Option1                                       *CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1
+	CorpusCheckpointViewV1ToolResultJSONImagePart *CorpusCheckpointViewV1ToolResultJSONImagePart
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem) UnmarshalJSON(data []byte) error {
+	*v = CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" {
+		var candidate CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "kind", "mediaType") {
+		var candidate CorpusCheckpointViewV1ToolResultJSONImagePart
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV1ToolResultJSONImagePart = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.CorpusCheckpointViewV1ToolResultJSONImagePart != nil {
+		set = append(set, v.CorpusCheckpointViewV1ToolResultJSONImagePart)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItem: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v1.tool-result.json/$defs/mcpToolResult/properties/content/items/anyOf/0.
+type CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1 struct {
+	Type *string `json:"type,omitzero"`
+	Text *string `json:"text,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1Members = []string{"type", "text"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1 object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1Members, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1: %w", err)
+	}
+	*v = CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1 object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1ToolResultJSONMCPToolResultContentItemOption1
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.usage.json.
+type CorpusCheckpointViewV1UsageJSON struct {
+	Rows []CorpusCheckpointViewV1UsageJSONRow `json:"rows"`
+}
+
+var corpusCheckpointViewV1UsageJSONMembers = []string{"rows"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1UsageJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1UsageJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1UsageJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1UsageJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1UsageJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV1UsageJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1UsageJSON object.
+func (v CorpusCheckpointViewV1UsageJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1UsageJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.usage.json/$defs/row.
+type CorpusCheckpointViewV1UsageJSONRow struct {
+	Source       string                                 `json:"source"`
+	Connection   string                                 `json:"connection"`
+	Role         string                                 `json:"role"`
+	Model        *string                                `json:"model,omitzero"`
+	Requests     int64                                  `json:"requests"`
+	Invocations  int64                                  `json:"invocations"`
+	Milliseconds int64                                  `json:"milliseconds"`
+	Bytes        int64                                  `json:"bytes"`
+	Tokens       *CorpusCheckpointViewV1UsageJSONTokens `json:"tokens,omitzero"`
+}
+
+var corpusCheckpointViewV1UsageJSONRowMembers = []string{"source", "connection", "role", "model", "requests", "invocations", "milliseconds", "bytes", "tokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1UsageJSONRow object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1UsageJSONRow) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1UsageJSONRow
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1UsageJSONRowMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1UsageJSONRow: %w", err)
+	}
+	*v = CorpusCheckpointViewV1UsageJSONRow(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1UsageJSONRow object.
+func (v CorpusCheckpointViewV1UsageJSONRow) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1UsageJSONRow
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v1.usage.json/$defs/tokens.
+type CorpusCheckpointViewV1UsageJSONTokens struct {
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV1UsageJSONTokensMembers = []string{"inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV1UsageJSONTokens object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV1UsageJSONTokens) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV1UsageJSONTokens
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV1UsageJSONTokensMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV1UsageJSONTokens: %w", err)
+	}
+	*v = CorpusCheckpointViewV1UsageJSONTokens(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV1UsageJSONTokens object.
+func (v CorpusCheckpointViewV1UsageJSONTokens) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV1UsageJSONTokens
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json.
+type CorpusCheckpointViewV2CheckpointJSON struct {
+	Schema           *string                                               `json:"schema,omitzero"`
+	Version          int64                                                 `json:"version"`
+	Digest           *string                                               `json:"digest,omitzero"`
+	RetainUntil      *string                                               `json:"retainUntil,omitzero"`
+	ID               string                                                `json:"id"`
+	RequestKey       string                                                `json:"requestKey"`
+	Phase            string                                                `json:"phase"`
+	Status           string                                                `json:"status"`
+	Unit             string                                                `json:"unit"`
+	Used             int64                                                 `json:"used"`
+	Limit            int64                                                 `json:"limit"`
+	Grants           []CorpusCheckpointViewV2CheckpointJSONGrant           `json:"grants"`
+	Plan             []CorpusCheckpointViewV2CheckpointJSONTaskStep        `json:"plan"`
+	Explanation      string                                                `json:"explanation"`
+	Operations       []CorpusCheckpointViewV2CheckpointJSONOperation       `json:"operations"`
+	Completions      []CorpusCheckpointViewV2ProvenanceJSON                `json:"completions,omitzero"`
+	Context          CorpusCheckpointViewV2CheckpointJSONContext           `json:"context"`
+	Reason           *string                                               `json:"reason,omitzero"`
+	TestCalls        *int64                                                `json:"testCalls,omitzero"`
+	Delegation       *CorpusCheckpointViewV2ProvenanceJSONDelegationReport `json:"delegation,omitzero"`
+	Handoff          *CorpusCheckpointViewV2CheckpointJSONHandoff          `json:"handoff,omitzero"`
+	Approval         *CorpusCheckpointViewV2CheckpointJSONApproval         `json:"approval,omitzero"`
+	Prompts          []CorpusCheckpointViewV2ProvenanceJSONPromptDigest    `json:"prompts,omitzero"`
+	Sources          []CorpusCheckpointViewV2ProvenanceJSONSourceFigures   `json:"sources,omitzero"`
+	Skills           []CorpusCheckpointViewV2ProvenanceJSONSkillLoad       `json:"skills,omitzero"`
+	Critic           *CorpusCheckpointViewV2CheckpointJSONCritic           `json:"critic,omitzero"`
+	Policy           map[string]CorpusCheckpointViewV2PolicyJSONMember     `json:"policy,omitzero"`
+	CrossProvider    []CorpusCheckpointViewV2ProvenanceJSONCrossProvider   `json:"crossProvider,omitzero"`
+	Compaction       *CorpusCheckpointViewV2ProvenanceJSONCompactionReport `json:"compaction,omitzero"`
+	Memories         *CorpusCheckpointViewV2ProvenanceJSONMemories         `json:"memories,omitzero"`
+	Draft            *CorpusCheckpointViewV2CheckpointJSONDraft            `json:"draft,omitzero"`
+	OutputGuard      map[string]int64                                      `json:"outputGuard,omitzero"`
+	Records          *CorpusCheckpointViewV2ProvenanceJSONRecordFigures    `json:"records,omitzero"`
+	SourceIdentities []CorpusCheckpointViewV2CheckpointJSONSourceIdentity  `json:"sourceIdentities,omitzero"`
+	Steers           *CorpusCheckpointViewV2ProvenanceJSONSteerReport      `json:"steers,omitzero"`
+	Usage            *CorpusCheckpointViewV2UsageJSON                      `json:"usage,omitzero"`
+	Failover         []CorpusCheckpointViewV2CheckpointJSONFailoverItem    `json:"failover,omitzero"`
+	ChildUsage       []CorpusCheckpointViewV2CheckpointJSONChildUsageItem  `json:"childUsage,omitzero"`
+	RequestCap       *int64                                                `json:"requestCap,omitzero"`
+	Durable          *CorpusCheckpointViewV2CheckpointJSONDurableBook      `json:"durable,omitzero"`
+	PlanState        *CorpusCheckpointViewV2CheckpointJSONPlanState        `json:"planState,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONMembers = []string{"schema", "version", "digest", "retainUntil", "id", "requestKey", "phase", "status", "unit", "used", "limit", "grants", "plan", "explanation", "operations", "completions", "context", "reason", "testCalls", "delegation", "handoff", "approval", "prompts", "sources", "skills", "critic", "policy", "crossProvider", "compaction", "memories", "draft", "outputGuard", "records", "sourceIdentities", "steers", "usage", "failover", "childUsage", "requestCap", "durable", "planState"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSON object.
+func (v CorpusCheckpointViewV2CheckpointJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/acceptedPlan.
+type CorpusCheckpointViewV2CheckpointJSONAcceptedPlan struct {
+	ID                  string                                                                    `json:"id"`
+	Revision            string                                                                    `json:"revision"`
+	SourceRevision      int64                                                                     `json:"sourceRevision"`
+	Objective           string                                                                    `json:"objective"`
+	Steps               []string                                                                  `json:"steps"`
+	References          []CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem          `json:"references"`
+	AcceptedAt          string                                                                    `json:"acceptedAt"`
+	ValidatedReferences []CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem `json:"validatedReferences"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONAcceptedPlanMembers = []string{"id", "revision", "sourceRevision", "objective", "steps", "references", "acceptedAt", "validatedReferences"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlan object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONAcceptedPlan) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlan
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONAcceptedPlanMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONAcceptedPlan: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONAcceptedPlan(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlan object.
+func (v CorpusCheckpointViewV2CheckpointJSONAcceptedPlan) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlan
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/acceptedPlan/properties/references/items.
+type CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem struct {
+	Kind     string  `json:"kind"`
+	ID       string  `json:"id"`
+	Digest   *string `json:"digest,omitzero"`
+	Revision *string `json:"revision,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItemMembers = []string{"kind", "id", "digest", "revision"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlanReferencesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/acceptedPlan/properties/validatedReferences/items.
+type CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItemMembers = []string{"kind", "id", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONAcceptedPlanValidatedReferencesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/approval.
+type CorpusCheckpointViewV2CheckpointJSONApproval struct {
+	CallID    string                                             `json:"callId"`
+	Name      string                                             `json:"name"`
+	Tool      string                                             `json:"tool"`
+	Source    CorpusCheckpointViewV2ToolOfferJSONSourceRecord    `json:"source"`
+	Args      map[string]json.RawMessage                         `json:"args"`
+	State     string                                             `json:"state"`
+	DecidedAt *string                                            `json:"decidedAt,omitzero"`
+	Note      *string                                            `json:"note,omitzero"`
+	Result    *CorpusCheckpointViewV2ToolResultJSONMCPToolResult `json:"result,omitzero"`
+	Marker    *string                                            `json:"marker,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONApproval object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONApproval) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONApproval
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONApprovalMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONApproval: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONApproval(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONApproval object.
+func (v CorpusCheckpointViewV2CheckpointJSONApproval) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONApproval
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/artifactObservation.
+type CorpusCheckpointViewV2CheckpointJSONArtifactObservation struct {
+	Kind   string  `json:"kind"`
+	ID     string  `json:"id"`
+	Digest string  `json:"digest"`
+	Access *string `json:"access,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONArtifactObservationMembers = []string{"kind", "id", "digest", "access"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONArtifactObservation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONArtifactObservation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONArtifactObservation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONArtifactObservationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONArtifactObservation: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONArtifactObservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONArtifactObservation object.
+func (v CorpusCheckpointViewV2CheckpointJSONArtifactObservation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONArtifactObservation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/properties/childUsage/items.
+type CorpusCheckpointViewV2CheckpointJSONChildUsageItem struct {
+	ID    string                          `json:"id"`
+	Usage CorpusCheckpointViewV2UsageJSON `json:"usage"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONChildUsageItemMembers = []string{"id", "usage"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONChildUsageItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONChildUsageItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONChildUsageItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONChildUsageItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONChildUsageItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONChildUsageItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONChildUsageItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONChildUsageItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONChildUsageItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/properties/context.
+type CorpusCheckpointViewV2CheckpointJSONContext struct {
+	Scope   string                                              `json:"scope"`
+	Entries []CorpusCheckpointViewV2CheckpointJSONRetainedEntry `json:"entries"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONContextMembers = []string{"scope", "entries"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONContext object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONContext) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONContext
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONContextMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONContext: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONContext(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONContext object.
+func (v CorpusCheckpointViewV2CheckpointJSONContext) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONContext
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/properties/critic.
+type CorpusCheckpointViewV2CheckpointJSONCritic struct {
+	Mode      string  `json:"mode"`
+	Ran       *bool   `json:"ran,omitzero"`
+	Reason    *string `json:"reason,omitzero"`
+	Reasoning *string `json:"reasoning,omitzero"`
+	Trigger   *string `json:"trigger,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONCriticMembers = []string{"mode", "ran", "reason", "reasoning", "trigger"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONCritic object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONCritic) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONCritic
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONCriticMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONCritic: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONCritic object.
+func (v CorpusCheckpointViewV2CheckpointJSONCritic) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/draft.
+type CorpusCheckpointViewV2CheckpointJSONDraft struct {
+	Documents []CorpusCheckpointViewV2CheckpointJSONDraftDocument `json:"documents"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDraftMembers = []string{"documents"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDraft object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDraft) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDraft
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDraftMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDraft: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDraft(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDraft object.
+func (v CorpusCheckpointViewV2CheckpointJSONDraft) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDraft
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/draftDocument.
+type CorpusCheckpointViewV2CheckpointJSONDraftDocument struct {
+	ID     string                                     `json:"id"`
+	Digest string                                     `json:"digest"`
+	Edits  []CorpusCheckpointViewV2ProvenanceJSONEdit `json:"edits"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDraftDocumentMembers = []string{"id", "digest", "edits"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDraftDocument object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDraftDocument) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDraftDocument
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDraftDocumentMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDraftDocument: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDraftDocument(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDraftDocument object.
+func (v CorpusCheckpointViewV2CheckpointJSONDraftDocument) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDraftDocument
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableBook.
+type CorpusCheckpointViewV2CheckpointJSONDurableBook struct {
+	Dispatches     []CorpusCheckpointViewV2CheckpointJSONDurableDispatch          `json:"dispatches"`
+	Observations   []CorpusCheckpointViewV2CheckpointJSONDurableObservation       `json:"observations"`
+	Children       []CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem  `json:"children"`
+	PendingHandoff *CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff `json:"pendingHandoff,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableBookMembers = []string{"dispatches", "observations", "children", "pendingHandoff"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableBook object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableBook) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBook
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableBookMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableBook: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableBook(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableBook object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableBook) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBook
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableBook/properties/children/items.
+type CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem struct {
+	Scope      CorpusCheckpointViewV2CheckpointJSONDurableScope `json:"scope"`
+	Checkpoint json.RawMessage                                  `json:"checkpoint"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableBookChildrenItemMembers = []string{"scope", "checkpoint"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableBookChildrenItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBookChildrenItem
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableBook/properties/pendingHandoff.
+type CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff struct {
+	CallID  string                                         `json:"callId"`
+	Request CorpusCheckpointViewV2DelegatedTaskJSONRequest `json:"request"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoffMembers = []string{"callId", "request"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoffMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableBookPendingHandoff
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableDispatch.
+type CorpusCheckpointViewV2CheckpointJSONDurableDispatch struct {
+	ID            string                                                    `json:"id"`
+	Scope         CorpusCheckpointViewV2CheckpointJSONDurableScope          `json:"scope"`
+	Kind          string                                                    `json:"kind"`
+	Source        string                                                    `json:"source"`
+	Tool          string                                                    `json:"tool"`
+	Fingerprint   string                                                    `json:"fingerprint"`
+	Request       string                                                    `json:"request"`
+	RequestDigest string                                                    `json:"requestDigest"`
+	State         string                                                    `json:"state"`
+	Read          bool                                                      `json:"read"`
+	Result        json.RawMessage                                           `json:"result,omitzero"`
+	Failure       *CorpusCheckpointViewV2FailureJSON                        `json:"failure,omitzero"`
+	Artifacts     []CorpusCheckpointViewV2CheckpointJSONArtifactObservation `json:"artifacts,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableDispatchMembers = []string{"id", "scope", "kind", "source", "tool", "fingerprint", "request", "requestDigest", "state", "read", "result", "failure", "artifacts"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableDispatch object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableDispatch) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableDispatch
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableDispatchMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableDispatch: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableDispatch(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableDispatch object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableDispatch) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableDispatch
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableObservation.
+type CorpusCheckpointViewV2CheckpointJSONDurableObservation struct {
+	ID         string                                                   `json:"id"`
+	Scope      CorpusCheckpointViewV2CheckpointJSONDurableScope         `json:"scope"`
+	Kind       string                                                   `json:"kind"`
+	Source     string                                                   `json:"source"`
+	DispatchID string                                                   `json:"dispatchId"`
+	CommitID   string                                                   `json:"commitId"`
+	Artifact   *CorpusCheckpointViewV2CheckpointJSONArtifactObservation `json:"artifact,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableObservationMembers = []string{"id", "scope", "kind", "source", "dispatchId", "commitId", "artifact"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableObservation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableObservation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableObservation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableObservationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableObservation: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableObservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableObservation object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableObservation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableObservation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/durableScope.
+type CorpusCheckpointViewV2CheckpointJSONDurableScope struct {
+	Execution string  `json:"execution"`
+	Role      string  `json:"role"`
+	Task      *string `json:"task,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONDurableScopeMembers = []string{"execution", "role", "task"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONDurableScope object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONDurableScope) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableScope
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONDurableScopeMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONDurableScope: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONDurableScope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONDurableScope object.
+func (v CorpusCheckpointViewV2CheckpointJSONDurableScope) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONDurableScope
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/properties/failover/items.
+type CorpusCheckpointViewV2CheckpointJSONFailoverItem struct {
+	Role       string                                                        `json:"role"`
+	Connection string                                                        `json:"connection"`
+	History    []CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem `json:"history"`
+	Consumed   int64                                                         `json:"consumed"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONFailoverItemMembers = []string{"role", "connection", "history", "consumed"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONFailoverItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONFailoverItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONFailoverItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONFailoverItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONFailoverItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONFailoverItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONFailoverItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONFailoverItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONFailoverItem
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/properties/failover/items/properties/history/items.
+type CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem struct {
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Reason string `json:"reason"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItemMembers = []string{"from", "to", "reason"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONFailoverItemHistoryItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/grant.
+type CorpusCheckpointViewV2CheckpointJSONGrant struct {
+	From int64  `json:"from"`
+	To   int64  `json:"to"`
+	At   string `json:"at"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONGrantMembers = []string{"from", "to", "at"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONGrant object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONGrant) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONGrant
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONGrantMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONGrant: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONGrant(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONGrant object.
+func (v CorpusCheckpointViewV2CheckpointJSONGrant) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONGrant
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/handoff.
+type CorpusCheckpointViewV2CheckpointJSONHandoff struct {
+	CallID       string                                         `json:"callId"`
+	Batch        int64                                          `json:"batch"`
+	State        string                                         `json:"state"`
+	Request      CorpusCheckpointViewV2DelegatedTaskJSONRequest `json:"request"`
+	Tasks        []CorpusCheckpointViewV2DelegatedTaskJSON      `json:"tasks"`
+	Answer       *CorpusCheckpointViewV2DelegatedTaskJSONAnswer `json:"answer,omitzero"`
+	Continuation *string                                        `json:"continuation,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONHandoffMembers = []string{"callId", "batch", "state", "request", "tasks", "answer", "continuation"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONHandoff object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONHandoff) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONHandoff
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONHandoffMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONHandoff: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONHandoff(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONHandoff object.
+func (v CorpusCheckpointViewV2CheckpointJSONHandoff) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONHandoff
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/operation.
+type CorpusCheckpointViewV2CheckpointJSONOperation struct {
+	ID     string                                             `json:"id"`
+	Name   string                                             `json:"name"`
+	Args   json.RawMessage                                    `json:"args"`
+	Status string                                             `json:"status"`
+	Result *CorpusCheckpointViewV2ToolResultJSONMCPToolResult `json:"result,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONOperationMembers = []string{"id", "name", "args", "status", "result"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONOperation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONOperation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONOperation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONOperationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONOperation: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONOperation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONOperation object.
+func (v CorpusCheckpointViewV2CheckpointJSONOperation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONOperation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/pendingDeparture.
+type CorpusCheckpointViewV2CheckpointJSONPendingDeparture struct {
+	Purpose     string                                                        `json:"purpose"`
+	CallID      string                                                        `json:"callId"`
+	Revision    string                                                        `json:"revision"`
+	Candidate   CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate `json:"candidate"`
+	Explanation string                                                        `json:"explanation"`
+	Departures  []CorpusCheckpointViewV2CheckpointJSONPlanDeparture           `json:"departures"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPendingDepartureMembers = []string{"purpose", "callId", "revision", "candidate", "explanation", "departures"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPendingDeparture object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPendingDeparture) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPendingDeparture
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPendingDepartureMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPendingDeparture: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPendingDeparture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPendingDeparture object.
+func (v CorpusCheckpointViewV2CheckpointJSONPendingDeparture) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPendingDeparture
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/pendingDeparture/properties/candidate.
+type CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate struct {
+	Plan      []CorpusCheckpointViewV2CheckpointJSONTaskStep `json:"plan"`
+	PlanState CorpusCheckpointViewV2CheckpointJSONPlanState  `json:"planState"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPendingDepartureCandidateMembers = []string{"plan", "planState"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPendingDepartureCandidateMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate object.
+func (v CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPendingDepartureCandidate
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planChange.
+type CorpusCheckpointViewV2CheckpointJSONPlanChange struct {
+	ID     string                                        `json:"id"`
+	Kind   string                                        `json:"kind"`
+	Before *CorpusCheckpointViewV2CheckpointJSONTaskStep `json:"before,omitzero"`
+	After  *CorpusCheckpointViewV2CheckpointJSONTaskStep `json:"after,omitzero"`
+	From   *int64                                        `json:"from,omitzero"`
+	To     *int64                                        `json:"to,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanChangeMembers = []string{"id", "kind", "before", "after", "from", "to"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanChange object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanChange) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanChange
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanChangeMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanChange: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanChange(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanChange object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanChange) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanChange
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planDecision.
+type CorpusCheckpointViewV2CheckpointJSONPlanDecision struct {
+	CallID            string  `json:"callId"`
+	Revision          string  `json:"revision"`
+	CandidateRevision string  `json:"candidateRevision"`
+	Approved          bool    `json:"approved"`
+	Note              *string `json:"note,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanDecisionMembers = []string{"callId", "revision", "candidateRevision", "approved", "note"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanDecision object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanDecision) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDecision
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanDecisionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanDecision: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanDecision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanDecision object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanDecision) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDecision
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planDeparture.
+type CorpusCheckpointViewV2CheckpointJSONPlanDeparture struct {
+	Kind  string `json:"kind"`
+	Step  string `json:"step"`
+	Index *int64 `json:"index,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanDepartureMembers = []string{"kind", "step", "index"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanDeparture object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanDeparture) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDeparture
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanDepartureMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanDeparture: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanDeparture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanDeparture object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanDeparture) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDeparture
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planDepartureRecord.
+type CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord struct {
+	Revision    string                                              `json:"revision"`
+	Explanation string                                              `json:"explanation"`
+	Changes     []CorpusCheckpointViewV2CheckpointJSONPlanDeparture `json:"changes"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanDepartureRecordMembers = []string{"revision", "explanation", "changes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanDepartureRecordMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planOrigin.
+type CorpusCheckpointViewV2CheckpointJSONPlanOrigin struct {
+	Plan     string `json:"plan"`
+	Revision string `json:"revision"`
+	Index    int64  `json:"index"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanOriginMembers = []string{"plan", "revision", "index"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanOrigin object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanOrigin) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanOrigin
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanOriginMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanOrigin: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanOrigin(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanOrigin object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanOrigin) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanOrigin
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planRefusal.
+type CorpusCheckpointViewV2CheckpointJSONPlanRefusal struct {
+	Revision string  `json:"revision"`
+	Reason   string  `json:"reason"`
+	Step     *string `json:"step,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanRefusalMembers = []string{"revision", "reason", "step"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanRefusal object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanRefusal) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanRefusalMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanRefusal: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanRefusal object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanRefusal) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planRevision.
+type CorpusCheckpointViewV2CheckpointJSONPlanRevision struct {
+	Sequence    int64                                            `json:"sequence"`
+	Previous    string                                           `json:"previous"`
+	Revision    string                                           `json:"revision"`
+	Explanation string                                           `json:"explanation"`
+	Diff        []CorpusCheckpointViewV2CheckpointJSONPlanChange `json:"diff"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanRevisionMembers = []string{"sequence", "previous", "revision", "explanation", "diff"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanRevision object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanRevision) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanRevision
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanRevisionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanRevision: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanRevision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanRevision object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanRevision) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanRevision
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/planState.
+type CorpusCheckpointViewV2CheckpointJSONPlanState struct {
+	Revision            string                                                    `json:"revision"`
+	Sequence            int64                                                     `json:"sequence"`
+	NextID              int64                                                     `json:"nextId"`
+	Discarded           int64                                                     `json:"discarded"`
+	History             []CorpusCheckpointViewV2CheckpointJSONPlanRevision        `json:"history"`
+	Accepted            *CorpusCheckpointViewV2CheckpointJSONAcceptedPlan         `json:"accepted,omitzero"`
+	DriftPolicy         []string                                                  `json:"driftPolicy,omitzero"`
+	Departures          []CorpusCheckpointViewV2CheckpointJSONPlanDepartureRecord `json:"departures,omitzero"`
+	DeparturesDiscarded *int64                                                    `json:"departuresDiscarded,omitzero"`
+	Pending             *CorpusCheckpointViewV2CheckpointJSONPendingDeparture     `json:"pending,omitzero"`
+	Refusals            []CorpusCheckpointViewV2CheckpointJSONPlanRefusal         `json:"refusals,omitzero"`
+	RefusalsDiscarded   *int64                                                    `json:"refusalsDiscarded,omitzero"`
+	Decisions           []CorpusCheckpointViewV2CheckpointJSONPlanDecision        `json:"decisions,omitzero"`
+	DecisionsDiscarded  *int64                                                    `json:"decisionsDiscarded,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONPlanStateMembers = []string{"revision", "sequence", "nextId", "discarded", "history", "accepted", "driftPolicy", "departures", "departuresDiscarded", "pending", "refusals", "refusalsDiscarded", "decisions", "decisionsDiscarded"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONPlanState object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONPlanState) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanState
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONPlanStateMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONPlanState: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONPlanState(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONPlanState object.
+func (v CorpusCheckpointViewV2CheckpointJSONPlanState) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONPlanState
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/retainedEntry.
+type CorpusCheckpointViewV2CheckpointJSONRetainedEntry struct {
+	ID        string          `json:"id"`
+	Kind      string          `json:"kind"`
+	Label     string          `json:"label"`
+	Value     json.RawMessage `json:"value"`
+	ValueJSON *string         `json:"valueJSON,omitzero"`
+	Revision  *string         `json:"revision,omitzero"`
+	Bytes     int64           `json:"bytes"`
+	Digest    string          `json:"digest"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONRetainedEntryMembers = []string{"id", "kind", "label", "value", "valueJSON", "revision", "bytes", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONRetainedEntry object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONRetainedEntry) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONRetainedEntry
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONRetainedEntryMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONRetainedEntry: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONRetainedEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONRetainedEntry object.
+func (v CorpusCheckpointViewV2CheckpointJSONRetainedEntry) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONRetainedEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/sourceIdentity.
+type CorpusCheckpointViewV2CheckpointJSONSourceIdentity struct {
+	Source         string `json:"source"`
+	IdentityDigest string `json:"identityDigest"`
+	Withheld       bool   `json:"withheld"`
+	ServiceAsked   bool   `json:"serviceAsked"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONSourceIdentityMembers = []string{"source", "identityDigest", "withheld", "serviceAsked"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONSourceIdentity object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONSourceIdentity) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONSourceIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONSourceIdentityMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONSourceIdentity: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONSourceIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONSourceIdentity object.
+func (v CorpusCheckpointViewV2CheckpointJSONSourceIdentity) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONSourceIdentity
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/stepEvidence.
+type CorpusCheckpointViewV2CheckpointJSONStepEvidence struct {
+	Operations []string                                                        `json:"operations"`
+	Artifacts  []CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem `json:"artifacts"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONStepEvidenceMembers = []string{"operations", "artifacts"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONStepEvidence object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONStepEvidence) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONStepEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONStepEvidenceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONStepEvidence: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONStepEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONStepEvidence object.
+func (v CorpusCheckpointViewV2CheckpointJSONStepEvidence) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONStepEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/stepEvidence/properties/artifacts/items.
+type CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItemMembers = []string{"kind", "id", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem object.
+func (v CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONStepEvidenceArtifactsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.checkpoint.json/$defs/taskStep.
+type CorpusCheckpointViewV2CheckpointJSONTaskStep struct {
+	Step            string                                            `json:"step"`
+	Status          string                                            `json:"status"`
+	Detail          *string                                           `json:"detail,omitzero"`
+	ID              *string                                           `json:"id,omitzero"`
+	Origin          *CorpusCheckpointViewV2CheckpointJSONPlanOrigin   `json:"origin,omitzero"`
+	Evidence        *CorpusCheckpointViewV2CheckpointJSONStepEvidence `json:"evidence,omitzero"`
+	NotNeededReason *string                                           `json:"notNeededReason,omitzero"`
+}
+
+var corpusCheckpointViewV2CheckpointJSONTaskStepMembers = []string{"step", "status", "detail", "id", "origin", "evidence", "notNeededReason"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2CheckpointJSONTaskStep object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2CheckpointJSONTaskStep) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2CheckpointJSONTaskStep
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2CheckpointJSONTaskStepMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2CheckpointJSONTaskStep: %w", err)
+	}
+	*v = CorpusCheckpointViewV2CheckpointJSONTaskStep(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2CheckpointJSONTaskStep object.
+func (v CorpusCheckpointViewV2CheckpointJSONTaskStep) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2CheckpointJSONTaskStep
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json.
+type CorpusCheckpointViewV2DelegatedTaskJSON struct {
+	ID            string                                               `json:"id"`
+	ParentRunID   string                                               `json:"parentRunId"`
+	Title         string                                               `json:"title"`
+	Objective     string                                               `json:"objective"`
+	Profile       string                                               `json:"profile"`
+	State         string                                               `json:"state"`
+	CreatedAt     string                                               `json:"createdAt"`
+	FinishedAt    *string                                              `json:"finishedAt,omitzero"`
+	ModelRequests int64                                                `json:"modelRequests"`
+	ToolCalls     int64                                                `json:"toolCalls"`
+	Attempts      int64                                                `json:"attempts"`
+	Steps         []CorpusCheckpointViewV2DelegatedTaskJSONStepsItem   `json:"steps"`
+	Result        *string                                              `json:"result,omitzero"`
+	Problem       *string                                              `json:"problem,omitzero"`
+	Failure       *CorpusCheckpointViewV2FailureJSON                   `json:"failure,omitzero"`
+	Budget        *CorpusCheckpointViewV2DelegatedTaskJSONBudget       `json:"budget,omitzero"`
+	Model         *string                                              `json:"model,omitzero"`
+	References    []string                                             `json:"references,omitzero"`
+	Resumes       *string                                              `json:"resumes,omitzero"`
+	More          *CorpusCheckpointViewV2DelegatedTaskJSONResultCursor `json:"more,omitzero"`
+	Summarized    *bool                                                `json:"summarized,omitzero"`
+	Report        *CorpusCheckpointViewV2DelegatedTaskJSONReport       `json:"report,omitzero"`
+	Partial       *bool                                                `json:"partial,omitzero"`
+	Reused        *string                                              `json:"reused,omitzero"`
+	Retried       *CorpusCheckpointViewV2DelegatedTaskJSONRetried      `json:"retried,omitzero"`
+	Tokens        *CorpusCheckpointViewV2ProvenanceJSONTokenFigures    `json:"tokens,omitzero"`
+	FirstByteMs   *int64                                               `json:"firstByteMs,omitzero"`
+	DurationMs    *int64                                               `json:"durationMs,omitzero"`
+	Subagent      *CorpusCheckpointViewV2SubagentJSONRecord            `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONMembers = []string{"id", "parentRunId", "title", "objective", "profile", "state", "createdAt", "finishedAt", "modelRequests", "toolCalls", "attempts", "steps", "result", "problem", "failure", "budget", "model", "references", "resumes", "more", "summarized", "report", "partial", "reused", "retried", "tokens", "firstByteMs", "durationMs", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSON object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/analyzeFinding.
+type CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding struct {
+	Text      string   `json:"text"`
+	Citations []string `json:"citations,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAnalyzeFindingMembers = []string{"text", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAnalyzeFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/analyzeReport.
+type CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport struct {
+	Summary       string                                                  `json:"summary"`
+	Findings      []CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV2DelegatedTaskJSONCitation       `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion   `json:"openQuestions"`
+	Confidence    string                                                  `json:"confidence"`
+	NotDone       []string                                                `json:"notDone"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAnalyzeReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAnalyzeReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/answer.
+type CorpusCheckpointViewV2DelegatedTaskJSONAnswer struct {
+	Tasks []CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask `json:"tasks"`
+	Note  string                                              `json:"note"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAnswerMembers = []string{"tasks", "note"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAnswer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAnswerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAnswer: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAnswer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswer object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAnswer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/answerTask.
+type CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask struct {
+	ID         string                                                `json:"id"`
+	Title      string                                                `json:"title"`
+	Objective  string                                                `json:"objective"`
+	Profile    string                                                `json:"profile"`
+	References []string                                              `json:"references,omitzero"`
+	State      string                                                `json:"state"`
+	Resumes    *string                                               `json:"resumes,omitzero"`
+	Report     *CorpusCheckpointViewV2DelegatedTaskJSONReport        `json:"report,omitzero"`
+	ReportCut  *bool                                                 `json:"reportCut,omitzero"`
+	Result     *string                                               `json:"result,omitzero"`
+	More       *CorpusCheckpointViewV2DelegatedTaskJSONResultCursor  `json:"more,omitzero"`
+	Summarized *bool                                                 `json:"summarized,omitzero"`
+	Partial    *bool                                                 `json:"partial,omitzero"`
+	Reused     *string                                               `json:"reused,omitzero"`
+	Problem    *string                                               `json:"problem,omitzero"`
+	Used       CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed `json:"used"`
+	Budget     *CorpusCheckpointViewV2DelegatedTaskJSONBudget        `json:"budget,omitzero"`
+	Subagent   *CorpusCheckpointViewV2SubagentJSONRecord             `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAnswerTaskMembers = []string{"id", "title", "objective", "profile", "references", "state", "resumes", "report", "reportCut", "result", "more", "summarized", "partial", "reused", "problem", "used", "budget", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAnswerTaskMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswerTask
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/answerTask/properties/used.
+type CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed struct {
+	ModelRequests int64 `json:"modelRequests"`
+	ToolCalls     int64 `json:"toolCalls"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsedMembers = []string{"modelRequests", "toolCalls"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAnswerTaskUsed
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/authorTestFinding.
+type CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding struct {
+	Text   string  `json:"text"`
+	Check  string  `json:"check"`
+	Status string  `json:"status"`
+	Case   *string `json:"case,omitzero"`
+	Fix    *string `json:"fix,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAuthorTestFindingMembers = []string{"text", "check", "status", "case", "fix"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAuthorTestFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/authorTestReport.
+type CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport struct {
+	Summary       string                                                     `json:"summary"`
+	Findings      []CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV2DelegatedTaskJSONCitation          `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion      `json:"openQuestions"`
+	Confidence    string                                                     `json:"confidence"`
+	NotDone       []string                                                   `json:"notDone"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONAuthorTestReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONAuthorTestReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/budget.
+type CorpusCheckpointViewV2DelegatedTaskJSONBudget struct {
+	ModelRequests int64 `json:"modelRequests"`
+	ToolCalls     int64 `json:"toolCalls"`
+	Milliseconds  int64 `json:"milliseconds"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONBudgetMembers = []string{"modelRequests", "toolCalls", "milliseconds"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONBudget object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONBudget) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONBudget
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONBudgetMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONBudget: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONBudget object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONBudget) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/citation.
+type CorpusCheckpointViewV2DelegatedTaskJSONCitation struct {
+	ID    string  `json:"id"`
+	Quote *string `json:"quote,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONCitationMembers = []string{"id", "quote"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONCitation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONCitation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONCitation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONCitationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONCitation: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONCitation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONCitation object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONCitation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONCitation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/openQuestion.
+type CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion struct {
+	Kind string  `json:"kind"`
+	Text string  `json:"text"`
+	Ref  *string `json:"ref,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONOpenQuestionMembers = []string{"kind", "text", "ref"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONOpenQuestionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/report.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type CorpusCheckpointViewV2DelegatedTaskJSONReport struct {
+	CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport    *CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport
+	CorpusCheckpointViewV2DelegatedTaskJSONReviewReport     *CorpusCheckpointViewV2DelegatedTaskJSONReviewReport
+	CorpusCheckpointViewV2DelegatedTaskJSONResearchReport   *CorpusCheckpointViewV2DelegatedTaskJSONResearchReport
+	CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport *CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONReport) UnmarshalJSON(data []byte) error {
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONReport{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV2DelegatedTaskJSONReviewReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV2DelegatedTaskJSONReviewReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV2DelegatedTaskJSONResearchReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV2DelegatedTaskJSONResearchReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "citations", "confidence", "findings", "notDone", "openQuestions", "summary") {
+		var candidate CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONReport: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONReport{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONReport) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport != nil {
+		set = append(set, v.CorpusCheckpointViewV2DelegatedTaskJSONAnalyzeReport)
+	}
+	if v.CorpusCheckpointViewV2DelegatedTaskJSONReviewReport != nil {
+		set = append(set, v.CorpusCheckpointViewV2DelegatedTaskJSONReviewReport)
+	}
+	if v.CorpusCheckpointViewV2DelegatedTaskJSONResearchReport != nil {
+		set = append(set, v.CorpusCheckpointViewV2DelegatedTaskJSONResearchReport)
+	}
+	if v.CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport != nil {
+		set = append(set, v.CorpusCheckpointViewV2DelegatedTaskJSONAuthorTestReport)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("CorpusCheckpointViewV2DelegatedTaskJSONReport: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/request.
+type CorpusCheckpointViewV2DelegatedTaskJSONRequest struct {
+	Tasks []CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest `json:"tasks"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONRequestMembers = []string{"tasks"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONRequest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONRequest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONRequest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONRequestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONRequest: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONRequest object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONRequest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONRequest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/researchFinding.
+type CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding struct {
+	Text      string   `json:"text"`
+	Citations []string `json:"citations"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONResearchFindingMembers = []string{"text", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONResearchFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/researchReport.
+type CorpusCheckpointViewV2DelegatedTaskJSONResearchReport struct {
+	Summary       string                                                   `json:"summary"`
+	Findings      []CorpusCheckpointViewV2DelegatedTaskJSONResearchFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV2DelegatedTaskJSONCitation        `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion    `json:"openQuestions"`
+	Confidence    string                                                   `json:"confidence"`
+	NotDone       []string                                                 `json:"notDone"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONResearchReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONResearchReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONResearchReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResearchReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONResearchReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONResearchReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONResearchReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONResearchReport object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONResearchReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResearchReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/resultCursor.
+type CorpusCheckpointViewV2DelegatedTaskJSONResultCursor struct {
+	ReadWith        string `json:"readWith"`
+	ID              string `json:"id"`
+	Cursor          string `json:"cursor"`
+	TotalCharacters int64  `json:"totalCharacters"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONResultCursorMembers = []string{"readWith", "id", "cursor", "totalCharacters"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONResultCursor object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONResultCursor) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResultCursor
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONResultCursorMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONResultCursor: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONResultCursor(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONResultCursor object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONResultCursor) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONResultCursor
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/properties/retried.
+type CorpusCheckpointViewV2DelegatedTaskJSONRetried struct {
+	Failure CorpusCheckpointViewV2FailureJSON `json:"failure"`
+	WaitMs  int64                             `json:"waitMs"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONRetriedMembers = []string{"failure", "waitMs"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONRetried object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONRetried) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONRetried
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONRetriedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONRetried: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONRetried(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONRetried object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONRetried) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONRetried
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/reviewFinding.
+type CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding struct {
+	Text      string   `json:"text"`
+	Severity  string   `json:"severity"`
+	Citations []string `json:"citations,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONReviewFindingMembers = []string{"text", "severity", "citations"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONReviewFindingMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/reviewReport.
+type CorpusCheckpointViewV2DelegatedTaskJSONReviewReport struct {
+	Summary       string                                                 `json:"summary"`
+	Findings      []CorpusCheckpointViewV2DelegatedTaskJSONReviewFinding `json:"findings"`
+	Citations     []CorpusCheckpointViewV2DelegatedTaskJSONCitation      `json:"citations"`
+	OpenQuestions []CorpusCheckpointViewV2DelegatedTaskJSONOpenQuestion  `json:"openQuestions"`
+	Confidence    string                                                 `json:"confidence"`
+	NotDone       []string                                               `json:"notDone"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONReviewReportMembers = []string{"summary", "findings", "citations", "openQuestions", "confidence", "notDone"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONReviewReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONReviewReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONReviewReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONReviewReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONReviewReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONReviewReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONReviewReport object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONReviewReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONReviewReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/properties/steps/items.
+type CorpusCheckpointViewV2DelegatedTaskJSONStepsItem struct {
+	Name  string `json:"name"`
+	State string `json:"state"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONStepsItemMembers = []string{"name", "state"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONStepsItem object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONStepsItem) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONStepsItem
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONStepsItemMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONStepsItem: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONStepsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONStepsItem object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONStepsItem) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONStepsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.delegated-task.json/$defs/taskRequest.
+type CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest struct {
+	Title      string                                    `json:"title"`
+	Objective  string                                    `json:"objective"`
+	Profile    string                                    `json:"profile"`
+	References []string                                  `json:"references,omitzero"`
+	Resume     *string                                   `json:"resume,omitzero"`
+	Summarize  *bool                                     `json:"summarize,omitzero"`
+	Subagent   *CorpusCheckpointViewV2SubagentJSONRecord `json:"subagent,omitzero"`
+}
+
+var corpusCheckpointViewV2DelegatedTaskJSONTaskRequestMembers = []string{"title", "objective", "profile", "references", "resume", "summarize", "subagent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2DelegatedTaskJSONTaskRequestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest: %w", err)
+	}
+	*v = CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest object.
+func (v CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2DelegatedTaskJSONTaskRequest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.failure.json.
+type CorpusCheckpointViewV2FailureJSON struct {
+	Version    int64                                           `json:"version"`
+	Code       string                                          `json:"code"`
+	Source     string                                          `json:"source"`
+	Outcome    string                                          `json:"outcome"`
+	Status     *int64                                          `json:"status,omitzero"`
+	RequestID  *string                                         `json:"requestId,omitzero"`
+	RetryAt    *string                                         `json:"retryAt,omitzero"`
+	Detail     *string                                         `json:"detail,omitzero"`
+	Completion *CorpusCheckpointViewV2ProvenanceJSONCompletion `json:"completion,omitzero"`
+}
+
+var corpusCheckpointViewV2FailureJSONMembers = []string{"version", "code", "source", "outcome", "status", "requestId", "retryAt", "detail", "completion"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2FailureJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2FailureJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2FailureJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2FailureJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2FailureJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2FailureJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2FailureJSON object.
+func (v CorpusCheckpointViewV2FailureJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2FailureJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.memory.json.
+type CorpusCheckpointViewV2MemoryJSON struct {
+	ID        string                                 `json:"id"`
+	Kind      string                                 `json:"kind"`
+	Text      string                                 `json:"text"`
+	Source    CorpusCheckpointViewV2MemoryJSONSource `json:"source"`
+	Scope     string                                 `json:"scope"`
+	Digest    string                                 `json:"digest"`
+	CreatedAt string                                 `json:"createdAt"`
+	State     string                                 `json:"state"`
+	ExpiresAt *string                                `json:"expiresAt,omitzero"`
+}
+
+var corpusCheckpointViewV2MemoryJSONMembers = []string{"id", "kind", "text", "source", "scope", "digest", "createdAt", "state", "expiresAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2MemoryJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2MemoryJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2MemoryJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2MemoryJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2MemoryJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2MemoryJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2MemoryJSON object.
+func (v CorpusCheckpointViewV2MemoryJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2MemoryJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.memory.json/properties/source.
+type CorpusCheckpointViewV2MemoryJSONSource struct {
+	Run        string `json:"run"`
+	ProposedBy string `json:"proposedBy"`
+}
+
+var corpusCheckpointViewV2MemoryJSONSourceMembers = []string{"run", "proposedBy"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2MemoryJSONSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2MemoryJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2MemoryJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2MemoryJSONSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2MemoryJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV2MemoryJSONSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2MemoryJSONSource object.
+func (v CorpusCheckpointViewV2MemoryJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2MemoryJSONSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json.
+type CorpusCheckpointViewV2PolicyJSON struct {
+	Compaction     *string                                         `json:"compaction,omitzero"`
+	Records        *CorpusCheckpointViewV2PolicyJSONRecords        `json:"records,omitzero"`
+	Budget         *CorpusCheckpointViewV2PolicyJSONBudget         `json:"budget,omitzero"`
+	Critic         *CorpusCheckpointViewV2PolicyJSONCritic         `json:"critic,omitzero"`
+	Models         *CorpusCheckpointViewV2PolicyJSONModels         `json:"models,omitzero"`
+	Concurrency    *CorpusCheckpointViewV2PolicyJSONConcurrency    `json:"concurrency,omitzero"`
+	Pace           *CorpusCheckpointViewV2PolicyJSONPace           `json:"pace,omitzero"`
+	TaskClass      *string                                         `json:"taskClass,omitzero"`
+	OutputGuard    *string                                         `json:"outputGuard,omitzero"`
+	OutputPatterns []CorpusCheckpointViewV2PolicyJSONOutputPattern `json:"outputPatterns,omitzero"`
+	OutputAllow    []string                                        `json:"outputAllow,omitzero"`
+	Failover       *CorpusCheckpointViewV2PolicyJSONFailover       `json:"failover,omitzero"`
+	Version        *int64                                          `json:"version,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover", "version"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSON object.
+func (v CorpusCheckpointViewV2PolicyJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/budget.
+type CorpusCheckpointViewV2PolicyJSONBudget struct {
+	Version                  *int64 `json:"version,omitzero"`
+	MaxInputBytes            *int64 `json:"maxInputBytes,omitzero"`
+	ContextWindowTokens      *int64 `json:"contextWindowTokens,omitzero"`
+	OutputTokens             *int64 `json:"outputTokens,omitzero"`
+	ToolResultBytes          *int64 `json:"toolResultBytes,omitzero"`
+	ReadBytes                *int64 `json:"readBytes,omitzero"`
+	RetainedBytes            *int64 `json:"retainedBytes,omitzero"`
+	RecentMessages           *int64 `json:"recentMessages,omitzero"`
+	SummaryBytes             *int64 `json:"summaryBytes,omitzero"`
+	HistoryBytes             *int64 `json:"historyBytes,omitzero"`
+	BriefBytes               *int64 `json:"briefBytes,omitzero"`
+	MemoryBytes              *int64 `json:"memoryBytes,omitzero"`
+	TurnMilliseconds         *int64 `json:"turnMilliseconds,omitzero"`
+	ToolCallMilliseconds     *int64 `json:"toolCallMilliseconds,omitzero"`
+	ImagesPerRequest         *int64 `json:"imagesPerRequest,omitzero"`
+	ImageBytesPerRequest     *int64 `json:"imageBytesPerRequest,omitzero"`
+	TestCallsPerTurn         *int64 `json:"testCallsPerTurn,omitzero"`
+	TestPackBytes            *int64 `json:"testPackBytes,omitzero"`
+	TestMatrixBytes          *int64 `json:"testMatrixBytes,omitzero"`
+	TurnIndexEntries         *int64 `json:"turnIndexEntries,omitzero"`
+	TurnIndexBytes           *int64 `json:"turnIndexBytes,omitzero"`
+	ProjectInstructionsBytes *int64 `json:"projectInstructionsBytes,omitzero"`
+	ToolDescriptionBytes     *int64 `json:"toolDescriptionBytes,omitzero"`
+	OfferedSchemas           *int64 `json:"offeredSchemas,omitzero"`
+	OfferedSchemaBytes       *int64 `json:"offeredSchemaBytes,omitzero"`
+	CataloguedTools          *int64 `json:"cataloguedTools,omitzero"`
+	CatalogueBytes           *int64 `json:"catalogueBytes,omitzero"`
+	SourceResultBytes        *int64 `json:"sourceResultBytes,omitzero"`
+	SourceCallsPerTurn       *int64 `json:"sourceCallsPerTurn,omitzero"`
+	SourceCallMilliseconds   *int64 `json:"sourceCallMilliseconds,omitzero"`
+	SkillBytes               *int64 `json:"skillBytes,omitzero"`
+	SkillsPerRun             *int64 `json:"skillsPerRun,omitzero"`
+	SkillsCatalogueBytes     *int64 `json:"skillsCatalogueBytes,omitzero"`
+	CataloguedSkills         *int64 `json:"cataloguedSkills,omitzero"`
+	CataloguedSubagents      *int64 `json:"cataloguedSubagents,omitzero"`
+	SubagentCatalogueBytes   *int64 `json:"subagentCatalogueBytes,omitzero"`
+	MemoryProposalBytes      *int64 `json:"memoryProposalBytes,omitzero"`
+	MemoryProposalsPerRun    *int64 `json:"memoryProposalsPerRun,omitzero"`
+	SteerBytes               *int64 `json:"steerBytes,omitzero"`
+	SteersPerRun             *int64 `json:"steersPerRun,omitzero"`
+	EditsPerTurn             *int64 `json:"editsPerTurn,omitzero"`
+	EditBytes                *int64 `json:"editBytes,omitzero"`
+	ProposalBytes            *int64 `json:"proposalBytes,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONBudgetMembers = []string{"version", "maxInputBytes", "contextWindowTokens", "outputTokens", "toolResultBytes", "readBytes", "retainedBytes", "recentMessages", "summaryBytes", "historyBytes", "briefBytes", "memoryBytes", "turnMilliseconds", "toolCallMilliseconds", "imagesPerRequest", "imageBytesPerRequest", "testCallsPerTurn", "testPackBytes", "testMatrixBytes", "turnIndexEntries", "turnIndexBytes", "projectInstructionsBytes", "toolDescriptionBytes", "offeredSchemas", "offeredSchemaBytes", "cataloguedTools", "catalogueBytes", "sourceResultBytes", "sourceCallsPerTurn", "sourceCallMilliseconds", "skillBytes", "skillsPerRun", "skillsCatalogueBytes", "cataloguedSkills", "cataloguedSubagents", "subagentCatalogueBytes", "memoryProposalBytes", "memoryProposalsPerRun", "steerBytes", "steersPerRun", "editsPerTurn", "editBytes", "proposalBytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONBudget object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONBudget) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONBudget
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONBudgetMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONBudget: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONBudget object.
+func (v CorpusCheckpointViewV2PolicyJSONBudget) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/concurrency.
+type CorpusCheckpointViewV2PolicyJSONConcurrency struct {
+	Children *int64 `json:"children,omitzero"`
+	Requests *int64 `json:"requests,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONConcurrencyMembers = []string{"children", "requests"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONConcurrency object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONConcurrency) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONConcurrency
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONConcurrencyMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONConcurrency: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONConcurrency(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONConcurrency object.
+func (v CorpusCheckpointViewV2PolicyJSONConcurrency) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONConcurrency
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/critic.
+type CorpusCheckpointViewV2PolicyJSONCritic struct {
+	Default        *string `json:"default,omitzero"`
+	ReasoningFloor *string `json:"reasoningFloor,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONCriticMembers = []string{"default", "reasoningFloor"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONCritic object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONCritic) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONCritic
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONCriticMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONCritic: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONCritic(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONCritic object.
+func (v CorpusCheckpointViewV2PolicyJSONCritic) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONCritic
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/discovered.
+type CorpusCheckpointViewV2PolicyJSONDiscovered struct {
+	Reasoning CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning `json:"reasoning"`
+}
+
+var corpusCheckpointViewV2PolicyJSONDiscoveredMembers = []string{"reasoning"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONDiscovered object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONDiscovered) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONDiscovered
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONDiscoveredMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONDiscovered: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONDiscovered(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONDiscovered object.
+func (v CorpusCheckpointViewV2PolicyJSONDiscovered) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONDiscovered
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/discovered/properties/reasoning.
+type CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning struct {
+	Default   *string  `json:"default,omitzero"`
+	Supported []string `json:"supported"`
+}
+
+var corpusCheckpointViewV2PolicyJSONDiscoveredReasoningMembers = []string{"default", "supported"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONDiscoveredReasoningMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning object.
+func (v CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONDiscoveredReasoning
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/failover.
+type CorpusCheckpointViewV2PolicyJSONFailover struct {
+	Classes []string `json:"classes,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONFailoverMembers = []string{"classes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONFailover object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONFailover) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONFailover
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONFailoverMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONFailover: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONFailover(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONFailover object.
+func (v CorpusCheckpointViewV2PolicyJSONFailover) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONFailover
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/member.
+type CorpusCheckpointViewV2PolicyJSONMember struct {
+	Value  json.RawMessage `json:"value,omitzero"`
+	Layer  string          `json:"layer"`
+	Source *string         `json:"source,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONMemberMembers = []string{"value", "layer", "source"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONMember object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONMember) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONMember
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONMemberMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONMember: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONMember(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONMember object.
+func (v CorpusCheckpointViewV2PolicyJSONMember) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONMember
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/models.
+type CorpusCheckpointViewV2PolicyJSONModels struct {
+	Author      *CorpusCheckpointViewV2PolicyJSONRole              `json:"author,omitzero"`
+	Critic      *CorpusCheckpointViewV2PolicyJSONRole              `json:"critic,omitzero"`
+	Compactor   *CorpusCheckpointViewV2PolicyJSONRole              `json:"compactor,omitzero"`
+	TaskClasses *CorpusCheckpointViewV2PolicyJSONModelsTaskClasses `json:"taskClasses,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV2PolicyJSONModelsMembers = []string{"author", "critic", "compactor", "taskClasses"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONModels object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONModels) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONModels
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONModelsMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONModels: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONModels(p)
+	if err := checkPatternMembers(extra, []string{"^(child|subagent)\\.[A-Za-z0-9_-]+$"}); err != nil {
+		return err
+	}
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONModels object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV2PolicyJSONModels) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONModels
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/models/properties/taskClasses.
+type CorpusCheckpointViewV2PolicyJSONModelsTaskClasses struct {
+	Routine  *string `json:"routine,omitzero"`
+	Material *string `json:"material,omitzero"`
+	Boundary *string `json:"boundary,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONModelsTaskClassesMembers = []string{"routine", "material", "boundary"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONModelsTaskClasses object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONModelsTaskClasses) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONModelsTaskClasses
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONModelsTaskClassesMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONModelsTaskClasses: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONModelsTaskClasses(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONModelsTaskClasses object.
+func (v CorpusCheckpointViewV2PolicyJSONModelsTaskClasses) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONModelsTaskClasses
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/outputPattern.
+type CorpusCheckpointViewV2PolicyJSONOutputPattern struct {
+	Name    string `json:"name"`
+	Pattern string `json:"pattern"`
+}
+
+var corpusCheckpointViewV2PolicyJSONOutputPatternMembers = []string{"name", "pattern"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONOutputPattern object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONOutputPattern) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONOutputPattern
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONOutputPatternMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONOutputPattern: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONOutputPattern(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONOutputPattern object.
+func (v CorpusCheckpointViewV2PolicyJSONOutputPattern) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONOutputPattern
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/pace.
+type CorpusCheckpointViewV2PolicyJSONPace struct {
+	RequestsPerDay    Nullable[int64] `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay Nullable[int64] `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       Nullable[int64] `json:"bytesPerDay,omitzero"`
+	WarnAt            *float64        `json:"warnAt,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONPaceMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay", "warnAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONPace object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONPace) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONPace
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONPaceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONPace: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONPace(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONPace object.
+func (v CorpusCheckpointViewV2PolicyJSONPace) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONPace
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/paceUsed.
+type CorpusCheckpointViewV2PolicyJSONPaceUsed struct {
+	RequestsPerDay    *int64 `json:"requestsPerDay,omitzero"`
+	InvocationsPerDay *int64 `json:"invocationsPerDay,omitzero"`
+	BytesPerDay       *int64 `json:"bytesPerDay,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONPaceUsedMembers = []string{"requestsPerDay", "invocationsPerDay", "bytesPerDay"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONPaceUsed object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONPaceUsed) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONPaceUsed
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONPaceUsedMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONPaceUsed: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONPaceUsed(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONPaceUsed object.
+func (v CorpusCheckpointViewV2PolicyJSONPaceUsed) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONPaceUsed
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/properties/records.
+type CorpusCheckpointViewV2PolicyJSONRecords struct {
+	RetainDays    *int64  `json:"retainDays,omitzero"`
+	RedactOnStore *bool   `json:"redactOnStore,omitzero"`
+	ExportFormat  *string `json:"exportFormat,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONRecordsMembers = []string{"retainDays", "redactOnStore", "exportFormat"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONRecords object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONRecords) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONRecords
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONRecordsMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONRecords: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONRecords(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONRecords object.
+func (v CorpusCheckpointViewV2PolicyJSONRecords) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONRecords
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.policy.json/$defs/role.
+type CorpusCheckpointViewV2PolicyJSONRole struct {
+	Model      *string                                     `json:"model,omitzero"`
+	Reasoning  *string                                     `json:"reasoning,omitzero"`
+	Discovered *CorpusCheckpointViewV2PolicyJSONDiscovered `json:"discovered,omitzero"`
+	Provider   *string                                     `json:"provider,omitzero"`
+	Fallback   []string                                    `json:"fallback,omitzero"`
+}
+
+var corpusCheckpointViewV2PolicyJSONRoleMembers = []string{"model", "reasoning", "discovered", "provider", "fallback"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2PolicyJSONRole object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2PolicyJSONRole) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2PolicyJSONRole
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2PolicyJSONRoleMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2PolicyJSONRole: %w", err)
+	}
+	*v = CorpusCheckpointViewV2PolicyJSONRole(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2PolicyJSONRole object.
+func (v CorpusCheckpointViewV2PolicyJSONRole) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2PolicyJSONRole
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json.
+type CorpusCheckpointViewV2ProvenanceJSON struct {
+	Schema      *string                                            `json:"schema,omitzero"`
+	Version     *int64                                             `json:"version,omitzero"`
+	Digest      *string                                            `json:"digest,omitzero"`
+	RetainUntil *string                                            `json:"retainUntil,omitzero"`
+	Request     int64                                              `json:"request"`
+	Phase       string                                             `json:"phase"`
+	Result      CorpusCheckpointViewV2ProvenanceJSONCompletion     `json:"result"`
+	Attempt     *int64                                             `json:"attempt,omitzero"`
+	Failure     *CorpusCheckpointViewV2FailureJSON                 `json:"failure,omitzero"`
+	WaitMs      *int64                                             `json:"waitMs,omitzero"`
+	Records     *CorpusCheckpointViewV2ProvenanceJSONRecordFigures `json:"records,omitzero"`
+	Connection  *string                                            `json:"connection,omitzero"`
+	Role        *string                                            `json:"role,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONMembers = []string{"schema", "version", "digest", "retainUntil", "request", "phase", "result", "attempt", "failure", "waitMs", "records", "connection", "role"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSON object.
+func (v CorpusCheckpointViewV2ProvenanceJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/batchFigures.
+type CorpusCheckpointViewV2ProvenanceJSONBatchFigures struct {
+	Batch    int64                                              `json:"batch"`
+	Children []CorpusCheckpointViewV2ProvenanceJSONChildFigures `json:"children"`
+	Total    CorpusCheckpointViewV2ProvenanceJSONFiguresTotal   `json:"total"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONBatchFiguresMembers = []string{"batch", "children", "total"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONBatchFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONBatchFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONBatchFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONBatchFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONBatchFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONBatchFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONBatchFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONBatchFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONBatchFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/childFigures.
+type CorpusCheckpointViewV2ProvenanceJSONChildFigures struct {
+	Task          string                                            `json:"task"`
+	Batch         int64                                             `json:"batch"`
+	Profile       string                                            `json:"profile"`
+	Model         *string                                           `json:"model,omitzero"`
+	State         string                                            `json:"state"`
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	ToolCalls     int64                                             `json:"toolCalls"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV2ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+	FirstByteMs   *int64                                            `json:"firstByteMs,omitzero"`
+	DurationMs    int64                                             `json:"durationMs"`
+	Partial       *bool                                             `json:"partial,omitzero"`
+	Reused        *bool                                             `json:"reused,omitzero"`
+	Subagent      *CorpusCheckpointViewV2SubagentJSONRecord         `json:"subagent,omitzero"`
+	Problem       *string                                           `json:"problem,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONChildFiguresMembers = []string{"task", "batch", "profile", "model", "state", "modelRequests", "toolCalls", "agentRuns", "tokens", "firstByteMs", "durationMs", "partial", "reused", "subagent", "problem"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONChildFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONChildFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONChildFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONChildFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONChildFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONChildFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONChildFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONChildFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONChildFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/compactionReport.
+type CorpusCheckpointViewV2ProvenanceJSONCompactionReport struct {
+	Mode      string                                                  `json:"mode"`
+	Summaries []CorpusCheckpointViewV2ProvenanceJSONCompactionSummary `json:"summaries"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONCompactionReportMembers = []string{"mode", "summaries"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONCompactionReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONCompactionReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompactionReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONCompactionReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONCompactionReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONCompactionReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONCompactionReport object.
+func (v CorpusCheckpointViewV2ProvenanceJSONCompactionReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompactionReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/compactionSummary.
+type CorpusCheckpointViewV2ProvenanceJSONCompactionSummary struct {
+	Digest  string   `json:"digest"`
+	Turns   int64    `json:"turns"`
+	Bytes   int64    `json:"bytes"`
+	Summary string   `json:"summary"`
+	Digests []string `json:"digests"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONCompactionSummaryMembers = []string{"digest", "turns", "bytes", "summary", "digests"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONCompactionSummary object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONCompactionSummary) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompactionSummary
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONCompactionSummaryMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONCompactionSummary: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONCompactionSummary(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONCompactionSummary object.
+func (v CorpusCheckpointViewV2ProvenanceJSONCompactionSummary) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompactionSummary
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/completion.
+type CorpusCheckpointViewV2ProvenanceJSONCompletion struct {
+	FinishReason     string `json:"finishReason"`
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONCompletionMembers = []string{"finishReason", "inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONCompletion object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONCompletion) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompletion
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONCompletionMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONCompletion: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONCompletion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONCompletion object.
+func (v CorpusCheckpointViewV2ProvenanceJSONCompletion) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCompletion
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/crossProvider.
+type CorpusCheckpointViewV2ProvenanceJSONCrossProvider struct {
+	Role      string                                       `json:"role"`
+	Relation  string                                       `json:"relation"`
+	Author    CorpusCheckpointViewV2ProvenanceJSONProvider `json:"author"`
+	Provider  CorpusCheckpointViewV2ProvenanceJSONProvider `json:"provider"`
+	Continued *bool                                        `json:"continued,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONCrossProviderMembers = []string{"role", "relation", "author", "provider", "continued"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONCrossProvider object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONCrossProvider) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCrossProvider
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONCrossProviderMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONCrossProvider: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONCrossProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONCrossProvider object.
+func (v CorpusCheckpointViewV2ProvenanceJSONCrossProvider) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONCrossProvider
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/delegationReport.
+type CorpusCheckpointViewV2ProvenanceJSONDelegationReport struct {
+	Batches []CorpusCheckpointViewV2ProvenanceJSONBatchFigures `json:"batches"`
+	Parent  CorpusCheckpointViewV2ProvenanceJSONParentFigures  `json:"parent"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONDelegationReportMembers = []string{"batches", "parent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONDelegationReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONDelegationReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONDelegationReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONDelegationReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONDelegationReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONDelegationReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONDelegationReport object.
+func (v CorpusCheckpointViewV2ProvenanceJSONDelegationReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONDelegationReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/deliveredSteer.
+type CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer struct {
+	Bytes     int64 `json:"bytes"`
+	AtRequest int64 `json:"atRequest"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONDeliveredSteerMembers = []string{"bytes", "atRequest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONDeliveredSteerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer object.
+func (v CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/edit.
+type CorpusCheckpointViewV2ProvenanceJSONEdit struct {
+	Type     string `json:"type"`
+	Document string `json:"document"`
+	Line     int64  `json:"line"`
+	Bytes    int64  `json:"bytes"`
+	Valid    bool   `json:"valid"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONEditMembers = []string{"type", "document", "line", "bytes", "valid"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONEdit object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONEdit) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONEdit
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONEditMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONEdit: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONEdit(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONEdit object.
+func (v CorpusCheckpointViewV2ProvenanceJSONEdit) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONEdit
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/figuresTotal.
+type CorpusCheckpointViewV2ProvenanceJSONFiguresTotal struct {
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	ToolCalls     int64                                             `json:"toolCalls"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV2ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+	DurationMs    int64                                             `json:"durationMs"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONFiguresTotalMembers = []string{"modelRequests", "toolCalls", "agentRuns", "tokens", "durationMs"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONFiguresTotal object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONFiguresTotal) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONFiguresTotal
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONFiguresTotalMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONFiguresTotal: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONFiguresTotal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONFiguresTotal object.
+func (v CorpusCheckpointViewV2ProvenanceJSONFiguresTotal) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONFiguresTotal
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/identityFigures.
+type CorpusCheckpointViewV2ProvenanceJSONIdentityFigures struct {
+	Identity CorpusCheckpointViewV2ToolOfferJSONIdentity `json:"identity"`
+	Calls    int64                                       `json:"calls"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONIdentityFiguresMembers = []string{"identity", "calls"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONIdentityFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONIdentityFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONIdentityFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONIdentityFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONIdentityFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONIdentityFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONIdentityFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONIdentityFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONIdentityFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/memories.
+type CorpusCheckpointViewV2ProvenanceJSONMemories struct {
+	Proposed []CorpusCheckpointViewV2MemoryJSON                 `json:"proposed"`
+	Recalled []CorpusCheckpointViewV2ProvenanceJSONMemoryRecall `json:"recalled"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONMemoriesMembers = []string{"proposed", "recalled"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONMemories object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONMemories) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONMemories
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONMemoriesMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONMemories: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONMemories(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONMemories object.
+func (v CorpusCheckpointViewV2ProvenanceJSONMemories) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONMemories
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/memoryRecall.
+type CorpusCheckpointViewV2ProvenanceJSONMemoryRecall struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	Kind   string `json:"kind"`
+	State  string `json:"state"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONMemoryRecallMembers = []string{"id", "digest", "kind", "state"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONMemoryRecall object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONMemoryRecall) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONMemoryRecall
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONMemoryRecallMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONMemoryRecall: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONMemoryRecall(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONMemoryRecall object.
+func (v CorpusCheckpointViewV2ProvenanceJSONMemoryRecall) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONMemoryRecall
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/parentFigures.
+type CorpusCheckpointViewV2ProvenanceJSONParentFigures struct {
+	Model         string                                            `json:"model"`
+	ModelRequests *int64                                            `json:"modelRequests,omitzero"`
+	AgentRuns     *int64                                            `json:"agentRuns,omitzero"`
+	Tokens        *CorpusCheckpointViewV2ProvenanceJSONTokenFigures `json:"tokens,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONParentFiguresMembers = []string{"model", "modelRequests", "agentRuns", "tokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONParentFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONParentFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONParentFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONParentFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONParentFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONParentFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONParentFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONParentFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONParentFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/promptDigest.
+type CorpusCheckpointViewV2ProvenanceJSONPromptDigest struct {
+	Request int64  `json:"request"`
+	Sha256  string `json:"sha256"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONPromptDigestMembers = []string{"request", "sha256"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONPromptDigest object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONPromptDigest) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONPromptDigest
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONPromptDigestMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONPromptDigest: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONPromptDigest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONPromptDigest object.
+func (v CorpusCheckpointViewV2ProvenanceJSONPromptDigest) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONPromptDigest
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/provider.
+type CorpusCheckpointViewV2ProvenanceJSONProvider struct {
+	Connection string `json:"connection"`
+	Family     string `json:"family"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONProviderMembers = []string{"connection", "family"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONProvider object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONProvider) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONProvider
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONProviderMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONProvider: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONProvider(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONProvider object.
+func (v CorpusCheckpointViewV2ProvenanceJSONProvider) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONProvider
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/queuedSteer.
+type CorpusCheckpointViewV2ProvenanceJSONQueuedSteer struct {
+	Text  string `json:"text"`
+	Bytes int64  `json:"bytes"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONQueuedSteerMembers = []string{"text", "bytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONQueuedSteer object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONQueuedSteer) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONQueuedSteer
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONQueuedSteerMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONQueuedSteer: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONQueuedSteer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONQueuedSteer object.
+func (v CorpusCheckpointViewV2ProvenanceJSONQueuedSteer) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONQueuedSteer
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/recordFigures.
+type CorpusCheckpointViewV2ProvenanceJSONRecordFigures struct {
+	Redactions map[string]int64 `json:"redactions"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONRecordFiguresMembers = []string{"redactions"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONRecordFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONRecordFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONRecordFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONRecordFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONRecordFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONRecordFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONRecordFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONRecordFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONRecordFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/skillLoad.
+type CorpusCheckpointViewV2ProvenanceJSONSkillLoad struct {
+	ID       string `json:"id"`
+	Digest   string `json:"digest"`
+	Bytes    int64  `json:"bytes"`
+	LoadedAt string `json:"loadedAt"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONSkillLoadMembers = []string{"id", "digest", "bytes", "loadedAt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONSkillLoad object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONSkillLoad) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSkillLoad
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONSkillLoadMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONSkillLoad: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONSkillLoad(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONSkillLoad object.
+func (v CorpusCheckpointViewV2ProvenanceJSONSkillLoad) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSkillLoad
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/sourceFigures.
+type CorpusCheckpointViewV2ProvenanceJSONSourceFigures struct {
+	Source       string                                                `json:"source"`
+	Kind         string                                                `json:"kind"`
+	Calls        int64                                                 `json:"calls"`
+	Refused      int64                                                 `json:"refused"`
+	Proposed     int64                                                 `json:"proposed"`
+	Bytes        int64                                                 `json:"bytes"`
+	Milliseconds int64                                                 `json:"milliseconds"`
+	Skills       *int64                                                `json:"skills,omitzero"`
+	Identities   []CorpusCheckpointViewV2ProvenanceJSONIdentityFigures `json:"identities,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONSourceFiguresMembers = []string{"source", "kind", "calls", "refused", "proposed", "bytes", "milliseconds", "skills", "identities"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONSourceFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONSourceFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSourceFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONSourceFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONSourceFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONSourceFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONSourceFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONSourceFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSourceFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/steerReport.
+type CorpusCheckpointViewV2ProvenanceJSONSteerReport struct {
+	Queued    []CorpusCheckpointViewV2ProvenanceJSONQueuedSteer    `json:"queued"`
+	Delivered []CorpusCheckpointViewV2ProvenanceJSONDeliveredSteer `json:"delivered"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONSteerReportMembers = []string{"queued", "delivered"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONSteerReport object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONSteerReport) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSteerReport
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONSteerReportMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONSteerReport: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONSteerReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONSteerReport object.
+func (v CorpusCheckpointViewV2ProvenanceJSONSteerReport) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONSteerReport
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.provenance.json/$defs/tokenFigures.
+type CorpusCheckpointViewV2ProvenanceJSONTokenFigures struct {
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV2ProvenanceJSONTokenFiguresMembers = []string{"inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ProvenanceJSONTokenFigures object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ProvenanceJSONTokenFigures) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ProvenanceJSONTokenFigures
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ProvenanceJSONTokenFiguresMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ProvenanceJSONTokenFigures: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ProvenanceJSONTokenFigures(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ProvenanceJSONTokenFigures object.
+func (v CorpusCheckpointViewV2ProvenanceJSONTokenFigures) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ProvenanceJSONTokenFigures
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.skill.json.
+type CorpusCheckpointViewV2SkillJSON struct {
+	ID           string                                    `json:"id"`
+	Name         string                                    `json:"name"`
+	Description  string                                    `json:"description"`
+	Source       CorpusCheckpointViewV2SkillJSONSource     `json:"source"`
+	Instructions string                                    `json:"instructions"`
+	Tools        []string                                  `json:"tools,omitzero"`
+	Resources    []CorpusCheckpointViewV2SkillJSONResource `json:"resources,omitzero"`
+	PinnedDigest *string                                   `json:"pinnedDigest,omitzero"`
+	Digest       *string                                   `json:"digest,omitzero"`
+}
+
+var corpusCheckpointViewV2SkillJSONMembers = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SkillJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SkillJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SkillJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SkillJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SkillJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SkillJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SkillJSON object.
+func (v CorpusCheckpointViewV2SkillJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SkillJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.skill.json/$defs/resource.
+type CorpusCheckpointViewV2SkillJSONResource struct {
+	Name string `json:"name"`
+	Text string `json:"text"`
+}
+
+var corpusCheckpointViewV2SkillJSONResourceMembers = []string{"name", "text"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SkillJSONResource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SkillJSONResource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SkillJSONResource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SkillJSONResourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SkillJSONResource: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SkillJSONResource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SkillJSONResource object.
+func (v CorpusCheckpointViewV2SkillJSONResource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SkillJSONResource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.skill.json/properties/source.
+type CorpusCheckpointViewV2SkillJSONSource struct {
+	Kind           string                                       `json:"kind"`
+	ID             string                                       `json:"id"`
+	Version        *string                                      `json:"version,omitzero"`
+	ToolListDigest *string                                      `json:"toolListDigest,omitzero"`
+	Trust          string                                       `json:"trust"`
+	Identity       *CorpusCheckpointViewV2ToolOfferJSONIdentity `json:"identity,omitzero"`
+	IdentityDigest *string                                      `json:"identityDigest,omitzero"`
+	Tool           *string                                      `json:"tool,omitzero"`
+	Receipt        *string                                      `json:"receipt,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV2SkillJSONSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SkillJSONSource object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV2SkillJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SkillJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SkillJSONSourceMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SkillJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SkillJSONSource(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SkillJSONSource object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV2SkillJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SkillJSONSource
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.subagent.json.
+type CorpusCheckpointViewV2SubagentJSON struct {
+	ID           string                                   `json:"id"`
+	Name         string                                   `json:"name"`
+	Purpose      string                                   `json:"purpose"`
+	Instructions string                                   `json:"instructions"`
+	Source       CorpusCheckpointViewV2SubagentJSONSource `json:"source"`
+	Tools        []string                                 `json:"tools"`
+	Skills       []string                                 `json:"skills"`
+	Model        string                                   `json:"model"`
+	Reasoning    string                                   `json:"reasoning"`
+	Bounds       CorpusCheckpointViewV2SubagentJSONBounds `json:"bounds"`
+	PinnedDigest string                                   `json:"pinnedDigest"`
+	Digest       *string                                  `json:"digest,omitzero"`
+}
+
+var corpusCheckpointViewV2SubagentJSONMembers = []string{"id", "name", "purpose", "instructions", "source", "tools", "skills", "model", "reasoning", "bounds", "pinnedDigest", "digest"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SubagentJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SubagentJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SubagentJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SubagentJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SubagentJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SubagentJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SubagentJSON object.
+func (v CorpusCheckpointViewV2SubagentJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SubagentJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.subagent.json/properties/bounds.
+type CorpusCheckpointViewV2SubagentJSONBounds struct {
+	ModelRequests int64 `json:"modelRequests"`
+	AgentRuns     int64 `json:"agentRuns"`
+	ToolCalls     int64 `json:"toolCalls"`
+	Bytes         int64 `json:"bytes"`
+	Milliseconds  int64 `json:"milliseconds"`
+	ResultBytes   int64 `json:"resultBytes"`
+}
+
+var corpusCheckpointViewV2SubagentJSONBoundsMembers = []string{"modelRequests", "agentRuns", "toolCalls", "bytes", "milliseconds", "resultBytes"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SubagentJSONBounds object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SubagentJSONBounds) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SubagentJSONBounds
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SubagentJSONBoundsMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SubagentJSONBounds: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SubagentJSONBounds(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SubagentJSONBounds object.
+func (v CorpusCheckpointViewV2SubagentJSONBounds) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SubagentJSONBounds
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.subagent.json/$defs/record.
+type CorpusCheckpointViewV2SubagentJSONRecord struct {
+	ID     string                                         `json:"id"`
+	Digest string                                         `json:"digest"`
+	Source CorpusCheckpointViewV2SubagentJSONRecordSource `json:"source"`
+}
+
+var corpusCheckpointViewV2SubagentJSONRecordMembers = []string{"id", "digest", "source"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SubagentJSONRecord object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SubagentJSONRecord) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SubagentJSONRecord
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SubagentJSONRecordMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SubagentJSONRecord: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SubagentJSONRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SubagentJSONRecord object.
+func (v CorpusCheckpointViewV2SubagentJSONRecord) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SubagentJSONRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.subagent.json/$defs/record/properties/source.
+type CorpusCheckpointViewV2SubagentJSONRecordSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var corpusCheckpointViewV2SubagentJSONRecordSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SubagentJSONRecordSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SubagentJSONRecordSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SubagentJSONRecordSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SubagentJSONRecordSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SubagentJSONRecordSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SubagentJSONRecordSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SubagentJSONRecordSource object.
+func (v CorpusCheckpointViewV2SubagentJSONRecordSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SubagentJSONRecordSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.subagent.json/properties/source.
+type CorpusCheckpointViewV2SubagentJSONSource struct {
+	Kind           string  `json:"kind"`
+	ID             string  `json:"id"`
+	Version        *string `json:"version,omitzero"`
+	ToolListDigest *string `json:"toolListDigest,omitzero"`
+	Trust          string  `json:"trust"`
+}
+
+var corpusCheckpointViewV2SubagentJSONSourceMembers = []string{"kind", "id", "version", "toolListDigest", "trust"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2SubagentJSONSource object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2SubagentJSONSource) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2SubagentJSONSource
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2SubagentJSONSourceMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2SubagentJSONSource: %w", err)
+	}
+	*v = CorpusCheckpointViewV2SubagentJSONSource(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2SubagentJSONSource object.
+func (v CorpusCheckpointViewV2SubagentJSONSource) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2SubagentJSONSource
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-offer.json.
+type CorpusCheckpointViewV2ToolOfferJSON struct {
+	Tools            []CorpusCheckpointViewV2ToolOfferJSONRuntimeTool `json:"tools"`
+	HostTools        []CorpusCheckpointViewV2ToolOfferJSONHostTool    `json:"hostTools"`
+	Skills           []json.RawMessage                                `json:"skills,omitzero"`
+	Critic           *string                                          `json:"critic,omitzero"`
+	CriticProject    *string                                          `json:"criticProject,omitzero"`
+	CriticReasoning  *string                                          `json:"criticReasoning,omitzero"`
+	ExistingPack     *bool                                            `json:"existingPack,omitzero"`
+	ReviewerAssigned *bool                                            `json:"reviewerAssigned,omitzero"`
+	Policy           *CorpusCheckpointViewV2PolicyJSON                `json:"policy,omitzero"`
+	PolicyProject    *CorpusCheckpointViewV2PolicyJSON                `json:"policyProject,omitzero"`
+	TaskClass        *string                                          `json:"taskClass,omitzero"`
+	PaceUsed         *CorpusCheckpointViewV2PolicyJSONPaceUsed        `json:"paceUsed,omitzero"`
+	Subagents        []json.RawMessage                                `json:"subagents,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONMembers = []string{"tools", "hostTools", "skills", "critic", "criticProject", "criticReasoning", "existingPack", "reviewerAssigned", "policy", "policyProject", "taskClass", "paceUsed", "subagents"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSON object.
+func (v CorpusCheckpointViewV2ToolOfferJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/hostTool.
+type CorpusCheckpointViewV2ToolOfferJSONHostTool struct {
+	Name          string                                                    `json:"name"`
+	Description   string                                                    `json:"description"`
+	InputSchema   json.RawMessage                                           `json:"inputSchema"`
+	Effect        *string                                                   `json:"effect,omitzero"`
+	Interaction   *string                                                   `json:"interaction,omitzero"`
+	Delegation    *string                                                   `json:"delegation,omitzero"`
+	ContextPolicy *CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy `json:"contextPolicy,omitzero"`
+	Presentation  *CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation  `json:"presentation,omitzero"`
+	Source        *CorpusCheckpointViewV2ToolOfferJSONSourceRecord          `json:"source,omitzero"`
+	EffectClass   *string                                                   `json:"effectClass,omitzero"`
+	Approval      *string                                                   `json:"approval,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONHostTool object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONHostTool) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostTool
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONHostToolMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONHostTool: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONHostTool(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONHostTool object.
+func (v CorpusCheckpointViewV2ToolOfferJSONHostTool) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostTool
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/hostTool/properties/contextPolicy.
+type CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy struct {
+	Immutable *bool `json:"immutable,omitzero"`
+	Reference *bool `json:"reference,omitzero"`
+	Runtime   *bool `json:"runtime,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONHostToolContextPolicyMembers = []string{"immutable", "reference", "runtime"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONHostToolContextPolicyMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy object.
+func (v CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostToolContextPolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/hostTool/properties/presentation.
+type CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation struct {
+	Provider string `json:"provider"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONHostToolPresentationMembers = []string{"provider"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONHostToolPresentationMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation object.
+func (v CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONHostToolPresentation
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/identity.
+type CorpusCheckpointViewV2ToolOfferJSONIdentity struct {
+	Kind  string `json:"kind"`
+	Label string `json:"label"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONIdentityMembers = []string{"kind", "label"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONIdentity object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONIdentity) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONIdentity
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONIdentityMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONIdentity: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONIdentity(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONIdentity object.
+func (v CorpusCheckpointViewV2ToolOfferJSONIdentity) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONIdentity
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/runtimeTool.
+type CorpusCheckpointViewV2ToolOfferJSONRuntimeTool struct {
+	Name        string          `json:"name"`
+	Description *string         `json:"description,omitzero"`
+	InputSchema json.RawMessage `json:"inputSchema,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONRuntimeToolMembers = []string{"name", "description", "inputSchema"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONRuntimeTool object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONRuntimeTool) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONRuntimeTool
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONRuntimeToolMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONRuntimeTool: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONRuntimeTool(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONRuntimeTool object.
+func (v CorpusCheckpointViewV2ToolOfferJSONRuntimeTool) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONRuntimeTool
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-offer.json/$defs/sourceRecord.
+type CorpusCheckpointViewV2ToolOfferJSONSourceRecord struct {
+	Kind           string                                       `json:"kind"`
+	ID             string                                       `json:"id"`
+	Version        *string                                      `json:"version,omitzero"`
+	ToolListDigest *string                                      `json:"toolListDigest,omitzero"`
+	Trust          string                                       `json:"trust"`
+	Identity       *CorpusCheckpointViewV2ToolOfferJSONIdentity `json:"identity,omitzero"`
+	IdentityDigest *string                                      `json:"identityDigest,omitzero"`
+	Tool           *string                                      `json:"tool,omitzero"`
+	Receipt        *string                                      `json:"receipt,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolOfferJSONSourceRecordMembers = []string{"kind", "id", "version", "toolListDigest", "trust", "identity", "identityDigest", "tool", "receipt"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolOfferJSONSourceRecord object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolOfferJSONSourceRecord) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolOfferJSONSourceRecord
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolOfferJSONSourceRecordMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolOfferJSONSourceRecord: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolOfferJSONSourceRecord(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolOfferJSONSourceRecord object.
+func (v CorpusCheckpointViewV2ToolOfferJSONSourceRecord) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolOfferJSONSourceRecord
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-result.json.
+type CorpusCheckpointViewV2ToolResultJSON struct {
+	Type       string                                           `json:"type"`
+	CallID     *string                                          `json:"callId,omitzero"`
+	Name       string                                           `json:"name"`
+	IsError    bool                                             `json:"isError"`
+	Text       string                                           `json:"text"`
+	Structured json.RawMessage                                  `json:"structured,omitzero"`
+	Origin     *string                                          `json:"origin,omitzero"`
+	Source     *CorpusCheckpointViewV2ToolOfferJSONSourceRecord `json:"source,omitzero"`
+	Proposed   *bool                                            `json:"proposed,omitzero"`
+	Version    *int64                                           `json:"version,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolResultJSONMembers = []string{"type", "callId", "name", "isError", "text", "structured", "origin", "source", "proposed", "version"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolResultJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolResultJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolResultJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolResultJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolResultJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolResultJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolResultJSON object.
+func (v CorpusCheckpointViewV2ToolResultJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolResultJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-result.json/$defs/imagePart.
+type CorpusCheckpointViewV2ToolResultJSONImagePart struct {
+	Kind      string  `json:"kind"`
+	MediaType string  `json:"mediaType"`
+	Bytes     *string `json:"bytes,omitzero"`
+	Reference *string `json:"reference,omitzero"`
+}
+
+var corpusCheckpointViewV2ToolResultJSONImagePartMembers = []string{"kind", "mediaType", "bytes", "reference"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolResultJSONImagePart object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2ToolResultJSONImagePart) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolResultJSONImagePart
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolResultJSONImagePartMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolResultJSONImagePart: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolResultJSONImagePart(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolResultJSONImagePart object.
+func (v CorpusCheckpointViewV2ToolResultJSONImagePart) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolResultJSONImagePart
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.tool-result.json/$defs/mcpToolResult.
+type CorpusCheckpointViewV2ToolResultJSONMCPToolResult struct {
+	Content           []CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem `json:"content,omitzero"`
+	IsError           *bool                                                          `json:"isError,omitzero"`
+	StructuredContent json.RawMessage                                                `json:"structuredContent,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV2ToolResultJSONMCPToolResultMembers = []string{"content", "isError", "structuredContent"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolResultJSONMCPToolResult object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV2ToolResultJSONMCPToolResult) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolResultJSONMCPToolResult
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolResultJSONMCPToolResultMembers, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolResultJSONMCPToolResult: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolResultJSONMCPToolResult(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolResultJSONMCPToolResult object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV2ToolResultJSONMCPToolResult) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolResultJSONMCPToolResult
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.tool-result.json/$defs/mcpToolResult/properties/content/items.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem struct {
+	Option1                                       *CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1
+	CorpusCheckpointViewV2ToolResultJSONImagePart *CorpusCheckpointViewV2ToolResultJSONImagePart
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem) UnmarshalJSON(data []byte) error {
+	*v = CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" {
+		var candidate CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "kind", "mediaType") {
+		var candidate CorpusCheckpointViewV2ToolResultJSONImagePart
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.CorpusCheckpointViewV2ToolResultJSONImagePart = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.CorpusCheckpointViewV2ToolResultJSONImagePart != nil {
+		set = append(set, v.CorpusCheckpointViewV2ToolResultJSONImagePart)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItem: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From
+// corpus-checkpoint-view.json#/$defs/v2.tool-result.json/$defs/mcpToolResult/properties/content/items/anyOf/0.
+type CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1 struct {
+	Type *string `json:"type,omitzero"`
+	Text *string `json:"text,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var corpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1Members = []string{"type", "text"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1 object and keeps the members the schema does not name.
+func (v *CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1Members, false)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1: %w", err)
+	}
+	*v = CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1 object, with the members the schema does not name after the ones it does.
+func (v CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2ToolResultJSONMCPToolResultContentItemOption1
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.usage.json.
+type CorpusCheckpointViewV2UsageJSON struct {
+	Rows []CorpusCheckpointViewV2UsageJSONRow `json:"rows"`
+}
+
+var corpusCheckpointViewV2UsageJSONMembers = []string{"rows"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2UsageJSON object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2UsageJSON) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2UsageJSON
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2UsageJSONMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2UsageJSON: %w", err)
+	}
+	*v = CorpusCheckpointViewV2UsageJSON(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2UsageJSON object.
+func (v CorpusCheckpointViewV2UsageJSON) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2UsageJSON
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.usage.json/$defs/row.
+type CorpusCheckpointViewV2UsageJSONRow struct {
+	Source       string                                 `json:"source"`
+	Connection   string                                 `json:"connection"`
+	Role         string                                 `json:"role"`
+	Model        *string                                `json:"model,omitzero"`
+	Requests     int64                                  `json:"requests"`
+	Invocations  int64                                  `json:"invocations"`
+	Milliseconds int64                                  `json:"milliseconds"`
+	Bytes        int64                                  `json:"bytes"`
+	Tokens       *CorpusCheckpointViewV2UsageJSONTokens `json:"tokens,omitzero"`
+}
+
+var corpusCheckpointViewV2UsageJSONRowMembers = []string{"source", "connection", "role", "model", "requests", "invocations", "milliseconds", "bytes", "tokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2UsageJSONRow object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2UsageJSONRow) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2UsageJSONRow
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2UsageJSONRowMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2UsageJSONRow: %w", err)
+	}
+	*v = CorpusCheckpointViewV2UsageJSONRow(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2UsageJSONRow object.
+func (v CorpusCheckpointViewV2UsageJSONRow) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2UsageJSONRow
+	return encodeObject(plain(v), nil)
+}
+
+// From corpus-checkpoint-view.json#/$defs/v2.usage.json/$defs/tokens.
+type CorpusCheckpointViewV2UsageJSONTokens struct {
+	InputTokens      *int64 `json:"inputTokens,omitzero"`
+	OutputTokens     *int64 `json:"outputTokens,omitzero"`
+	ReasoningTokens  *int64 `json:"reasoningTokens,omitzero"`
+	CacheReadTokens  *int64 `json:"cacheReadTokens,omitzero"`
+	CacheWriteTokens *int64 `json:"cacheWriteTokens,omitzero"`
+}
+
+var corpusCheckpointViewV2UsageJSONTokensMembers = []string{"inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWriteTokens"}
+
+// UnmarshalJSON decodes a CorpusCheckpointViewV2UsageJSONTokens object and refuses a member the closed schema does not name.
+func (v *CorpusCheckpointViewV2UsageJSONTokens) UnmarshalJSON(data []byte) error {
+	type plain CorpusCheckpointViewV2UsageJSONTokens
+	var p plain
+	extra, err := decodeObject(data, &p, corpusCheckpointViewV2UsageJSONTokensMembers, true)
+	if err != nil {
+		return errorf("CorpusCheckpointViewV2UsageJSONTokens: %w", err)
+	}
+	*v = CorpusCheckpointViewV2UsageJSONTokens(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a CorpusCheckpointViewV2UsageJSONTokens object.
+func (v CorpusCheckpointViewV2UsageJSONTokens) MarshalJSON() ([]byte, error) {
+	type plain CorpusCheckpointViewV2UsageJSONTokens
 	return encodeObject(plain(v), nil)
 }
 
@@ -3476,6 +11794,1365 @@ func (v DelegatedTaskTaskRequest) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From dialect-authoring.json. First-party read and review-only complete replacement proposal
+// inputs. Hashes bind exact prior read bytes; none is a save, publication, execution or
+// preparation approval. Proposals require a trusted host opt-in to the package-pinned experimental
+// retained-column document contract; model arguments cannot select it.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectAuthoring struct {
+	Read    *DialectAuthoringRead
+	Propose *DialectAuthoringPropose
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectAuthoring) UnmarshalJSON(data []byte) error {
+	*v = DialectAuthoring{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "id", "packKey") {
+		var candidate DialectAuthoringRead
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Read = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "dialectDigest", "evidence", "facts", "id", "packDigest", "packKey", "revision", "summary") {
+		var candidate DialectAuthoringPropose
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Propose = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectAuthoring: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectAuthoring{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectAuthoring) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Read != nil {
+		set = append(set, v.Read)
+	}
+	if v.Propose != nil {
+		set = append(set, v.Propose)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectAuthoring: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-authoring.json#/$defs/conversion.
+type DialectAuthoringConversion struct {
+	Kind       string  `json:"kind"`
+	TrueValue  *string `json:"trueValue,omitzero"`
+	FalseValue *string `json:"falseValue,omitzero"`
+}
+
+var dialectAuthoringConversionMembers = []string{"kind", "trueValue", "falseValue"}
+
+// UnmarshalJSON decodes a DialectAuthoringConversion object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringConversion) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringConversion
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringConversionMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringConversion: %w", err)
+	}
+	*v = DialectAuthoringConversion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringConversion object.
+func (v DialectAuthoringConversion) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringConversion
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/evidence.
+type DialectAuthoringEvidence struct {
+	Requirement string `json:"requirement"`
+	Column      string `json:"column"`
+}
+
+var dialectAuthoringEvidenceMembers = []string{"requirement", "column"}
+
+// UnmarshalJSON decodes a DialectAuthoringEvidence object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringEvidence) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringEvidenceMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringEvidence: %w", err)
+	}
+	*v = DialectAuthoringEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringEvidence object.
+func (v DialectAuthoringEvidence) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/fact.
+type DialectAuthoringFact struct {
+	Target     string                     `json:"target"`
+	Column     string                     `json:"column"`
+	Conversion DialectAuthoringConversion `json:"conversion"`
+}
+
+var dialectAuthoringFactMembers = []string{"target", "column", "conversion"}
+
+// UnmarshalJSON decodes a DialectAuthoringFact object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringFact) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringFact
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringFactMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringFact: %w", err)
+	}
+	*v = DialectAuthoringFact(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringFact object.
+func (v DialectAuthoringFact) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringFact
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/propose.
+type DialectAuthoringPropose struct {
+	ID            string                               `json:"id"`
+	Revision      string                               `json:"revision"`
+	PackKey       string                               `json:"packKey"`
+	PackDigest    string                               `json:"packDigest"`
+	DialectDigest DialectAuthoringProposeDialectDigest `json:"dialectDigest"`
+	Facts         []DialectAuthoringFact               `json:"facts"`
+	Evidence      []DialectAuthoringEvidence           `json:"evidence"`
+	Summary       string                               `json:"summary"`
+}
+
+var dialectAuthoringProposeMembers = []string{"id", "revision", "packKey", "packDigest", "dialectDigest", "facts", "evidence", "summary"}
+
+// UnmarshalJSON decodes a DialectAuthoringPropose object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringPropose) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringPropose
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringProposeMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringPropose: %w", err)
+	}
+	*v = DialectAuthoringPropose(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringPropose object.
+func (v DialectAuthoringPropose) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringPropose
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/propose/properties/dialectDigest.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectAuthoringProposeDialectDigest struct {
+	Option1 *json.RawMessage
+	String  *string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectAuthoringProposeDialectDigest) UnmarshalJSON(data []byte) error {
+	*v = DialectAuthoringProposeDialectDigest{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectAuthoringProposeDialectDigest: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectAuthoringProposeDialectDigest{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectAuthoringProposeDialectDigest) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectAuthoringProposeDialectDigest: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-authoring.json#/$defs/read.
+type DialectAuthoringRead struct {
+	ID      string `json:"id"`
+	PackKey string `json:"packKey"`
+}
+
+var dialectAuthoringReadMembers = []string{"id", "packKey"}
+
+// UnmarshalJSON decodes a DialectAuthoringRead object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringRead) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringRead
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringReadMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringRead: %w", err)
+	}
+	*v = DialectAuthoringRead(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringRead object.
+func (v DialectAuthoringRead) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringRead
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json. Portable host retention only. Byte ceilings, exact
+// content/digest/receipt chains, stage order and authority limits are additionally enforced by the
+// tool factory. A draft permits inspection and editing, never saving or execution. New factories
+// retain conversionContract and complete researchDeclarations (null means unavailable); older
+// version-1 checkpoints remain inspectable and grant no new contract support.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraft struct {
+	Checkpoint *DialectDraftCheckpoint
+	Ack        *DialectDraftAck
+	Lineage    *DialectDraftLineage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraft) UnmarshalJSON(data []byte) error {
+	*v = DialectDraft{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "attemptId", "candidate", "digest", "fingerprint", "previousReceipt", "stage", "version") {
+		var candidate DialectDraftCheckpoint
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Checkpoint = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "digest", "fingerprint", "previousReceipt", "receipt", "stage", "status") {
+		var candidate DialectDraftAck
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Ack = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "attemptId", "candidateReceipt", "checkedDigest", "checkedReceipt", "fingerprint") {
+		var candidate DialectDraftLineage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Lineage = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraft: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraft{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraft) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Checkpoint != nil {
+		set = append(set, v.Checkpoint)
+	}
+	if v.Ack != nil {
+		set = append(set, v.Ack)
+	}
+	if v.Lineage != nil {
+		set = append(set, v.Lineage)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraft: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/ack.
+type DialectDraftAck struct {
+	Fingerprint     string           `json:"fingerprint"`
+	Stage           string           `json:"stage"`
+	Digest          string           `json:"digest"`
+	PreviousReceipt Nullable[string] `json:"previousReceipt"`
+	Receipt         string           `json:"receipt"`
+	Status          string           `json:"status"`
+}
+
+var dialectDraftAckMembers = []string{"fingerprint", "stage", "digest", "previousReceipt", "receipt", "status"}
+
+// UnmarshalJSON decodes a DialectDraftAck object and refuses a member the closed schema does not name.
+func (v *DialectDraftAck) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftAck
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftAckMembers, true)
+	if err != nil {
+		return errorf("DialectDraftAck: %w", err)
+	}
+	*v = DialectDraftAck(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftAck object.
+func (v DialectDraftAck) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftAck
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/candidate.
+type DialectDraftCandidate struct {
+	ID                   string                                              `json:"id"`
+	Revision             string                                              `json:"revision"`
+	PackKey              string                                              `json:"packKey"`
+	PackDigest           string                                              `json:"packDigest"`
+	DialectDigest        DialectDraftCandidateDialectDigest                  `json:"dialectDigest"`
+	DocumentJSON         string                                              `json:"documentJson"`
+	PackJSON             string                                              `json:"packJson"`
+	Conversions          map[string]DialectDraftConversion                   `json:"conversions"`
+	Facts                []DialectDraftFact                                  `json:"facts"`
+	Evidence             []DialectDraftEvidence                              `json:"evidence"`
+	Summary              string                                              `json:"summary"`
+	Columns              []DialectDraftColumn                                `json:"columns"`
+	ResearchDeclarations Nullable[DialectDraftCandidateResearchDeclarations] `json:"researchDeclarations,omitzero"`
+	ConversionContract   *DialectDraftConversionContract                     `json:"conversionContract,omitzero"`
+	RetainedRead         Nullable[DialectDraftCandidateRetainedRead]         `json:"retainedRead,omitzero"`
+}
+
+var dialectDraftCandidateMembers = []string{"id", "revision", "packKey", "packDigest", "dialectDigest", "documentJson", "packJson", "conversions", "facts", "evidence", "summary", "columns", "researchDeclarations", "conversionContract", "retainedRead"}
+
+// UnmarshalJSON decodes a DialectDraftCandidate object and refuses a member the closed schema does not name.
+func (v *DialectDraftCandidate) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftCandidate
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftCandidateMembers, true)
+	if err != nil {
+		return errorf("DialectDraftCandidate: %w", err)
+	}
+	*v = DialectDraftCandidate(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftCandidate object.
+func (v DialectDraftCandidate) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftCandidate
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/candidate/properties/dialectDigest.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftCandidateDialectDigest struct {
+	Option1 *json.RawMessage
+	String  *string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftCandidateDialectDigest) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftCandidateDialectDigest{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftCandidateDialectDigest: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftCandidateDialectDigest{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftCandidateDialectDigest) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftCandidateDialectDigest: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/candidate/properties/researchDeclarations.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftCandidateResearchDeclarations struct {
+	Option1 *json.RawMessage
+	Option2 *[]DialectDraftOriginalRevision
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftCandidateResearchDeclarations) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftCandidateResearchDeclarations{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []DialectDraftOriginalRevision
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftCandidateResearchDeclarations: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftCandidateResearchDeclarations{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftCandidateResearchDeclarations) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftCandidateResearchDeclarations: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/candidate/properties/retainedRead.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftCandidateRetainedRead struct {
+	Option1                  *json.RawMessage
+	DialectDraftRetainedRead *DialectDraftRetainedRead
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftCandidateRetainedRead) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftCandidateRetainedRead{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "documentJson", "framePointer", "occurrence") {
+		var candidate DialectDraftRetainedRead
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.DialectDraftRetainedRead = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftCandidateRetainedRead: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftCandidateRetainedRead{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftCandidateRetainedRead) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.DialectDraftRetainedRead != nil {
+		set = append(set, v.DialectDraftRetainedRead)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftCandidateRetainedRead: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/check.
+type DialectDraftCheck struct {
+	Results []DialectDraftResult `json:"results"`
+	Failure *DialectDraftFailure `json:"failure,omitzero"`
+}
+
+var dialectDraftCheckMembers = []string{"results", "failure"}
+
+// UnmarshalJSON decodes a DialectDraftCheck object and refuses a member the closed schema does not name.
+func (v *DialectDraftCheck) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftCheck
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftCheckMembers, true)
+	if err != nil {
+		return errorf("DialectDraftCheck: %w", err)
+	}
+	*v = DialectDraftCheck(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftCheck object.
+func (v DialectDraftCheck) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftCheck
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/checkpoint.
+type DialectDraftCheckpoint struct {
+	Version         int64                 `json:"version"`
+	AttemptID       string                `json:"attemptId"`
+	Fingerprint     string                `json:"fingerprint"`
+	Stage           string                `json:"stage"`
+	Digest          string                `json:"digest"`
+	PreviousReceipt Nullable[string]      `json:"previousReceipt"`
+	Candidate       DialectDraftCandidate `json:"candidate"`
+	Check           *DialectDraftCheck    `json:"check,omitzero"`
+}
+
+var dialectDraftCheckpointMembers = []string{"version", "attemptId", "fingerprint", "stage", "digest", "previousReceipt", "candidate", "check"}
+
+// UnmarshalJSON decodes a DialectDraftCheckpoint object and refuses a member the closed schema does not name.
+func (v *DialectDraftCheckpoint) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftCheckpoint
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftCheckpointMembers, true)
+	if err != nil {
+		return errorf("DialectDraftCheckpoint: %w", err)
+	}
+	*v = DialectDraftCheckpoint(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftCheckpoint object.
+func (v DialectDraftCheckpoint) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftCheckpoint
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/column.
+type DialectDraftColumn struct {
+	Name     string                `json:"name"`
+	Samples  []DialectDraftSample  `json:"samples"`
+	Research *DialectDraftResearch `json:"research,omitzero"`
+}
+
+var dialectDraftColumnMembers = []string{"name", "samples", "research"}
+
+// UnmarshalJSON decodes a DialectDraftColumn object and refuses a member the closed schema does not name.
+func (v *DialectDraftColumn) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftColumn
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftColumnMembers, true)
+	if err != nil {
+		return errorf("DialectDraftColumn: %w", err)
+	}
+	*v = DialectDraftColumn(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftColumn object.
+func (v DialectDraftColumn) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftColumn
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversion.
+type DialectDraftConversion struct {
+	Kind       string  `json:"kind"`
+	TrueValue  *string `json:"trueValue,omitzero"`
+	FalseValue *string `json:"falseValue,omitzero"`
+}
+
+var dialectDraftConversionMembers = []string{"kind", "trueValue", "falseValue"}
+
+// UnmarshalJSON decodes a DialectDraftConversion object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversion) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversion
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionMembers, true)
+	if err != nil {
+		return errorf("DialectDraftConversion: %w", err)
+	}
+	*v = DialectDraftConversion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversion object.
+func (v DialectDraftConversion) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversion
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversionContract.
+type DialectDraftConversionContract struct {
+	Contract string                             `json:"contract"`
+	Profile  string                             `json:"profile"`
+	Spec     DialectDraftConversionContractSpec `json:"spec"`
+}
+
+var dialectDraftConversionContractMembers = []string{"contract", "profile", "spec"}
+
+// UnmarshalJSON decodes a DialectDraftConversionContract object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContract) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContract
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractMembers, true)
+	if err != nil {
+		return errorf("DialectDraftConversionContract: %w", err)
+	}
+	*v = DialectDraftConversionContract(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversionContract object.
+func (v DialectDraftConversionContract) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContract
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec.
+//
+// A union: exactly one member is set. An object is decoded by its "version" member.
+type DialectDraftConversionContractSpec struct {
+	// Option1 is set where version is "0.3.0-rc.2".
+	Option1 *DialectDraftConversionContractSpecOption1
+	// Option2 is set where version is "Draft RFC0029".
+	Option2 *DialectDraftConversionContractSpecOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftConversionContractSpec) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftConversionContractSpec{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "version")
+		if err != nil {
+			return errorf("DialectDraftConversionContractSpec: %w", err)
+		}
+		switch tag {
+		case "0.3.0-rc.2":
+			v.Option1 = new(DialectDraftConversionContractSpecOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "Draft RFC0029":
+			v.Option2 = new(DialectDraftConversionContractSpecOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("DialectDraftConversionContractSpec: no member has version %q", tag)
+	}
+	return errorf("DialectDraftConversionContractSpec: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftConversionContractSpec) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftConversionContractSpec: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec/oneOf/0.
+type DialectDraftConversionContractSpecOption1 struct {
+	Version      string `json:"version"`
+	Revision     string `json:"revision"`
+	SchemaSha256 string `json:"schemaSha256"`
+	CorpusSha256 string `json:"corpusSha256"`
+}
+
+var dialectDraftConversionContractSpecOption1Members = []string{"version", "revision", "schemaSha256", "corpusSha256"}
+
+// UnmarshalJSON decodes a DialectDraftConversionContractSpecOption1 object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContractSpecOption1) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContractSpecOption1
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecOption1Members, true)
+	if err != nil {
+		return errorf("DialectDraftConversionContractSpecOption1: %w", err)
+	}
+	*v = DialectDraftConversionContractSpecOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversionContractSpecOption1 object.
+func (v DialectDraftConversionContractSpecOption1) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContractSpecOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec/oneOf/1.
+type DialectDraftConversionContractSpecOption2 struct {
+	Version      string `json:"version"`
+	Revision     string `json:"revision"`
+	SchemaSha256 string `json:"schemaSha256"`
+	CorpusSha256 string `json:"corpusSha256"`
+}
+
+var dialectDraftConversionContractSpecOption2Members = []string{"version", "revision", "schemaSha256", "corpusSha256"}
+
+// UnmarshalJSON decodes a DialectDraftConversionContractSpecOption2 object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContractSpecOption2) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContractSpecOption2
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecOption2Members, true)
+	if err != nil {
+		return errorf("DialectDraftConversionContractSpecOption2: %w", err)
+	}
+	*v = DialectDraftConversionContractSpecOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversionContractSpecOption2 object.
+func (v DialectDraftConversionContractSpecOption2) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContractSpecOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/evidence.
+type DialectDraftEvidence struct {
+	Requirement string `json:"requirement"`
+	Column      string `json:"column"`
+}
+
+var dialectDraftEvidenceMembers = []string{"requirement", "column"}
+
+// UnmarshalJSON decodes a DialectDraftEvidence object and refuses a member the closed schema does not name.
+func (v *DialectDraftEvidence) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftEvidenceMembers, true)
+	if err != nil {
+		return errorf("DialectDraftEvidence: %w", err)
+	}
+	*v = DialectDraftEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftEvidence object.
+func (v DialectDraftEvidence) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/fact.
+type DialectDraftFact struct {
+	Target     string                 `json:"target"`
+	Column     string                 `json:"column"`
+	Conversion DialectDraftConversion `json:"conversion"`
+}
+
+var dialectDraftFactMembers = []string{"target", "column", "conversion"}
+
+// UnmarshalJSON decodes a DialectDraftFact object and refuses a member the closed schema does not name.
+func (v *DialectDraftFact) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftFact
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftFactMembers, true)
+	if err != nil {
+		return errorf("DialectDraftFact: %w", err)
+	}
+	*v = DialectDraftFact(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftFact object.
+func (v DialectDraftFact) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftFact
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/failure.
+type DialectDraftFailure struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+var dialectDraftFailureMembers = []string{"code", "message"}
+
+// UnmarshalJSON decodes a DialectDraftFailure object and refuses a member the closed schema does not name.
+func (v *DialectDraftFailure) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftFailure
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftFailureMembers, true)
+	if err != nil {
+		return errorf("DialectDraftFailure: %w", err)
+	}
+	*v = DialectDraftFailure(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftFailure object.
+func (v DialectDraftFailure) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftFailure
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/lineage.
+type DialectDraftLineage struct {
+	AttemptID        string `json:"attemptId"`
+	Fingerprint      string `json:"fingerprint"`
+	CandidateReceipt string `json:"candidateReceipt"`
+	CheckedReceipt   string `json:"checkedReceipt"`
+	CheckedDigest    string `json:"checkedDigest"`
+}
+
+var dialectDraftLineageMembers = []string{"attemptId", "fingerprint", "candidateReceipt", "checkedReceipt", "checkedDigest"}
+
+// UnmarshalJSON decodes a DialectDraftLineage object and refuses a member the closed schema does not name.
+func (v *DialectDraftLineage) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftLineage
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftLineageMembers, true)
+	if err != nil {
+		return errorf("DialectDraftLineage: %w", err)
+	}
+	*v = DialectDraftLineage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftLineage object.
+func (v DialectDraftLineage) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftLineage
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/originalField.
+type DialectDraftOriginalField struct {
+	Name      string `json:"name"`
+	FieldJSON string `json:"fieldJson"`
+}
+
+var dialectDraftOriginalFieldMembers = []string{"name", "fieldJson"}
+
+// UnmarshalJSON decodes a DialectDraftOriginalField object and refuses a member the closed schema does not name.
+func (v *DialectDraftOriginalField) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftOriginalField
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftOriginalFieldMembers, true)
+	if err != nil {
+		return errorf("DialectDraftOriginalField: %w", err)
+	}
+	*v = DialectDraftOriginalField(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftOriginalField object.
+func (v DialectDraftOriginalField) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftOriginalField
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/originalRevision.
+type DialectDraftOriginalRevision struct {
+	Revision string                             `json:"revision"`
+	Fields   DialectDraftOriginalRevisionFields `json:"fields"`
+}
+
+var dialectDraftOriginalRevisionMembers = []string{"revision", "fields"}
+
+// UnmarshalJSON decodes a DialectDraftOriginalRevision object and refuses a member the closed schema does not name.
+func (v *DialectDraftOriginalRevision) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftOriginalRevision
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftOriginalRevisionMembers, true)
+	if err != nil {
+		return errorf("DialectDraftOriginalRevision: %w", err)
+	}
+	*v = DialectDraftOriginalRevision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftOriginalRevision object.
+func (v DialectDraftOriginalRevision) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftOriginalRevision
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/originalRevision/properties/fields.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftOriginalRevisionFields struct {
+	Option1 *json.RawMessage
+	Option2 *[]DialectDraftOriginalField
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftOriginalRevisionFields) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftOriginalRevisionFields{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []DialectDraftOriginalField
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftOriginalRevisionFields: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftOriginalRevisionFields{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftOriginalRevisionFields) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftOriginalRevisionFields: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/research.
+type DialectDraftResearch struct {
+	Revision  string `json:"revision"`
+	FieldJSON string `json:"fieldJson"`
+}
+
+var dialectDraftResearchMembers = []string{"revision", "fieldJson"}
+
+// UnmarshalJSON decodes a DialectDraftResearch object and refuses a member the closed schema does not name.
+func (v *DialectDraftResearch) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftResearch
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftResearchMembers, true)
+	if err != nil {
+		return errorf("DialectDraftResearch: %w", err)
+	}
+	*v = DialectDraftResearch(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftResearch object.
+func (v DialectDraftResearch) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftResearch
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/result.
+type DialectDraftResult struct {
+	Operation  string `json:"operation"`
+	ResultJSON string `json:"resultJson"`
+}
+
+var dialectDraftResultMembers = []string{"operation", "resultJson"}
+
+// UnmarshalJSON decodes a DialectDraftResult object and refuses a member the closed schema does not name.
+func (v *DialectDraftResult) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftResult
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftResultMembers, true)
+	if err != nil {
+		return errorf("DialectDraftResult: %w", err)
+	}
+	*v = DialectDraftResult(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftResult object.
+func (v DialectDraftResult) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftResult
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/retainedRead.
+type DialectDraftRetainedRead struct {
+	DocumentJSON string                             `json:"documentJson"`
+	FramePointer string                             `json:"framePointer"`
+	Occurrence   DialectDraftRetainedReadOccurrence `json:"occurrence"`
+}
+
+var dialectDraftRetainedReadMembers = []string{"documentJson", "framePointer", "occurrence"}
+
+// UnmarshalJSON decodes a DialectDraftRetainedRead object and refuses a member the closed schema does not name.
+func (v *DialectDraftRetainedRead) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftRetainedRead
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftRetainedReadMembers, true)
+	if err != nil {
+		return errorf("DialectDraftRetainedRead: %w", err)
+	}
+	*v = DialectDraftRetainedRead(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftRetainedRead object.
+func (v DialectDraftRetainedRead) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftRetainedRead
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/retainedRead/properties/occurrence.
+//
+// A union: exactly one member is set. An object is decoded by its "kind" member.
+type DialectDraftRetainedReadOccurrence struct {
+	// Option1 is set where kind is "case".
+	Option1 *DialectDraftRetainedReadOccurrenceOption1
+	// Option2 is set where kind is "source".
+	Option2 *DialectDraftRetainedReadOccurrenceOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftRetainedReadOccurrence) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftRetainedReadOccurrence{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "kind")
+		if err != nil {
+			return errorf("DialectDraftRetainedReadOccurrence: %w", err)
+		}
+		switch tag {
+		case "case":
+			v.Option1 = new(DialectDraftRetainedReadOccurrenceOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "source":
+			v.Option2 = new(DialectDraftRetainedReadOccurrenceOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("DialectDraftRetainedReadOccurrence: no member has kind %q", tag)
+	}
+	return errorf("DialectDraftRetainedReadOccurrence: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftRetainedReadOccurrence) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftRetainedReadOccurrence: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/retainedRead/properties/occurrence/oneOf/0.
+type DialectDraftRetainedReadOccurrenceOption1 struct {
+	Kind string `json:"kind"`
+}
+
+var dialectDraftRetainedReadOccurrenceOption1Members = []string{"kind"}
+
+// UnmarshalJSON decodes a DialectDraftRetainedReadOccurrenceOption1 object and refuses a member the closed schema does not name.
+func (v *DialectDraftRetainedReadOccurrenceOption1) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftRetainedReadOccurrenceOption1
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftRetainedReadOccurrenceOption1Members, true)
+	if err != nil {
+		return errorf("DialectDraftRetainedReadOccurrenceOption1: %w", err)
+	}
+	*v = DialectDraftRetainedReadOccurrenceOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftRetainedReadOccurrenceOption1 object.
+func (v DialectDraftRetainedReadOccurrenceOption1) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftRetainedReadOccurrenceOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/retainedRead/properties/occurrence/oneOf/1.
+type DialectDraftRetainedReadOccurrenceOption2 struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+}
+
+var dialectDraftRetainedReadOccurrenceOption2Members = []string{"kind", "name"}
+
+// UnmarshalJSON decodes a DialectDraftRetainedReadOccurrenceOption2 object and refuses a member the closed schema does not name.
+func (v *DialectDraftRetainedReadOccurrenceOption2) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftRetainedReadOccurrenceOption2
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftRetainedReadOccurrenceOption2Members, true)
+	if err != nil {
+		return errorf("DialectDraftRetainedReadOccurrenceOption2: %w", err)
+	}
+	*v = DialectDraftRetainedReadOccurrenceOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftRetainedReadOccurrenceOption2 object.
+func (v DialectDraftRetainedReadOccurrenceOption2) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftRetainedReadOccurrenceOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/sample.
+type DialectDraftSample struct {
+	ValueJSON string `json:"valueJson"`
+	Origin    string `json:"origin"`
+}
+
+var dialectDraftSampleMembers = []string{"valueJson", "origin"}
+
+// UnmarshalJSON decodes a DialectDraftSample object and refuses a member the closed schema does not name.
+func (v *DialectDraftSample) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftSample
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftSampleMembers, true)
+	if err != nil {
+		return errorf("DialectDraftSample: %w", err)
+	}
+	*v = DialectDraftSample(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftSample object.
+func (v DialectDraftSample) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftSample
+	return encodeObject(plain(v), nil)
+}
+
 // From export.json. ADR records (#101). The closed export.json manifest beside the host-supplied
 // records. The package has no record store.
 type Export struct {
@@ -3666,6 +13343,888 @@ func (v FailureToolFailureContent) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From feedback.json.
+type Feedback struct {
+	Version    int64            `json:"version"`
+	ID         string           `json:"id"`
+	RunID      string           `json:"runId"`
+	Sequence   int64            `json:"sequence"`
+	Previous   FeedbackPrevious `json:"previous"`
+	Target     FeedbackTarget   `json:"target"`
+	Rating     string           `json:"rating"`
+	Remark     *string          `json:"remark,omitzero"`
+	Actor      string           `json:"actor"`
+	RecordedAt string           `json:"recordedAt"`
+}
+
+var feedbackMembers = []string{"version", "id", "runId", "sequence", "previous", "target", "rating", "remark", "actor", "recordedAt"}
+
+// UnmarshalJSON decodes a Feedback object and refuses a member the closed schema does not name.
+func (v *Feedback) UnmarshalJSON(data []byte) error {
+	type plain Feedback
+	var p plain
+	extra, err := decodeObject(data, &p, feedbackMembers, true)
+	if err != nil {
+		return errorf("Feedback: %w", err)
+	}
+	*v = Feedback(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a Feedback object.
+func (v Feedback) MarshalJSON() ([]byte, error) {
+	type plain Feedback
+	return encodeObject(plain(v), nil)
+}
+
+// From feedback.json#/properties/previous.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type FeedbackPrevious struct {
+	String  *string
+	Option2 *json.RawMessage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *FeedbackPrevious) UnmarshalJSON(data []byte) error {
+	*v = FeedbackPrevious{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("FeedbackPrevious: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = FeedbackPrevious{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v FeedbackPrevious) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("FeedbackPrevious: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From feedback.json#/properties/target.
+//
+// A union: exactly one member is set. An object is decoded by its "kind" member.
+type FeedbackTarget struct {
+	// Option1 is set where kind is "run".
+	Option1 *FeedbackTargetOption1
+	// Option2 is set where kind is "assistant-message".
+	Option2 *FeedbackTargetOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *FeedbackTarget) UnmarshalJSON(data []byte) error {
+	*v = FeedbackTarget{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "kind")
+		if err != nil {
+			return errorf("FeedbackTarget: %w", err)
+		}
+		switch tag {
+		case "run":
+			v.Option1 = new(FeedbackTargetOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "assistant-message":
+			v.Option2 = new(FeedbackTargetOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("FeedbackTarget: no member has kind %q", tag)
+	}
+	return errorf("FeedbackTarget: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v FeedbackTarget) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("FeedbackTarget: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From feedback.json#/properties/target/oneOf/0.
+type FeedbackTargetOption1 struct {
+	Kind string `json:"kind"`
+}
+
+var feedbackTargetOption1Members = []string{"kind"}
+
+// UnmarshalJSON decodes a FeedbackTargetOption1 object and refuses a member the closed schema does not name.
+func (v *FeedbackTargetOption1) UnmarshalJSON(data []byte) error {
+	type plain FeedbackTargetOption1
+	var p plain
+	extra, err := decodeObject(data, &p, feedbackTargetOption1Members, true)
+	if err != nil {
+		return errorf("FeedbackTargetOption1: %w", err)
+	}
+	*v = FeedbackTargetOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a FeedbackTargetOption1 object.
+func (v FeedbackTargetOption1) MarshalJSON() ([]byte, error) {
+	type plain FeedbackTargetOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From feedback.json#/properties/target/oneOf/1.
+type FeedbackTargetOption2 struct {
+	Kind          string `json:"kind"`
+	EventSequence int64  `json:"eventSequence"`
+	EventDigest   string `json:"eventDigest"`
+}
+
+var feedbackTargetOption2Members = []string{"kind", "eventSequence", "eventDigest"}
+
+// UnmarshalJSON decodes a FeedbackTargetOption2 object and refuses a member the closed schema does not name.
+func (v *FeedbackTargetOption2) UnmarshalJSON(data []byte) error {
+	type plain FeedbackTargetOption2
+	var p plain
+	extra, err := decodeObject(data, &p, feedbackTargetOption2Members, true)
+	if err != nil {
+		return errorf("FeedbackTargetOption2: %w", err)
+	}
+	*v = FeedbackTargetOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a FeedbackTargetOption2 object.
+func (v FeedbackTargetOption2) MarshalJSON() ([]byte, error) {
+	type plain FeedbackTargetOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From feedback.json#/$defs/view.
+type FeedbackView struct {
+	SourceDigest string   `json:"sourceDigest"`
+	Record       Feedback `json:"record"`
+}
+
+var feedbackViewMembers = []string{"sourceDigest", "record"}
+
+// UnmarshalJSON decodes a FeedbackView object and refuses a member the closed schema does not name.
+func (v *FeedbackView) UnmarshalJSON(data []byte) error {
+	type plain FeedbackView
+	var p plain
+	extra, err := decodeObject(data, &p, feedbackViewMembers, true)
+	if err != nil {
+		return errorf("FeedbackView: %w", err)
+	}
+	*v = FeedbackView(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a FeedbackView object.
+func (v FeedbackView) MarshalJSON() ([]byte, error) {
+	type plain FeedbackView
+	return encodeObject(plain(v), nil)
+}
+
+// From history-chunk.json. Canonical v1 content-addressed object chunks. Native readers verify
+// exact byte lengths, full preceding chunks, aggregate digest and resource-scoped publication.
+type HistoryChunk struct {
+	Version int64                   `json:"version"`
+	Bytes   int64                   `json:"bytes"`
+	Digest  string                  `json:"digest"`
+	Parts   []HistoryChunkPartsItem `json:"parts"`
+}
+
+var historyChunkMembers = []string{"version", "bytes", "digest", "parts"}
+
+// UnmarshalJSON decodes a HistoryChunk object and refuses a member the closed schema does not name.
+func (v *HistoryChunk) UnmarshalJSON(data []byte) error {
+	type plain HistoryChunk
+	var p plain
+	extra, err := decodeObject(data, &p, historyChunkMembers, true)
+	if err != nil {
+		return errorf("HistoryChunk: %w", err)
+	}
+	*v = HistoryChunk(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryChunk object.
+func (v HistoryChunk) MarshalJSON() ([]byte, error) {
+	type plain HistoryChunk
+	return encodeObject(plain(v), nil)
+}
+
+// From history-chunk.json#/properties/parts/items.
+type HistoryChunkPartsItem struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyChunkPartsItemMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryChunkPartsItem object and refuses a member the closed schema does not name.
+func (v *HistoryChunkPartsItem) UnmarshalJSON(data []byte) error {
+	type plain HistoryChunkPartsItem
+	var p plain
+	extra, err := decodeObject(data, &p, historyChunkPartsItemMembers, true)
+	if err != nil {
+		return errorf("HistoryChunkPartsItem: %w", err)
+	}
+	*v = HistoryChunkPartsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryChunkPartsItem object.
+func (v HistoryChunkPartsItem) MarshalJSON() ([]byte, error) {
+	type plain HistoryChunkPartsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json. Canonical v1 storage-observed commit, sequence and timestamp. Sequences
+// own ordering; clocks are host observations. Checkpoint-only commits are retained. This format
+// does not claim replay or complete legacy history.
+type HistoryEntry struct {
+	Version           int64                          `json:"version"`
+	Sequence          int64                          `json:"sequence"`
+	EventStart        int64                          `json:"eventStart"`
+	EventCount        int64                          `json:"eventCount"`
+	CommitID          string                         `json:"commitId"`
+	ExecutionRevision string                         `json:"executionRevision"`
+	RecordedAt        string                         `json:"recordedAt"`
+	PreviousDigest    HistoryEntryPreviousDigest     `json:"previousDigest"`
+	Checkpoint        HistoryEntryCheckpoint         `json:"checkpoint"`
+	Events            []HistoryEntryEventsItem       `json:"events"`
+	Observations      []HistoryEntryObservationsItem `json:"observations"`
+	Context           *HistoryEntryContext           `json:"context,omitzero"`
+	Digest            string                         `json:"digest"`
+}
+
+var historyEntryMembers = []string{"version", "sequence", "eventStart", "eventCount", "commitId", "executionRevision", "recordedAt", "previousDigest", "checkpoint", "events", "observations", "context", "digest"}
+
+// UnmarshalJSON decodes a HistoryEntry object and refuses a member the closed schema does not name.
+func (v *HistoryEntry) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntry
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryMembers, true)
+	if err != nil {
+		return errorf("HistoryEntry: %w", err)
+	}
+	*v = HistoryEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntry object.
+func (v HistoryEntry) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/checkpoint.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type HistoryEntryCheckpoint struct {
+	Option1 *HistoryEntryCheckpointOption1
+	Option2 *json.RawMessage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *HistoryEntryCheckpoint) UnmarshalJSON(data []byte) error {
+	*v = HistoryEntryCheckpoint{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "bytes", "digest") {
+		var candidate HistoryEntryCheckpointOption1
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("HistoryEntryCheckpoint: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = HistoryEntryCheckpoint{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v HistoryEntryCheckpoint) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("HistoryEntryCheckpoint: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From history-entry.json#/properties/checkpoint/oneOf/0.
+type HistoryEntryCheckpointOption1 struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyEntryCheckpointOption1Members = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryEntryCheckpointOption1 object and refuses a member the closed schema does not name.
+func (v *HistoryEntryCheckpointOption1) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntryCheckpointOption1
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryCheckpointOption1Members, true)
+	if err != nil {
+		return errorf("HistoryEntryCheckpointOption1: %w", err)
+	}
+	*v = HistoryEntryCheckpointOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntryCheckpointOption1 object.
+func (v HistoryEntryCheckpointOption1) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntryCheckpointOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/context.
+type HistoryEntryContext struct {
+	ChatID       string                      `json:"chatId"`
+	Revision     string                      `json:"revision"`
+	Manifest     HistoryEntryContextManifest `json:"manifest"`
+	Turn         int64                       `json:"turn"`
+	Closed       *bool                       `json:"closed,omitzero"`
+	PrivateScope *string                     `json:"privateScope,omitzero"`
+}
+
+var historyEntryContextMembers = []string{"chatId", "revision", "manifest", "turn", "closed", "privateScope"}
+
+// UnmarshalJSON decodes a HistoryEntryContext object and refuses a member the closed schema does not name.
+func (v *HistoryEntryContext) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntryContext
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryContextMembers, true)
+	if err != nil {
+		return errorf("HistoryEntryContext: %w", err)
+	}
+	*v = HistoryEntryContext(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntryContext object.
+func (v HistoryEntryContext) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntryContext
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/context/properties/manifest.
+type HistoryEntryContextManifest struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyEntryContextManifestMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryEntryContextManifest object and refuses a member the closed schema does not name.
+func (v *HistoryEntryContextManifest) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntryContextManifest
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryContextManifestMembers, true)
+	if err != nil {
+		return errorf("HistoryEntryContextManifest: %w", err)
+	}
+	*v = HistoryEntryContextManifest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntryContextManifest object.
+func (v HistoryEntryContextManifest) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntryContextManifest
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/events/items.
+type HistoryEntryEventsItem struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyEntryEventsItemMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryEntryEventsItem object and refuses a member the closed schema does not name.
+func (v *HistoryEntryEventsItem) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntryEventsItem
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryEventsItemMembers, true)
+	if err != nil {
+		return errorf("HistoryEntryEventsItem: %w", err)
+	}
+	*v = HistoryEntryEventsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntryEventsItem object.
+func (v HistoryEntryEventsItem) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntryEventsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/observations/items.
+type HistoryEntryObservationsItem struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyEntryObservationsItemMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryEntryObservationsItem object and refuses a member the closed schema does not name.
+func (v *HistoryEntryObservationsItem) UnmarshalJSON(data []byte) error {
+	type plain HistoryEntryObservationsItem
+	var p plain
+	extra, err := decodeObject(data, &p, historyEntryObservationsItemMembers, true)
+	if err != nil {
+		return errorf("HistoryEntryObservationsItem: %w", err)
+	}
+	*v = HistoryEntryObservationsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryEntryObservationsItem object.
+func (v HistoryEntryObservationsItem) MarshalJSON() ([]byte, error) {
+	type plain HistoryEntryObservationsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From history-entry.json#/properties/previousDigest.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type HistoryEntryPreviousDigest struct {
+	String  *string
+	Option2 *json.RawMessage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *HistoryEntryPreviousDigest) UnmarshalJSON(data []byte) error {
+	*v = HistoryEntryPreviousDigest{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("HistoryEntryPreviousDigest: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = HistoryEntryPreviousDigest{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v HistoryEntryPreviousDigest) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("HistoryEntryPreviousDigest: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From history-metadata.json.
+//
+// A union: exactly one member is set. An object is decoded by its "kind" member.
+type HistoryMetadata struct {
+	// Option1 is set where kind is "capture".
+	Option1 *HistoryMetadataOption1
+	// Option2 is set where kind is "feedback".
+	Option2 *HistoryMetadataOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *HistoryMetadata) UnmarshalJSON(data []byte) error {
+	*v = HistoryMetadata{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "kind")
+		if err != nil {
+			return errorf("HistoryMetadata: %w", err)
+		}
+		switch tag {
+		case "capture":
+			v.Option1 = new(HistoryMetadataOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "feedback":
+			v.Option2 = new(HistoryMetadataOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("HistoryMetadata: no member has kind %q", tag)
+	}
+	return errorf("HistoryMetadata: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v HistoryMetadata) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("HistoryMetadata: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From history-metadata.json#/oneOf/0.
+type HistoryMetadataOption1 struct {
+	Version int64                         `json:"version"`
+	Kind    string                        `json:"kind"`
+	Capture HistoryMetadataOption1Capture `json:"capture"`
+}
+
+var historyMetadataOption1Members = []string{"version", "kind", "capture"}
+
+// UnmarshalJSON decodes a HistoryMetadataOption1 object and refuses a member the closed schema does not name.
+func (v *HistoryMetadataOption1) UnmarshalJSON(data []byte) error {
+	type plain HistoryMetadataOption1
+	var p plain
+	extra, err := decodeObject(data, &p, historyMetadataOption1Members, true)
+	if err != nil {
+		return errorf("HistoryMetadataOption1: %w", err)
+	}
+	*v = HistoryMetadataOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryMetadataOption1 object.
+func (v HistoryMetadataOption1) MarshalJSON() ([]byte, error) {
+	type plain HistoryMetadataOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From history-metadata.json#/oneOf/0/properties/capture.
+type HistoryMetadataOption1Capture struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyMetadataOption1CaptureMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryMetadataOption1Capture object and refuses a member the closed schema does not name.
+func (v *HistoryMetadataOption1Capture) UnmarshalJSON(data []byte) error {
+	type plain HistoryMetadataOption1Capture
+	var p plain
+	extra, err := decodeObject(data, &p, historyMetadataOption1CaptureMembers, true)
+	if err != nil {
+		return errorf("HistoryMetadataOption1Capture: %w", err)
+	}
+	*v = HistoryMetadataOption1Capture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryMetadataOption1Capture object.
+func (v HistoryMetadataOption1Capture) MarshalJSON() ([]byte, error) {
+	type plain HistoryMetadataOption1Capture
+	return encodeObject(plain(v), nil)
+}
+
+// From history-metadata.json#/oneOf/1.
+type HistoryMetadataOption2 struct {
+	Version            int64                            `json:"version"`
+	Kind               string                           `json:"kind"`
+	Feedback           Feedback                         `json:"feedback"`
+	Candidate          *HistoryMetadataOption2Candidate `json:"candidate,omitzero"`
+	CandidateRequested *bool                            `json:"candidateRequested,omitzero"`
+}
+
+var historyMetadataOption2Members = []string{"version", "kind", "feedback", "candidate", "candidateRequested"}
+
+// UnmarshalJSON decodes a HistoryMetadataOption2 object and refuses a member the closed schema does not name.
+func (v *HistoryMetadataOption2) UnmarshalJSON(data []byte) error {
+	type plain HistoryMetadataOption2
+	var p plain
+	extra, err := decodeObject(data, &p, historyMetadataOption2Members, true)
+	if err != nil {
+		return errorf("HistoryMetadataOption2: %w", err)
+	}
+	*v = HistoryMetadataOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryMetadataOption2 object.
+func (v HistoryMetadataOption2) MarshalJSON() ([]byte, error) {
+	type plain HistoryMetadataOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From history-metadata.json#/oneOf/1/properties/candidate.
+type HistoryMetadataOption2Candidate struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyMetadataOption2CandidateMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryMetadataOption2Candidate object and refuses a member the closed schema does not name.
+func (v *HistoryMetadataOption2Candidate) UnmarshalJSON(data []byte) error {
+	type plain HistoryMetadataOption2Candidate
+	var p plain
+	extra, err := decodeObject(data, &p, historyMetadataOption2CandidateMembers, true)
+	if err != nil {
+		return errorf("HistoryMetadataOption2Candidate: %w", err)
+	}
+	*v = HistoryMetadataOption2Candidate(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryMetadataOption2Candidate object.
+func (v HistoryMetadataOption2Candidate) MarshalJSON() ([]byte, error) {
+	type plain HistoryMetadataOption2Candidate
+	return encodeObject(plain(v), nil)
+}
+
+// From history-relation-evidence.json.
+type HistoryRelationEvidence struct {
+	Version       int64                             `json:"version"`
+	Kind          string                            `json:"kind"`
+	Scope         HistoryRelationEvidenceScope      `json:"scope"`
+	DispatchID    string                            `json:"dispatchId"`
+	Checkpoint    HistoryRelationEvidenceCheckpoint `json:"checkpoint"`
+	ObservationID string                            `json:"observationId"`
+	RequestDigest string                            `json:"requestDigest"`
+	ResultDigest  string                            `json:"resultDigest"`
+	Target        HistoryRelationEvidenceTarget     `json:"target"`
+}
+
+var historyRelationEvidenceMembers = []string{"version", "kind", "scope", "dispatchId", "checkpoint", "observationId", "requestDigest", "resultDigest", "target"}
+
+// UnmarshalJSON decodes a HistoryRelationEvidence object and refuses a member the closed schema does not name.
+func (v *HistoryRelationEvidence) UnmarshalJSON(data []byte) error {
+	type plain HistoryRelationEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, historyRelationEvidenceMembers, true)
+	if err != nil {
+		return errorf("HistoryRelationEvidence: %w", err)
+	}
+	*v = HistoryRelationEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryRelationEvidence object.
+func (v HistoryRelationEvidence) MarshalJSON() ([]byte, error) {
+	type plain HistoryRelationEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From history-relation-evidence.json#/properties/checkpoint.
+type HistoryRelationEvidenceCheckpoint struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var historyRelationEvidenceCheckpointMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a HistoryRelationEvidenceCheckpoint object and refuses a member the closed schema does not name.
+func (v *HistoryRelationEvidenceCheckpoint) UnmarshalJSON(data []byte) error {
+	type plain HistoryRelationEvidenceCheckpoint
+	var p plain
+	extra, err := decodeObject(data, &p, historyRelationEvidenceCheckpointMembers, true)
+	if err != nil {
+		return errorf("HistoryRelationEvidenceCheckpoint: %w", err)
+	}
+	*v = HistoryRelationEvidenceCheckpoint(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryRelationEvidenceCheckpoint object.
+func (v HistoryRelationEvidenceCheckpoint) MarshalJSON() ([]byte, error) {
+	type plain HistoryRelationEvidenceCheckpoint
+	return encodeObject(plain(v), nil)
+}
+
+// From history-relation-evidence.json#/properties/scope.
+type HistoryRelationEvidenceScope struct {
+	Execution string  `json:"execution"`
+	Role      string  `json:"role"`
+	Task      *string `json:"task,omitzero"`
+}
+
+var historyRelationEvidenceScopeMembers = []string{"execution", "role", "task"}
+
+// UnmarshalJSON decodes a HistoryRelationEvidenceScope object and refuses a member the closed schema does not name.
+func (v *HistoryRelationEvidenceScope) UnmarshalJSON(data []byte) error {
+	type plain HistoryRelationEvidenceScope
+	var p plain
+	extra, err := decodeObject(data, &p, historyRelationEvidenceScopeMembers, true)
+	if err != nil {
+		return errorf("HistoryRelationEvidenceScope: %w", err)
+	}
+	*v = HistoryRelationEvidenceScope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryRelationEvidenceScope object.
+func (v HistoryRelationEvidenceScope) MarshalJSON() ([]byte, error) {
+	type plain HistoryRelationEvidenceScope
+	return encodeObject(plain(v), nil)
+}
+
+// From history-relation-evidence.json#/properties/target.
+type HistoryRelationEvidenceTarget struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+}
+
+var historyRelationEvidenceTargetMembers = []string{"kind", "id"}
+
+// UnmarshalJSON decodes a HistoryRelationEvidenceTarget object and refuses a member the closed schema does not name.
+func (v *HistoryRelationEvidenceTarget) UnmarshalJSON(data []byte) error {
+	type plain HistoryRelationEvidenceTarget
+	var p plain
+	extra, err := decodeObject(data, &p, historyRelationEvidenceTargetMembers, true)
+	if err != nil {
+		return errorf("HistoryRelationEvidenceTarget: %w", err)
+	}
+	*v = HistoryRelationEvidenceTarget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a HistoryRelationEvidenceTarget object.
+func (v HistoryRelationEvidenceTarget) MarshalJSON() ([]byte, error) {
+	type plain HistoryRelationEvidenceTarget
+	return encodeObject(plain(v), nil)
+}
+
 // From memory.json. ADR-0014: host-owned memory. The package proposes, records and recalls; it
 // never accepts or stores. digest is sha256: followed by SHA-256 of UTF-8 text. Proposals use
 // project scope, the execution id as source.run, and model as proposedBy.
@@ -3780,9 +14339,11 @@ type Policy struct {
 	OutputAllow    []string              `json:"outputAllow,omitzero"`
 	Failover       *PolicyFailover       `json:"failover,omitzero"`
 	Version        *int64                `json:"version,omitzero"`
+	Routing        *PolicyRouting        `json:"routing,omitzero"`
+	RepeatTools    *PolicyRepeatTools    `json:"repeatTools,omitzero"`
 }
 
-var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover", "version"}
+var policyMembers = []string{"compaction", "records", "budget", "critic", "models", "concurrency", "pace", "taskClass", "outputGuard", "outputPatterns", "outputAllow", "failover", "version", "routing", "repeatTools"}
 
 // UnmarshalJSON decodes a Policy object and refuses a member the closed schema does not name.
 func (v *Policy) UnmarshalJSON(data []byte) error {
@@ -4215,6 +14776,34 @@ func (v PolicyRecords) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From policy.json#/properties/repeatTools.
+type PolicyRepeatTools struct {
+	Mode     *string `json:"mode,omitzero"`
+	RemindAt *int64  `json:"remindAt,omitzero"`
+	StopAt   *int64  `json:"stopAt,omitzero"`
+}
+
+var policyRepeatToolsMembers = []string{"mode", "remindAt", "stopAt"}
+
+// UnmarshalJSON decodes a PolicyRepeatTools object and refuses a member the closed schema does not name.
+func (v *PolicyRepeatTools) UnmarshalJSON(data []byte) error {
+	type plain PolicyRepeatTools
+	var p plain
+	extra, err := decodeObject(data, &p, policyRepeatToolsMembers, true)
+	if err != nil {
+		return errorf("PolicyRepeatTools: %w", err)
+	}
+	*v = PolicyRepeatTools(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRepeatTools object.
+func (v PolicyRepeatTools) MarshalJSON() ([]byte, error) {
+	type plain PolicyRepeatTools
+	return encodeObject(plain(v), nil)
+}
+
 // From policy.json#/$defs/role.
 type PolicyRole struct {
 	Model      *string           `json:"model,omitzero"`
@@ -4242,6 +14831,289 @@ func (v *PolicyRole) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a PolicyRole object.
 func (v PolicyRole) MarshalJSON() ([]byte, error) {
 	type plain PolicyRole
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/routeSelection.
+type PolicyRouteSelection struct {
+	Route      string                         `json:"route"`
+	Tier       *string                        `json:"tier,omitzero"`
+	Skills     []string                       `json:"skills"`
+	Tools      PolicyRouteSelectionTools      `json:"tools"`
+	Operations PolicyRouteSelectionOperations `json:"operations"`
+	Planning   string                         `json:"planning"`
+}
+
+var policyRouteSelectionMembers = []string{"route", "tier", "skills", "tools", "operations", "planning"}
+
+// UnmarshalJSON decodes a PolicyRouteSelection object and refuses a member the closed schema does not name.
+func (v *PolicyRouteSelection) UnmarshalJSON(data []byte) error {
+	type plain PolicyRouteSelection
+	var p plain
+	extra, err := decodeObject(data, &p, policyRouteSelectionMembers, true)
+	if err != nil {
+		return errorf("PolicyRouteSelection: %w", err)
+	}
+	*v = PolicyRouteSelection(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRouteSelection object.
+func (v PolicyRouteSelection) MarshalJSON() ([]byte, error) {
+	type plain PolicyRouteSelection
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/$defs/routeSelection/properties/operations.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type PolicyRouteSelectionOperations struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *PolicyRouteSelectionOperations) UnmarshalJSON(data []byte) error {
+	*v = PolicyRouteSelectionOperations{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("PolicyRouteSelectionOperations: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = PolicyRouteSelectionOperations{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v PolicyRouteSelectionOperations) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("PolicyRouteSelectionOperations: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From policy.json#/$defs/routeSelection/properties/tools.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type PolicyRouteSelectionTools struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *PolicyRouteSelectionTools) UnmarshalJSON(data []byte) error {
+	*v = PolicyRouteSelectionTools{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("PolicyRouteSelectionTools: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = PolicyRouteSelectionTools{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v PolicyRouteSelectionTools) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("PolicyRouteSelectionTools: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From policy.json#/properties/routing.
+type PolicyRouting struct {
+	Mode       *string                  `json:"mode,omitzero"`
+	Tiers      []string                 `json:"tiers,omitzero"`
+	Rules      []PolicyRoutingRulesItem `json:"rules,omitzero"`
+	Classifier *PolicyRoutingClassifier `json:"classifier,omitzero"`
+}
+
+var policyRoutingMembers = []string{"mode", "tiers", "rules", "classifier"}
+
+// UnmarshalJSON decodes a PolicyRouting object and refuses a member the closed schema does not name.
+func (v *PolicyRouting) UnmarshalJSON(data []byte) error {
+	type plain PolicyRouting
+	var p plain
+	extra, err := decodeObject(data, &p, policyRoutingMembers, true)
+	if err != nil {
+		return errorf("PolicyRouting: %w", err)
+	}
+	*v = PolicyRouting(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRouting object.
+func (v PolicyRouting) MarshalJSON() ([]byte, error) {
+	type plain PolicyRouting
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/routing/properties/classifier.
+type PolicyRoutingClassifier struct {
+	Labels              map[string]json.RawMessage `json:"labels"`
+	MaxOutputTokens     int64                      `json:"maxOutputTokens"`
+	TimeoutMilliseconds int64                      `json:"timeoutMilliseconds"`
+}
+
+var policyRoutingClassifierMembers = []string{"labels", "maxOutputTokens", "timeoutMilliseconds"}
+
+// UnmarshalJSON decodes a PolicyRoutingClassifier object and refuses a member the closed schema does not name.
+func (v *PolicyRoutingClassifier) UnmarshalJSON(data []byte) error {
+	type plain PolicyRoutingClassifier
+	var p plain
+	extra, err := decodeObject(data, &p, policyRoutingClassifierMembers, true)
+	if err != nil {
+		return errorf("PolicyRoutingClassifier: %w", err)
+	}
+	*v = PolicyRoutingClassifier(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRoutingClassifier object.
+func (v PolicyRoutingClassifier) MarshalJSON() ([]byte, error) {
+	type plain PolicyRoutingClassifier
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/routing/properties/rules/items.
+type PolicyRoutingRulesItem struct {
+	ID    string                     `json:"id"`
+	When  PolicyRoutingRulesItemWhen `json:"when"`
+	Route PolicyRouteSelection       `json:"route"`
+}
+
+var policyRoutingRulesItemMembers = []string{"id", "when", "route"}
+
+// UnmarshalJSON decodes a PolicyRoutingRulesItem object and refuses a member the closed schema does not name.
+func (v *PolicyRoutingRulesItem) UnmarshalJSON(data []byte) error {
+	type plain PolicyRoutingRulesItem
+	var p plain
+	extra, err := decodeObject(data, &p, policyRoutingRulesItemMembers, true)
+	if err != nil {
+		return errorf("PolicyRoutingRulesItem: %w", err)
+	}
+	*v = PolicyRoutingRulesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRoutingRulesItem object.
+func (v PolicyRoutingRulesItem) MarshalJSON() ([]byte, error) {
+	type plain PolicyRoutingRulesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From policy.json#/properties/routing/properties/rules/items/properties/when.
+type PolicyRoutingRulesItemWhen struct {
+	Mode         *string `json:"mode,omitzero"`
+	Attachments  *bool   `json:"attachments,omitzero"`
+	Artifact     *bool   `json:"artifact,omitzero"`
+	TurnBytes    *int64  `json:"turnBytes,omitzero"`
+	MaxTurnBytes *int64  `json:"maxTurnBytes,omitzero"`
+	Slash        *string `json:"slash,omitzero"`
+}
+
+var policyRoutingRulesItemWhenMembers = []string{"mode", "attachments", "artifact", "turnBytes", "maxTurnBytes", "slash"}
+
+// UnmarshalJSON decodes a PolicyRoutingRulesItemWhen object and refuses a member the closed schema does not name.
+func (v *PolicyRoutingRulesItemWhen) UnmarshalJSON(data []byte) error {
+	type plain PolicyRoutingRulesItemWhen
+	var p plain
+	extra, err := decodeObject(data, &p, policyRoutingRulesItemWhenMembers, true)
+	if err != nil {
+		return errorf("PolicyRoutingRulesItemWhen: %w", err)
+	}
+	*v = PolicyRoutingRulesItemWhen(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a PolicyRoutingRulesItemWhen object.
+func (v PolicyRoutingRulesItemWhen) MarshalJSON() ([]byte, error) {
+	type plain PolicyRoutingRulesItemWhen
 	return encodeObject(plain(v), nil)
 }
 
@@ -5259,6 +16131,634 @@ func (v QuestionSavedResolution) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-archive.json. Unreleased archive1 wire contract: unique byte blobs; typed mappings and
+// members use source digest plus kind, and member.source names that typed source. Semantic readers
+// enforce canonical role ordering and closure.
+type RunArchive struct {
+	Version  int64                   `json:"version"`
+	Manifest RunArchiveManifest      `json:"manifest"`
+	Objects  []RunArchiveObjectsItem `json:"objects"`
+}
+
+var runArchiveMembers = []string{"version", "manifest", "objects"}
+
+// UnmarshalJSON decodes a RunArchive object and refuses a member the closed schema does not name.
+func (v *RunArchive) UnmarshalJSON(data []byte) error {
+	type plain RunArchive
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveMembers, true)
+	if err != nil {
+		return errorf("RunArchive: %w", err)
+	}
+	*v = RunArchive(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchive object.
+func (v RunArchive) MarshalJSON() ([]byte, error) {
+	type plain RunArchive
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/head.
+type RunArchiveHead struct {
+	Version           int64                    `json:"version"`
+	RunID             string                   `json:"runId"`
+	Revision          string                   `json:"revision"`
+	ExecutionRevision string                   `json:"executionRevision"`
+	CommitCount       int64                    `json:"commitCount"`
+	EventCount        int64                    `json:"eventCount"`
+	Root              string                   `json:"root"`
+	Coverage          string                   `json:"coverage"`
+	Checkpoint        RunArchiveHeadCheckpoint `json:"checkpoint"`
+	Context           *RunArchiveHeadContext   `json:"context,omitzero"`
+	Metadata          *RunArchiveHeadMetadata  `json:"metadata,omitzero"`
+}
+
+var runArchiveHeadMembers = []string{"version", "runId", "revision", "executionRevision", "commitCount", "eventCount", "root", "coverage", "checkpoint", "context", "metadata"}
+
+// UnmarshalJSON decodes a RunArchiveHead object and refuses a member the closed schema does not name.
+func (v *RunArchiveHead) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveHead
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveHeadMembers, true)
+	if err != nil {
+		return errorf("RunArchiveHead: %w", err)
+	}
+	*v = RunArchiveHead(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveHead object.
+func (v RunArchiveHead) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveHead
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/head/properties/checkpoint.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type RunArchiveHeadCheckpoint struct {
+	RunArchiveRef *RunArchiveRef
+	Option2       *json.RawMessage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunArchiveHeadCheckpoint) UnmarshalJSON(data []byte) error {
+	*v = RunArchiveHeadCheckpoint{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "bytes", "digest") {
+		var candidate RunArchiveRef
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.RunArchiveRef = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("RunArchiveHeadCheckpoint: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = RunArchiveHeadCheckpoint{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunArchiveHeadCheckpoint) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.RunArchiveRef != nil {
+		set = append(set, v.RunArchiveRef)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunArchiveHeadCheckpoint: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From run-archive.json#/$defs/head/properties/context.
+type RunArchiveHeadContext struct {
+	ChatID       string                        `json:"chatId"`
+	Revision     string                        `json:"revision"`
+	Manifest     RunArchiveHeadContextManifest `json:"manifest"`
+	Turn         int64                         `json:"turn"`
+	Closed       *bool                         `json:"closed,omitzero"`
+	PrivateScope *string                       `json:"privateScope,omitzero"`
+}
+
+var runArchiveHeadContextMembers = []string{"chatId", "revision", "manifest", "turn", "closed", "privateScope"}
+
+// UnmarshalJSON decodes a RunArchiveHeadContext object and refuses a member the closed schema does not name.
+func (v *RunArchiveHeadContext) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveHeadContext
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveHeadContextMembers, true)
+	if err != nil {
+		return errorf("RunArchiveHeadContext: %w", err)
+	}
+	*v = RunArchiveHeadContext(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveHeadContext object.
+func (v RunArchiveHeadContext) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveHeadContext
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/head/properties/context/properties/manifest.
+type RunArchiveHeadContextManifest struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var runArchiveHeadContextManifestMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a RunArchiveHeadContextManifest object and refuses a member the closed schema does not name.
+func (v *RunArchiveHeadContextManifest) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveHeadContextManifest
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveHeadContextManifestMembers, true)
+	if err != nil {
+		return errorf("RunArchiveHeadContextManifest: %w", err)
+	}
+	*v = RunArchiveHeadContextManifest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveHeadContextManifest object.
+func (v RunArchiveHeadContextManifest) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveHeadContextManifest
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/head/properties/metadata.
+type RunArchiveHeadMetadata struct {
+	Version           int64  `json:"version"`
+	RunID             string `json:"runId"`
+	Revision          string `json:"revision"`
+	ExecutionRevision string `json:"executionRevision"`
+	Count             int64  `json:"count"`
+	Root              string `json:"root"`
+}
+
+var runArchiveHeadMetadataMembers = []string{"version", "runId", "revision", "executionRevision", "count", "root"}
+
+// UnmarshalJSON decodes a RunArchiveHeadMetadata object and refuses a member the closed schema does not name.
+func (v *RunArchiveHeadMetadata) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveHeadMetadata
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveHeadMetadataMembers, true)
+	if err != nil {
+		return errorf("RunArchiveHeadMetadata: %w", err)
+	}
+	*v = RunArchiveHeadMetadata(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveHeadMetadata object.
+func (v RunArchiveHeadMetadata) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveHeadMetadata
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/properties/manifest.
+type RunArchiveManifest struct {
+	Version  int64                            `json:"version"`
+	RunID    string                           `json:"runId"`
+	Source   RunArchiveHead                   `json:"source"`
+	Coverage string                           `json:"coverage"`
+	Commits  []HistoryEntry                   `json:"commits"`
+	Metadata []RunArchiveRef                  `json:"metadata"`
+	Mappings []RunArchiveManifestMappingsItem `json:"mappings"`
+	Members  []RunArchiveManifestMembersItem  `json:"members"`
+	Report   RunArchiveRef                    `json:"report"`
+	Digest   string                           `json:"digest"`
+}
+
+var runArchiveManifestMembers = []string{"version", "runId", "source", "coverage", "commits", "metadata", "mappings", "members", "report", "digest"}
+
+// UnmarshalJSON decodes a RunArchiveManifest object and refuses a member the closed schema does not name.
+func (v *RunArchiveManifest) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveManifest
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveManifestMembers, true)
+	if err != nil {
+		return errorf("RunArchiveManifest: %w", err)
+	}
+	*v = RunArchiveManifest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveManifest object.
+func (v RunArchiveManifest) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveManifest
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/properties/manifest/properties/mappings/items.
+type RunArchiveManifestMappingsItem struct {
+	Source         RunArchiveRef            `json:"source"`
+	Exported       RunArchiveRef            `json:"exported"`
+	Kind           string                   `json:"kind"`
+	Representation RunArchiveRepresentation `json:"representation"`
+}
+
+var runArchiveManifestMappingsItemMembers = []string{"source", "exported", "kind", "representation"}
+
+// UnmarshalJSON decodes a RunArchiveManifestMappingsItem object and refuses a member the closed schema does not name.
+func (v *RunArchiveManifestMappingsItem) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveManifestMappingsItem
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveManifestMappingsItemMembers, true)
+	if err != nil {
+		return errorf("RunArchiveManifestMappingsItem: %w", err)
+	}
+	*v = RunArchiveManifestMappingsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveManifestMappingsItem object.
+func (v RunArchiveManifestMappingsItem) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveManifestMappingsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/properties/manifest/properties/members/items.
+type RunArchiveManifestMembersItem struct {
+	Digest         string                   `json:"digest"`
+	Bytes          int64                    `json:"bytes"`
+	Kind           string                   `json:"kind"`
+	Representation RunArchiveRepresentation `json:"representation"`
+	Source         RunArchiveRef            `json:"source"`
+}
+
+var runArchiveManifestMembersItemMembers = []string{"digest", "bytes", "kind", "representation", "source"}
+
+// UnmarshalJSON decodes a RunArchiveManifestMembersItem object and refuses a member the closed schema does not name.
+func (v *RunArchiveManifestMembersItem) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveManifestMembersItem
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveManifestMembersItemMembers, true)
+	if err != nil {
+		return errorf("RunArchiveManifestMembersItem: %w", err)
+	}
+	*v = RunArchiveManifestMembersItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveManifestMembersItem object.
+func (v RunArchiveManifestMembersItem) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveManifestMembersItem
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/properties/objects/items.
+type RunArchiveObjectsItem struct {
+	Digest string `json:"digest"`
+	Bytes  string `json:"bytes"`
+}
+
+var runArchiveObjectsItemMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a RunArchiveObjectsItem object and refuses a member the closed schema does not name.
+func (v *RunArchiveObjectsItem) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveObjectsItem
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveObjectsItemMembers, true)
+	if err != nil {
+		return errorf("RunArchiveObjectsItem: %w", err)
+	}
+	*v = RunArchiveObjectsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveObjectsItem object.
+func (v RunArchiveObjectsItem) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveObjectsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/ref.
+type RunArchiveRef struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var runArchiveRefMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a RunArchiveRef object and refuses a member the closed schema does not name.
+func (v *RunArchiveRef) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveRef
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveRefMembers, true)
+	if err != nil {
+		return errorf("RunArchiveRef: %w", err)
+	}
+	*v = RunArchiveRef(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveRef object.
+func (v RunArchiveRef) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveRef
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/representation.
+//
+// A union: exactly one member is set. An object is decoded by its "kind" member.
+type RunArchiveRepresentation struct {
+	// Option1 is set where kind is "exact".
+	Option1 *RunArchiveRepresentationOption1
+	// Option2 is set where kind is "redacted-view".
+	Option2 *RunArchiveRepresentationOption2
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunArchiveRepresentation) UnmarshalJSON(data []byte) error {
+	*v = RunArchiveRepresentation{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "kind")
+		if err != nil {
+			return errorf("RunArchiveRepresentation: %w", err)
+		}
+		switch tag {
+		case "exact":
+			v.Option1 = new(RunArchiveRepresentationOption1)
+			return json.Unmarshal(data, v.Option1)
+		case "redacted-view":
+			v.Option2 = new(RunArchiveRepresentationOption2)
+			return json.Unmarshal(data, v.Option2)
+		}
+		return errorf("RunArchiveRepresentation: no member has kind %q", tag)
+	}
+	return errorf("RunArchiveRepresentation: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunArchiveRepresentation) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunArchiveRepresentation: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From run-archive.json#/$defs/representation/oneOf/0.
+type RunArchiveRepresentationOption1 struct {
+	Kind string `json:"kind"`
+}
+
+var runArchiveRepresentationOption1Members = []string{"kind"}
+
+// UnmarshalJSON decodes a RunArchiveRepresentationOption1 object and refuses a member the closed schema does not name.
+func (v *RunArchiveRepresentationOption1) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveRepresentationOption1
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveRepresentationOption1Members, true)
+	if err != nil {
+		return errorf("RunArchiveRepresentationOption1: %w", err)
+	}
+	*v = RunArchiveRepresentationOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveRepresentationOption1 object.
+func (v RunArchiveRepresentationOption1) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveRepresentationOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive.json#/$defs/representation/oneOf/1.
+type RunArchiveRepresentationOption2 struct {
+	Kind       string        `json:"kind"`
+	Source     RunArchiveRef `json:"source"`
+	Redactions []string      `json:"redactions"`
+}
+
+var runArchiveRepresentationOption2Members = []string{"kind", "source", "redactions"}
+
+// UnmarshalJSON decodes a RunArchiveRepresentationOption2 object and refuses a member the closed schema does not name.
+func (v *RunArchiveRepresentationOption2) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveRepresentationOption2
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveRepresentationOption2Members, true)
+	if err != nil {
+		return errorf("RunArchiveRepresentationOption2: %w", err)
+	}
+	*v = RunArchiveRepresentationOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveRepresentationOption2 object.
+func (v RunArchiveRepresentationOption2) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveRepresentationOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From run-archive-view.json.
+type RunArchiveView struct {
+	Version       int64           `json:"version"`
+	SourceKind    string          `json:"sourceKind"`
+	SourceVersion int64           `json:"sourceVersion"`
+	Source        RunArchiveRef   `json:"source"`
+	Redactions    []string        `json:"redactions"`
+	Document      json.RawMessage `json:"document"`
+}
+
+var runArchiveViewMembers = []string{"version", "sourceKind", "sourceVersion", "source", "redactions", "document"}
+
+// UnmarshalJSON decodes a RunArchiveView object and refuses a member the closed schema does not name.
+func (v *RunArchiveView) UnmarshalJSON(data []byte) error {
+	type plain RunArchiveView
+	var p plain
+	extra, err := decodeObject(data, &p, runArchiveViewMembers, true)
+	if err != nil {
+		return errorf("RunArchiveView: %w", err)
+	}
+	*v = RunArchiveView(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunArchiveView object.
+func (v RunArchiveView) MarshalJSON() ([]byte, error) {
+	type plain RunArchiveView
+	return encodeObject(plain(v), nil)
+}
+
+// From run-capture.json.
+type RunCapture struct {
+	Version           int64                    `json:"version"`
+	RunID             string                   `json:"runId"`
+	ExecutionRevision string                   `json:"executionRevision"`
+	Checkpoint        RunCaptureCheckpoint     `json:"checkpoint"`
+	Requests          []RunCaptureRequestsItem `json:"requests"`
+	Files             []json.RawMessage        `json:"files"`
+	Redacted          bool                     `json:"redacted"`
+	EventProjection   *string                  `json:"eventProjection,omitzero"`
+}
+
+var runCaptureMembers = []string{"version", "runId", "executionRevision", "checkpoint", "requests", "files", "redacted", "eventProjection"}
+
+// UnmarshalJSON decodes a RunCapture object and refuses a member the closed schema does not name.
+func (v *RunCapture) UnmarshalJSON(data []byte) error {
+	type plain RunCapture
+	var p plain
+	extra, err := decodeObject(data, &p, runCaptureMembers, true)
+	if err != nil {
+		return errorf("RunCapture: %w", err)
+	}
+	*v = RunCapture(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunCapture object.
+func (v RunCapture) MarshalJSON() ([]byte, error) {
+	type plain RunCapture
+	return encodeObject(plain(v), nil)
+}
+
+// From run-capture.json#/properties/checkpoint.
+type RunCaptureCheckpoint struct {
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
+}
+
+var runCaptureCheckpointMembers = []string{"digest", "bytes"}
+
+// UnmarshalJSON decodes a RunCaptureCheckpoint object and refuses a member the closed schema does not name.
+func (v *RunCaptureCheckpoint) UnmarshalJSON(data []byte) error {
+	type plain RunCaptureCheckpoint
+	var p plain
+	extra, err := decodeObject(data, &p, runCaptureCheckpointMembers, true)
+	if err != nil {
+		return errorf("RunCaptureCheckpoint: %w", err)
+	}
+	*v = RunCaptureCheckpoint(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunCaptureCheckpoint object.
+func (v RunCaptureCheckpoint) MarshalJSON() ([]byte, error) {
+	type plain RunCaptureCheckpoint
+	return encodeObject(plain(v), nil)
+}
+
+// From run-capture.json#/properties/requests/items.
+type RunCaptureRequestsItem struct {
+	Scope         RunCaptureRequestsItemScope `json:"scope"`
+	DispatchID    string                      `json:"dispatchId"`
+	Kind          string                      `json:"kind"`
+	Source        string                      `json:"source"`
+	Tool          string                      `json:"tool"`
+	RequestDigest string                      `json:"requestDigest"`
+	Surface       string                      `json:"surface"`
+	CaptureIndex  int64                       `json:"captureIndex"`
+}
+
+var runCaptureRequestsItemMembers = []string{"scope", "dispatchId", "kind", "source", "tool", "requestDigest", "surface", "captureIndex"}
+
+// UnmarshalJSON decodes a RunCaptureRequestsItem object and refuses a member the closed schema does not name.
+func (v *RunCaptureRequestsItem) UnmarshalJSON(data []byte) error {
+	type plain RunCaptureRequestsItem
+	var p plain
+	extra, err := decodeObject(data, &p, runCaptureRequestsItemMembers, true)
+	if err != nil {
+		return errorf("RunCaptureRequestsItem: %w", err)
+	}
+	*v = RunCaptureRequestsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunCaptureRequestsItem object.
+func (v RunCaptureRequestsItem) MarshalJSON() ([]byte, error) {
+	type plain RunCaptureRequestsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From run-capture.json#/properties/requests/items/properties/scope.
+type RunCaptureRequestsItemScope struct {
+	Execution string  `json:"execution"`
+	Role      string  `json:"role"`
+	Task      *string `json:"task,omitzero"`
+}
+
+var runCaptureRequestsItemScopeMembers = []string{"execution", "role", "task"}
+
+// UnmarshalJSON decodes a RunCaptureRequestsItemScope object and refuses a member the closed schema does not name.
+func (v *RunCaptureRequestsItemScope) UnmarshalJSON(data []byte) error {
+	type plain RunCaptureRequestsItemScope
+	var p plain
+	extra, err := decodeObject(data, &p, runCaptureRequestsItemScopeMembers, true)
+	if err != nil {
+		return errorf("RunCaptureRequestsItemScope: %w", err)
+	}
+	*v = RunCaptureRequestsItemScope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunCaptureRequestsItemScope object.
+func (v RunCaptureRequestsItemScope) MarshalJSON() ([]byte, error) {
+	type plain RunCaptureRequestsItemScope
+	return encodeObject(plain(v), nil)
+}
+
 // From run-event.json. One event of a run, from the adapter to the host, in order, discriminated
 // by type. Every kind of the Desk's AssistantEvent union (web/src/assistant/engine.ts) at the
 // pinned commit, with its members spelled as the Desk spells them. A run ends with exactly one end
@@ -5270,7 +16770,10 @@ func (v QuestionSavedResolution) MarshalJSON() ([]byte, error) {
 // ask), and the delegation coordinator's delegated_task. critic_decided (ADR-0010) is emitted by
 // the adapter once per run, where the critic would start or where it is skipped. The versioned
 // record reader refuses newer versions and unknown structural members. Historical events omit
-// version; current writers emit version 1.
+// version. Feature-free writers emit version 1. Writers select version 2 for repeat detection,
+// route decisions/widening, runtime approval requests and events carrying checkpoint 3; task-aware
+// plan lifecycle and approval events also explicitly select version 2. An explicitly selected
+// version 2 is preserved.
 //
 // A union: exactly one member is set. An object is decoded by its "type" member.
 type RunEvent struct {
@@ -5350,6 +16853,12 @@ type RunEvent struct {
 	PlanCompletionRefused *RunEventPlanCompletionRefused
 	// PlanDriftDecided is set where type is "plan_drift_decided".
 	PlanDriftDecided *RunEventPlanDriftDecided
+	// RouteDecided is set where type is "route_decided".
+	RouteDecided *RunEventRouteDecided
+	// RouteWidened is set where type is "route_widened".
+	RouteWidened *RunEventRouteWidened
+	// RepeatDetected is set where type is "repeat_detected".
+	RepeatDetected *RunEventRepeatDetected
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -5481,6 +16990,15 @@ func (v *RunEvent) UnmarshalJSON(data []byte) error {
 		case "plan_drift_decided":
 			v.PlanDriftDecided = new(RunEventPlanDriftDecided)
 			return json.Unmarshal(data, v.PlanDriftDecided)
+		case "route_decided":
+			v.RouteDecided = new(RunEventRouteDecided)
+			return json.Unmarshal(data, v.RouteDecided)
+		case "route_widened":
+			v.RouteWidened = new(RunEventRouteWidened)
+			return json.Unmarshal(data, v.RouteWidened)
+		case "repeat_detected":
+			v.RepeatDetected = new(RunEventRepeatDetected)
+			return json.Unmarshal(data, v.RepeatDetected)
 		}
 		return errorf("RunEvent: no member has type %q", tag)
 	}
@@ -5604,6 +17122,15 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 	if v.PlanDriftDecided != nil {
 		set = append(set, v.PlanDriftDecided)
 	}
+	if v.RouteDecided != nil {
+		set = append(set, v.RouteDecided)
+	}
+	if v.RouteWidened != nil {
+		set = append(set, v.RouteWidened)
+	}
+	if v.RepeatDetected != nil {
+		set = append(set, v.RepeatDetected)
+	}
 	if len(set) != 1 {
 		return nil, errorf("RunEvent: %d members are set; a union holds exactly one", len(set))
 	}
@@ -5623,18 +17150,19 @@ func (v RunEvent) MarshalJSON() ([]byte, error) {
 // the run's events carry none; name the wire name the model called; tool the tool's own name at
 // its source; source its record; args the arguments the model sent. Closed.
 type RunEventApprovalRequested struct {
-	Type    string                         `json:"type"`
-	CallID  string                         `json:"callId"`
-	Name    *string                        `json:"name,omitzero"`
-	Tool    *string                        `json:"tool,omitzero"`
-	Source  *ToolOfferSourceRecord         `json:"source,omitzero"`
-	Args    map[string]json.RawMessage     `json:"args,omitzero"`
-	Version *int64                         `json:"version,omitzero"`
-	Purpose *string                        `json:"purpose,omitzero"`
-	Plan    *RunEventApprovalRequestedPlan `json:"plan,omitzero"`
+	Type    string                            `json:"type"`
+	CallID  string                            `json:"callId"`
+	Name    *string                           `json:"name,omitzero"`
+	Tool    *string                           `json:"tool,omitzero"`
+	Source  *ToolOfferSourceRecord            `json:"source,omitzero"`
+	Args    map[string]json.RawMessage        `json:"args,omitzero"`
+	Version *int64                            `json:"version,omitzero"`
+	Purpose *string                           `json:"purpose,omitzero"`
+	Plan    *RunEventApprovalRequestedPlan    `json:"plan,omitzero"`
+	Runtime *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
 }
 
-var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "purpose", "plan"}
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "purpose", "plan", "runtime"}
 
 // UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
 func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
@@ -6686,17 +18214,18 @@ func (v RunEventPlanDeparted) MarshalJSON() ([]byte, error) {
 
 // From run-event.json#/$defs/plan_drift_decided.
 type RunEventPlanDriftDecided struct {
-	Type              string  `json:"type"`
-	Version           *int64  `json:"version,omitzero"`
-	Execution         string  `json:"execution"`
-	CallID            string  `json:"callId"`
-	Revision          string  `json:"revision"`
-	CandidateRevision string  `json:"candidateRevision"`
-	Approved          bool    `json:"approved"`
-	Note              *string `json:"note,omitzero"`
+	Type              string                          `json:"type"`
+	Version           *int64                          `json:"version,omitzero"`
+	Execution         string                          `json:"execution"`
+	CallID            string                          `json:"callId"`
+	Revision          string                          `json:"revision"`
+	CandidateRevision string                          `json:"candidateRevision"`
+	Approved          bool                            `json:"approved"`
+	Note              *string                         `json:"note,omitzero"`
+	NativeInvocation  *CheckpointNativePlanInvocation `json:"nativeInvocation,omitzero"`
 }
 
-var runEventPlanDriftDecidedMembers = []string{"type", "version", "execution", "callId", "revision", "candidateRevision", "approved", "note"}
+var runEventPlanDriftDecidedMembers = []string{"type", "version", "execution", "callId", "revision", "candidateRevision", "approved", "note", "nativeInvocation"}
 
 // UnmarshalJSON decodes a RunEventPlanDriftDecided object and refuses a member the closed schema does not name.
 func (v *RunEventPlanDriftDecided) UnmarshalJSON(data []byte) error {
@@ -6949,6 +18478,39 @@ func (v RunEventRecorded) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-event.json#/$defs/repeat_detected.
+type RunEventRepeatDetected struct {
+	Type       string `json:"type"`
+	Version    *int64 `json:"version,omitzero"`
+	Execution  string `json:"execution"`
+	DispatchID string `json:"dispatchId"`
+	KeyDigest  string `json:"keyDigest"`
+	Count      int64  `json:"count"`
+	Reminder   bool   `json:"reminder"`
+	Stopped    bool   `json:"stopped"`
+}
+
+var runEventRepeatDetectedMembers = []string{"type", "version", "execution", "dispatchId", "keyDigest", "count", "reminder", "stopped"}
+
+// UnmarshalJSON decodes a RunEventRepeatDetected object and refuses a member the closed schema does not name.
+func (v *RunEventRepeatDetected) UnmarshalJSON(data []byte) error {
+	type plain RunEventRepeatDetected
+	var p plain
+	extra, err := decodeObject(data, &p, runEventRepeatDetectedMembers, true)
+	if err != nil {
+		return errorf("RunEventRepeatDetected: %w", err)
+	}
+	*v = RunEventRepeatDetected(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventRepeatDetected object.
+func (v RunEventRepeatDetected) MarshalJSON() ([]byte, error) {
+	type plain RunEventRepeatDetected
+	return encodeObject(plain(v), nil)
+}
+
 // From run-event.json#/$defs/response_recovery. The adapter is spending one tool-free request to
 // finish a response cut short, to stop repeated work, or to ask once, within the allowance, for a
 // proposal that could not be read, in the shape the contract reads (the reformat request). Only
@@ -7016,6 +18578,62 @@ func (v *RunEventRetry) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventRetry object.
 func (v RunEventRetry) MarshalJSON() ([]byte, error) {
 	type plain RunEventRetry
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/route_decided.
+type RunEventRouteDecided struct {
+	Type    string    `json:"type"`
+	Version *int64    `json:"version,omitzero"`
+	Route   TurnRoute `json:"route"`
+}
+
+var runEventRouteDecidedMembers = []string{"type", "version", "route"}
+
+// UnmarshalJSON decodes a RunEventRouteDecided object and refuses a member the closed schema does not name.
+func (v *RunEventRouteDecided) UnmarshalJSON(data []byte) error {
+	type plain RunEventRouteDecided
+	var p plain
+	extra, err := decodeObject(data, &p, runEventRouteDecidedMembers, true)
+	if err != nil {
+		return errorf("RunEventRouteDecided: %w", err)
+	}
+	*v = RunEventRouteDecided(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventRouteDecided object.
+func (v RunEventRouteDecided) MarshalJSON() ([]byte, error) {
+	type plain RunEventRouteDecided
+	return encodeObject(plain(v), nil)
+}
+
+// From run-event.json#/$defs/route_widened.
+type RunEventRouteWidened struct {
+	Type    string    `json:"type"`
+	Version *int64    `json:"version,omitzero"`
+	Route   TurnRoute `json:"route"`
+}
+
+var runEventRouteWidenedMembers = []string{"type", "version", "route"}
+
+// UnmarshalJSON decodes a RunEventRouteWidened object and refuses a member the closed schema does not name.
+func (v *RunEventRouteWidened) UnmarshalJSON(data []byte) error {
+	type plain RunEventRouteWidened
+	var p plain
+	extra, err := decodeObject(data, &p, runEventRouteWidenedMembers, true)
+	if err != nil {
+		return errorf("RunEventRouteWidened: %w", err)
+	}
+	*v = RunEventRouteWidened(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunEventRouteWidened object.
+func (v RunEventRouteWidened) MarshalJSON() ([]byte, error) {
+	type plain RunEventRouteWidened
 	return encodeObject(plain(v), nil)
 }
 
@@ -7253,6 +18871,290 @@ func (v RunReport) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-report-v2.json. Version 2 closed presentation of current terminal checkpoint facts.
+// Attributable acknowledged usage totals are present only when the source checkpoint contains an
+// actual usage budget journal; completeness is explicit. Absence never invents zero usage.
+type RunReportV2 struct {
+	Version           int64                       `json:"version"`
+	CheckpointVersion int64                       `json:"checkpointVersion"`
+	ID                string                      `json:"id"`
+	Phase             string                      `json:"phase"`
+	Status            string                      `json:"status"`
+	Unit              string                      `json:"unit"`
+	Used              int64                       `json:"used"`
+	Limit             int64                       `json:"limit"`
+	RequestCap        *int64                      `json:"requestCap,omitzero"`
+	Grants            []CheckpointGrant           `json:"grants"`
+	Reason            *string                     `json:"reason,omitzero"`
+	Explanation       string                      `json:"explanation"`
+	Prompts           []ProvenancePromptDigest    `json:"prompts,omitzero"`
+	Sources           []ProvenanceSourceFigures   `json:"sources,omitzero"`
+	SourceIdentities  []CheckpointSourceIdentity  `json:"sourceIdentities,omitzero"`
+	Skills            []ProvenanceSkillLoad       `json:"skills,omitzero"`
+	Critic            *CheckpointCritic           `json:"critic,omitzero"`
+	Delegation        *ProvenanceDelegationReport `json:"delegation,omitzero"`
+	Usage             *Usage                      `json:"usage,omitzero"`
+	ChildUsage        []CheckpointChildUsageItem  `json:"childUsage,omitzero"`
+	Failover          []CheckpointFailoverItem    `json:"failover,omitzero"`
+	Completions       []Provenance                `json:"completions,omitzero"`
+	Plan              []CheckpointTaskStep        `json:"plan"`
+	PlanState         *CheckpointPlanState        `json:"planState,omitzero"`
+	UsageTotals       *RunReportV2Totals          `json:"usageTotals,omitzero"`
+	Route             *TurnRoute                  `json:"route,omitzero"`
+	Feedback          []FeedbackView              `json:"feedback,omitzero"`
+	RepeatTools       *RunReportV2RepeatTools     `json:"repeatTools,omitzero"`
+}
+
+var runReportV2Members = []string{"version", "checkpointVersion", "id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState", "usageTotals", "route", "feedback", "repeatTools"}
+
+// UnmarshalJSON decodes a RunReportV2 object and refuses a member the closed schema does not name.
+func (v *RunReportV2) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2Members, true)
+	if err != nil {
+		return errorf("RunReportV2: %w", err)
+	}
+	*v = RunReportV2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2 object.
+func (v RunReportV2) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report-v2.json#/$defs/oldSourcePlanState.
+type RunReportV2OldSourcePlanState struct {
+	History json.RawMessage                       `json:"history,omitzero"`
+	Pending *RunReportV2OldSourcePlanStatePending `json:"pending,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runReportV2OldSourcePlanStateMembers = []string{"history", "pending"}
+
+// UnmarshalJSON decodes a RunReportV2OldSourcePlanState object and keeps the members the schema does not name.
+func (v *RunReportV2OldSourcePlanState) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2OldSourcePlanState
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2OldSourcePlanStateMembers, false)
+	if err != nil {
+		return errorf("RunReportV2OldSourcePlanState: %w", err)
+	}
+	*v = RunReportV2OldSourcePlanState(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2OldSourcePlanState object, with the members the schema does not name after the ones it does.
+func (v RunReportV2OldSourcePlanState) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2OldSourcePlanState
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-report-v2.json#/$defs/oldSourcePlanState/properties/pending.
+type RunReportV2OldSourcePlanStatePending struct {
+	Candidate *RunReportV2OldSourcePlanStatePendingCandidate `json:"candidate,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runReportV2OldSourcePlanStatePendingMembers = []string{"candidate"}
+
+// UnmarshalJSON decodes a RunReportV2OldSourcePlanStatePending object and keeps the members the schema does not name.
+func (v *RunReportV2OldSourcePlanStatePending) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2OldSourcePlanStatePending
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2OldSourcePlanStatePendingMembers, false)
+	if err != nil {
+		return errorf("RunReportV2OldSourcePlanStatePending: %w", err)
+	}
+	*v = RunReportV2OldSourcePlanStatePending(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2OldSourcePlanStatePending object, with the members the schema does not name after the ones it does.
+func (v RunReportV2OldSourcePlanStatePending) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2OldSourcePlanStatePending
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-report-v2.json#/$defs/oldSourcePlanState/properties/pending/properties/candidate.
+type RunReportV2OldSourcePlanStatePendingCandidate struct {
+	Plan      json.RawMessage                `json:"plan,omitzero"`
+	PlanState *RunReportV2OldSourcePlanState `json:"planState,omitzero"`
+	// AdditionalMembers holds the members the schema does not name; the object is open.
+	AdditionalMembers map[string]json.RawMessage `json:"-"`
+}
+
+var runReportV2OldSourcePlanStatePendingCandidateMembers = []string{"plan", "planState"}
+
+// UnmarshalJSON decodes a RunReportV2OldSourcePlanStatePendingCandidate object and keeps the members the schema does not name.
+func (v *RunReportV2OldSourcePlanStatePendingCandidate) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2OldSourcePlanStatePendingCandidate
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2OldSourcePlanStatePendingCandidateMembers, false)
+	if err != nil {
+		return errorf("RunReportV2OldSourcePlanStatePendingCandidate: %w", err)
+	}
+	*v = RunReportV2OldSourcePlanStatePendingCandidate(p)
+	v.AdditionalMembers = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2OldSourcePlanStatePendingCandidate object, with the members the schema does not name after the ones it does.
+func (v RunReportV2OldSourcePlanStatePendingCandidate) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2OldSourcePlanStatePendingCandidate
+	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From run-report-v2.json#/properties/repeatTools.
+type RunReportV2RepeatTools struct {
+	Executions []RunReportV2RepeatToolsExecutionsItem `json:"executions"`
+	Policy     RunReportV2RepeatToolsPolicy           `json:"policy"`
+}
+
+var runReportV2RepeatToolsMembers = []string{"executions", "policy"}
+
+// UnmarshalJSON decodes a RunReportV2RepeatTools object and refuses a member the closed schema does not name.
+func (v *RunReportV2RepeatTools) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2RepeatTools
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2RepeatToolsMembers, true)
+	if err != nil {
+		return errorf("RunReportV2RepeatTools: %w", err)
+	}
+	*v = RunReportV2RepeatTools(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2RepeatTools object.
+func (v RunReportV2RepeatTools) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2RepeatTools
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report-v2.json#/properties/repeatTools/properties/executions/items.
+type RunReportV2RepeatToolsExecutionsItem struct {
+	Execution         string `json:"execution"`
+	RemindAt          int64  `json:"remindAt"`
+	StopAt            int64  `json:"stopAt"`
+	Count             int64  `json:"count"`
+	Reminded          bool   `json:"reminded"`
+	ReminderDelivered bool   `json:"reminderDelivered"`
+	Stopped           bool   `json:"stopped"`
+}
+
+var runReportV2RepeatToolsExecutionsItemMembers = []string{"execution", "remindAt", "stopAt", "count", "reminded", "reminderDelivered", "stopped"}
+
+// UnmarshalJSON decodes a RunReportV2RepeatToolsExecutionsItem object and refuses a member the closed schema does not name.
+func (v *RunReportV2RepeatToolsExecutionsItem) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2RepeatToolsExecutionsItem
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2RepeatToolsExecutionsItemMembers, true)
+	if err != nil {
+		return errorf("RunReportV2RepeatToolsExecutionsItem: %w", err)
+	}
+	*v = RunReportV2RepeatToolsExecutionsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2RepeatToolsExecutionsItem object.
+func (v RunReportV2RepeatToolsExecutionsItem) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2RepeatToolsExecutionsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report-v2.json#/properties/repeatTools/properties/policy.
+type RunReportV2RepeatToolsPolicy struct {
+	RepeatToolsMode     PolicyMember `json:"repeatTools.mode"`
+	RepeatToolsRemindAt PolicyMember `json:"repeatTools.remindAt"`
+	RepeatToolsStopAt   PolicyMember `json:"repeatTools.stopAt"`
+}
+
+var runReportV2RepeatToolsPolicyMembers = []string{"repeatTools.mode", "repeatTools.remindAt", "repeatTools.stopAt"}
+
+// UnmarshalJSON decodes a RunReportV2RepeatToolsPolicy object and refuses a member the closed schema does not name.
+func (v *RunReportV2RepeatToolsPolicy) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2RepeatToolsPolicy
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2RepeatToolsPolicyMembers, true)
+	if err != nil {
+		return errorf("RunReportV2RepeatToolsPolicy: %w", err)
+	}
+	*v = RunReportV2RepeatToolsPolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2RepeatToolsPolicy object.
+func (v RunReportV2RepeatToolsPolicy) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2RepeatToolsPolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report-v2.json#/$defs/total.
+type RunReportV2Total struct {
+	Known    int64 `json:"known"`
+	Complete bool  `json:"complete"`
+}
+
+var runReportV2TotalMembers = []string{"known", "complete"}
+
+// UnmarshalJSON decodes a RunReportV2Total object and refuses a member the closed schema does not name.
+func (v *RunReportV2Total) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2Total
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2TotalMembers, true)
+	if err != nil {
+		return errorf("RunReportV2Total: %w", err)
+	}
+	*v = RunReportV2Total(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2Total object.
+func (v RunReportV2Total) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2Total
+	return encodeObject(plain(v), nil)
+}
+
+// From run-report-v2.json#/$defs/totals.
+type RunReportV2Totals struct {
+	ModelRequests       RunReportV2Total `json:"modelRequests"`
+	ProviderInvocations RunReportV2Total `json:"providerInvocations"`
+	InputTokens         RunReportV2Total `json:"inputTokens"`
+	OutputTokens        RunReportV2Total `json:"outputTokens"`
+}
+
+var runReportV2TotalsMembers = []string{"modelRequests", "providerInvocations", "inputTokens", "outputTokens"}
+
+// UnmarshalJSON decodes a RunReportV2Totals object and refuses a member the closed schema does not name.
+func (v *RunReportV2Totals) UnmarshalJSON(data []byte) error {
+	type plain RunReportV2Totals
+	var p plain
+	extra, err := decodeObject(data, &p, runReportV2TotalsMembers, true)
+	if err != nil {
+		return errorf("RunReportV2Totals: %w", err)
+	}
+	*v = RunReportV2Totals(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReportV2Totals object.
+func (v RunReportV2Totals) MarshalJSON() ([]byte, error) {
+	type plain RunReportV2Totals
+	return encodeObject(plain(v), nil)
+}
+
 // From skill.json. A skill (ADR-0009): a named, versioned bundle the host declares and supplies
 // beside its host tools (tool-offer.json#/$defs/skillDeclaration): instructions, optionally the
 // names of host tools it uses, optionally small text resources. It comes from a source as a tool
@@ -7276,9 +19178,11 @@ type Skill struct {
 	Resources    []SkillResource `json:"resources,omitzero"`
 	PinnedDigest *string         `json:"pinnedDigest,omitzero"`
 	Digest       *string         `json:"digest,omitzero"`
+	Kind         *string         `json:"kind,omitzero"`
+	Tags         []string        `json:"tags,omitzero"`
 }
 
-var skillMembers = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest"}
+var skillMembers = []string{"id", "name", "description", "source", "instructions", "tools", "resources", "pinnedDigest", "digest", "kind", "tags"}
 
 // UnmarshalJSON decodes a Skill object and refuses a member the closed schema does not name.
 func (v *Skill) UnmarshalJSON(data []byte) error {
@@ -7918,11 +19822,14 @@ type ToolOfferCatalogueEntry struct {
 	Source        ToolOfferSourceRecord           `json:"source"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferCatalogueEntryMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferCatalogueEntryMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferCatalogueEntry object and keeps the members the schema does not name.
 func (v *ToolOfferCatalogueEntry) UnmarshalJSON(data []byte) error {
@@ -7958,11 +19865,14 @@ type ToolOfferHostTool struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferHostToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferHostTool object and keeps the members the schema does not name.
 func (v *ToolOfferHostTool) UnmarshalJSON(data []byte) error {
@@ -7981,6 +19891,35 @@ func (v *ToolOfferHostTool) UnmarshalJSON(data []byte) error {
 func (v ToolOfferHostTool) MarshalJSON() ([]byte, error) {
 	type plain ToolOfferHostTool
 	return encodeObject(plain(v), v.AdditionalMembers)
+}
+
+// From tool-offer.json#/$defs/hostTool/properties/annotations.
+type ToolOfferHostToolAnnotations struct {
+	ReadOnlyHint    bool `json:"readOnlyHint"`
+	DestructiveHint bool `json:"destructiveHint"`
+	IdempotentHint  bool `json:"idempotentHint"`
+	OpenWorldHint   bool `json:"openWorldHint"`
+}
+
+var toolOfferHostToolAnnotationsMembers = []string{"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
+
+// UnmarshalJSON decodes a ToolOfferHostToolAnnotations object and refuses a member the closed schema does not name.
+func (v *ToolOfferHostToolAnnotations) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferHostToolAnnotations
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferHostToolAnnotationsMembers, true)
+	if err != nil {
+		return errorf("ToolOfferHostToolAnnotations: %w", err)
+	}
+	*v = ToolOfferHostToolAnnotations(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferHostToolAnnotations object.
+func (v ToolOfferHostToolAnnotations) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferHostToolAnnotations
+	return encodeObject(plain(v), nil)
 }
 
 // From tool-offer.json#/$defs/hostTool/properties/contextPolicy. Host-declared context retention
@@ -8049,6 +19988,33 @@ func (v ToolOfferHostToolPresentation) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-offer.json#/$defs/hostTool/properties/taxonomyLimit.
+type ToolOfferHostToolTaxonomyLimit struct {
+	Operations []string `json:"operations,omitzero"`
+	Effects    []string `json:"effects,omitzero"`
+}
+
+var toolOfferHostToolTaxonomyLimitMembers = []string{"operations", "effects"}
+
+// UnmarshalJSON decodes a ToolOfferHostToolTaxonomyLimit object and refuses a member the closed schema does not name.
+func (v *ToolOfferHostToolTaxonomyLimit) UnmarshalJSON(data []byte) error {
+	type plain ToolOfferHostToolTaxonomyLimit
+	var p plain
+	extra, err := decodeObject(data, &p, toolOfferHostToolTaxonomyLimitMembers, true)
+	if err != nil {
+		return errorf("ToolOfferHostToolTaxonomyLimit: %w", err)
+	}
+	*v = ToolOfferHostToolTaxonomyLimit(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolOfferHostToolTaxonomyLimit object.
+func (v ToolOfferHostToolTaxonomyLimit) MarshalJSON() ([]byte, error) {
+	type plain ToolOfferHostToolTaxonomyLimit
+	return encodeObject(plain(v), nil)
+}
+
 // From tool-offer.json#/$defs/identity. The identity a source's calls run as (ADR-0019): person,
 // service or connection, and a label the person recognises. The label is display text, never a
 // credential or token, and grants nothing. The host declares it per source; where it says nothing
@@ -8106,11 +20072,14 @@ type ToolOfferLoadSkill struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferLoadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferLoadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferLoadSkill object and keeps the members the schema does not name.
 func (v *ToolOfferLoadSkill) UnmarshalJSON(data []byte) error {
@@ -8150,11 +20119,14 @@ type ToolOfferLoadTool struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferLoadToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferLoadToolMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferLoadTool object and keeps the members the schema does not name.
 func (v *ToolOfferLoadTool) UnmarshalJSON(data []byte) error {
@@ -8379,11 +20351,14 @@ type ToolOfferProposePack struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferProposePackMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferProposePackMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferProposePack object and keeps the members the schema does not name.
 func (v *ToolOfferProposePack) UnmarshalJSON(data []byte) error {
@@ -8455,11 +20430,14 @@ type ToolOfferRequestReview struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferRequestReviewMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferRequestReviewMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferRequestReview object and keeps the members the schema does not name.
 func (v *ToolOfferRequestReview) UnmarshalJSON(data []byte) error {
@@ -8480,18 +20458,19 @@ func (v ToolOfferRequestReview) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
-// From tool-offer.json#/$defs/runtimeTool. A runtime tool (McpTool). No effect class is carried:
-// the host decides what is read-only by name (runtimeToolContextPolicy and the read list in
-// context/managed.ts).
+// From tool-offer.json#/$defs/runtimeTool. Runtime MCP tool. Mandatory _meta carries owner
+// operation, effect and optional checkKind/experimental. The gate maps it to internal taxonomy;
+// only the served runtime path can evaluate.
 type ToolOfferRuntimeTool struct {
 	Name        string          `json:"name"`
 	Description *string         `json:"description,omitzero"`
 	InputSchema json.RawMessage `json:"inputSchema,omitzero"`
+	Meta        ToolTaxonomy    `json:"_meta"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferRuntimeToolMembers = []string{"name", "description", "inputSchema"}
+var toolOfferRuntimeToolMembers = []string{"name", "description", "inputSchema", "_meta"}
 
 // UnmarshalJSON decodes a ToolOfferRuntimeTool object and keeps the members the schema does not name.
 func (v *ToolOfferRuntimeTool) UnmarshalJSON(data []byte) error {
@@ -8564,7 +20543,10 @@ func (v ToolOfferSkillCatalogueEntry) MarshalJSON() ([]byte, error) {
 // back. The original host schema remains an independent argument constraint in the
 // package-supported subset, and the original host execute and approval functions retain all other
 // validation and grants. Local source id and execution identity remain host records, distinct from
-// the snapshot platform/server metadata.
+// the snapshot platform/server metadata. ADR-0027 supersedes admission defaults: mandatory owner
+// taxonomy and an approved taxonomy-bound list digest are required for every source, including
+// gateway/custom. Current historical Gateway descriptor snapshots are not admitted until owner
+// taxonomy is captured upstream; public historical snapshot readers remain unchanged.
 type ToolOfferSourceDeclaration struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`
@@ -8577,11 +20559,14 @@ type ToolOfferSourceDeclaration struct {
 	Source        ToolOfferSourceRecord           `json:"source"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferSourceDeclarationMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferSourceDeclarationMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferSourceDeclaration object and keeps the members the schema does not name.
 func (v *ToolOfferSourceDeclaration) UnmarshalJSON(data []byte) error {
@@ -8720,11 +20705,14 @@ type ToolOfferUnloadSkill struct {
 	Source        *ToolOfferSourceRecord          `json:"source,omitzero"`
 	EffectClass   *string                         `json:"effectClass,omitzero"`
 	Approval      *string                         `json:"approval,omitzero"`
+	Taxonomy      ToolTaxonomy                    `json:"taxonomy"`
+	TaxonomyLimit *ToolOfferHostToolTaxonomyLimit `json:"taxonomyLimit,omitzero"`
+	Annotations   *ToolOfferHostToolAnnotations   `json:"annotations,omitzero"`
 	// AdditionalMembers holds the members the schema does not name; the object is open.
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var toolOfferUnloadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval"}
+var toolOfferUnloadSkillMembers = []string{"name", "description", "inputSchema", "effect", "interaction", "delegation", "contextPolicy", "presentation", "source", "effectClass", "approval", "taxonomy", "taxonomyLimit", "annotations"}
 
 // UnmarshalJSON decodes a ToolOfferUnloadSkill object and keeps the members the schema does not name.
 func (v *ToolOfferUnloadSkill) UnmarshalJSON(data []byte) error {
@@ -10006,6 +21994,692 @@ func (v ToolResultUnavailableEnvelope) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), v.AdditionalMembers)
 }
 
+// From tool-taxonomy.json. ADR-0027 owner-declared operation and effect. In-process taxonomy is
+// separate from legacy HostTool.effect. Runtime publishes these members in MCP _meta; no metadata
+// or trust label grants authority.
+type ToolTaxonomy struct {
+	Operation    string  `json:"operation"`
+	Effect       string  `json:"effect"`
+	CheckKind    *string `json:"checkKind,omitzero"`
+	Experimental *bool   `json:"experimental,omitzero"`
+}
+
+var toolTaxonomyMembers = []string{"operation", "effect", "checkKind", "experimental"}
+
+// UnmarshalJSON decodes a ToolTaxonomy object and refuses a member the closed schema does not name.
+func (v *ToolTaxonomy) UnmarshalJSON(data []byte) error {
+	type plain ToolTaxonomy
+	var p plain
+	extra, err := decodeObject(data, &p, toolTaxonomyMembers, true)
+	if err != nil {
+		return errorf("ToolTaxonomy: %w", err)
+	}
+	*v = ToolTaxonomy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolTaxonomy object.
+func (v ToolTaxonomy) MarshalJSON() ([]byte, error) {
+	type plain ToolTaxonomy
+	return encodeObject(plain(v), nil)
+}
+
+// From tool-taxonomy.json#/$defs/profile.
+type ToolTaxonomyProfile struct {
+	Effect     string   `json:"effect"`
+	Operations []string `json:"operations"`
+}
+
+var toolTaxonomyProfileMembers = []string{"effect", "operations"}
+
+// UnmarshalJSON decodes a ToolTaxonomyProfile object and refuses a member the closed schema does not name.
+func (v *ToolTaxonomyProfile) UnmarshalJSON(data []byte) error {
+	type plain ToolTaxonomyProfile
+	var p plain
+	extra, err := decodeObject(data, &p, toolTaxonomyProfileMembers, true)
+	if err != nil {
+		return errorf("ToolTaxonomyProfile: %w", err)
+	}
+	*v = ToolTaxonomyProfile(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a ToolTaxonomyProfile object.
+func (v ToolTaxonomyProfile) MarshalJSON() ([]byte, error) {
+	type plain ToolTaxonomyProfile
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json.
+type TurnRoute struct {
+	Route             string                      `json:"route"`
+	Tier              *string                     `json:"tier,omitzero"`
+	Skills            []string                    `json:"skills"`
+	Tools             TurnRouteTools              `json:"tools"`
+	Operations        TurnRouteOperations         `json:"operations"`
+	Planning          string                      `json:"planning"`
+	Version           int64                       `json:"version"`
+	DecidedBy         string                      `json:"decidedBy"`
+	Reason            string                      `json:"reason"`
+	BindingDigest     string                      `json:"bindingDigest"`
+	CatalogueDigest   string                      `json:"catalogueDigest"`
+	Widened           bool                        `json:"widened"`
+	WidenedFor        *string                     `json:"widenedFor,omitzero"`
+	Refusals          []TurnRouteRefusalsItem     `json:"refusals"`
+	Classifier        *TurnRouteClassifier_       `json:"classifier,omitzero"`
+	WidenedInvocation *TurnRouteWidenedInvocation `json:"widenedInvocation,omitzero"`
+}
+
+var turnRouteMembers = []string{"route", "tier", "skills", "tools", "operations", "planning", "version", "decidedBy", "reason", "bindingDigest", "catalogueDigest", "widened", "widenedFor", "refusals", "classifier", "widenedInvocation"}
+
+// UnmarshalJSON decodes a TurnRoute object and refuses a member the closed schema does not name.
+func (v *TurnRoute) UnmarshalJSON(data []byte) error {
+	type plain TurnRoute
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteMembers, true)
+	if err != nil {
+		return errorf("TurnRoute: %w", err)
+	}
+	*v = TurnRoute(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRoute object.
+func (v TurnRoute) MarshalJSON() ([]byte, error) {
+	type plain TurnRoute
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/classifier.
+type TurnRouteClassifier struct {
+	Binding      string                    `json:"binding"`
+	PromptDigest string                    `json:"promptDigest"`
+	Status       string                    `json:"status"`
+	Label        *string                   `json:"label,omitzero"`
+	Usage        *TurnRouteClassifierUsage `json:"usage,omitzero"`
+}
+
+var turnRouteClassifierMembers = []string{"binding", "promptDigest", "status", "label", "usage"}
+
+// UnmarshalJSON decodes a TurnRouteClassifier object and refuses a member the closed schema does not name.
+func (v *TurnRouteClassifier) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteClassifier
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteClassifierMembers, true)
+	if err != nil {
+		return errorf("TurnRouteClassifier: %w", err)
+	}
+	*v = TurnRouteClassifier(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteClassifier object.
+func (v TurnRouteClassifier) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteClassifier
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/classifier/properties/usage.
+type TurnRouteClassifierUsage struct {
+	InputTokens  *int64 `json:"inputTokens,omitzero"`
+	OutputTokens *int64 `json:"outputTokens,omitzero"`
+}
+
+var turnRouteClassifierUsageMembers = []string{"inputTokens", "outputTokens"}
+
+// UnmarshalJSON decodes a TurnRouteClassifierUsage object and refuses a member the closed schema does not name.
+func (v *TurnRouteClassifierUsage) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteClassifierUsage
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteClassifierUsageMembers, true)
+	if err != nil {
+		return errorf("TurnRouteClassifierUsage: %w", err)
+	}
+	*v = TurnRouteClassifierUsage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteClassifierUsage object.
+func (v TurnRouteClassifierUsage) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteClassifierUsage
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/properties/classifier/properties/usage.
+type TurnRouteClassifierUsage_ struct {
+	InputTokens  *int64 `json:"inputTokens,omitzero"`
+	OutputTokens *int64 `json:"outputTokens,omitzero"`
+}
+
+var turnRouteClassifierUsage_Members = []string{"inputTokens", "outputTokens"}
+
+// UnmarshalJSON decodes a TurnRouteClassifierUsage_ object and refuses a member the closed schema does not name.
+func (v *TurnRouteClassifierUsage_) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteClassifierUsage_
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteClassifierUsage_Members, true)
+	if err != nil {
+		return errorf("TurnRouteClassifierUsage_: %w", err)
+	}
+	*v = TurnRouteClassifierUsage_(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteClassifierUsage_ object.
+func (v TurnRouteClassifierUsage_) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteClassifierUsage_
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/properties/classifier.
+type TurnRouteClassifier_ struct {
+	Binding      string                     `json:"binding"`
+	PromptDigest string                     `json:"promptDigest"`
+	Status       string                     `json:"status"`
+	Label        *string                    `json:"label,omitzero"`
+	Usage        *TurnRouteClassifierUsage_ `json:"usage,omitzero"`
+}
+
+var turnRouteClassifier_Members = []string{"binding", "promptDigest", "status", "label", "usage"}
+
+// UnmarshalJSON decodes a TurnRouteClassifier_ object and refuses a member the closed schema does not name.
+func (v *TurnRouteClassifier_) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteClassifier_
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteClassifier_Members, true)
+	if err != nil {
+		return errorf("TurnRouteClassifier_: %w", err)
+	}
+	*v = TurnRouteClassifier_(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteClassifier_ object.
+func (v TurnRouteClassifier_) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteClassifier_
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/properties/operations.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type TurnRouteOperations struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *TurnRouteOperations) UnmarshalJSON(data []byte) error {
+	*v = TurnRouteOperations{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("TurnRouteOperations: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = TurnRouteOperations{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v TurnRouteOperations) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("TurnRouteOperations: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From turn-route.json#/$defs/policy.
+type TurnRoutePolicy struct {
+	Mode       string                     `json:"mode"`
+	Tiers      []string                   `json:"tiers"`
+	Rules      []TurnRoutePolicyRulesItem `json:"rules,omitzero"`
+	Classifier *TurnRoutePolicyClassifier `json:"classifier,omitzero"`
+}
+
+var turnRoutePolicyMembers = []string{"mode", "tiers", "rules", "classifier"}
+
+// UnmarshalJSON decodes a TurnRoutePolicy object and refuses a member the closed schema does not name.
+func (v *TurnRoutePolicy) UnmarshalJSON(data []byte) error {
+	type plain TurnRoutePolicy
+	var p plain
+	extra, err := decodeObject(data, &p, turnRoutePolicyMembers, true)
+	if err != nil {
+		return errorf("TurnRoutePolicy: %w", err)
+	}
+	*v = TurnRoutePolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRoutePolicy object.
+func (v TurnRoutePolicy) MarshalJSON() ([]byte, error) {
+	type plain TurnRoutePolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/policy/properties/classifier.
+type TurnRoutePolicyClassifier struct {
+	Labels              map[string]json.RawMessage `json:"labels"`
+	MaxOutputTokens     int64                      `json:"maxOutputTokens"`
+	TimeoutMilliseconds int64                      `json:"timeoutMilliseconds"`
+}
+
+var turnRoutePolicyClassifierMembers = []string{"labels", "maxOutputTokens", "timeoutMilliseconds"}
+
+// UnmarshalJSON decodes a TurnRoutePolicyClassifier object and refuses a member the closed schema does not name.
+func (v *TurnRoutePolicyClassifier) UnmarshalJSON(data []byte) error {
+	type plain TurnRoutePolicyClassifier
+	var p plain
+	extra, err := decodeObject(data, &p, turnRoutePolicyClassifierMembers, true)
+	if err != nil {
+		return errorf("TurnRoutePolicyClassifier: %w", err)
+	}
+	*v = TurnRoutePolicyClassifier(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRoutePolicyClassifier object.
+func (v TurnRoutePolicyClassifier) MarshalJSON() ([]byte, error) {
+	type plain TurnRoutePolicyClassifier
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/policy/properties/rules/items.
+type TurnRoutePolicyRulesItem struct {
+	ID    string                       `json:"id"`
+	When  TurnRoutePolicyRulesItemWhen `json:"when"`
+	Route TurnRouteSelection           `json:"route"`
+}
+
+var turnRoutePolicyRulesItemMembers = []string{"id", "when", "route"}
+
+// UnmarshalJSON decodes a TurnRoutePolicyRulesItem object and refuses a member the closed schema does not name.
+func (v *TurnRoutePolicyRulesItem) UnmarshalJSON(data []byte) error {
+	type plain TurnRoutePolicyRulesItem
+	var p plain
+	extra, err := decodeObject(data, &p, turnRoutePolicyRulesItemMembers, true)
+	if err != nil {
+		return errorf("TurnRoutePolicyRulesItem: %w", err)
+	}
+	*v = TurnRoutePolicyRulesItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRoutePolicyRulesItem object.
+func (v TurnRoutePolicyRulesItem) MarshalJSON() ([]byte, error) {
+	type plain TurnRoutePolicyRulesItem
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/policy/properties/rules/items/properties/when.
+type TurnRoutePolicyRulesItemWhen struct {
+	Mode         *string `json:"mode,omitzero"`
+	Attachments  *bool   `json:"attachments,omitzero"`
+	Artifact     *bool   `json:"artifact,omitzero"`
+	TurnBytes    *int64  `json:"turnBytes,omitzero"`
+	MaxTurnBytes *int64  `json:"maxTurnBytes,omitzero"`
+	Slash        *string `json:"slash,omitzero"`
+}
+
+var turnRoutePolicyRulesItemWhenMembers = []string{"mode", "attachments", "artifact", "turnBytes", "maxTurnBytes", "slash"}
+
+// UnmarshalJSON decodes a TurnRoutePolicyRulesItemWhen object and refuses a member the closed schema does not name.
+func (v *TurnRoutePolicyRulesItemWhen) UnmarshalJSON(data []byte) error {
+	type plain TurnRoutePolicyRulesItemWhen
+	var p plain
+	extra, err := decodeObject(data, &p, turnRoutePolicyRulesItemWhenMembers, true)
+	if err != nil {
+		return errorf("TurnRoutePolicyRulesItemWhen: %w", err)
+	}
+	*v = TurnRoutePolicyRulesItemWhen(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRoutePolicyRulesItemWhen object.
+func (v TurnRoutePolicyRulesItemWhen) MarshalJSON() ([]byte, error) {
+	type plain TurnRoutePolicyRulesItemWhen
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/properties/refusals/items.
+type TurnRouteRefusalsItem struct {
+	Stage  string `json:"stage"`
+	Reason string `json:"reason"`
+}
+
+var turnRouteRefusalsItemMembers = []string{"stage", "reason"}
+
+// UnmarshalJSON decodes a TurnRouteRefusalsItem object and refuses a member the closed schema does not name.
+func (v *TurnRouteRefusalsItem) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteRefusalsItem
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteRefusalsItemMembers, true)
+	if err != nil {
+		return errorf("TurnRouteRefusalsItem: %w", err)
+	}
+	*v = TurnRouteRefusalsItem(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteRefusalsItem object.
+func (v TurnRouteRefusalsItem) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteRefusalsItem
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/selection.
+type TurnRouteSelection struct {
+	Route      string                       `json:"route"`
+	Tier       *string                      `json:"tier,omitzero"`
+	Skills     []string                     `json:"skills"`
+	Tools      TurnRouteSelectionTools      `json:"tools"`
+	Operations TurnRouteSelectionOperations `json:"operations"`
+	Planning   string                       `json:"planning"`
+}
+
+var turnRouteSelectionMembers = []string{"route", "tier", "skills", "tools", "operations", "planning"}
+
+// UnmarshalJSON decodes a TurnRouteSelection object and refuses a member the closed schema does not name.
+func (v *TurnRouteSelection) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteSelection
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteSelectionMembers, true)
+	if err != nil {
+		return errorf("TurnRouteSelection: %w", err)
+	}
+	*v = TurnRouteSelection(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteSelection object.
+func (v TurnRouteSelection) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteSelection
+	return encodeObject(plain(v), nil)
+}
+
+// From turn-route.json#/$defs/selection/properties/operations.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type TurnRouteSelectionOperations struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *TurnRouteSelectionOperations) UnmarshalJSON(data []byte) error {
+	*v = TurnRouteSelectionOperations{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("TurnRouteSelectionOperations: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = TurnRouteSelectionOperations{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v TurnRouteSelectionOperations) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("TurnRouteSelectionOperations: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From turn-route.json#/$defs/selection/properties/tools.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type TurnRouteSelectionTools struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *TurnRouteSelectionTools) UnmarshalJSON(data []byte) error {
+	*v = TurnRouteSelectionTools{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("TurnRouteSelectionTools: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = TurnRouteSelectionTools{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v TurnRouteSelectionTools) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("TurnRouteSelectionTools: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From turn-route.json#/properties/tools.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type TurnRouteTools struct {
+	String  *string
+	Option2 *[]string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *TurnRouteTools) UnmarshalJSON(data []byte) error {
+	*v = TurnRouteTools{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("TurnRouteTools: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = TurnRouteTools{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v TurnRouteTools) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("TurnRouteTools: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From turn-route.json#/properties/widenedInvocation.
+type TurnRouteWidenedInvocation struct {
+	DispatchID    string `json:"dispatchId"`
+	RequestDigest string `json:"requestDigest"`
+}
+
+var turnRouteWidenedInvocationMembers = []string{"dispatchId", "requestDigest"}
+
+// UnmarshalJSON decodes a TurnRouteWidenedInvocation object and refuses a member the closed schema does not name.
+func (v *TurnRouteWidenedInvocation) UnmarshalJSON(data []byte) error {
+	type plain TurnRouteWidenedInvocation
+	var p plain
+	extra, err := decodeObject(data, &p, turnRouteWidenedInvocationMembers, true)
+	if err != nil {
+		return errorf("TurnRouteWidenedInvocation: %w", err)
+	}
+	*v = TurnRouteWidenedInvocation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a TurnRouteWidenedInvocation object.
+func (v TurnRouteWidenedInvocation) MarshalJSON() ([]byte, error) {
+	type plain TurnRouteWidenedInvocation
+	return encodeObject(plain(v), nil)
+}
+
 // From usage.json. ADR-0020. Closed counts for one run. The package emits this ledger once,
 // immediately before end, and carries it in the checkpoint. Prices and project totals belong to
 // the host. Token members are present only where the provider reported them.
@@ -10031,6 +22705,226 @@ func (v *Usage) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a Usage object.
 func (v Usage) MarshalJSON() ([]byte, error) {
 	type plain Usage
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json. Version 1 root-owned bounded reservation and acknowledged actual usage
+// facts. Reservations and receipts never grant execution authority. Unknown outcomes are not
+// replayable. Missing provider usage remains absent, never zero.
+type UsageBudget struct {
+	Version  int64                `json:"version"`
+	Scope    UsageBudgetScope     `json:"scope"`
+	Entries  []UsageBudgetEntry   `json:"entries"`
+	Refusals []UsageBudgetRefusal `json:"refusals"`
+}
+
+var usageBudgetMembers = []string{"version", "scope", "entries", "refusals"}
+
+// UnmarshalJSON decodes a UsageBudget object and refuses a member the closed schema does not name.
+func (v *UsageBudget) UnmarshalJSON(data []byte) error {
+	type plain UsageBudget
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetMembers, true)
+	if err != nil {
+		return errorf("UsageBudget: %w", err)
+	}
+	*v = UsageBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudget object.
+func (v UsageBudget) MarshalJSON() ([]byte, error) {
+	type plain UsageBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/amounts.
+type UsageBudgetAmounts struct {
+	ModelRequests       *int64 `json:"modelRequests,omitzero"`
+	ProviderInvocations *int64 `json:"providerInvocations,omitzero"`
+	InputTokens         *int64 `json:"inputTokens,omitzero"`
+	OutputTokens        *int64 `json:"outputTokens,omitzero"`
+}
+
+var usageBudgetAmountsMembers = []string{"modelRequests", "providerInvocations", "inputTokens", "outputTokens"}
+
+// UnmarshalJSON decodes a UsageBudgetAmounts object and refuses a member the closed schema does not name.
+func (v *UsageBudgetAmounts) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetAmounts
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetAmountsMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetAmounts: %w", err)
+	}
+	*v = UsageBudgetAmounts(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetAmounts object.
+func (v UsageBudgetAmounts) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetAmounts
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/entry.
+type UsageBudgetEntry struct {
+	Reservation UsageBudgetReservation `json:"reservation"`
+	Receipt     *UsageBudgetReceipt    `json:"receipt,omitzero"`
+	Settlement  *UsageBudgetReceipt    `json:"settlement,omitzero"`
+	State       string                 `json:"state"`
+	Observed    *UsageBudgetAmounts    `json:"observed,omitzero"`
+}
+
+var usageBudgetEntryMembers = []string{"reservation", "receipt", "settlement", "state", "observed"}
+
+// UnmarshalJSON decodes a UsageBudgetEntry object and refuses a member the closed schema does not name.
+func (v *UsageBudgetEntry) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetEntry
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetEntryMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetEntry: %w", err)
+	}
+	*v = UsageBudgetEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetEntry object.
+func (v UsageBudgetEntry) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/receipt.
+type UsageBudgetReceipt struct {
+	Resource          string             `json:"resource"`
+	Scope             string             `json:"scope"`
+	Reservation       string             `json:"reservation"`
+	ReservationDigest string             `json:"reservationDigest"`
+	Revision          string             `json:"revision"`
+	State             string             `json:"state"`
+	Observed          UsageBudgetAmounts `json:"observed"`
+}
+
+var usageBudgetReceiptMembers = []string{"resource", "scope", "reservation", "reservationDigest", "revision", "state", "observed"}
+
+// UnmarshalJSON decodes a UsageBudgetReceipt object and refuses a member the closed schema does not name.
+func (v *UsageBudgetReceipt) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetReceipt
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetReceiptMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetReceipt: %w", err)
+	}
+	*v = UsageBudgetReceipt(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetReceipt object.
+func (v UsageBudgetReceipt) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetReceipt
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/refusal.
+type UsageBudgetRefusal struct {
+	ID            string  `json:"id"`
+	Execution     string  `json:"execution"`
+	Role          string  `json:"role"`
+	Task          *string `json:"task,omitzero"`
+	RequestDigest string  `json:"requestDigest"`
+	Name          string  `json:"name"`
+	Dimension     *string `json:"dimension,omitzero"`
+}
+
+var usageBudgetRefusalMembers = []string{"id", "execution", "role", "task", "requestDigest", "name", "dimension"}
+
+// UnmarshalJSON decodes a UsageBudgetRefusal object and refuses a member the closed schema does not name.
+func (v *UsageBudgetRefusal) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetRefusalMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetRefusal: %w", err)
+	}
+	*v = UsageBudgetRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetRefusal object.
+func (v UsageBudgetRefusal) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/reservation.
+type UsageBudgetReservation struct {
+	Scope              UsageBudgetScope   `json:"scope"`
+	ID                 string             `json:"id"`
+	Root               string             `json:"root"`
+	Execution          string             `json:"execution"`
+	Role               string             `json:"role"`
+	Task               *string            `json:"task,omitzero"`
+	Kind               string             `json:"kind"`
+	RequestDigest      string             `json:"requestDigest"`
+	Connection         string             `json:"connection"`
+	ConnectionRevision string             `json:"connectionRevision"`
+	Model              string             `json:"model"`
+	Upper              UsageBudgetAmounts `json:"upper"`
+}
+
+var usageBudgetReservationMembers = []string{"scope", "id", "root", "execution", "role", "task", "kind", "requestDigest", "connection", "connectionRevision", "model", "upper"}
+
+// UnmarshalJSON decodes a UsageBudgetReservation object and refuses a member the closed schema does not name.
+func (v *UsageBudgetReservation) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetReservation
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetReservationMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetReservation: %w", err)
+	}
+	*v = UsageBudgetReservation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetReservation object.
+func (v UsageBudgetReservation) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetReservation
+	return encodeObject(plain(v), nil)
+}
+
+// From usage-budget.json#/$defs/scope.
+type UsageBudgetScope struct {
+	Resource string             `json:"resource"`
+	ID       string             `json:"id"`
+	Revision string             `json:"revision"`
+	Limits   UsageBudgetAmounts `json:"limits"`
+}
+
+var usageBudgetScopeMembers = []string{"resource", "id", "revision", "limits"}
+
+// UnmarshalJSON decodes a UsageBudgetScope object and refuses a member the closed schema does not name.
+func (v *UsageBudgetScope) UnmarshalJSON(data []byte) error {
+	type plain UsageBudgetScope
+	var p plain
+	extra, err := decodeObject(data, &p, usageBudgetScopeMembers, true)
+	if err != nil {
+		return errorf("UsageBudgetScope: %w", err)
+	}
+	*v = UsageBudgetScope(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a UsageBudgetScope object.
+func (v UsageBudgetScope) MarshalJSON() ([]byte, error) {
+	type plain UsageBudgetScope
 	return encodeObject(plain(v), nil)
 }
 

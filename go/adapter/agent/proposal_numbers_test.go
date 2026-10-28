@@ -22,7 +22,7 @@ func TestProposalNumericAgentTerminalRecovery(t *testing.T) {
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			calls := 0
-			tool := runcontext.HostTool{Name: "read_note", Effect: "read", Description: "Reads.", InputSchema: json.RawMessage(`{"type":"object"}`)}
+			tool := runcontext.HostTool{Name: "read_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Description: "Reads.", InputSchema: json.RawMessage(`{"type":"object"}`)}
 			run, events := oneTool(t, tool, func(ctx context.Context, _ adapter.AgentRequest, cb adapter.AgentCallbacks) error {
 				calls++
 				text := row.source

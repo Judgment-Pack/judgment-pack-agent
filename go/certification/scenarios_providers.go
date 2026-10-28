@@ -91,7 +91,7 @@ func providerFindings(ctx context.Context, server *Server, inner Adapter, agent 
 			}
 			f := findings{check: prefix + name}
 			declaration := turn.DelegationTool(turn.TaskProfiles)
-			host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "policy-table", AnswerAs: "whole"}, []runcontext.HostTool{{Name: declaration.Name, Description: declaration.Description, InputSchema: declaration.InputSchema}}, true)
+			host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "policy-table", AnswerAs: "whole"}, []runcontext.HostTool{{Name: declaration.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: declaration.Description, InputSchema: declaration.InputSchema}}, true)
 			if err != nil {
 				return nil, err
 			}

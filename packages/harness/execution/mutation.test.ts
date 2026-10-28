@@ -302,7 +302,7 @@ describe('checkpoint member omission and interruption/resume',()=>{
   const continued=resumed.snapshot('running')
   for(const key of Object.keys(memberVector.probeOwners)){
    if(memberVector.probeOwners[key]!=='controller'||key==='status')continue
-   if(key==='version'){expect(fixture.version).toBe(2);expect(interrupted.version).toBe(2);expect(continued.version).toBe(2);continue}
+   if(key==='version'){expect(fixture.version).toBe(3);expect(interrupted.version).toBe(3);expect(continued.version).toBe(3);continue}
    expect(canonicalJSON((continued as any)[key]),key).toBe(canonicalJSON((fixture as any)[key]))
   }
   // Interruption and initialization deliberately project status; its running value resumes exactly.

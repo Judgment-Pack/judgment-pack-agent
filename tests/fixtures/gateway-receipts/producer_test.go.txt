@@ -1,0 +1,435 @@
+package main
+
+// Overlaid into the explicit Gateway checkout; no Gateway file is changed.
+// Prepare compiles dependencies before the bounded producer is started.
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+type agentReceiptPrepared struct {
+	Bin, Runtime, Credentials    string
+	AdapterSHA256, RuntimeSHA256 string
+}
+
+func agentReceiptFileHash(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(raw)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+// Replace one canonical flag in place; split and repeated flags are refused.
+func agentReceiptReplaceFlag(argv []string, name, value string) ([]string, error) {
+	out := append([]string(nil), argv...)
+	index := -1
+	for i, arg := range out {
+		if arg == name {
+			return nil, fmt.Errorf("split %s flag", name)
+		}
+		if strings.HasPrefix(arg, name+"=") {
+			if index != -1 {
+				return nil, fmt.Errorf("duplicate %s flag", name)
+			}
+			index = i
+		}
+	}
+	if index == -1 {
+		return nil, fmt.Errorf("missing %s flag", name)
+	}
+	out[index] = name + "=" + value
+	return out, nil
+}
+
+func agentReceiptAdapt(spec sourceSpec, prepared agentReceiptPrepared, stdio bool) (sourceSpec, error) {
+	var err error
+	spec.argv, err = agentReceiptReplaceFlag(spec.argv, "--credentials", prepared.Credentials)
+	if err != nil {
+		return spec, err
+	}
+	if stdio {
+		spec.argv, err = agentReceiptReplaceFlag(spec.argv, "--runtime", prepared.Runtime)
+		if err != nil {
+			return spec, err
+		}
+	}
+	return spec, nil
+}
+
+// Independent of adaptation: call immediately before execution or publication.
+func agentReceiptValidateSpec(spec sourceSpec, prepared agentReceiptPrepared, stdio bool) error {
+	adapter := filepath.Join(prepared.Bin, "adapter-mcp")
+	for _, path := range []string{adapter, prepared.Runtime, prepared.Credentials} {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return fmt.Errorf("prepared path must be explicit and clean: %q", path)
+		}
+	}
+	if len(spec.argv) == 0 || spec.argv[0] != adapter {
+		return fmt.Errorf("adapter identity mismatch")
+	}
+	for _, flag := range []struct {
+		name, value string
+		count       int
+	}{
+		{"--runtime", prepared.Runtime, map[bool]int{false: 0, true: 1}[stdio]},
+		{"--credentials", prepared.Credentials, 1},
+	} {
+		count := 0
+		for _, arg := range spec.argv[1:] {
+			if arg == flag.name {
+				return fmt.Errorf("split %s identity flag", flag.name)
+			}
+			if strings.HasPrefix(arg, flag.name+"=") {
+				count++
+				if arg != flag.name+"="+flag.value {
+					return fmt.Errorf("%s identity mismatch", flag.name)
+				}
+			}
+		}
+		if count != flag.count {
+			return fmt.Errorf("%s identity count: got %d want %d", flag.name, count, flag.count)
+		}
+	}
+	return nil
+}
+
+func agentReceiptValidatePrepared(prepared agentReceiptPrepared) error {
+	for _, binary := range []struct{ path, hash string }{
+		{filepath.Join(prepared.Bin, "adapter-mcp"), prepared.AdapterSHA256},
+		{prepared.Runtime, prepared.RuntimeSHA256},
+	} {
+		hash, err := agentReceiptFileHash(binary.path)
+		if err != nil {
+			return err
+		}
+		if len(binary.hash) != 64 || hash != binary.hash {
+			return fmt.Errorf("prepared binary hash mismatch: %s", binary.path)
+		}
+	}
+	return nil
+}
+
+func TestAgentConsumerReceiptPrepare(t *testing.T) {
+	if !t.Run("command-identity", agentReceiptIdentityChecks) {
+		return
+	}
+	output := os.Getenv("JP_AGENT_GATEWAY_PREPARED")
+	if output == "" {
+		t.Fatal("JP_AGENT_GATEWAY_PREPARED required")
+	}
+	dir, err := os.MkdirTemp(os.Getenv("TMPDIR"), "receipt-dependencies-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, runtime := buildMCPStandIns(t, dir)
+	credentials := filepath.Join(dir, "credentials.json")
+	if err := os.WriteFile(credentials, []byte(`{"SERVICE_TOKEN":"secret-token","token":"fixture-live-credential"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	adapterHash, err := agentReceiptFileHash(filepath.Join(bin, "adapter-mcp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeHash, err := agentReceiptFileHash(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(agentReceiptPrepared{Bin: bin, Runtime: runtime, Credentials: credentials, AdapterSHA256: adapterHash, RuntimeSHA256: runtimeHash})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(output, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+func agentConsumerReceiptFixture(t *testing.T, prepared agentReceiptPrepared, stdio bool) map[string]any {
+	target := newWriteStandIn(t, customerTools)
+	bindingText := customerBinding(target.URL, "")
+	owners := map[string]any{"query": map[string]string{"operation": "read", "effect": "read-external"}, "sibling": map[string]string{"operation": "read", "effect": "read-external"}}
+	if stdio {
+		bindingText = `{"bindingVersion":"2","platform":"tickets","operations":{"live":{"shape":"mcp","server":{"image":"example/receipt-server:1@` + testImageDigest + `"},"tools":["query"],"toolTaxonomies":{"query":{"operation":"read","effect":"read-external"}},"licence":"fixture"}}}`
+		delete(owners, "sibling")
+	}
+	f, req, _, baseAdapt := customerFixture(t, prepared.Bin, bindingText, false)
+	if stdio {
+		req.endpoint = ""
+	}
+	adapt := func(spec sourceSpec) sourceSpec {
+		spec, err := agentReceiptAdapt(baseAdapt(spec), prepared, stdio)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return spec
+	}
+	check := func(ctx context.Context, spec sourceSpec) ([]byte, error) {
+		spec = adapt(spec)
+		if err := agentReceiptValidateSpec(spec, prepared, stdio); err != nil {
+			return nil, err
+		}
+		return runCheck(ctx, spec)
+	}
+	if _, err := connect(context.Background(), req, f.host, check); err != nil {
+		t.Fatal(err)
+	}
+	cfg, bindings, err := loadEngineConfig(f.config, stubAccounts(stubUsers))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.platforms[0]
+	service, signer := testService(t)
+	for name, spec := range deriveSources(cfg, bindings) {
+		spec = adapt(spec)
+		if err := agentReceiptValidateSpec(spec, prepared, stdio); err != nil {
+			t.Fatal(err)
+		}
+		service.sources[name] = spec
+	}
+	cfg.listen = strings.TrimPrefix(signer.URL, "http://")
+	cfg.mcp = &mcpConfig{listen: "127.0.0.1:0", sessions: 128, idleSeconds: 60, concurrency: 8, callsPerMinute: 1000}
+	front, err := newMCPServer(cfg, bindings, nil, f.config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpFront := httptest.NewServer(front.httpHandler())
+	t.Cleanup(httpFront.Close)
+	data, err := os.ReadFile(filepath.Join(f.config+".descriptors", strings.TrimPrefix(p.operationDescriptors["live"], "sha256:")+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.ReadFile(filepath.Join(prepared.Bin, "adapter-mcp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(executable)
+	adapter := map[string]string{"name": "adapter-mcp", "version": "0", "digest": "sha256:" + hex.EncodeToString(hash[:])}
+	approval := map[string]any{"platform": req.platform, "binding": "tickets@" + digestOf(bindingText), "operation": "live", "toolTaxonomies": owners}
+	// Stdio's signed identity names the operator-pinned server image; remote
+	// names the adapter executable and authenticates endpoint/server separately.
+	if stdio {
+		adapter = map[string]string{"name": "example/receipt-server", "version": "1", "digest": testImageDigest}
+	} else {
+		approval["endpoint"] = target.URL
+	}
+	return map[string]any{"url": httpFront.URL + "/mcp", "snapshotText": string(data), "snapshotDigest": p.operationDescriptors["live"], "tool": "query", "trust": map[string]any{"publicKey": hex.EncodeToString(service.publicKey), "authority": "gateway:test", "adapter": adapter}, "approval": approval}
+}
+func TestAgentConsumerReceiptProducer(t *testing.T) {
+	output := os.Getenv("JP_AGENT_GATEWAY_OUTPUT")
+	if output == "" {
+		t.Fatal("JP_AGENT_GATEWAY_OUTPUT required")
+	}
+	raw, err := os.ReadFile(os.Getenv("JP_AGENT_GATEWAY_PREPARED"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prepared agentReceiptPrepared
+	if err = json.Unmarshal(raw, &prepared); err != nil {
+		t.Fatal(err)
+	}
+	if err := agentReceiptValidatePrepared(prepared); err != nil {
+		t.Fatal(err)
+	}
+	fixture := agentConsumerReceiptFixture(t, prepared, false)
+	fixture["stdio"] = agentConsumerReceiptFixture(t, prepared, true)
+	raw, err = json.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(output, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Log("actual remote and stdio connect/capture adapter signer and public frontend ready")
+	deadline := time.Now().Add(10 * time.Minute)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(output + ".stop"); err == nil {
+			t.Log("consumer stop handshake received")
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("bounded producer lifetime expired")
+}
+
+// These handwritten checks use the pinned Gateway command builder and start no
+// adapter, runtime, server or producer process. Prepare runs them in normal CI.
+func agentReceiptIdentityChecks(t *testing.T) {
+	t.Run("Replacement", agentReceiptIdentityReplacement)
+	t.Run("ReplacementRefusals", agentReceiptIdentityReplacementRefusals)
+	t.Run("Guards", agentReceiptIdentityGuards)
+	t.Run("PreparedHashes", agentReceiptIdentityPreparedHashes)
+	t.Run("ExplicitPaths", agentReceiptIdentityExplicitPaths)
+}
+
+func TestAgentReceiptIdentity(t *testing.T) { agentReceiptIdentityChecks(t) }
+
+func agentReceiptIdentityFixture(t *testing.T) (agentReceiptPrepared, sourceSpec) {
+	t.Helper()
+	dir := t.TempDir()
+	prepared := agentReceiptPrepared{Bin: filepath.Join(dir, "bin"), Runtime: filepath.Join(dir, "runtime"), Credentials: filepath.Join(dir, "credentials.json")}
+	argv := mcpServerArgv(filepath.Join(prepared.Bin, "adapter-mcp"), operation{image: "example/receipt-server:1@" + testImageDigest, tools: []string{"query"}}, filepath.Join(dir, "original.json"), "docker", "https://fixture.invalid", "--check", "--timeout=7s")
+	return prepared, sourceSpec{argv: argv}
+}
+
+func agentReceiptIdentityReplacement(t *testing.T) {
+	prepared, original := agentReceiptIdentityFixture(t)
+	before := append([]string(nil), original.argv...)
+	got, err := agentReceiptAdapt(original, prepared, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{filepath.Join(prepared.Bin, "adapter-mcp"), "--image=example/receipt-server:1@" + testImageDigest, "--credentials=" + prepared.Credentials, "--runtime=" + prepared.Runtime, "--tools=query", "--check", "--timeout=7s", "--endpoint=https://fixture.invalid"}
+	if !reflect.DeepEqual(got.argv, want) {
+		t.Fatalf("runtime replacement/order mismatch: got %q want %q", got.argv, want)
+	}
+	if !reflect.DeepEqual(original.argv, before) {
+		t.Fatal("adaptation modified caller argv")
+	}
+	if err := agentReceiptValidateSpec(got, prepared, true); err != nil {
+		t.Fatal(err)
+	}
+
+	remote := sourceSpec{argv: mcpServerArgv(filepath.Join(prepared.Bin, "adapter-mcp"), operation{url: "https://fixture.invalid/mcp", bearer: "SERVICE_TOKEN", headers: []string{"X-Fixture:yes"}, tools: []string{"query"}}, "original.json", "docker", "", "--check")}
+	got, err = agentReceiptAdapt(remote, prepared, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = []string{filepath.Join(prepared.Bin, "adapter-mcp"), "--url=https://fixture.invalid/mcp", "--credentials=" + prepared.Credentials, "--bearer=SERVICE_TOKEN", "--header=X-Fixture:yes", "--tools=query", "--check"}
+	if !reflect.DeepEqual(got.argv, want) {
+		t.Fatalf("remote replacement/order mismatch: got %q want %q", got.argv, want)
+	}
+	if err := agentReceiptValidateSpec(got, prepared, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func agentReceiptIdentityReplacementRefusals(t *testing.T) {
+	prepared, original := agentReceiptIdentityFixture(t)
+	for _, name := range []string{"--runtime", "--credentials"} {
+		for _, kind := range []string{"missing", "duplicate", "split"} {
+			t.Run(name+"/"+kind, func(t *testing.T) {
+				argv := []string{}
+				for _, arg := range original.argv {
+					if strings.HasPrefix(arg, name+"=") {
+						switch kind {
+						case "duplicate":
+							argv = append(argv, arg, arg)
+						case "split":
+							argv = append(argv, name, strings.TrimPrefix(arg, name+"="))
+						}
+					} else {
+						argv = append(argv, arg)
+					}
+				}
+				_, err := agentReceiptAdapt(sourceSpec{argv: argv}, prepared, true)
+				if err == nil || !strings.Contains(err.Error(), kind+" "+name+" flag") {
+					t.Fatalf("expected %s %s replacement refusal, got %v", kind, name, err)
+				}
+			})
+		}
+	}
+}
+
+func agentReceiptIdentityGuards(t *testing.T) {
+	prepared, original := agentReceiptIdentityFixture(t)
+	valid, err := agentReceiptAdapt(original, prepared, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, flag, replacement, want string
+		remove, duplicate             bool
+	}{
+		{name: "adapter", replacement: "adapter-mcp", want: "adapter identity mismatch"},
+		{name: "wrong-runtime", flag: "--runtime", replacement: "--runtime=docker", want: "--runtime identity mismatch"},
+		{name: "missing-runtime", flag: "--runtime", remove: true, want: "--runtime identity count"},
+		{name: "duplicate-runtime", flag: "--runtime", duplicate: true, want: "--runtime identity count"},
+		{name: "split-runtime", flag: "--runtime", replacement: "--runtime", want: "split --runtime identity flag"},
+		{name: "wrong-credentials", flag: "--credentials", replacement: "--credentials=ambient.json", want: "--credentials identity mismatch"},
+		{name: "missing-credentials", flag: "--credentials", remove: true, want: "--credentials identity count"},
+		{name: "duplicate-credentials", flag: "--credentials", duplicate: true, want: "--credentials identity count"},
+		{name: "split-credentials", flag: "--credentials", replacement: "--credentials", want: "split --credentials identity flag"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			argv := []string{}
+			for i, arg := range valid.argv {
+				if tc.flag == "" && i == 0 {
+					arg = tc.replacement
+				} else if tc.flag != "" && strings.HasPrefix(arg, tc.flag+"=") {
+					if tc.remove {
+						continue
+					}
+					if tc.duplicate {
+						argv = append(argv, arg)
+					} else {
+						arg = tc.replacement
+					}
+				}
+				argv = append(argv, arg)
+			}
+			err := agentReceiptValidateSpec(sourceSpec{argv: argv}, prepared, true)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %s refusal, got %v", tc.name, err)
+			}
+		})
+	}
+	t.Run("remote-runtime", func(t *testing.T) {
+		argv := mcpServerArgv(filepath.Join(prepared.Bin, "adapter-mcp"), operation{url: "https://fixture.invalid/mcp", tools: []string{"query"}}, prepared.Credentials, "docker", "")
+		argv = append(argv, "--runtime="+prepared.Runtime)
+		err := agentReceiptValidateSpec(sourceSpec{argv: argv}, prepared, false)
+		if err == nil || !strings.Contains(err.Error(), "--runtime identity count") {
+			t.Fatalf("expected remote runtime refusal, got %v", err)
+		}
+	})
+}
+
+func agentReceiptIdentityPreparedHashes(t *testing.T) {
+	prepared, _ := agentReceiptIdentityFixture(t)
+	if err := os.MkdirAll(prepared.Bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(prepared.Bin, "adapter-mcp"), prepared.Runtime} {
+		if err := os.WriteFile(path, []byte("handwritten identity fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var err error
+	prepared.AdapterSHA256, err = agentReceiptFileHash(filepath.Join(prepared.Bin, "adapter-mcp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared.RuntimeSHA256 = prepared.AdapterSHA256
+	if err := agentReceiptValidatePrepared(prepared); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(prepared.Bin, "adapter-mcp"), prepared.Runtime} {
+		if err := os.WriteFile(path, []byte("changed handwritten fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := agentReceiptValidatePrepared(prepared); err == nil || !strings.Contains(err.Error(), "prepared binary hash mismatch") {
+			t.Fatalf("expected prepared binary hash refusal, got %v", err)
+		}
+		if err := os.WriteFile(path, []byte("handwritten identity fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func agentReceiptIdentityExplicitPaths(t *testing.T) {
+	prepared := agentReceiptPrepared{Bin: "bin", Runtime: "runtime", Credentials: "credentials.json"}
+	spec := sourceSpec{argv: []string{"bin/adapter-mcp", "--runtime=runtime", "--credentials=credentials.json"}}
+	err := agentReceiptValidateSpec(spec, prepared, true)
+	if err == nil || !strings.Contains(err.Error(), "prepared path must be explicit and clean") {
+		t.Fatalf("expected explicit prepared path refusal, got %v", err)
+	}
+}

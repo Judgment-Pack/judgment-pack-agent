@@ -68,7 +68,7 @@ import {
   type RecordedRequest,
   type ThinkingMode
 } from './scriptedModel'
-import { RECORDED_TOOLS, scriptedRuntime, type ServerObservation } from './scriptedServer'
+import { RECORDED_TOOLS, scriptedRuntime, currentContractReplayTools, type ServerObservation } from './scriptedServer'
 import { strictAlternation } from './strictAlternation'
 import { CRITIC_SYSTEM, REFUTATION_MARKER } from '../refutation'
 import { DATA_RULE, OPENING } from '../framing'
@@ -729,13 +729,16 @@ async function runLeg(
       return how.host?.memory === undefined ? undefined : typedMemory(`${how.host.memory} (recall ${asked.length})`)
     }
   })
-  const runtime = await scriptedRuntime()
+  const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
   const events: AssistantEvent[] = []
   const connection = openAssistantConnection({
     allowed: how.allowed ?? FIVE,
     onEvent: (event) => events.push(event),
     transport: runtime.transport
   })
+  // Assert current test-offer readiness before the leg's intentional run-error capture.
+  try { await expect(connection.ready).resolves.toHaveProperty('tools') }
+  catch(error) { await connection.close();await runtime.close();throw error }
   // **The desk's half is bound outside the seal, and must be**: the model
   // capability captures `fetch` when it is bound, which is the property that
   // lets an engine be sealed off from every network global while its own calls
@@ -1041,6 +1044,8 @@ const RUNTIME_VOCABULARY: string[] = (() => {
  */
 const VOCABULARY: McpTool = {
   name: RECORDED_TOOLS[0]!.name,
+  // Explicit synthetic current-contract metadata; the schema vocabulary remains historical.
+  _meta: currentContractReplayTools().find(tool => tool.name === RECORDED_TOOLS[0]!.name)!._meta,
   description: 'the recorded runtime’s own schema vocabulary',
   inputSchema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -1165,7 +1170,7 @@ describe('the runtime tool ceiling', () => {
   it('refuses test_conformance at the wire, where a runtime serves it and a file grants it', async () => {
     const events: AssistantEvent[] = []
     const runtime = await gatedRuntime({
-      tools: [...RECORDED_TOOLS, TEST_CONFORMANCE_TOOL],
+      tools: [...currentContractReplayTools(), TEST_CONFORMANCE_TOOL],
       allowed: [...ASSISTANT_TOOLS, 'test_conformance'],
       handle: () => runtimeAnswer({ status: 'passed' }),
       onEvent: (event) => events.push(event)

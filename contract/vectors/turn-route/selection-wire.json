@@ -1,0 +1,33 @@
+{
+  "description": "Handwritten finite and all-capability route selections shared with fixtures/turn-route/decision.json.",
+  "schema": "turn-route.json#/$defs/selection",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/turnRoute.ts"
+    ]
+  },
+  "items": [
+    {
+      "route": "agent",
+      "tier": "off",
+      "skills": [],
+      "tools": [],
+      "operations": [
+        "read"
+      ],
+      "planning": "withheld"
+    },
+    {
+      "route": "agent",
+      "tier": "on",
+      "skills": [],
+      "tools": "all",
+      "operations": "all",
+      "planning": "offered"
+    }
+  ]
+}

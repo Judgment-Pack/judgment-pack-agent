@@ -1,0 +1,116 @@
+{
+  "schema": "dialect-authoring.json",
+  "items": [
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack"
+    },
+    {
+      "id": "collection:opaque/one",
+      "revision": "revision:one",
+      "packKey": "declared:pack",
+      "packDigest": "sha256:6b40132b72f3be419f6e3d0379243b81463fffcb3c5ad602cac16fd704db4d6b",
+      "dialectDigest": null,
+      "facts": [
+        {
+          "target": "/amount",
+          "column": "amount/raw~value",
+          "conversion": {
+            "kind": "text"
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "requirement": "receipt",
+          "column": "availability"
+        }
+      ],
+      "summary": "Propose text conversion for review."
+    },
+    {
+      "id": "collection:opaque/one",
+      "revision": "revision:one",
+      "packKey": "declared:pack",
+      "packDigest": "sha256:6b40132b72f3be419f6e3d0379243b81463fffcb3c5ad602cac16fd704db4d6b",
+      "dialectDigest": "sha256:7be5459f4adea87a0778e193e1e50fac7e8c13d00d37abde1832a964b216d047",
+      "facts": [
+        {
+          "target": "/amount",
+          "column": "amount/raw~value",
+          "conversion": {
+            "kind": "decimal"
+          }
+        }
+      ],
+      "evidence": [],
+      "summary": "Propose decimal conversion for review."
+    },
+    {
+      "id": "collection:opaque/one",
+      "revision": "revision:one",
+      "packKey": "declared:pack",
+      "packDigest": "sha256:6b40132b72f3be419f6e3d0379243b81463fffcb3c5ad602cac16fd704db4d6b",
+      "dialectDigest": null,
+      "facts": [
+        {
+          "target": "/amount",
+          "column": "amount/raw~value",
+          "conversion": {
+            "kind": "number"
+          }
+        }
+      ],
+      "evidence": [],
+      "summary": "Propose number conversion for review."
+    },
+    {
+      "id": "collection:opaque/one",
+      "revision": "revision:one",
+      "packKey": "declared:pack",
+      "packDigest": "sha256:6b40132b72f3be419f6e3d0379243b81463fffcb3c5ad602cac16fd704db4d6b",
+      "dialectDigest": null,
+      "facts": [
+        {
+          "target": "/amount",
+          "column": "typed",
+          "conversion": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          }
+        }
+      ],
+      "evidence": [],
+      "summary": "Propose exact boolean spellings for review."
+    },
+    {
+      "id": "collection:opaque/one",
+      "revision": "revision:one",
+      "packKey": "declared:pack",
+      "packDigest": "sha256:6b40132b72f3be419f6e3d0379243b81463fffcb3c5ad602cac16fd704db4d6b",
+      "dialectDigest": null,
+      "facts": [
+        {
+          "target": "/amount",
+          "column": "typed",
+          "conversion": {
+            "kind": "research-value"
+          }
+        }
+      ],
+      "evidence": [],
+      "summary": "Retain the original declared research value."
+    }
+  ],
+  "description": "Handwritten exact read and complete replacement tool input witnesses.",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/dialects.ts"
+    ]
+  }
+}

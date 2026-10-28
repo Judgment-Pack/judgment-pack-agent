@@ -1,3 +1,4 @@
+import {capabilityProfile, profileFits, profileLabel, presetLimit, type ToolTaxonomy, type CapabilityProfile, type PermissionPreset} from './toolTaxonomy'
 import {mutateCheckpoint,type CheckpointPatch} from './execution/mutation'
 /**
  * Skills (ADR-0009): named, versioned bundles of instructions the host declares, held at the boundary.
@@ -61,7 +62,10 @@ export interface SkillResource {
 }
 
 /** A skill as the host declares it (`tool-offer.json#/$defs/skillDeclaration`). */
+export const SKILL_KINDS = ['method', 'knowledge', 'procedure', 'review'] as const
 export interface SkillDeclaration {
+  kind?: typeof SKILL_KINDS[number]
+  tags?: string[]
   id: string
   name: string
   description: string
@@ -75,6 +79,7 @@ export interface SkillDeclaration {
 
 /** An admitted skill: its declaration and the digest of its bundle, which is the pinned one. */
 export interface Skill extends SkillDeclaration {
+  profile: CapabilityProfile
   digest: string
   /** Its size against `skillBytes` (`skill.json#/$defs/bytes`). */
   bytes: number
@@ -159,8 +164,12 @@ export function skillBytes(skill: Pick<SkillDeclaration, 'instructions' | 'resou
  * canonical JSON of `{name, description, instructions, tools, resources}`, `tools` and `resources` the
  * empty list where the skill has none. A host computes it with this when the person approves a skill.
  */
-export async function skillDigest(skill: Pick<SkillDeclaration, 'name' | 'description' | 'instructions' | 'tools' | 'resources'>): Promise<string> {
+export async function skillDigest(skill: Pick<SkillDeclaration, 'name' | 'description' | 'instructions' | 'tools' | 'resources' | 'kind' | 'tags'>, tools: ReadonlyMap<string, ToolTaxonomy> = new Map()): Promise<string> {
+  capabilityProfile(skill.tools ?? [], tools)
   const bundle = {
+    ...(skill.kind === undefined ? {} : {kind: skill.kind}),
+    ...(skill.tags === undefined ? {} : {tags: skill.tags}),
+    ...((skill.tools?.length ?? 0) === 0 ? {} : {dependencies: skill.tools!.map(name => ({name, taxonomy: tools.get(name)}))}),
     name: skill.name,
     description: skill.description,
     instructions: skill.instructions,
@@ -190,10 +199,12 @@ export function sourceProblem(source: unknown): string {
 /** Why a skill's declaration cannot be read, or `''` (`skill.json`, closed). */
 function declarationProblem(skill: unknown): string {
   if (!object(skill)) return 'it is not an object'
-  const known = ['id', 'name', 'description', 'source', 'instructions', 'tools', 'resources', 'pinnedDigest']
+  const known = ['id', 'name', 'description', 'source', 'instructions', 'tools', 'resources', 'pinnedDigest', 'kind', 'tags']
   if (skill.digest !== undefined) return 'it carries a digest, which the package computes; the host declares the approved one as pinnedDigest'
   const extra = Object.keys(skill).filter((member) => !known.includes(member))
   if (extra.length > 0) return `it carries ${JSON.stringify(extra[0]!.slice(0, 64))}, which a skill does not name`
+  if (skill.kind !== undefined && !(SKILL_KINDS as readonly unknown[]).includes(skill.kind)) return 'its kind is not method, knowledge, procedure or review'
+  if (skill.tags !== undefined && (!Array.isArray(skill.tags) || skill.tags.length > 8 || skill.tags.some(tag => typeof tag !== 'string' || tag.length > 32))) return 'its tags are not at most eight strings of at most 32 characters'
   if (typeof skill.id !== 'string' || !SOURCE_ID.test(skill.id)) return 'its id is not a letter then up to 23 letters, digits and hyphens'
   if (typeof skill.name !== 'string' || !SKILL_NAME.test(skill.name)) return 'its name is not 1 to 64 letters, digits, underscores and hyphens'
   if (typeof skill.description !== 'string' || skill.description.length < 1 || skill.description.length > 1024) return 'its description is not 1 to 1024 characters'
@@ -242,7 +253,7 @@ const withheldSkill = (tool: string, detail: string): SkillNotice => ({ tool, de
  * not in `hostTools` (the host's declared tools, a tool with a source by its wire name), whose bytes pass
  * `skillBytes`, or whose bundle does not hash to its `pinnedDigest`, is withheld with a guardrail.
  */
-export async function declareSkills(declared: readonly unknown[] | undefined, hostTools: readonly string[], bounds: Pick<ContextPolicy, 'skillBytes'>, others: readonly SourceRecord[] = []): Promise<DeclaredSkills> {
+export async function declareSkills(declared: readonly unknown[] | undefined, hostTools: readonly string[], bounds: Pick<ContextPolicy, 'skillBytes'>, others: readonly SourceRecord[] = [], taxonomies: ReadonlyMap<string, ToolTaxonomy> = new Map()): Promise<DeclaredSkills> {
   const skills: Skill[] = []
   const withheld: SkillNotice[] = []
   const records = new Map<string, SourceRecord>(others.map((record) => [record.id, record]))
@@ -264,7 +275,7 @@ export async function declareSkills(declared: readonly unknown[] | undefined, ho
     if (earlier !== undefined && canonicalJSON(earlier) !== canonicalJSON(record)) throw authoredFailure('configuration', `The source ${source.id} is declared twice with different records. Nothing was sent.`, 'context')
     records.set(source.id, record)
     if (!others.some((other) => other.id === source.id) && !sources.has(source.id)) sources.set(source.id, record)
-    const unknown = (skill.tools ?? []).find((tool) => !offered.has(tool))
+    const unknown = (skill.tools ?? []).find((tool) => !offered.has(tool) || !taxonomies.has(tool))
     if (unknown !== undefined) {
       withheld.push(withheldSkill(skill.name, `the skill ${skill.name} names the tool ${JSON.stringify(unknown.slice(0, 64))}, which the host did not declare for this run; the skill is not offered, and a skill grants no tool`))
       continue
@@ -274,12 +285,13 @@ export async function declareSkills(declared: readonly unknown[] | undefined, ho
       withheld.push(withheldSkill(skill.name, `the skill ${skill.name} is ${bytes} bytes, over skillBytes (${bounds.skillBytes}); it is not offered`))
       continue
     }
-    const digest = await skillDigest(skill)
+    const profile = capabilityProfile(skill.tools ?? [], taxonomies)
+    const digest = await skillDigest(skill, taxonomies)
     if (digest !== skill.pinnedDigest) {
       withheld.push(withheldSkill(skill.name, `the skill ${skill.name} is not the bundle the person approved (approved ${skill.pinnedDigest}, declared ${digest}); it is not offered until the person approves it again`))
       continue
     }
-    skills.push({ ...structuredClone(skill), digest, bytes })
+    skills.push({ ...structuredClone(skill), digest, bytes, profile })
   }
   const sourceIds = [...new Set((declared ?? []).map((skill) => (skill as SkillDeclaration).source.id))]
   return { skills, sources: [...sources.values()], sourceIds, withheld }
@@ -303,12 +315,13 @@ export function framedSkillLine(skill: Pick<Skill, 'name' | 'description' | 'sou
  * `section` is what the system text carries after the tools described in text, or `''` where no skill
  * is catalogued.
  */
-export function catalogueSkills(skills: readonly Skill[], bounds: Pick<ContextPolicy, 'cataloguedSkills' | 'skillsCatalogueBytes'>, marker: string): { section: string; catalogued: Skill[]; withheld: SkillNotice[] } {
+export function catalogueSkills(skills: readonly Skill[], bounds: Pick<ContextPolicy, 'cataloguedSkills' | 'skillsCatalogueBytes'>, marker: string, preset?: PermissionPreset): { section: string; catalogued: Skill[]; withheld: SkillNotice[] } {
   const catalogued: Skill[] = []
   const entries: string[] = []
   let bytes = 0
   const cut = new Map<string, number>()
   for (const skill of skills) {
+    if (preset !== undefined && !profileFits(skill.profile, presetLimit(preset))) continue
     const framed = framedSkillLine(skill, marker)
     const size = utf8Bytes(JSON.stringify({ name: skill.name, description: skillLine(skill) }))
     if (catalogued.length + 1 > bounds.cataloguedSkills || bytes + size > bounds.skillsCatalogueBytes) {
@@ -317,7 +330,7 @@ export function catalogueSkills(skills: readonly Skill[], bounds: Pick<ContextPo
     }
     bytes += size
     catalogued.push(skill)
-    entries.push(`- ${skill.name}\n${framed}`)
+    entries.push(`- ${skill.name} (${skill.kind ?? 'unclassified'}; ${profileLabel(skill.profile)})\n${framed}`)
   }
   const withheld = [...cut].map(([id, count]) => withheldSkill(id, `the skills catalogue holds at most ${bounds.cataloguedSkills} skills and ${bounds.skillsCatalogueBytes} bytes (cataloguedSkills, skillsCatalogueBytes), so ${count} of ${id}'s skills ${count === 1 ? 'is' : 'are'} not offered; ${catalogued.length} are offered across the catalogue`))
   const section = catalogued.length === 0 ? '' : `\n\n${SKILLS_HEADER}\n${entries.join('\n')}\n${SKILLS_END}`
@@ -382,6 +395,9 @@ export class SkillGate {
   private commitSources(rows:SourceFigures[]){if(this.run.publishSources)this.run.publishSources();else this.commit({sources:rows})}
   private commit(patch:CheckpointPatch){if(this.run.write)this.run.write(patch);else mutateCheckpoint(this.run.state(),patch)}
 
+  /** Detached identities of this gate's already admitted catalogue; no source or instruction authority. */
+  routingSkills():{id:string;name:string;askingWell:boolean}[]{return [...this.byName.values()].map(({id,name,kind,profile})=>({id,name,askingWell:name==='asking-well'&&kind==='method'&&profile.effect==='pure'&&profile.operations.length===1&&profile.operations[0]==='ask'}))}
+
   /** Whether any skill is catalogued: the loaders are offered. */
   get offered(): boolean {
     return this.byName.size > 0
@@ -433,7 +449,7 @@ export class SkillGate {
   /** `load_skill`: one catalogued skill per call, counted against `skillsPerRun`. */
   loadTool(): HostTool {
     return {
-      name: LOAD_SKILL,
+      name: LOAD_SKILL,taxonomy:{operation:'own-state',effect:'pure'},
       effect: 'plan',
       description: LOAD_SKILL_DESCRIPTION,
       inputSchema: LOAD_SKILL_SCHEMA,
@@ -444,7 +460,7 @@ export class SkillGate {
   /** `unload_skill`: one loaded skill per call. */
   unloadTool(): HostTool {
     return {
-      name: UNLOAD_SKILL,
+      name: UNLOAD_SKILL,taxonomy:{operation:'own-state',effect:'pure'},
       effect: 'plan',
       description: UNLOAD_SKILL_DESCRIPTION,
       inputSchema: UNLOAD_SKILL_SCHEMA,

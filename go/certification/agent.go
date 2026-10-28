@@ -228,12 +228,13 @@ func isChild(request adapter.AgentRequest) bool {
 
 // Observed is one call of the bound function as the monitor saw it.
 type Observed struct {
-	Request  adapter.AgentRequest
-	Answers  []ObservedAnswer
-	Err      error
-	Busy     bool
-	Overlap  bool
-	Sequence int
+	Request           adapter.AgentRequest
+	Answers           []ObservedAnswer
+	Err               error
+	Busy              bool
+	Overlap           bool
+	Sequence          int
+	NativeTermination *adapter.NativeTerminationEvidence
 }
 
 // ObservedAnswer is the answer one tool call got: the tool's own name, its text, whether it failed.
@@ -246,12 +247,13 @@ type ObservedAnswer struct {
 // monitor holds a bound function: every call recorded, any call started while another still runs
 // on the account recorded as a violation, and a log of what happened in order.
 type monitor struct {
-	mu         sync.Mutex
-	active     int
-	calls      []*Observed
-	violations []string
-	log        []string
-	onStart    func(*Observed)
+	mu                sync.Mutex
+	active            int
+	calls             []*Observed
+	violations        []string
+	log               []string
+	nativeTermination bool
+	onStart           func(*Observed)
 }
 
 func (m *monitor) note(line string) {
@@ -262,6 +264,9 @@ func (m *monitor) note(line string) {
 
 func (m *monitor) wrap(run adapter.AgentRun) adapter.AgentRun {
 	return func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
+		if m.nativeTermination && callbacks.ProviderRelease != nil {
+			return &runcontext.ProviderReleaseUnknown{}
+		}
 		m.mu.Lock()
 		held := &Observed{Request: request, Sequence: len(m.calls) + 1}
 		if m.active > 0 {
@@ -276,8 +281,18 @@ func (m *monitor) wrap(run adapter.AgentRun) adapter.AgentRun {
 		if start != nil {
 			start(held)
 		}
+		var finishNative func(error, bool) (adapter.NativeTerminationEvidence, bool)
+		var finishRelease func() bool
+		var observeNative func(adapter.AgentToolCall)
+		if m.nativeTermination {
+			callbacks.ProviderRelease, finishRelease = adapter.ProviderReleaseAttempt()
+			callbacks.NativeTermination, observeNative, finishNative = adapter.NativeTerminationAttempt(request)
+		}
 		tool := callbacks.Tool
 		callbacks.Tool = func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+			if observeNative != nil {
+				observeNative(call)
+			}
 			answer, err := tool(ctx, call)
 			name := call.Name
 			for _, offered := range request.Tools {
@@ -291,9 +306,16 @@ func (m *monitor) wrap(run adapter.AgentRun) adapter.AgentRun {
 			return answer, err
 		}
 		err := run(ctx, request, callbacks)
+		var nativeProof *adapter.NativeTerminationEvidence
+		if finishNative != nil {
+			if proof, ok := finishNative(err, finishRelease()); ok {
+				nativeProof = &proof
+			}
+		}
 		m.mu.Lock()
 		m.active--
 		held.Err = err
+		held.NativeTermination = nativeProof
 		held.Busy = err != nil && adapter.IsBusy(err)
 		m.log = append(m.log, "end "+describe(request))
 		m.mu.Unlock()
@@ -368,7 +390,22 @@ func (rt *agentRuntime) call(_ context.Context, frame json.RawMessage) (json.Raw
 	case "tools/list":
 		var tools []map[string]any
 		for _, name := range gate.Ceiling {
-			tools = append(tools, map[string]any{"name": name, "description": name + " of the checks' runtime", "inputSchema": map[string]any{"type": "object"}})
+			taxonomy := map[string]any{}
+			switch name {
+			case "get_schema", "get_example":
+				taxonomy = map[string]any{"operation": "read", "effect": "read"}
+			case "list_examples":
+				taxonomy = map[string]any{"operation": "discover", "effect": "read"}
+			case "validate":
+				taxonomy = map[string]any{"operation": "check", "effect": "pure", "checkKind": "validate"}
+			case "experimental_test_cases":
+				taxonomy = map[string]any{"operation": "check", "effect": "pure", "checkKind": "test", "experimental": true}
+			case "experimental_evaluate":
+				taxonomy = map[string]any{"operation": "evaluate", "effect": "pure", "experimental": true}
+			default:
+				return nil, fmt.Errorf("undeclared stand-in runtime tool %q", name)
+			}
+			tools = append(tools, map[string]any{"_meta": taxonomy, "name": name, "description": name + " of the checks' runtime", "inputSchema": map[string]any{"type": "object"}})
 		}
 		return answer(map[string]any{"tools": tools})
 	case "tools/call":
@@ -461,7 +498,11 @@ func (w *agentWorld) take() []contract.RunEvent {
 
 func (w *agentWorld) hostTools() []runcontext.HostTool {
 	tool := func(name, effect, delegation string) runcontext.HostTool {
-		return runcontext.HostTool{Name: name, Effect: effect, Delegation: delegation, Description: name + " of the checks' host.",
+		taxonomy := &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"}
+		if name == readTool || name == researchTool {
+			taxonomy = &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}
+		}
+		return runcontext.HostTool{Name: name, Taxonomy: taxonomy, Effect: effect, Delegation: delegation, Description: name + " of the checks' host.",
 			InputSchema: json.RawMessage(`{"type":"object","properties":{},"additionalProperties":true}`),
 			Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				w.mu.Lock()

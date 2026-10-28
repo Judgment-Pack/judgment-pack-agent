@@ -1,0 +1,158 @@
+{
+  "checkpoint": {
+    "context": {
+      "entries": [],
+      "scope": "fixture-context"
+    },
+    "explanation": "Finished",
+    "grants": [],
+    "id": "fixture-run",
+    "limit": 1,
+    "operations": [],
+    "phase": "work",
+    "plan": [
+      {
+        "id": "step-1",
+        "step": "First secret prose",
+        "status": "pending"
+      },
+      {
+        "id": "step-2",
+        "step": "Next",
+        "status": "pending",
+        "dependsOn": [
+          "step-1"
+        ]
+      }
+    ],
+    "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "complete",
+    "unit": "provider-managed",
+    "used": 0,
+    "version": 3,
+    "planState": {
+      "revision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+      "sequence": 0,
+      "nextId": 3,
+      "discarded": 0,
+      "history": [],
+      "taskSchedule": {
+        "version": 1,
+        "binding": {
+          "run": "fixture-run",
+          "execution": "fixture-run",
+          "planRevision": "sha256:12f2994235447ce2cf3f44e35cd6d88b15b49128fa894684783f0d00dba61743",
+          "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "unit": "provider-managed"
+        },
+        "definitionDigest": "sha256:b84ed6a5dd2111820574c3fa793e3168d3ba8151aa275b910aaeed5e19dc0565",
+        "rows": [
+          {
+            "id": "step-1",
+            "claims": []
+          },
+          {
+            "id": "step-2",
+            "claims": []
+          }
+        ]
+      },
+      "taskEnvelope": {
+        "run": "fixture-run",
+        "execution": "fixture-run",
+        "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "configuration": {
+          "id": "host-envelope",
+          "revision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "unit": "provider-invocations",
+          "limit": 2
+        }
+      }
+    },
+    "policy": {
+      "repeatTools.mode": {
+        "value": "on",
+        "layer": "run",
+        "source": "layer"
+      },
+      "repeatTools.remindAt": {
+        "value": 1,
+        "layer": "project",
+        "source": "layer"
+      },
+      "repeatTools.stopAt": {
+        "value": 2,
+        "layer": "table",
+        "source": "layer"
+      },
+      "private.setting": {
+        "value": "PRIVATE-POLICY",
+        "layer": "run"
+      }
+    },
+    "repeatTools": {
+      "executions": [
+        {
+          "execution": "fixture-run",
+          "remindAt": 1,
+          "stopAt": 2,
+          "count": 1,
+          "reminded": true,
+          "reminderDelivered": true,
+          "stopped": false,
+          "seen": [
+            {
+              "dispatchId": "first",
+              "keyDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            {
+              "dispatchId": "second",
+              "keyDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "repeatTools": {
+    "executions": [
+      {
+        "execution": "fixture-run",
+        "remindAt": 1,
+        "stopAt": 2,
+        "count": 1,
+        "reminded": true,
+        "reminderDelivered": true,
+        "stopped": false
+      }
+    ],
+    "policy": {
+      "repeatTools.mode": {
+        "value": "on",
+        "layer": "run",
+        "source": "layer"
+      },
+      "repeatTools.remindAt": {
+        "value": 1,
+        "layer": "project",
+        "source": "layer"
+      },
+      "repeatTools.stopAt": {
+        "value": 2,
+        "layer": "table",
+        "source": "layer"
+      }
+    }
+  },
+  "refusals": [
+    "legacy",
+    "off",
+    "missing-policy",
+    "threshold",
+    "counter",
+    "delivered",
+    "private-seen",
+    "private-policy",
+    "provenance"
+  ]
+}

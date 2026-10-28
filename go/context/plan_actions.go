@@ -9,7 +9,7 @@ import (
 )
 
 func validStepEvidence(v *Value) bool {
-	if !v.IsObject() || !hasOnly(v, "operations", "artifacts") || !v.Get("operations").IsArray() || !v.Get("artifacts").IsArray() || v.Get("operations").Len()+v.Get("artifacts").Len() > 20 {
+	if !v.IsObject() || !hasOnly(v, "operations", "artifacts", "child") || !v.Get("operations").IsArray() || !v.Get("artifacts").IsArray() || v.Get("operations").Len()+v.Get("artifacts").Len() > 20 {
 		return false
 	}
 	seen := map[string]bool{}
@@ -27,16 +27,24 @@ func validStepEvidence(v *Value) bool {
 		}
 		seen[key] = true
 	}
+	if child := v.Get("child"); child != nil {
+		if !child.IsObject() || !hasOnly(child, "task", "checkpointDigest", "resultDigest", "eventDigest", "commitId") || !isText(child.Get("task"), 100) || planText(child.Get("task")) == "" || !isText(child.Get("commitId"), 100) || planText(child.Get("commitId")) == "" || !planRevisionDigest(child.Get("checkpointDigest")) || !planRevisionDigest(child.Get("resultDigest")) || !planRevisionDigest(child.Get("eventDigest")) {
+			return false
+		}
+	}
 	return true
 }
 func validRecordedStep(s *Value) bool {
+	if !validTaskConfiguration(s) {
+		return false
+	}
 	if o := s.Get("origin"); o != nil {
 		if !o.IsObject() || !hasOnly(o, "plan", "revision", "index") || !isText(o.Get("plan"), 256) || planText(o.Get("plan")) == "" || !planRevisionDigest(o.Get("revision")) || !isCount(o.Get("index"), 19) {
 			return false
 		}
 	}
 	if e := s.Get("evidence"); e != nil {
-		if planText(s.Get("status")) != "completed" || !validStepEvidence(e) || e.Get("operations").Len()+e.Get("artifacts").Len() == 0 {
+		if planText(s.Get("status")) != "completed" || !validStepEvidence(e) || e.Get("operations").Len()+e.Get("artifacts").Len() == 0 && !e.Has("child") {
 			return false
 		}
 	}
@@ -46,6 +54,9 @@ func validRecordedStep(s *Value) bool {
 	return !s.Has("notNeededReason")
 }
 func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope) string {
+	if e.Has("child") {
+		return "wrong-scope"
+	}
 	if book == nil {
 		return "evidence-unavailable"
 	}
@@ -98,20 +109,28 @@ func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope) string
 	}
 	return ""
 }
-func closePlan(plan, state, args *Value, book *DurableBook, scope DurableScope) (*Value, *Value, string) {
+func closePlan(plan, state, args *Value, book *DurableBook, scope DurableScope, verifiedChildren ...TaskCompletionEvidence) (*Value, *Value, string) {
 	if !args.IsObject() || !hasOnly(args, "id", "expectedRevision", "outcome", "evidence", "reason") || !isText(args.Get("id"), 256) || planText(args.Get("id")) == "" || !args.Get("expectedRevision").IsString() || !oneOf(args.Get("outcome"), "completed", "not-needed") {
 		return nil, nil, "invalid-input"
 	}
 	if planText(args.Get("expectedRevision")) != planText(state.Get("revision")) {
 		return nil, nil, "revision-changed"
 	}
-	var active *Value
-	for _, s := range plan.Items() {
-		if planText(s.Get("status")) == "in_progress" {
-			active = s
+	var delegated *Value
+	for _, row := range state.Get("taskSchedule").Get("rows").Items() {
+		if planText(row.Get("id")) == planText(args.Get("id")) {
+			delegated = row.Get("child")
+			break
 		}
 	}
-	if active == nil || planText(active.Get("id")) != planText(args.Get("id")) {
+	var active *Value
+	for _, s := range plan.Items() {
+		if planText(s.Get("id")) == planText(args.Get("id")) && (planText(s.Get("status")) == "in_progress" || delegated != nil && planText(s.Get("status")) == "pending" && planText(args.Get("outcome")) == "completed") {
+			active = s
+			break
+		}
+	}
+	if active == nil {
 		return nil, nil, "active-step-required"
 	}
 	step := active.Clone()
@@ -126,8 +145,35 @@ func closePlan(plan, state, args *Value, book *DurableBook, scope DurableScope) 
 		if args.Has("reason") || !validStepEvidence(args.Get("evidence")) {
 			return nil, nil, "invalid-input"
 		}
-		if reason := planEvidenceFailure(args.Get("evidence"), book, scope); reason != "" {
-			return nil, nil, reason
+		evidence := args.Get("evidence")
+		if delegated != nil {
+			child := evidence.Get("child")
+			if child == nil || evidence.Get("operations").Len() != 0 || evidence.Get("artifacts").Len() != 0 {
+				return nil, nil, "missing-evidence"
+			}
+			var verified *TaskCompletionEvidence
+			for at := range verifiedChildren {
+				row := &verifiedChildren[at]
+				if row.Step == planText(active.Get("id")) && row.Task == planText(delegated.Get("task")) && row.PlanRevision == planText(delegated.Get("planRevision")) {
+					verified = row
+					break
+				}
+			}
+			if verified == nil {
+				return nil, nil, "evidence-unavailable"
+			}
+			expected := ObjectOf("task", String(verified.Task), "checkpointDigest", String(verified.CheckpointDigest), "resultDigest", String(verified.ResultDigest), "eventDigest", String(verified.EventDigest), "commitId", String(verified.CommitID))
+			raw, _ := json.Marshal(verified.TaskChildResult)
+			if CanonicalJSON(child) != CanonicalJSON(expected) || CanonicalJSON(delegated.Get("result")) != CanonicalJSON(MustParseJSON(string(raw))) {
+				return nil, nil, "wrong-scope"
+			}
+		} else {
+			if evidence.Has("child") {
+				return nil, nil, "wrong-scope"
+			}
+			if reason := planEvidenceFailure(evidence, book, scope); reason != "" {
+				return nil, nil, reason
+			}
 		}
 		step.Set("evidence", args.Get("evidence").Clone())
 	}
@@ -247,6 +293,14 @@ func planEvent(kind, execution string, row *Value) (contract.RunEvent, error) {
 		v.Set("execution", String(execution))
 	}
 	v.Set("version", Number(1))
+	if kind == "plan_revised" {
+		for _, change := range row.Get("diff").Items() {
+			if taskConfigured(change.Get("before")) || taskConfigured(change.Get("after")) {
+				v.Set("version", Number(2))
+				break
+			}
+		}
+	}
 	var event contract.RunEvent
 	err := json.Unmarshal(v.JSON(), &event)
 	return event, err
@@ -262,7 +316,16 @@ func (c *ExecutionController) publishPlan(ctx context.Context, event contract.Ru
 	_, err = c.PublishPlan(ctx, cp, event)
 	return err
 }
-func (c *ExecutionController) applyPlan(ctx context.Context, plan, state *Value, explanation string, event contract.RunEvent) error {
+func (c *ExecutionController) applyPlan(ctx context.Context, plan, state *Value, explanation string, event contract.RunEvent) (result error) {
+	before := c.State()
+	defer func() {
+		if result != nil {
+			_ = c.MutateCheckpoint(CheckpointPatch{"Plan": before.Plan, "PlanState": before.PlanState, "Explanation": before.Explanation, "Status": before.Status})
+			if c.PlanRefused != nil {
+				c.PlanRefused()
+			}
+		}
+	}()
 	changes := changedPlanDepartures(c.State().Plan, c.State().PlanState, plan)
 	if changes.Len() > 0 {
 		if strings.TrimSpace(explanation) == "" {
@@ -319,7 +382,7 @@ func (c *ExecutionController) ApprovalNotice() (contract.RunEvent, error) {
 	return contract.RunEvent{}, nil
 }
 func (c *ExecutionController) CompletionTool() HostTool {
-	return HostTool{Name: "complete_plan_step", Effect: "plan", Description: "Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","maxLength":100},"expectedRevision":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"outcome":{"enum":["completed","not-needed"]},"reason":{"type":"string","minLength":1,"maxLength":1500},"evidence":{"type":"object","properties":{"operations":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":256}},"artifacts":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"kind":{"enum":["artifact","dialect"]},"id":{"type":"string","maxLength":256},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}},"required":["kind","id","digest"],"additionalProperties":false}}},"required":["operations","artifacts"],"additionalProperties":false}},"required":["id","expectedRevision","outcome"],"additionalProperties":false,"oneOf":[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]}`), Execute: func(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
+	tool := HostTool{Name: "complete_plan_step", Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan", Description: "Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.", InputSchema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","maxLength":100},"expectedRevision":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"outcome":{"enum":["completed","not-needed"]},"reason":{"type":"string","minLength":1,"maxLength":1500},"evidence":{"type":"object","properties":{"operations":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":256}},"artifacts":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"kind":{"enum":["artifact","dialect"]},"id":{"type":"string","maxLength":256},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"}},"required":["kind","id","digest"],"additionalProperties":false}}},"required":["operations","artifacts"],"additionalProperties":false}},"required":["id","expectedRevision","outcome"],"additionalProperties":false,"oneOf":[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]}`), Execute: func(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
 		if err := ctx.Err(); err != nil {
 			return ToolResult{}, err
 		}
@@ -338,7 +401,11 @@ func (c *ExecutionController) CompletionTool() HostTool {
 		if c.PlanProof != nil {
 			book, scope = c.PlanProof()
 		}
-		next, saved, reason := closePlan(plan, state, args, book, scope)
+		var children []TaskCompletionEvidence
+		if c.TaskCompletionProof != nil {
+			children = c.TaskCompletionProof()
+		}
+		next, saved, reason := closePlan(plan, state, args, book, scope, children...)
 		if reason != "" {
 			row := ObjectOf("revision", state.Get("revision"), "reason", String(reason))
 			if id := args.Get("id"); isText(id, 100) && planText(id) != "" {
@@ -371,15 +438,21 @@ func (c *ExecutionController) CompletionTool() HostTool {
 		}
 		return Answer(ObjectOf("status", args.Get("outcome"), "plan", c.State().Plan, "planRevision", c.State().PlanState.Get("revision"))), nil
 	}}
+	if c.taskSteps {
+		schema := MustParseJSON(string(tool.InputSchema))
+		schema.Get("properties").Get("evidence").Get("properties").Set("child", MustParseJSON(`{"type":"object","properties":{"task":{"type":"string","minLength":1,"maxLength":100},"checkpointDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"resultDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"eventDigest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"commitId":{"type":"string","minLength":1,"maxLength":100}},"required":["task","checkpointDigest","resultDigest","eventDigest","commitId"],"additionalProperties":false}`))
+		tool.InputSchema = schema.JSON()
+	}
+	return tool
 }
 
-func validPlanInput(value *Value) bool {
+func validPlanInput(value *Value, configured ...bool) bool {
 	if !value.IsArray() || value.Len() < 1 || value.Len() > 20 {
 		return false
 	}
 	active := 0
 	for _, s := range value.Items() {
-		if !s.IsObject() || !hasOnly(s, "id", "step", "status", "detail") || s.Has("id") && !planStepID(s.Get("id")) || !isText(s.Get("step"), 1000) || strings.TrimSpace(planText(s.Get("step"))) == "" || !oneOf(s.Get("status"), "pending", "in_progress", "completed", "not-needed") || s.Has("detail") && !isText(s.Get("detail"), 1500) {
+		if !s.IsObject() || !validPlanInputMembers(s, len(configured) > 0 && configured[0]) || !validTaskConfiguration(s) || s.Has("id") && !planStepID(s.Get("id")) || !isText(s.Get("step"), 1000) || strings.TrimSpace(planText(s.Get("step"))) == "" || !oneOf(s.Get("status"), "pending", "in_progress", "completed", "not-needed") || s.Has("detail") && !isText(s.Get("detail"), 1500) {
 			return false
 		}
 		if planText(s.Get("status")) == "in_progress" {
@@ -387,6 +460,7 @@ func validPlanInput(value *Value) bool {
 		}
 	}
 	return active <= 1
+
 }
 
 func (c *ExecutionController) availablePlanEvidence() *Value {
@@ -415,10 +489,21 @@ func (c *ExecutionController) availablePlanEvidence() *Value {
 			}
 		}
 	}
-	return ObjectOf("available", Bool(true), "operations", operations, "artifacts", artifacts)
+	out := ObjectOf("available", Bool(true), "operations", operations, "artifacts", artifacts)
+	if c.TaskCompletionProof != nil {
+		children := c.TaskCompletionProof()
+		if len(children) > 0 {
+			raw, _ := json.Marshal(children)
+			out.Set("children", MustParseJSON(string(raw)))
+		}
+	}
+	return out
 }
 
 func (c *SessionContext) PlanApprovalRefusal(name string) error {
+	if err := c.RequireRouteCapability(name, nil); err != nil {
+		return err
+	}
 	if !c.Execution.State().PlanState.Has("pending") {
 		return nil
 	}
@@ -426,4 +511,11 @@ func (c *SessionContext) PlanApprovalRefusal(name string) error {
 	detail := "PlanApprovalRequired: this run waits for its plan decision."
 	c.notices = append(c.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Reason: &reason, Detail: detail}})
 	return failure.ToolInput(detail)
+}
+
+func validPlanInputMembers(step *Value, configured bool) bool {
+	if configured {
+		return hasOnly(step, "id", "step", "status", "detail", "dependsOn", "budget", "delegation")
+	}
+	return hasOnly(step, "id", "step", "status", "detail")
 }

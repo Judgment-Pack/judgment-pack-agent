@@ -10,7 +10,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Called by release.yml, so the release runs the tagged commit's own jobs.
+  # Explicit fresh validation on main is the bounded recovery route for missing evidence.
+  workflow_dispatch:
   workflow_call:
 
 permissions:
@@ -21,6 +22,13 @@ jobs:
     name: contract
     runs-on: ubuntu-latest
     steps:
+      - name: Initialize job scratch
+        run: |
+          set -eu
+          scratch="$(mktemp -d "${RUNNER_TEMP}/jpdev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-XXXXXX")"
+          mkdir "${scratch}/tmp"
+          echo "JPDEV_SCRATCH=${scratch}" >> "$GITHUB_ENV"
+          echo "TMPDIR=${scratch}/tmp" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -30,13 +38,34 @@ jobs:
         with:
           python-version: '3.12'
       - name: The cheap steps of dev.json
-        run: scripts/dev/check.sh --manifest dev.json --all --only contract,local-paths,agent-docs,diff-check
+        run: |
+          set -o pipefail
+          scripts/dev/check.sh --manifest dev.json --all --only contract,local-paths,agent-docs,diff-check | tee "${{ runner.temp }}/checks.log"
+
+      - name: Record exact CI inputs and coverage
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python3 scripts/dev/ci_evidence.py capture --workflow ci --job contract --check-log "${{ runner.temp }}/checks.log" --output "${{ runner.temp }}/evidence.json"
+      - name: Upload immutable CI evidence
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-evidence-ci-contract-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence.json
+          if-no-files-found: error
+          retention-days: 7
 
   check:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
+      - name: Initialize job scratch
+        run: |
+          set -eu
+          scratch="$(mktemp -d "${RUNNER_TEMP}/jpdev-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-XXXXXX")"
+          mkdir "${scratch}/tmp"
+          echo "JPDEV_SCRATCH=${scratch}" >> "$GITHUB_ENV"
+          echo "TMPDIR=${scratch}/tmp" >> "$GITHUB_ENV"
       # The whole history, so that --changed finds the merge base with the base branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,6 +86,15 @@ jobs:
           print("goversion=" + tc.get("go", {}).get("version", ""))
           print("python=" + tc.get("python", {}).get("version", "3.12"))
           PY
+          # The required receipt proof uses the same immutable producer pin locally and in CI.
+          python3 - >> "$GITHUB_OUTPUT" <<'PYGATEWAY'
+          import json, re
+          pin = json.load(open("tests/fixtures/gateway-receipts/source.json", encoding="utf-8"))
+          assert pin.get("version") == 1, "Gateway producer pin version is unreadable"
+          assert pin.get("repository") == "Judgment-Pack/judgment-pack-gateway", "Gateway producer repository differs"
+          assert re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", pin.get("commit") or ""), "Gateway producer commit pin is pending or malformed"
+          print("gateway=" + pin["commit"])
+          PYGATEWAY
           # The Desk commit scripts/parity.sh was made against, read from the script.
           pin="$(sed -n 's/^desk_pin=\([0-9a-f]\{40\}\)$/\1/p' scripts/parity.sh)"
           [ -n "${pin}" ] || { echo 'scripts/parity.sh has no desk_pin= line of a full commit id' >&2; exit 1; }
@@ -86,19 +124,41 @@ jobs:
           persist-credentials: false
       - name: Name the checkout for the parity step
         run: echo "JPDEV_DESK=${GITHUB_WORKSPACE}/desk-checkout" >> "$GITHUB_ENV"
+      # The receipt runner refuses any dirty or differently pinned Gateway checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Judgment-Pack/judgment-pack-gateway
+          ref: ${{ steps.dev.outputs.gateway }}
+          path: gateway-checkout
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Name the immutable Gateway producer checkout
+        run: echo "JP_AGENT_GATEWAY_SOURCE=${GITHUB_WORKSPACE}/gateway-checkout" >> "$GITHUB_ENV"
       - name: Setup steps
-        run: scripts/dev/check.sh --setup
-      # A pull request runs the checks jpdev.json maps its changed paths to, and the whole list
-      # when a path is unmapped or the mapping, dev.json or the runner changed. A push to main and
-      # the release's call (a tag push) run the whole list, and only that run is what a release is
-      # held to.
+        run: |
+          set -o pipefail
+          scripts/dev/check.sh --setup | tee "${{ runner.temp }}/setup.log"
+      # Pull requests select mapped checks; main and release run the full list.
       - name: Checks
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
         run: |
+          set -o pipefail
           if [ "$EVENT" = pull_request ]; then
-            scripts/dev/check.sh --all --changed "origin/$BASE_REF"
+            scripts/dev/check.sh --all --changed "origin/$BASE_REF" | tee "${{ runner.temp }}/checks.log"
           else
-            scripts/dev/check.sh --all
+            scripts/dev/check.sh --all | tee "${{ runner.temp }}/checks.log"
           fi
+
+      - name: Record exact CI inputs and coverage
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python3 scripts/dev/ci_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
+      - name: Upload immutable CI evidence
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-evidence-ci-check-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence.json
+          if-no-files-found: error
+          retention-days: 7

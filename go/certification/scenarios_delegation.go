@@ -199,7 +199,7 @@ func Delegation(with func(adapter.Adapter) adapter.Adapter) ScenarioCheck {
 			hostTools := HostToolsOf(file.HostTools, ledger)
 			declared := append([]runcontext.HostTool{}, hostTools...)
 			delegate := turn.DelegationTool(turn.TaskProfiles)
-			declared = append(declared, runcontext.HostTool{Name: delegate.Name, Description: delegate.Description, InputSchema: delegate.InputSchema, Interaction: "delegation"})
+			declared = append(declared, runcontext.HostTool{Name: delegate.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: delegate.Description, InputSchema: delegate.InputSchema, Interaction: "delegation"})
 			host, err := openScenario(ctx, server, ScenarioEndpoint{Scenario: "delegation", AnswerAs: answerAs}, declared, true)
 			if err != nil {
 				return nil, err

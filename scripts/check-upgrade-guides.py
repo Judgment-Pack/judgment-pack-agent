@@ -52,6 +52,13 @@ def validate(root, tags=(), tag=None):
         links = re.findall(r"\[[^]\n]+\]\(([^)\s]+)\)", notes)
         if expected not in links:
             problems.append(f"docs/releases/{name}.md must link to {expected}")
+        # The generated inventory begins with v0.11; historical notes retain their original contract.
+        if tuple(map(int, name[1:].split('.'))) >= (0, 11, 0):
+            inventory = f"https://github.com/Judgment-Pack/judgment-pack-agent/blob/{name}/docs/dependencies.md"
+            if inventory not in links:
+                problems.append(f"docs/releases/{name}.md must link to {inventory}")
+            if not (root / "docs/dependencies.md").is_file():
+                problems.append("docs/dependencies.md is missing")
     return problems
 
 

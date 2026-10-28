@@ -14,7 +14,7 @@ import { NoSession, configureHarness } from './host'
 
 /** A session id of the shape the chassis mints, for the tests below. */
 const A_SESSION = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6'
-import { scriptedRuntime } from './certification/scriptedServer'
+import { scriptedRuntime, currentContractReplayTools } from './certification/scriptedServer'
 import type { AssistantEvent, AssistantSession, Engine } from './engine'
 import { normalize } from './thinking'
 
@@ -635,12 +635,13 @@ describe('the assistant’s own connection', () => {
   })
 
   it('serves only the allow-listed tools, out of the runtime’s own listing', async () => {
-    const runtime = await scriptedRuntime()
+    const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
     const connection = openAssistantConnection({
       allowed: ['get_schema', 'validate'],
       onEvent: () => {},
       transport: runtime.transport
     })
+    await expect(connection.ready).resolves.toMatchObject({tools:[{name:'get_schema',_meta:{operation:'read',effect:'read'}},{name:'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'}}]})
     const ready = await connection.ready
     expect(ready.tools.map((tool) => tool.name)).toEqual(['get_schema', 'validate'])
     // The definitions are the runtime's own, schema included.
@@ -650,7 +651,7 @@ describe('the assistant’s own connection', () => {
   })
 
   it('closes the connection it opened', async () => {
-    const runtime = await scriptedRuntime()
+    const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
     let closed = 0
     const watched: Transport = {
       start: () => runtime.transport.start(),
@@ -674,7 +675,7 @@ describe('the assistant’s own connection', () => {
       onEvent: () => {},
       transport: watched
     })
-    await connection.ready
+    await expect(connection.ready).resolves.toMatchObject({tools:[{name:'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'}}]})
     await connection.close()
     expect(closed).toBe(1)
     await runtime.close()
@@ -831,7 +832,7 @@ describe('the assistant’s own connection', () => {
         if (frame.method === 'initialize') {
           reply({ protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'held', version: '0' } })
         } else if (frame.method === 'tools/list') {
-          reply({ tools: [{ name: 'validate', inputSchema: { type: 'object' } }] })
+          reply({ tools: [{ name: 'validate', inputSchema: { type: 'object' }, _meta:{operation:'check',effect:'pure',checkKind:'validate'} }] })
         } else if (frame.method === 'tools/call') {
           held = true
           release = () => reply({ content: [{ type: 'text', text: 'the answer that came too late' }] })
@@ -867,13 +868,14 @@ describe('the assistant’s own connection', () => {
   })
 
   it('reports a refusal as a guardrail event and lets nothing out of the page', async () => {
-    const runtime = await scriptedRuntime()
+    const runtime = await scriptedRuntime({tools:currentContractReplayTools()})
     const events: AssistantEvent[] = []
     const connection = openAssistantConnection({
       allowed: ['validate'],
       onEvent: (event) => events.push(event),
       transport: runtime.transport
     })
+    await expect(connection.ready).resolves.toMatchObject({tools:[{name:'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'}}]})
     const ready = await connection.ready
     await expect(ready.callTool('write_file', { path: 'p' })).rejects.toThrow(/write_file/)
     expect(runtime.seen).toEqual([])

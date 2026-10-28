@@ -997,9 +997,57 @@ func FirstMatch(pattern *CompiledPattern, line string, budget *PatternBudget) (i
 // MatchRanges unions overlapping matches in one bounded Pike pass.
 // Offsets are UTF-16 units, as in the shared TypeScript matcher.
 func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) ([][2]int, bool) {
+	var workspace matchRangesWorkspace
+	return workspace.match(pattern, text, budget)
+}
+
+// matchRangesWorkspace holds temporary VM state, never text or returned ranges.
+// A JSON guard call reuses it across its strings and patterns, then discards it.
+// Each match clears every touched counter on return, including budget exhaustion.
+// It is owned by one caller and must not be used concurrently.
+type matchRangesWorkspace struct {
+	current, next []int
+	pcs, nextPCs  []int
+	stack         []int
+}
+
+func (w *matchRangesWorkspace) match(pattern *CompiledPattern, text string, budget *PatternBudget) ([][2]int, bool) {
 	units := u16(text)
 	ranges := [][2]int{}
-	current := map[int]int{}
+	// Program counters form a bounded dense domain. List only the counters
+	// touched at this position, retaining instruction-order traversal and charges.
+	size := len(pattern.ops)
+	if cap(w.current) < size {
+		w.current, w.next = make([]int, size), make([]int, size)
+		for i := range w.current {
+			w.current[i], w.next[i] = -1, -1
+		}
+	}
+	if cap(w.pcs) < size {
+		w.pcs = make([]int, 0, size)
+	}
+	if cap(w.nextPCs) < size {
+		w.nextPCs = make([]int, 0, size)
+	}
+	if cap(w.stack) < size {
+		w.stack = make([]int, 0, size)
+	}
+	current, next := w.current[:size], w.next[:size]
+	pcs, nextPCs := w.pcs[:0], w.nextPCs[:0]
+	stack := w.stack[:0]
+	defer func() {
+		// The two lists follow their arrays when they swap. Clear both before
+		// a smaller or larger program can reuse either orientation.
+		for _, pc := range pcs {
+			current[pc] = -1
+		}
+		for _, pc := range nextPCs {
+			next[pc] = -1
+		}
+		w.current, w.next = current, next
+		w.pcs, w.nextPCs = pcs[:0], nextPCs[:0]
+		w.stack = stack[:0]
+	}()
 	holds := func(kind string, pos int) bool {
 		if kind == "bol" {
 			return pos == 0
@@ -1011,13 +1059,16 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		after := pos < len(units) && pattern.word(rune(units[pos]))
 		return (before != after) == (kind == "word")
 	}
-	add := func(set map[int]int, pc, start, pos int) {
-		stack := []int{pc}
+	add := func(set []int, active *[]int, pc, start, pos int) {
+		stack = append(stack[:0], pc)
 		for len(stack) > 0 {
 			at := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			if prior, ok := set[at]; ok && prior <= start {
+			if prior := set[at]; prior >= 0 && prior <= start {
 				continue
+			}
+			if set[at] < 0 {
+				*active = append(*active, at)
 			}
 			set[at] = start
 			budget.Steps--
@@ -1038,17 +1089,16 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		if budget.Steps <= 0 {
 			return nil, false
 		}
-		add(current, 0, pos, pos)
+		add(current, &pcs, 0, pos, pos)
 		code, width := rune(-1), 1
 		if pos < len(units) {
 			code, width = codePointAt(units, pos)
 		}
-		next := map[int]int{}
-		// Instruction order makes work accounting byte-identical to TypeScript.
-		pcs := make([]int, 0, len(current))
-		for pc := range current {
-			pcs = append(pcs, pc)
+		for _, pc := range nextPCs {
+			next[pc] = -1
 		}
+		nextPCs = nextPCs[:0]
+		// Instruction order makes work accounting byte-identical to TypeScript.
 		sort.Ints(pcs)
 		for _, pc := range pcs {
 			start := current[pc]
@@ -1063,7 +1113,7 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 				}
 				ranges = append(ranges, [2]int{from, pos})
 			} else if pattern.ops[pc] == opChar && code >= 0 && pattern.tests[pc](code) {
-				add(next, pc+1, start, pos+width)
+				add(next, &nextPCs, pc+1, start, pos+width)
 			}
 		}
 		if budget.Steps <= 0 {
@@ -1072,7 +1122,8 @@ func MatchRanges(pattern *CompiledPattern, text string, budget *PatternBudget) (
 		if pos == len(units) {
 			return ranges, true
 		}
-		current = next
+		current, next = next, current
+		pcs, nextPCs = nextPCs, pcs
 		pos += width
 	}
 }

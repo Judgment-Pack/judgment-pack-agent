@@ -222,8 +222,14 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 	}
 	admittedFields := map[string][]fieldAdmission{}
 	fieldConversions := map[string]map[string][]string{
-		"context/run_writer.go":      {"PrepareDurableInput": {"RunStore", "RequestCap"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}},
-		"context/plan_validation.go": {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
+		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
+		"context/turn_route_owner.go":   {"*SessionContext.initializeTurnRoute": {"ChildDefinition", "Agent", "Tools", "HostTools", "Route", "RouteFacts"}},
+		"adapter/physical_model.go":     {"BindPhysicalModel": {"physicalModel", "Model"}, "BindPolicyPhysicalModel": {"physicalModel", "Model"}},
+		"context/controller.go":         {"NewExecutionController": {"TaskSteps"}},
+		"context/plan_validation.go":    {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
+		"context/plan_preparation.go":   {"PreparePlanDecision": {"PlanResolver", "RunStore"}, "validateOriginalPlan": {"PlanResolver"}},
+		"adapter/context_enrollment.go": {"EnrollContext": {"EnrollContext"}},
+		"adapter/eino/observation.go":   {"Observe": {"Model", "Agent", "RunStore", "Tools", "HostTools", "Skills", "Subagents", "Children", "RequestCap"}},
 	}
 	for _, tree := range trees {
 		path := files.Position(tree.Pos()).Filename
@@ -233,14 +239,14 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 			"adapter/policy.go":               {"PolicyConnectionIDs", "PolicyBinding", "ApplyPolicy", "PolicyFamilies"},
 			"adapter/agent.go":                {"*Agent.Admit"},
 			"adapter/agent/agent.go":          {"Run"},
-			"adapter/eino/run.go":             {"Run"},
+			"adapter/eino/run.go":             {"Run", "execute"},
 			"adapter/delegate/coordinator.go": {"With", "criticReserve", "*coordinator.drive", "*coordinator.taskProvider"},
 			"adapter/delegate/policy.go":      {"*coordinator.parentPolicy", "*coordinator.childBinding", "*coordinator.hasRestoredDefinitions"},
 			"adapter/delegate/batch.go":       {"*coordinator.plan", "*coordinator.childModelName", "*coordinator.runChild", "*coordinator.childHostTools"},
 			"adapter/delegate/agent.go":       {"*coordinator.parentAgent", "*coordinator.childAgent", "*coordinator.driveAgent", "*coordinator.restoreAgent", "*coordinator.continueAgent", "*coordinator.parentInvocation"},
 			"adapter/delegate/run.go":         {"*coordinator.drive", "*coordinator.runBatch", "*coordinator.parent", "*coordinator.child", "*coordinator.concurrency"},
 			"adapter/delegate/figures.go":     {"*coordinator.childFigures", "*coordinator.batchFigures", "*coordinator.withFigures"},
-			"context/session.go":              {"NewSessionContext", "ContextualSession", "*SessionContext.ModelName", "*SessionContext.Models", "*SessionContext.AskHost", "*SessionContext.MessagesContext"},
+			"context/session.go":              {"NewSessionContext", "ContextualSession", "ContextualSessionWithEnrollment", "*SessionContext.ModelName", "*SessionContext.Models", "*SessionContext.AskHost", "*SessionContext.MessagesContext"},
 			"context/policy_table.go":         {"resolveSessionPolicy"},
 			"context/delegation_policy.go":    {"delegatedSessionPolicy", "*DelegatedPolicy.restore"},
 			"context/planning.go":             {"PlanningSession"},
@@ -303,7 +309,7 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		relative, _ := filepath.Rel(root, position.Filename)
 		constructors := map[string][]string{
 			"adapter/request_session.go": {"requestAgent", "*RequestSession.ResolvedCapabilities", "NewRequestOperations", "NewRequestSession", "*RequestSession.PolicyBinding"},
-			"context/request_values.go":  {"NewRequestValues"},
+			"context/request_values.go":  {"NewRequestValues", "*SessionContext.RequestValues"},
 		}
 		for _, tree := range trees {
 			for _, declaration := range tree.Decls {

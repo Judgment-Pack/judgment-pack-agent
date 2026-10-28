@@ -37,3 +37,4 @@ dist/
 
 # The Desk checkout the CI check job makes for the parity step (.github/workflows/ci.yml).
 /desk-checkout/
+/gateway-checkout/

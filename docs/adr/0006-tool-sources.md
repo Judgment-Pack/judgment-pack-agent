@@ -5,6 +5,8 @@ Status: proposed, 2026-10-19. Issue agent#66. §2's act calls amended by
 connection with its pinned tool list and re-approval, the source provenance in the task view and the
 run report) is a Desk follow-up.
 
+Taxonomy declarations and approval pins are amended by [ADR-0027](0027-tool-taxonomy.md). Its mandatory owner taxonomy supersedes the defaults described below; historical saved records remain unchanged.
+
 ## Context
 
 Until this decision a host tool was the host's own: the research tools, the ledger's readers, the plan

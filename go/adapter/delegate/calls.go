@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/internal/physicaldispatch"
 	"io"
 	"net/http"
 	"sync"
@@ -73,7 +74,7 @@ func (c *coordinator) recoveringProvider(ctx context.Context, task *contract.Del
 // claims them where it is attached.
 func (c *coordinator) parentModel(call relay.Call) relay.Call {
 	return func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
-		if request.Method != http.MethodGet && !c.recoveringProvider(ctx, nil, "model") {
+		if request.Method != http.MethodGet && !c.taskStepsEnabled() && !c.recoveringProvider(ctx, nil, "model") {
 			c.batchMu.Lock()
 			c.parentCount++
 			c.batchMu.Unlock()
@@ -84,7 +85,7 @@ func (c *coordinator) parentModel(call relay.Call) relay.Call {
 
 // chargeChild is one model request of a child's: within its budget and the response's, the shared
 // allowance checkpointed before it leaves.
-func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.TaskBudget) error {
+func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.TaskBudget, atomic ...bool) error {
 	c.taskMu.Lock()
 	over := task.ModelRequests >= budget.ModelRequests
 	c.taskMu.Unlock()
@@ -103,6 +104,9 @@ func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.Task
 	c.taskMu.Lock()
 	task.ModelRequests++
 	c.taskMu.Unlock()
+	if len(atomic) > 0 && atomic[0] {
+		return nil
+	}
 	c.emitMu.Lock()
 	held := c.parentCheckpoint
 	c.emitMu.Unlock()
@@ -192,9 +196,18 @@ func (e *statusError) ResponseHeader() http.Header { return e.header }
 // childModel is a child's relay capability: each request charged to its task and the response,
 // one retry of a transient refusal before its first byte, and its first byte noted.
 func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskBudget, m *meter, call relay.Call) relay.Call {
-	return func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
+	return c.childPhysicalModel(task, budget, m, call).Call
+}
+func (c *coordinator) childPhysicalModel(task *contract.DelegatedTask, budget turn.TaskBudget, m *meter, call relay.Call) *physicaldispatch.Model {
+	invoke := func(ctx context.Context, suffix string, request relay.Request, physical physicaldispatch.Attempt) (*http.Response, error) {
+		send := func() (*http.Response, error) {
+			if physical != nil {
+				return physical(call)
+			}
+			return call(ctx, suffix, request)
+		}
 		posted := request.Method != http.MethodGet
-		if posted && !c.recoveringProvider(ctx, task, "model") {
+		if posted && !c.taskStepsEnabled() && !c.recoveringProvider(ctx, task, "model") {
 			if err := c.chargeChild(task, budget); err != nil {
 				return nil, err
 			}
@@ -202,7 +215,7 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 				return nil, err
 			}
 		}
-		answered, err := call(ctx, suffix, request)
+		answered, err := send()
 		if err != nil {
 			return nil, err
 		}
@@ -212,7 +225,7 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 		c.taskMu.Lock()
 		retried := task.Retried != nil
 		c.taskMu.Unlock()
-		if answered.StatusCode/100 != 2 && !m.marked() && !retried {
+		if (!c.taskStepsEnabled() || physical != nil) && answered.StatusCode/100 != 2 && !m.marked() && !retried {
 			if held, wait, ok := childRetry(answered); ok && c.mayRetry(task, budget, m) {
 				c.taskMu.Lock()
 				task.Retried = &contract.DelegatedTaskRetried{Failure: *held, WaitMs: ms(wait)}
@@ -223,16 +236,18 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 				case <-ctx.Done():
 					return nil, failure.Cancelled
 				}
-				if len(m.contexts) > 0 {
+				if physical == nil && len(m.contexts) > 0 {
 					_ = m.contexts[len(m.contexts)-1].Execution.Claim()
 				}
-				if err := c.chargeChild(task, budget); err != nil {
-					return nil, err
+				if !c.taskStepsEnabled() {
+					if err := c.chargeChild(task, budget); err != nil {
+						return nil, err
+					}
+					if err := c.accountChild(ctx, task, m); err != nil {
+						return nil, err
+					}
 				}
-				if err := c.accountChild(ctx, task, m); err != nil {
-					return nil, err
-				}
-				answered, err = call(ctx, suffix, request)
+				answered, err = send()
 				if err != nil {
 					return nil, err
 				}
@@ -243,6 +258,13 @@ func (c *coordinator) childModel(task *contract.DelegatedTask, budget turn.TaskB
 		}
 		return answered, nil
 	}
+	var expected *runcontext.RunBinding
+	if c.run.Context != nil && c.run.Context.Persistence != nil {
+		expected = &runcontext.RunBinding{Writer: c.run.Context.Persistence.Writer, Scope: runcontext.DurableScope{Execution: task.ID, Role: "author", Task: task.ID}}
+	}
+	return physicaldispatch.New(func(ctx context.Context, suffix string, request relay.Request) (*http.Response, error) {
+		return invoke(ctx, suffix, request, nil)
+	}, invoke, expected)
 }
 
 // mayRetry is whether a child's one retry may take a request now: its budget's, the response's, and
@@ -317,4 +339,8 @@ func (c *coordinator) wrapHostTools(tools []runcontext.HostTool, task *contract.
 		out = append(out, held)
 	}
 	return out
+}
+
+func (c *coordinator) taskStepsEnabled() bool {
+	return c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.TaskStepsEnabled()
 }

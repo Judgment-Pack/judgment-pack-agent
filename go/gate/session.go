@@ -8,13 +8,16 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/runtimeactions"
 )
 
 // Options are what a host gives the gate for one session.
 type Options struct {
 	// Runtime is the runtime's transport, before any gate. Only the gate holds it.
-	Runtime Call
+	Runtime        Call
+	RuntimeActions *RuntimeActionPort
 	// Granted is what the host's configuration granted; the allow-list is it intersected with the
 	// ceiling (Allowed).
 	Granted []string
@@ -40,19 +43,23 @@ type Options struct {
 // handed Calls, the narrow handle, which can call, admit a host tool, and narrow the run to the
 // critic's or the reformat run's phase and back, and nothing else (ADR-0004, decision 3).
 type Gate struct {
-	transport   Call
-	allowed     []string
-	bounds      Bounds
-	emit        func(contract.RunEvent)
-	noticeGuard func(contract.RunEvent) (contract.RunEvent, bool)
+	transport      Call
+	runtimeActions *RuntimeActionPort
+	runtimeOwner   *runtimeactions.Handle
+	allowed        []string
+	bounds         Bounds
+	emit           func(contract.RunEvent)
+	noticeGuard    func(contract.RunEvent) (contract.RunEvent, bool)
 
-	mu       sync.Mutex
-	offer    contract.ToolOffer
-	phase    Phase     // the phase the host entered
-	narrowed PhaseKind // the critic's or the reformat run's narrowing of it, or ""
-	turn     *turnCount
-	nextID   int64
-	calls    *Calls
+	mu                 sync.Mutex
+	offer              contract.ToolOffer
+	phase              Phase     // the phase the host entered
+	narrowed           PhaseKind // the critic's or the reformat run's narrowing of it, or ""
+	turn               *turnCount
+	nextID             int64
+	calls              *Calls
+	contextEnrollments map[string]bool
+	contextEnrollment  string
 }
 
 // GuardNotices binds only notice delivery to a run's output boundary. The returned function
@@ -158,6 +165,10 @@ func intersect(list, within []string) []string {
 // New puts a session's runtime transport behind the gate.
 func New(options Options) *Gate {
 	g := &Gate{allowed: Allowed(options.Granted), bounds: options.Bounds, emit: options.Emit, turn: &turnCount{calls: options.TestCalls}}
+	if options.RuntimeActions != nil {
+		port := *options.RuntimeActions
+		g.runtimeActions = &port
+	}
 	if options.Turn != nil {
 		g.turn = options.Turn.turn
 	}
@@ -246,8 +257,10 @@ func (g *Gate) Open(ctx context.Context, hostTools []contract.ToolOfferHostTool)
 	var listed struct {
 		Tools []contract.ToolOfferRuntimeTool `json:"tools"`
 	}
-	if err := g.rpc(ctx, "tools/list", map[string]any{}, &listed); err != nil {
-		return contract.ToolOffer{}, err
+	var listErr error
+	listed.Tools, listErr = g.listRuntime(ctx)
+	if listErr != nil {
+		return contract.ToolOffer{}, listErr
 	}
 	offer := contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: append([]contract.ToolOfferHostTool{}, hostTools...)}
 	for _, tool := range listed.Tools {
@@ -255,13 +268,55 @@ func (g *Gate) Open(ctx context.Context, hostTools []contract.ToolOfferHostTool)
 			offer.Tools = append(offer.Tools, tool)
 		}
 	}
+
+	for _, tool := range offer.Tools {
+		if p := wire.RuntimeTaxonomyProblem(wire.TaxonomyFromContract(tool.Meta), tool.Name); p != "" {
+			g.emitNotice(Notice{Tool: "runtime", Action: "refused", Detail: "Runtime tool taxonomy refused."}.Event())
+			return contract.ToolOffer{}, fmt.Errorf("runtime tool taxonomy refused")
+		}
+	}
+	for _, tool := range offer.HostTools {
+		if p := wire.TaxonomyProblem(wire.TaxonomyFromContract(tool.Taxonomy), false); p != "" {
+			g.emitNotice(Notice{Tool: "host", Action: "refused", Detail: "Host tool taxonomy refused."}.Event())
+			return contract.ToolOffer{}, fmt.Errorf("host tool taxonomy refused")
+		}
+	}
 	g.SetOffer(offer)
-	return offer, nil
+	if err := g.bindRuntimeActions(listed.Tools); err != nil {
+		return contract.ToolOffer{}, err
+	}
+	return g.Offer(), nil
 }
 
 // SetOffer sets the session's offer, where the host lists the runtime's tools itself, and enters
 // the loop's phase.
 func (g *Gate) SetOffer(offer contract.ToolOffer) {
+
+	valid := offer
+	valid.Tools = nil
+	valid.HostTools = nil
+	for _, tool := range offer.Tools {
+		if wire.RuntimeTaxonomyProblem(wire.TaxonomyFromContract(tool.Meta), tool.Name) == "" {
+			raw, _ := json.Marshal(wire.TaxonomyAnnotations(tool.Meta.Effect))
+			members := map[string]json.RawMessage{}
+			for k, v := range tool.AdditionalMembers {
+				members[k] = append(json.RawMessage{}, v...)
+			}
+			members["annotations"] = raw
+			tool.AdditionalMembers = members
+			valid.Tools = append(valid.Tools, tool)
+		} else {
+			g.emitNotice(Notice{Tool: "runtime", Action: "refused", Detail: "Runtime tool taxonomy refused."}.Event())
+		}
+	}
+	for _, tool := range offer.HostTools {
+		if wire.TaxonomyProblem(wire.TaxonomyFromContract(tool.Taxonomy), false) == "" {
+			valid.HostTools = append(valid.HostTools, tool)
+		} else {
+			g.emitNotice(Notice{Tool: "host", Action: "refused", Detail: "Host tool taxonomy refused."}.Event())
+		}
+	}
+	offer = valid
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.offer = offer
@@ -365,6 +420,21 @@ func (g *Gate) refuse(name, detail string) Result {
 // transport failed); every refusal is a Result the model reads.
 func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) (Result, error) {
 	phase := g.current()
+	if g.acting(name) {
+		return g.refuse(name, "Runtime action requires an exact approved attempt. Nothing was sent."), nil
+	}
+	if g.runtimeActions != nil && name == RehearsalTool {
+		listed, err := g.listRuntime(ctx)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, tool := range listed {
+			if tool.Name == name && tool.Meta.Effect == "act" {
+				return g.refuse(name, "Runtime action requires an exact approved attempt. Nothing was sent."), nil
+			}
+		}
+	}
+
 	if !contains(phase.Runtime, name) {
 		// Plan mode's and a child's refusal come after the turn's test-call count, as the TypeScript
 		// boundary orders them (contextualSession's claimTestCall wraps the phase's own callTool,

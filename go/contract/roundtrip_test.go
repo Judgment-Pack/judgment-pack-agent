@@ -464,3 +464,65 @@ func readItem(t *testing.T, name string) json.RawMessage {
 	readJSON(t, filepath.Join(vectorsDir, "delegation", name), &vector)
 	return vector.Items[0]
 }
+
+// TestReportIntegerDiscriminator shares handwritten lexical cases with TypeScript's
+// report byte reader. Generated values choose a typed branch without native authority.
+func TestReportIntegerDiscriminator(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/fixtures/record-versions/report-discriminator.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Report json.RawMessage
+		Cases  []struct {
+			Name, Token                string
+			CheckpointVersion, Version int64
+		}
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range fixture.Cases {
+		t.Run(row.Name, func(t *testing.T) {
+			prefix := ""
+			if row.Token != "" {
+				prefix = `"version":` + row.Token + ","
+			}
+			data := []byte(fmt.Sprintf(`{%s"checkpointVersion":%d,%s`, prefix, row.CheckpointVersion, strings.TrimSpace(string(fixture.Report))[1:]))
+			before := append([]byte(nil), data...)
+			var value CorpusCandidateReviewReport
+			err := json.Unmarshal(data, &value)
+			if !bytes.Equal(data, before) {
+				t.Fatal("caller bytes changed")
+			}
+			if row.Version == 0 {
+				if err == nil {
+					t.Fatal("invalid version selected a typed report")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (value.RunReport != nil) != (row.Version == 1) || (value.RunReportV2 != nil) != (row.Version == 2) || len(keptRaw(reflect.ValueOf(value))) != 0 {
+				t.Fatal("version did not select exactly its typed report")
+			}
+			encoded, err := json.Marshal(value)
+			if err != nil || !sameJSON(t, data, encoded) {
+				t.Fatalf("report value changed: %v", err)
+			}
+		})
+	}
+}
+
+func TestIntegerDiscriminatorKeepsOpaqueLexemes(t *testing.T) {
+	for _, token := range []string{"1", "1.0", "1e0", "10e-1"} {
+		raw := []byte(`{"payload":{"z":2e0,"a":{"near":1.00000000000000001,"version":2e0},"huge":1e999999999999999999999},"vers\u0069on":` + token + `}`)
+		before := append([]byte(nil), raw...)
+		version, view, err := memberInteger(raw, "version")
+		want := strings.TrimSuffix(string(raw), token+"}") + "1}"
+		if err != nil || version != 1 || string(view) != want || !bytes.Equal(raw, before) {
+			t.Fatalf("discriminator changed caller bytes or arbitrary payload lexemes: %v", err)
+		}
+	}
+}

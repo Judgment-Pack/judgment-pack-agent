@@ -1,0 +1,452 @@
+{
+  "candidates": [
+    {
+      "version": 1,
+      "id": "sha256:4489b5304d3315d6912e8a27562ac6409b518ea99ea316463bd190b790ac3d64",
+      "status": "pending-review",
+      "runId": "r",
+      "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+      "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+      "sourceView": "fixture-view-1",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "bad",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z",
+        "remark": "[redacted: private-note]"
+      },
+      "review": {
+        "report": {
+          "id": "r",
+          "phase": "work",
+          "status": "complete",
+          "unit": "model-requests",
+          "used": 0,
+          "limit": 20,
+          "grants": [],
+          "plan": [],
+          "explanation": "Finished",
+          "version": 1,
+          "checkpointVersion": 1
+        },
+        "messages": []
+      },
+      "replay": {
+        "kind": "unavailable",
+        "reason": "not-recorded"
+      }
+    },
+    {
+      "version": 1,
+      "id": "sha256:7720d1a278cd4a384bb0c8d8f7664cbb642b5ef2d6b7c8c64f4e05682933868d",
+      "status": "pending-review",
+      "runId": "r",
+      "feedbackDigest": "sha256:fe2cc249414af3973b7142cc66978ddf6af87a642458ed72aaac77e7a509febf",
+      "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+      "sourceView": "fixture-view-1",
+      "feedback": {
+        "version": 1,
+        "id": "message",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "assistant-message",
+          "eventSequence": 1,
+          "eventDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      },
+      "review": {
+        "report": {
+          "id": "r",
+          "phase": "work",
+          "status": "complete",
+          "unit": "model-requests",
+          "used": 0,
+          "limit": 20,
+          "grants": [],
+          "plan": [],
+          "explanation": "Finished",
+          "version": 1,
+          "checkpointVersion": 1
+        },
+        "messages": [
+          {
+            "sequence": 1,
+            "text": "Public answer"
+          }
+        ]
+      },
+      "replay": {
+        "kind": "unavailable",
+        "reason": "not-recorded"
+      }
+    }
+  ],
+  "metadata": [
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "bad",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z",
+        "remark": "SECRET-123"
+      },
+      "candidateRequested": true
+    },
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "feedback",
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "bad",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z",
+        "remark": "SECRET-123"
+      },
+      "candidateRequested": true,
+      "candidate": {
+        "digest": "sha256:b15fa89e6e3a4cc231b4e4de0415ca8d9c00313197bd4cf43e540a34410ca675",
+        "bytes": 816
+      }
+    },
+    {
+      "version": 1,
+      "kind": "capture",
+      "capture": {
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "bytes": 100
+      }
+    }
+  ],
+  "invalidCandidates": [
+    {
+      "name": "missing-feedback",
+      "candidate": {
+        "version": 1,
+        "id": "sha256:4489b5304d3315d6912e8a27562ac6409b518ea99ea316463bd190b790ac3d64",
+        "status": "pending-review",
+        "runId": "r",
+        "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+        "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+        "sourceView": "fixture-view-1",
+        "review": {
+          "report": {
+            "id": "r",
+            "phase": "work",
+            "status": "complete",
+            "unit": "model-requests",
+            "used": 0,
+            "limit": 20,
+            "grants": [],
+            "plan": [],
+            "explanation": "Finished",
+            "version": 1,
+            "checkpointVersion": 1
+          },
+          "messages": []
+        },
+        "replay": {
+          "kind": "unavailable",
+          "reason": "not-recorded"
+        }
+      }
+    },
+    {
+      "name": "wrong-id",
+      "candidate": {
+        "version": 1,
+        "id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "status": "pending-review",
+        "runId": "r",
+        "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+        "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+        "sourceView": "fixture-view-1",
+        "feedback": {
+          "version": 1,
+          "id": "rating",
+          "runId": "r",
+          "sequence": 1,
+          "previous": null,
+          "target": {
+            "kind": "run"
+          },
+          "rating": "bad",
+          "actor": "reviewer",
+          "recordedAt": "2026-10-25T01:02:03.000Z",
+          "remark": "[redacted: private-note]"
+        },
+        "review": {
+          "report": {
+            "id": "r",
+            "phase": "work",
+            "status": "complete",
+            "unit": "model-requests",
+            "used": 0,
+            "limit": 20,
+            "grants": [],
+            "plan": [],
+            "explanation": "Finished",
+            "version": 1,
+            "checkpointVersion": 1
+          },
+          "messages": []
+        },
+        "replay": {
+          "kind": "unavailable",
+          "reason": "not-recorded"
+        }
+      }
+    },
+    {
+      "name": "foreign-run",
+      "candidate": {
+        "version": 1,
+        "id": "sha256:4489b5304d3315d6912e8a27562ac6409b518ea99ea316463bd190b790ac3d64",
+        "status": "pending-review",
+        "runId": "foreign",
+        "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+        "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+        "sourceView": "fixture-view-1",
+        "feedback": {
+          "version": 1,
+          "id": "rating",
+          "runId": "r",
+          "sequence": 1,
+          "previous": null,
+          "target": {
+            "kind": "run"
+          },
+          "rating": "bad",
+          "actor": "reviewer",
+          "recordedAt": "2026-10-25T01:02:03.000Z",
+          "remark": "[redacted: private-note]"
+        },
+        "review": {
+          "report": {
+            "id": "r",
+            "phase": "work",
+            "status": "complete",
+            "unit": "model-requests",
+            "used": 0,
+            "limit": 20,
+            "grants": [],
+            "plan": [],
+            "explanation": "Finished",
+            "version": 1,
+            "checkpointVersion": 1
+          },
+          "messages": []
+        },
+        "replay": {
+          "kind": "unavailable",
+          "reason": "not-recorded"
+        }
+      }
+    },
+    {
+      "name": "unknown-member",
+      "candidate": {
+        "version": 1,
+        "id": "sha256:4489b5304d3315d6912e8a27562ac6409b518ea99ea316463bd190b790ac3d64",
+        "status": "pending-review",
+        "runId": "r",
+        "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+        "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+        "sourceView": "fixture-view-1",
+        "feedback": {
+          "version": 1,
+          "id": "rating",
+          "runId": "r",
+          "sequence": 1,
+          "previous": null,
+          "target": {
+            "kind": "run"
+          },
+          "rating": "bad",
+          "actor": "reviewer",
+          "recordedAt": "2026-10-25T01:02:03.000Z",
+          "remark": "[redacted: private-note]"
+        },
+        "review": {
+          "report": {
+            "id": "r",
+            "phase": "work",
+            "status": "complete",
+            "unit": "model-requests",
+            "used": 0,
+            "limit": 20,
+            "grants": [],
+            "plan": [],
+            "explanation": "Finished",
+            "version": 1,
+            "checkpointVersion": 1
+          },
+          "messages": []
+        },
+        "replay": {
+          "kind": "unavailable",
+          "reason": "not-recorded"
+        },
+        "extra": true
+      }
+    },
+    {
+      "name": "oversized-text",
+      "candidate": {
+        "version": 1,
+        "id": "sha256:4489b5304d3315d6912e8a27562ac6409b518ea99ea316463bd190b790ac3d64",
+        "status": "pending-review",
+        "runId": "r",
+        "feedbackDigest": "sha256:ad8055612aa170f3bed6fa9edda139afc965ebfe63a0269f67e05e316182fb56",
+        "archiveDigest": "sha256:5bfad555811f98168e77408eddf27ecfdf59462ca428942a438fbddb54191916",
+        "sourceView": "fixture-view-1",
+        "feedback": {
+          "version": 1,
+          "id": "rating",
+          "runId": "r",
+          "sequence": 1,
+          "previous": null,
+          "target": {
+            "kind": "run"
+          },
+          "rating": "bad",
+          "actor": "reviewer",
+          "recordedAt": "2026-10-25T01:02:03.000Z",
+          "remark": "[redacted: private-note]"
+        },
+        "review": {
+          "report": {
+            "id": "r",
+            "phase": "work",
+            "status": "complete",
+            "unit": "model-requests",
+            "used": 0,
+            "limit": 20,
+            "grants": [],
+            "plan": [],
+            "explanation": "Finished",
+            "version": 1,
+            "checkpointVersion": 1
+          },
+          "messages": [
+            {
+              "sequence": 1,
+              "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+            }
+          ]
+        },
+        "replay": {
+          "kind": "unavailable",
+          "reason": "not-recorded"
+        }
+      }
+    }
+  ],
+  "relations": [
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "job",
+        "id": "observed-job"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "artifact",
+        "id": "observed-artifact"
+      }
+    },
+    {
+      "version": 1,
+      "kind": "observed-relation",
+      "scope": {
+        "execution": "r",
+        "role": "author",
+        "task": "task-1"
+      },
+      "dispatchId": "dispatch-1",
+      "checkpoint": {
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytes": 100
+      },
+      "observationId": "observation-1",
+      "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "resultDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "target": {
+        "kind": "dialect",
+        "id": "observed-dialect"
+      }
+    }
+  ]
+}

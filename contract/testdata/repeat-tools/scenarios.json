@@ -1,0 +1,9 @@
+{
+ "description":"Handwritten repeat expectations. Counts are cumulative within original execution, with exact source and canonical JSON identity.",
+ "items":[
+  {"name":"first repeat then stop","stopAt":2,"calls":[{"args":{"a":1},"result":{"value":"one"},"count":0},{"args":{"a":1},"result":{"value":"one"},"count":1,"reminder":true},{"args":{"a":1},"result":{"value":"one"},"count":2,"stopped":true}]},
+  {"name":"changed result and interleaving","stopAt":5,"calls":[{"args":{"a":1},"result":{"value":"one"},"count":0},{"args":{"a":1},"result":{"value":"two"},"count":0},{"args":{"a":2},"result":{"value":"one"},"count":0},{"args":{"a":1},"result":{"value":"one"},"count":1,"reminder":true},{"args":{"a":2},"result":{"value":"one"},"count":2}]},
+  {"name":"canonical order and typed numeric leaves","stopAt":5,"calls":[{"args":{"z":[0,0.125,1000],"a":9007199254740991},"result":{"value":1},"count":0},{"args":{"a":9007199254740991,"z":[0,0.125,1e3]},"result":{"value":1},"count":1,"reminder":true},{"args":{"a":"9007199254740991","z":[0,0.125,1000]},"result":{"value":1},"count":1},{"args":{"z":[0,0.125,1000],"a":9007199254740991},"result":{"value":"1"},"count":1}]},
+  {"name":"source and tool identity","stopAt":5,"calls":[{"source":"left","args":{},"result":{},"count":0},{"source":"right","args":{},"result":{},"count":0},{"source":"left","tool":"other","args":{},"result":{},"count":0},{"source":"left","args":{},"result":{},"count":1,"reminder":true}]}
+ ]
+}

@@ -45,9 +45,9 @@ import type { ExecutionCheckpoint } from '../../execution/state'
 import { PROVENANCE_SCHEMA } from '../../records'
 
 const TOOLS: McpTool[] = [
-  { name: 'validate', description: 'check a document', inputSchema: { type: 'object' } },
+  { name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'check a document', inputSchema: { type: 'object' } },
   {
-    name: 'experimental_evaluate',
+    name: 'experimental_evaluate',_meta:{operation:'evaluate',effect:'pure',experimental:true} as const,
     description: 'rehearse an evaluation',
     inputSchema: { type: 'object' }
   }
@@ -648,7 +648,7 @@ describe('rehearsal, on two layers', () => {
     ])
     await drain(
       vercel.start(
-        session(call, {}, async (name, args) => {
+        session(call, {tools:TOOLS.map(tool=>({...tool,_meta:tool.name==='experimental_evaluate'?{operation:'evaluate',effect:'pure'}:{operation:'check',effect:'pure',checkKind:'validate'}}))}, async (name, args) => {
           asked.push({ name, ...args })
           return { content: [{ type: 'text', text: '{"status":"ok"}' }] }
         })
@@ -680,7 +680,7 @@ describe('the tools this engine offers, and the schemas it writes', () => {
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     await drain(
       vercel.start(
-        session(call, { tools: [{ name: 'validate', description: 'd', inputSchema: served }] })
+        session(call, { tools: [{ name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const, description: 'd', inputSchema: served }] })
       )
     )
     const tools = seen[0]!.body.tools as { function: { name: string; parameters: unknown } }[]
@@ -695,13 +695,33 @@ describe('the tools this engine offers, and the schemas it writes', () => {
     // know — so the session ends instead, naming the tool.
     const { call, seen } = scriptedCall([turn({ text: PROPOSAL_TEXT })])
     const events = await drain(
-      vercel.start(session(call, { tools: [{ name: 'a_new_tool', description: 'd' }] }))
+      vercel.start(session(call, { tools: [{ name: 'validate', _meta: {operation:'check',effect:'pure',checkKind:'validate'}, description: 'd' }] }))
     )
     expect(events.map((event) => event.type)).toEqual(['error', 'end'])
-    expect((events[0] as { message: string }).message).toContain('a_new_tool')
+    expect((events[0] as { message: string }).message).toContain('validate')
     expect((events[0] as { message: string }).message).toContain('without an input schema')
     // And nothing was asked of the model at all: the refusal is before the loop.
     expect(seen).toHaveLength(0)
+  })
+
+  it('refuses an unknown Runtime name even with a schema and owner taxonomy before provider work', async () => {
+    const {call,seen}=scriptedCall([turn({text:PROPOSAL_TEXT})])
+    const events=await drain(vercel.start(session(call,{tools:[{name:'a_new_tool',description:'Outside the Runtime ceiling',_meta:{operation:'read',effect:'read'},inputSchema:{type:'object'}}]})))
+    expect(events.map(event=>event.type)).toEqual(['error','end'])
+    expect(events[0]).toMatchObject({failure:{code:'configuration',source:'context'}})
+    expect(seen).toEqual([])
+  })
+
+  it('derives conservative hints for every generated host offer from its taxonomy', async () => {
+    const {contextualSession}=await import('../../context/session')
+    const {taxonomyAnnotations}=await import('../../toolTaxonomy')
+    const {call}=scriptedCall([turn({text:PROPOSAL_TEXT})])
+    const ready=await contextualSession(session(call,{allowConversation:true}))
+    try {
+      const tools=ready.session.values.hostTools
+      expect(tools.map(tool=>tool.name)).toEqual(expect.arrayContaining(['request_review','read_window','search','update_plan']))
+      for(const tool of tools)expect(tool.annotations,tool.name).toEqual(taxonomyAnnotations(tool.taxonomy!.effect))
+    } finally {ready.context.close()}
   })
 
   it('names one tool in its whole source: the one the ADR names', () => {
@@ -1015,6 +1035,24 @@ describe('a consumer that stops in the middle of a run', () => {
     expect((await events.next()).value).toMatchObject({ type: 'tool_call', name: 'validate' })
     await events.return!(undefined)
     expect(closed).toEqual([{ value: undefined, done: true }])
+  })
+
+  it('returns promptly when an underlying source next ignores cancellation', async () => {
+    const call=vi.fn(scriptedCall([turn({text:PROPOSAL_TEXT})]).call)
+    let entered!:()=>void,signal!:AbortSignal
+    const arrived=new Promise<void>(resolve=>{entered=resolve})
+    const events=managedContext(session(call),held=>{
+      signal=held.signal
+      return {[Symbol.asyncIterator]:()=>({next:()=>{entered();return new Promise<IteratorResult<AssistantEvent>>(()=>{})},return:async()=>({value:undefined,done:true as const})})}
+    })[Symbol.asyncIterator]()
+    expect((await events.next()).value).toMatchObject({type:'policy_resolved'})
+    const pending=events.next();await arrived
+    const closing=events.return!(undefined)
+    expect(await within(2000,pending)).toBe('settled')
+    expect(await within(2000,closing)).toBe('settled')
+    expect(await pending).toEqual({value:undefined,done:true})
+    expect(await closing).toEqual({value:undefined,done:true})
+    expect(signal.aborted).toBe(true);expect(call).not.toHaveBeenCalled()
   })
 
   it('does not dispatch the call of a tool it never offered once the consumer has stopped (agent#37)', async () => {
@@ -2068,7 +2106,7 @@ describe('the same signature rules, on the Gemini wire', () => {
 describe('a schema refusal is one wire’s business, on this engine too', () => {
   const TOOLS_WITH_PROPERTIES: McpTool[] = [
     {
-      name: 'validate',
+      name: 'validate',_meta:{operation:'check',effect:'pure',checkKind:'validate'} as const,
       description: 'check a document',
       inputSchema: { type: 'object', properties: { document: { type: 'string' } } }
     }
@@ -2119,7 +2157,7 @@ describe('a schema refusal is one wire’s business, on this engine too', () => 
 
 describe('host tools: the desk’s own, executed on the page', () => {
   const searchTool = (execute: (args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>) => ({
-    name: 'search_sources',
+    name: 'search_sources',taxonomy:{operation:'read',effect:'read'} as const,
     description: 'search',
     inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
     execute
@@ -2374,7 +2412,7 @@ it('does not dispatch later host work in the same model response after a questio
   const tools = [{name:'ask_user',args:interviewQuestion},{name:'later_work',args:{}}]
   const wire = frame({tool_calls:tools.map((tool,index)=>({index,id:`call-${index}`,type:'function',function:{name:tool.name,arguments:JSON.stringify(tool.args)}}))},null) + frame({},'tool_calls') + 'data: [DONE]\n\n'
   const scripted = scriptedCall([wire])
-  const events = await drain(vercel.start(session(scripted.call,{interactive:true,allowConversation:true,hostTools:[questionTool,{name:'later_work',description:'Later work',inputSchema:{type:'object'},execute}]})))
+  const events = await drain(vercel.start(session(scripted.call,{interactive:true,allowConversation:true,hostTools:[questionTool,{name:'later_work',taxonomy:{operation:'own-state',effect:'pure'} as const,description:'Later work',inputSchema:{type:'object'},execute}]})))
   expect(execute).not.toHaveBeenCalled()
   expect(events.filter(e => e.type === 'user_question')).toHaveLength(1)
   expect(scripted.seen).toHaveLength(1)
@@ -2460,7 +2498,7 @@ it.each(['empty','tool'] as const)('reports exhaustion accurately and refuses fi
   const step=final?(response==='empty'?{text:''}:{tool:{name:'propose_change',args:{}}}):{tool:{name:'read_context',args:{id,path:'/message',limit:128+calls}}}
   return new Response(geminiTurn(step),{status:200,headers:{'content-type':'text/event-stream'}})
  }
- const events=await drain(vercel.start(session(call,{prompt:'history '.repeat(40000),context:{currentRequest:{message:'Explain the mismatch',input:'Omitted size facts'}},hostTools:[{name:'propose_change',description:'Propose change',effect:'proposal',inputSchema:{type:'object'},execute}],allowConversation:true,interactive:true,critic: 'off',model:{family:'gemini',model:'fixture',call},thinking:normalize('off','gemini')})))
+ const events=await drain(vercel.start(session(call,{prompt:'history '.repeat(40000),context:{currentRequest:{message:'Explain the mismatch',input:'Omitted size facts'}},hostTools:[{name:'propose_change',taxonomy:{operation:'propose',effect:'propose'} as const,description:'Propose change',effect:'proposal',inputSchema:{type:'object'},execute}],allowConversation:true,interactive:true,critic: 'off',model:{family:'gemini',model:'fixture',call},thinking:normalize('off','gemini')})))
  expect(calls).toBe(MAX_TURNS);expect(execute).not.toHaveBeenCalled()
  expect(events.filter(e=>e.type==='message'||e.type==='proposal')).toEqual([])
  expect(events.filter(e=>e.type==='error')).toEqual([])
@@ -2483,7 +2521,7 @@ it.each(['openai-compatible','anthropic','gemini'] as const)('resumes %s after b
   return new Response(wire(step),{status:200,headers:{'content-type':'text/event-stream'}})
  }
  const callTool=vi.fn(async()=>({content:[{type:'text',text:'EXACT CONTRACT: preserve decimals as strings'}]}))
- const input=session(call,{prompt:executionInput.input,context:{currentRequest:executionInput},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool,allowConversation:true,interactive:true,critic: 'off',model:{family,model:'fixture',call},thinking:normalize('off',family)})
+ const input=session(call,{prompt:executionInput.input,context:{currentRequest:executionInput},tools:[{name:'get_schema',_meta:{operation:'read',effect:'read'} as const,inputSchema:{type:'object',properties:{}}}],callTool,allowConversation:true,interactive:true,critic: 'off',model:{family,model:'fixture',call},thinking:normalize('off',family)})
  const first=await drain(vercel.start(input)),pause=first.find(e=>e.type==='budget_paused')
  expect(pause?.type).toBe('budget_paused');if(pause?.type!=='budget_paused')return
  expect(callTool).toHaveBeenCalledTimes(18)
@@ -2502,7 +2540,7 @@ it('honors a model-requested budget pause without spending the reserved final re
   calls++
   return new Response(turn({tool:calls===19?{name:'request_budget_increase',args:{reason:'Boundary checks remain.',nextStep:'Verify the two boundaries.'}}:{name:'get_schema',args:{section:calls}}}),{status:200,headers:{'content-type':'text/event-stream'}})
  }
- const input=session(call,{allowConversation:true,interactive:true,critic: 'off',context:{currentRequest:{message:'Verify the repair',input:'Current pack'}},tools:[{name:'get_schema',inputSchema:{type:'object',properties:{}}}],callTool:async()=>({content:[{type:'text',text:'Contract'}]})})
+ const input=session(call,{allowConversation:true,interactive:true,critic: 'off',context:{currentRequest:{message:'Verify the repair',input:'Current pack'}},tools:[{name:'get_schema',_meta:{operation:'read',effect:'read'} as const,inputSchema:{type:'object',properties:{}}}],callTool:async()=>({content:[{type:'text',text:'Contract'}]})})
  const events=await drain(vercel.start(input))
  expect(calls).toBe(19)
  expect(events.find(e=>e.type==='budget_paused')).toMatchObject({checkpoint:{used:19,limit:20,reason:'Boundary checks remain. Next: Verify the two boundaries.'}})
@@ -2578,7 +2616,7 @@ describe('nothing finished is lost (agent#6)', () => {
   describe('a proposal through the propose_pack tool', () => {
     const offer = (execute = vi.fn(async (): Promise<McpToolResult> => ({ content: [] }))) => ({
       execute,
-      tool: { name: PROPOSE_PACK_TOOL, effect: 'proposal' as const, description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute }
+      tool: { name: PROPOSE_PACK_TOOL,taxonomy:{operation:'propose',effect:'propose'} as const, effect: 'proposal' as const, description: 'Propose the pack for review.', inputSchema: PROPOSE_PACK_SCHEMA, execute }
     })
 
     it('is accepted as the proposal, from documentJson, and the instructions say to use it', async () => {

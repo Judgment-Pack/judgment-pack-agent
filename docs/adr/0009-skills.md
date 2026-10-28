@@ -7,6 +7,8 @@ Status: accepted, 2026-10-20. Issue agent#91. In the shape of [ADR-0005](0005-th
 as skills, an Exchange entry installed as a skill, the loaded skills in the task view, re-approval on
 a changed digest) is a Desk follow-up.
 
+Taxonomy declarations and approval pins are amended by [ADR-0027](0027-tool-taxonomy.md). Its mandatory owner taxonomy supersedes the defaults described below; historical saved records remain unchanged.
+
 ## Context
 
 A person wants to tell the assistant how to do a kind of work once and have it apply where the work

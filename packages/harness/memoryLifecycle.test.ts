@@ -8,7 +8,9 @@ import {readExecution,type ExecutionCheckpoint} from './execution/state'
 import {readFailure} from './failures'
 import {readHostParts} from './prompt'
 import {CONTEXT_DEFAULTS} from './context/policy'
-import {vercelTurn,sseTurn,streamed} from './testing/scripted'
+import {runAssistantSession} from './session'
+import {vercel} from './engines/vercel'
+import type {AssistantEvent,AssistantSession} from './engine'
 import answers from '../../contract/vectors/memory/lifecycle-answer.json'
 import transitions from '../../contract/vectors/memory/lifecycle-transitions.json'
 import aliases from '../../contract/vectors/compatibility/retired-aliases.json'
@@ -157,7 +159,10 @@ describe('metadata-only memory lifecycle',()=>{
  it('emits canonical configuration failures with no request/success event for malformed lifecycle answers',async()=>{
   for(const answer of ['', [{}],Array.from({length:257},(_,i)=>({...update,id:String(i)})),[update]]){
    configureHarness({memoryLifecycle:()=>answer as never})
-   const run=await vercelTurn({answer:()=>streamed(sseTurn({text:'Done.'}))})
+   const run:{events:AssistantEvent[];requests:unknown[]}={events:[],requests:[]}
+   const input=session()
+   const call:AssistantSession['model']['call']=async(...request)=>{run.requests.push(request);return new Response()}
+   await runAssistantSession(vercel,{...input,model:{...input.model,call}},event=>run.events.push(event))
    expect(run.requests).toEqual([])
    expect(run.events.filter(e=>e.type==='memory_recalled')).toEqual([])
    const error=run.events.find(e=>e.type==='error')!

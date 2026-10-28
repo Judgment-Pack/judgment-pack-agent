@@ -93,8 +93,11 @@ func recordVersion(kind string, value any) (int64, error) {
 		return 0, errRecord
 	}
 	current := int64(1)
+	if kind == "event" || kind == "policy" {
+		current = 2
+	}
 	if kind == "checkpoint" {
-		current = CheckpointVersion
+		current = 3
 	}
 	version := int64(f)
 	if version > current {
@@ -258,9 +261,11 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 	if err != nil {
 		return err
 	}
-	generation := "current"
+	generation := "published"
 	if version == 0 || kind == "checkpoint" && version == 1 {
 		generation = "historical"
+	} else if kind == "checkpoint" && version == 3 || kind == "event" && version == 2 || kind == "policy" && version == 2 {
+		generation = "current"
 	}
 	graph := recordShapes[generation]
 	file := map[string]string{"checkpoint": "checkpoint.json", "event": "run-event.json", "policy": "policy.json"}[kind]
@@ -287,9 +292,11 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 			if err != nil {
 				return err
 			}
-			generation := "current"
+			generation := "published"
 			if version == 1 {
 				generation = "historical"
+			} else if version == 3 {
+				generation = "current"
 			}
 			nested := recordShapes[generation]
 			// A nested record keeps its own traversal budget, as the TypeScript root reader does.
@@ -573,6 +580,13 @@ func patchRecordIntegers(data []byte, replacements map[string]string) ([]byte, e
 
 // StampEvent is the writer boundary; codecs keep historical records unchanged.
 func StampEvent(event RunEvent) RunEvent {
+	feature := event.PlanDriftDecided != nil && event.PlanDriftDecided.NativeInvocation != nil || event.RepeatDetected != nil || event.RouteDecided != nil || event.RouteWidened != nil || event.ApprovalRequested != nil && event.ApprovalRequested.Runtime != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 3 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 3
+	return stampEvent(event, feature)
+}
+
+// StampFeatureEvent explicitly selects current event2 for a feature-bearing producer.
+func StampFeatureEvent(event RunEvent) RunEvent { return stampEvent(event, true) }
+func stampEvent(event RunEvent, feature bool) RunEvent {
 	out := reflect.ValueOf(&event).Elem()
 	for i := 0; i < out.NumField(); i++ {
 		field := out.Field(i)
@@ -584,6 +598,9 @@ func StampEvent(event RunEvent) RunEvent {
 		version := copy.Elem().FieldByName("Version")
 		if version.IsValid() {
 			v := int64(EventVersion)
+			if feature || !version.IsNil() && version.Elem().Int() == 2 {
+				v = 2
+			}
 			version.Set(reflect.ValueOf(&v))
 		}
 		field.Set(copy)

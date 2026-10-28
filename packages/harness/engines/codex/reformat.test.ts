@@ -11,7 +11,7 @@ import { REFORMAT_INSTRUCTIONS } from '../contract'
 import { codex, reformatPrompt } from './index'
 import { runAssistantSession } from '../../session'
 import { ASSISTANT_TOOLS } from '../../host'
-import { RECORDED_TOOLS } from '../../certification/scriptedServer'
+import { currentContractReplayTools } from '../../certification/scriptedServer'
 import { TEST_CASES_TOOL, codexTurn, gatedRuntime, ofType, runtimeAnswer, type Bridge } from '../../testing/scripted'
 import type { AgentRequest, AgentRun } from '../../agent'
 import type { AssistantEvent, McpTool } from '../../engine'
@@ -110,7 +110,7 @@ describe('the Codex adapter’s reformat run (agent#29)', () => {
    */
   async function reformatCalls(name: string, served: (tools: McpTool[]) => McpTool[] = (tools) => tools) {
     const events: AssistantEvent[] = []
-    const runtime = await gatedRuntime({ tools: [...RECORDED_TOOLS, TEST_CASES_TOOL], allowed: [...ASSISTANT_TOOLS], handle: () => runtimeAnswer({ status: 'ok' }), onEvent: (event) => events.push(event) })
+    const runtime = await gatedRuntime({ tools: [...currentContractReplayTools(), TEST_CASES_TOOL], allowed: [...ASSISTANT_TOOLS], handle: () => runtimeAnswer({ status: 'ok' }), onEvent: (event) => events.push(event) })
     let author: AgentRequest['tools'] = []
     let answer: { text: string; isError: boolean } | undefined
     const run: AgentRun = async (request, callbacks) => {

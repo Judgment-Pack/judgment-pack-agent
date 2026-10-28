@@ -10,6 +10,7 @@ import (
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/turn"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -30,7 +31,8 @@ type planned struct {
 func (c *coordinator) delegateTool() runcontext.HostTool {
 	declared := turn.DelegationTool(c.profiles)
 	var mu sync.Mutex
-	tool := runcontext.HostTool{Name: declared.Name, Description: declared.Description, InputSchema: declared.InputSchema, Interaction: "delegation"}
+	taxonomy := wire.CloneTaxonomy(wire.TaxonomyFromContract(declared.Taxonomy))
+	tool := runcontext.HostTool{Name: declared.Name, Taxonomy: taxonomy, Description: declared.Description, InputSchema: declared.InputSchema, Interaction: "delegation"}
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (runcontext.ToolResult, error) {
 		request, err := turn.ReadDelegationRequest(args)
 		if err != nil {
@@ -251,13 +253,15 @@ type childRun struct {
 // boundary the parent's source gate (ADR-0006): the child's source calls count against the turn and
 // reach the parent's report, as its test calls do.
 type childLink struct {
-	limit   int
-	calls   func(*contract.DelegatedTask) int64
-	task    *contract.DelegatedTask
-	budget  turn.TaskBudget
-	m       *meter
-	sources func() *runcontext.SourceGate
-	policy  *runcontext.DelegatedPolicy
+	coordinator *coordinator
+	definition  *runcontext.Subagent
+	limit       int
+	calls       func(*contract.DelegatedTask) int64
+	task        *contract.DelegatedTask
+	budget      turn.TaskBudget
+	m           *meter
+	sources     func() *runcontext.SourceGate
+	policy      *runcontext.DelegatedPolicy
 }
 
 func (l childLink) DelegatedPolicy() *runcontext.DelegatedPolicy { return l.policy }
@@ -265,12 +269,29 @@ func (l childLink) DelegatedPolicy() *runcontext.DelegatedPolicy { return l.poli
 // ParentSources is the source gate of the run that delegated this one, or nil.
 func (l childLink) ParentSources() *runcontext.SourceGate { return l.sources() }
 
-func (l childLink) Attach(context *runcontext.SessionContext) {
-	context.Execution.ToolAllowance = func() *runcontext.ToolAllowance {
+func (l childLink) Attach(sc *runcontext.SessionContext) {
+	sc.TaskDispatchCharge = func(ctx context.Context, kind, role string) error {
+		if kind == "model" {
+			return l.coordinator.chargeChild(l.task, l.budget, true)
+		}
+		if err := l.coordinator.released(ctx); err != nil {
+			return err
+		}
+		if l.definition != nil && l.coordinator.childRuns(l.task.ID) >= int(l.definition.Bounds.AgentRuns) {
+			return failure.ToolInput("The declared sub-agent invocation bound was reached.")
+		}
+		if err := l.coordinator.admitRun(l.task); err != nil {
+			return err
+		}
+		l.coordinator.edit(func() { l.task.Attempts++ })
+		return nil
+	}
+
+	sc.Execution.ToolAllowance = func() *runcontext.ToolAllowance {
 		return &runcontext.ToolAllowance{Used: int(l.calls(l.task)), Limit: int(l.budget.ToolCalls), Scope: "task"}
 	}
 	l.m.mu.Lock()
-	l.m.contexts = append(l.m.contexts, context)
+	l.m.contexts = append(l.m.contexts, sc)
 	l.m.mu.Unlock()
 }
 
@@ -389,7 +410,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	if c.run.Agent == nil && limit < 1 {
 		return failure.Err("request-limit", "context", "not-started")
 	}
-	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources, policy: projection}}
+	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{coordinator: c, definition: p.subagent, limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources, policy: projection}}
 	if c.run.Agent == nil {
 		cap := min(limit, runcontext.MaxTurns)
 		input.RequestCap = &cap
@@ -409,7 +430,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 		child.Model = nil
 		child.Agent = c.childAgent(task, name, m, binding.Agent, p.subagent)
 	} else {
-		child.Model = c.childModel(task, p.budget, m, binding.Model)
+		adapter.BindPhysicalModel(&child, c.childPhysicalModel(task, p.budget, m, binding.Model))
 	}
 	// The child is admitted as its resolved role, not the parent's author. Its own
 	// binding keeps the coordinator's accounting wrappers through adapter admission.
@@ -436,7 +457,7 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 			if bound.Agent != nil {
 				bound.Agent = c.childAgent(task, bound.Agent.Model, m, bound.Agent, p.subagent)
 			} else {
-				bound.Model = c.childModel(task, p.budget, m, bound.Model)
+				bound = adapter.BindPolicyPhysicalModel(bound, c.childPhysicalModel(task, p.budget, m, bound.Model))
 			}
 			child.PolicyConnections[id] = bound
 		}
@@ -519,4 +540,39 @@ func (c *coordinator) proposalQuestion(p *planned, task *contract.DelegatedTask,
 	}
 	c.chat.Reveal(p.visible, kept.ID)
 	return openQuestion("proposal", "The child proposed a document. It was not applied or shown for review: read it with read_window at ref, and propose it yourself if it should be.", kept.ID)
+}
+
+// taskDelegationTool uses the original registered writer action. Native execution normalizes it
+// before release; model execution runs through the same bounded batch path as delegate_tasks.
+func (c *coordinator) taskDelegationTool(native bool) (runcontext.HostTool, error) {
+	binding := c.run.Context.Persistence
+	return binding.Writer.TaskDelegationTool(*binding, func(ctx context.Context, request contract.DelegatedTaskRequest) (runcontext.ToolResult, error) {
+		if native {
+			return runcontext.ToolResult{}, failure.Authored("configuration", "delegate_plan_steps ends the parent's invocation; no child can run inside the held native account.", "desk")
+		}
+		c.taskActionMu.Lock()
+		defer c.taskActionMu.Unlock()
+		tasks, err := c.runBatch(ctx, request)
+		if err != nil {
+			return runcontext.ToolResult{}, err
+		}
+		if err = ctx.Err(); err != nil {
+			return runcontext.ToolResult{}, failure.Cancelled
+		}
+		answered := c.batchAnswer(tasks)
+		c.batchMu.Lock()
+		for _, held := range c.pending {
+			_ = c.chat.KeepResult(held.key, held.kept)
+		}
+		c.pending = nil
+		c.batchMu.Unlock()
+		return answered, nil
+	})
+}
+func (c *coordinator) bindTaskDelegation(ctx context.Context, request contract.DelegatedTaskRequest, tasks []*contract.DelegatedTask) error {
+	if c.run.Context == nil || c.run.Context.Persistence == nil {
+		return nil
+	}
+	binding := c.run.Context.Persistence
+	return binding.Writer.BindTaskDelegation(ctx, *binding, request, tasks)
 }

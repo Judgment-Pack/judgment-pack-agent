@@ -72,6 +72,12 @@ rule.
    mutation table's `--check`, the parity run against the Desk, and the whitespace and path checks.
    The parity step needs a checkout of the Desk at the commit `scripts/parity.sh` names (`desk_pin`),
    which it reads from `JPDEV_DESK`. The runner is the devkit's, vendored (see the README).
+
+   The `go-race` step sets a 20-minute timeout for each package test binary. The race suite can
+   exhaust Go's default 10-minute aggregate package timeout while an individual test is still
+   making progress. This changes a stuck package's limit from 10 to 20 minutes; the selected
+   packages, assertions and race instrumentation remain the same. The whole step retains its
+   3,000-second limit.
 3. Include the latest `dependency-audit` run for the release candidate in release review, following
    the [dependency advisory policy](security/dependency-policy.md). Record the candidate commit,
    query time, coverage, result and every finding's disposition. Run the live check for that commit
@@ -110,16 +116,15 @@ prerelease and no build metadata. A tag is never moved or reused. A fix is a new
 Every job works on the commit the run was started for, by its digest, not on the tag's name.
 
 1. **Admits the tag.** It is in the grammar; it is an annotated tag; it names the commit the run was started for; that
-   commit is on `main`; the latest completed run of
-   [`mutation.yml`](../.github/workflows/mutation.yml) on that commit, not counting pull request runs,
-   concluded `success` (the full mutation table: see below); `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
+   commit is on `main`; `docs/releases/<tag>.md` exists, is not empty and names the tag on its first line; and the `release`
    environment has a reviewer rule. Matching host upgrade guidance and its notes
    link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
-2. **Runs CI at that commit.** The release calls the commit's own
-   [`ci.yml`](../.github/workflows/ci.yml): `contract`, and `check`, which runs every step of
-   `dev.json` (the certification of each adapter, the Go steps, the unit tests and the parity run
-   among them). A check `main` has gained since that commit is not run.
+2. **Verifies trusted exact-source CI evidence.** The shared
+   [evidence gate](ci-evidence.md) requires complete successful `contract`/`check` and full
+   mutation-table coverage on the exact release commit from trusted main workflows, with
+   independently resolved current inputs. Tag-sensitive checks and fresh advisory review
+   remain separate. PRs and automatic main CI keep their full checklist and status names.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
    `package-lock.json`, equals the tag without `v`. Then `npm ci`, `npm run build`, `npm pack`
    into `judgment-pack-harness-<version>.tgz`, and `checksums.txt` written over it and checked.
@@ -152,15 +157,24 @@ Every job works on the commit the run was started for, by its digest, not on the
 An approval given more than thirty days after the run finds the run's files gone, and the job
 fails: release a new version.
 
-### The mutation table
+### The mutation table and exact-source CI evidence
 
-The full mutation table (`mutation.yml`, the four sharded `every row` jobs) runs on every push to
-`main`, so each commit that can be tagged has a run of its own; a run is never cancelled by a later
-push. It also runs weekly and on demand (`workflow_dispatch`). A pull request runs the rows of the
-files it changes and a sample. No dispatch is needed before a tag: the release job reads the latest
-completed run of `mutation.yml` on the tagged commit through the API and refuses the tag unless it
-concluded `success`. If the run has not finished, or has no run, the job fails with a line saying
-so; wait for the run on that commit, or run `mutation.yml` on `main`, and tag again.
+The full mutation table still runs on every main push, weekly and by dispatch;
+PRs run a sample. Release verifies all four full shards and `every row applies`
+through the shared [trusted CI evidence gate](ci-evidence.md), together with
+`contract` and `check`. It selects the latest applicable main run and its latest
+attempt without filtering for completion; a newer failed, canceled or running
+attempt blocks reuse. A PR sample and a partial rerun cannot qualify.
+
+The source-controlled initial age limit is 48 hours. Changed runner/tool/input
+identity, stale/missing/inaccessible evidence or tag movement refuses reuse. One
+explicit full main dispatch (CI and mutation) followed by one release-verification
+retry is the bounded fresh route when main still names the target. There is no
+older-green fallback. Existing fresh advisory evidence/review and approved scoped
+exception decisions remain required; the optional audit's CI skip proves nothing
+about current advisories. Actual-tag upgrade, packaging, approval, publication and
+paired Go-tag gates stay in force. See the gate document for identities, API
+limits, observed baseline durations and candidate measurement limits.
 
 ### The window that remains
 
@@ -268,7 +282,14 @@ For v0.10.0, follow the [scoped maintainer deferral](release-quality.md#v0100-sc
 and explicitly record that live answer quality was not evaluated. Issue #169 remains
 open for the Desk handoff; this deferral changes no other release requirement.
 
-For other releases, before accepting a release candidate, follow [the live answer comparison](release-quality.md).
+For v0.11.0 only, follow the [scoped maintainer deferral](release-quality.md#v0110-scope-decision).
+Issue #169 and the dependent live routed/unrouted comparison report are outstanding follow-ups,
+not blocking release gates. Release review and notes must disclose the deferral; no live
+answer-quality, token-saving or monetary-cost result is claimed. Desk's accepted comparison
+for its v0.14.0 release and all remaining Agent gates are unchanged. Routing remains off by default.
+
+For releases without a scoped maintainer deferral, before accepting a release candidate,
+follow [the live answer comparison](release-quality.md).
 Attach its validated candidate-versus-previous-release report and any threshold decision
 to release review, and state actual model, tokens and rate-derived USD cost in release notes.
 The separate ADR-0022 offline replay and fixture tests do not meet this live prerequisite.
@@ -284,3 +305,21 @@ actual `RELEASE_TAG` to the same validator before any draft is created, includin
 a newly named version outside the notes inventory. Historical guides are later
 backfills over their cited release notes/tagged source; they do not modify prior
 release artifacts or imply these new checks ran on old tags.
+
+## Generated dependency inventory from v0.11.0
+
+Before release, regenerate `docs/dependencies.md` with `python3 scripts/gen-dependencies.py` using
+the configuration in `scripts/dependencies-config.json` and the check runner's selected Go toolchain.
+When dependencies or their evidence change, first run
+`python3 scripts/gen-dependencies.py --refresh-metadata`, inspect the version-bound local package,
+origin and license evidence in `scripts/dependencies-metadata.json`, then regenerate. Missing owner
+or license evidence stays explicitly unknown; this inventory does not replace fresh advisory review.
+The ordinary `generated-docs` checklist check regenerates in a disposable source copy and fails on
+stale dependencies, metadata, build configuration or package closure. Other reference checks remain.
+
+Every release note from v0.11.0 onward links the inventory at its actual tag, for example
+`https://github.com/Judgment-Pack/judgment-pack-agent/blob/v0.11.0/docs/dependencies.md` for v0.11.0.
+The existing actual-tag `check-upgrade-guides.py --tag` admission also requires this link and the
+inventory file, preserving the historical notes contract before v0.11.0. Do not link `main` or a
+previous version. The published Go library has no single host final binary; native closure in this
+document is the configured Linux/amd64 CGO-enabled production package union, not every host's link.

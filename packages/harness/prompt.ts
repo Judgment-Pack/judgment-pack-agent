@@ -23,6 +23,8 @@
  * of the host once per run, before the first request (`readHostParts`). Each part is held to its
  * bound in the policy table and refused, never cut, past it: the run fails before any request.
  */
+import type {RepeatExecution} from './repeatTools'
+import {frameBlock} from './framing'
 import { recallMemory } from './memories'
 import { authoredFailure } from './failures'
 import { brief, memoryFor, projectInstructions } from './host'
@@ -99,3 +101,7 @@ export async function readHostParts(query: string, policy: Pick<ContextPolicy, '
   }
   return parts
 }
+
+/** Dynamic package guidance, framed by the assembler; never a tool result or stable prefix. */
+export const REPEAT_REMINDER='Repeated identical tool results detected. Reuse the acknowledged results, change approach, or finish with the concrete remaining blocker. Existing permissions and approvals still apply.'
+export function repeatReminder(state:RepeatExecution|undefined,marker:string):string {return state?.reminded&&!state.reminderDelivered?'\n'+frameBlock('package repeat reminder',REPEAT_REMINDER,marker):''}

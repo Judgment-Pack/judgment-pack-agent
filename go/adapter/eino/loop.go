@@ -145,9 +145,14 @@ func (r *runState) runOnce(ctx, caller context.Context) error {
 	if r.run.RequestContext() != nil {
 		currentRequest = r.run.RequestContext().CurrentRequest
 	}
-	opening, err := r.sc.Opening(r.session.Prompt, r.sc.System(instructions, toolSection)+"\n"+r.sc.Execution.Guidance(), t.schemas, currentRequest)
-	if err != nil {
-		return err
+	var opening []string
+	if r.run.OpeningProjection() != nil {
+		opening = []string{r.session.Prompt}
+	} else {
+		opening, err = r.sc.Opening(r.session.Prompt, r.sc.System(instructions, toolSection)+"\n"+r.sc.Execution.Guidance(), t.schemas, currentRequest)
+		if err != nil {
+			return err
+		}
 	}
 	t.messages = []*schema.Message{userMessage(opening...)}
 	t.lastMessages = t.messages

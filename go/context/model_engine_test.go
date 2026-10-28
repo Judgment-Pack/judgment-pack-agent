@@ -127,10 +127,10 @@ func TestDurableModelActualEinoWaitsForTerminalAndAcknowledgement(t *testing.T) 
 			defer bodyWriter.Close()
 			effect := "read"
 			g := gate.New(gate.Options{})
-			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{{Name: "read_fixture", Description: "Read fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
+			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{{Name: "read_fixture", Taxonomy: contract.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
 			run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Prompt: "Read the fixture then answer.", AllowConversation: true, Critic: "off", Gate: g.Calls(), Tools: []contract.ToolOfferRuntimeTool{},
 				Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Read fixture", Input: "Read fixture"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "model-engine"}},
-				HostTools: []runcontext.HostTool{{Name: "read_fixture", Description: "Read fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: "read", Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+				HostTools: []runcontext.HostTool{{Name: "read_fixture", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: "read", Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 					markDependent()
 					tools.Add(1)
 					return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("fixture result")}, nil), nil

@@ -11,7 +11,7 @@ const MaxRunReportEvents = 400
 
 // Each intended source is copied whole, in recorded array order.
 var runReportSources = []string{"id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState"}
-var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers"}
+var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers", "usageBudget", "turnRoute", "repeatTools"}
 
 type RunReportInputInvalid struct{}
 
@@ -53,6 +53,29 @@ func runReportValue(checkpoint contract.Checkpoint) (*Value, error) {
 	return value, nil
 }
 
+func projectRepeatTools(value *Value) (*Value, error) {
+	if value.Get("version").Num() != 3 || !value.Has("repeatTools") {
+		return nil, nil
+	}
+	policy := value.Get("policy")
+	if policy.Get("repeatTools.mode").Get("value").Str() != "on" || !policy.Has("repeatTools.remindAt") || !policy.Has("repeatTools.stopAt") {
+		return nil, &RunReportInputInvalid{}
+	}
+	actual := Object()
+	for _, key := range []string{"repeatTools.mode", "repeatTools.remindAt", "repeatTools.stopAt"} {
+		actual.Set(key, policy.Get(key).Clone())
+	}
+	rows := Array()
+	for _, row := range value.Get("repeatTools").Get("executions").Items() {
+		summary := Object()
+		for _, key := range []string{"execution", "remindAt", "stopAt", "count", "reminded", "reminderDelivered", "stopped"} {
+			summary.Set(key, row.Get(key).Clone())
+		}
+		rows.Append(summary)
+	}
+	return ObjectOf("executions", rows, "policy", actual), nil
+}
+
 // ProjectRunReport makes no clock/store calls and invents no absent provider facts or totals.
 func ProjectRunReport(checkpoint contract.Checkpoint) (*Value, error) {
 	value, err := runReportValue(checkpoint)
@@ -63,6 +86,35 @@ func ProjectRunReport(checkpoint contract.Checkpoint) (*Value, error) {
 		return nil, err
 	}
 	out := ObjectOf("version", Number(1), "checkpointVersion", value.Get("version").Clone())
+	if checkpoint.Version == 3 {
+		out.Set("version", Number(2))
+		if route := value.Get("turnRoute"); route != nil {
+			out.Set("route", route.Clone())
+		}
+		if checkpoint.UsageBudget != nil {
+			journal, err := readUsageJournal(value.Get("usageBudget"))
+			if err != nil {
+				return nil, err
+			}
+			totals, err := UsageJournalTotals(*journal)
+			if err != nil {
+				return nil, err
+			}
+			raw, _ := json.Marshal(totals)
+			held, err := ParseJSON(raw)
+			if err != nil {
+				return nil, err
+			}
+			out.Set("usageTotals", held)
+		}
+	}
+	repeats, e := projectRepeatTools(value)
+	if e != nil {
+		return nil, e
+	}
+	if repeats != nil {
+		out.Set("repeatTools", repeats)
+	}
 	for _, name := range runReportSources {
 		if member := value.Get(name); member != nil {
 			out.Set(name, member.Clone())
@@ -74,7 +126,8 @@ func ProjectRunReport(checkpoint contract.Checkpoint) (*Value, error) {
 	return out, nil
 }
 
-// CanonicalRunReport returns the same canonical UTF-8 text as TypeScript.
+// CanonicalRunReport returns the same canonical UTF-8 text as TypeScript. It serializes without
+// validating retained input; use ReadRunReport or ParseRunReport for that boundary.
 func CanonicalRunReport(report *Value) (string, error) {
 	text := CanonicalJSON(report)
 	if UTF8Bytes(text) > MaxRunReportBytes {

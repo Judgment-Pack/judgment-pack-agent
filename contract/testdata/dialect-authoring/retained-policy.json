@@ -1,0 +1,78 @@
+{
+  "researchDeclarations": [
+    {
+      "revision": "recipe:old",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "decimal",
+          "fieldJson": "{\"name\":\"decimal\",\"type\":\"decimal\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "boolean",
+          "fieldJson": "{\"name\":\"boolean\",\"type\":\"boolean\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "text-list",
+          "fieldJson": "{\"name\":\"text-list\",\"type\":\"text-list\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "range",
+          "fieldJson": "{\"name\":\"range\",\"type\":\"range\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "string",
+          "fieldJson": "{\"name\":\"string\",\"type\":\"string\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        },
+        {
+          "name": "number",
+          "fieldJson": "{\"name\":\"number\",\"type\":\"number\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        }
+      ]
+    },
+    {
+      "revision": "recipe:next",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"integer\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+        }
+      ]
+    },
+    {
+      "revision": "recipe:unavailable",
+      "fields": null
+    }
+  ],
+  "types": [
+    "text",
+    "integer",
+    "decimal",
+    "boolean",
+    "text-list",
+    "range",
+    "string",
+    "number"
+  ],
+  "previewIssues": [
+    {
+      "column": "amount/raw~value",
+      "issue": "research-context"
+    },
+    {
+      "column": "typed",
+      "issue": "research-declaration"
+    },
+    {
+      "column": "missing",
+      "issue": "research-field"
+    },
+    {
+      "column": "name",
+      "issue": "research-metadata"
+    }
+  ]
+}

@@ -711,8 +711,8 @@
   {
    "name": "the gate is handed the call the adapter already rehearsed",
    "file": "engines/vercel/loop.ts",
-   "find": "      const args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<\n        string,\n        unknown\n      >",
-   "replace": "      const args = input as Record<string, unknown>",
+   "find": "      let args = (name === REHEARSAL_TOOL && asked.length > 0 ? asked.shift() : input) as Record<\n        string,\n        unknown\n      >",
+   "replace": "      let args = input as Record<string, unknown>",
    "tests": [
     "capabilities.test.ts",
     "context/recovery.integration.test.ts",
@@ -2808,8 +2808,8 @@
   {
    "name": "a tool result in flight is delivered after the end",
    "file": "session.ts",
-   "find": "          const answered = (await client.callTool({ name, arguments: args })) as McpToolResult\n          if (ended !== null) throw new NoSession(ended)\n          return answered",
-   "replace": "          return (await client.callTool({ name, arguments: args })) as McpToolResult",
+   "find": "        const answered=await client.callTool({name,arguments:args}) as McpToolResult\n        if(ended!==null)throw new NoSession(ended)\n        return answered",
+   "replace": "        return await client.callTool({name,arguments:args}) as McpToolResult",
    "tests": [
     "session.test.ts"
    ],
@@ -3060,14 +3060,14 @@
   {
    "name": "the runtime tools skip the critic's allow-list",
    "file": "context/session.ts",
-   "find": "callTool:async(name:string,args:Record<string,unknown>)=>{context.admit(name,'runtime',args);await session.context?.authorize",
-   "replace": "callTool:async(name:string,args:Record<string,unknown>)=>{await session.context?.authorize",
+   "find": "context.admit(name,'runtime',args);await session.context?.authorize",
+   "replace": "await session.context?.authorize",
    "tests": [
-    "certification/scenarios.test.ts"
+    "policySession.test.ts"
    ],
    "status": "caught",
    "origin": "review of #44",
-   "note": "the critic's call of a tool outside its allow-list reaches the gate instead of the harness's own refusal"
+   "note": "Prepared consumer wrapper refuses critic write_file before the supplied Runtime port and permits validate; Go gate holds the analogous phase boundary."
   },
   {
    "name": "a delegation batch ignores the connection's concurrency and starts every child at once",
@@ -3182,9 +3182,10 @@
     "toolSources.test.ts",
     "certification/scenarios.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
    "origin": "ADR-0006",
-   "note": "the offer vector (the MCP tool is act, approval required) and scenario 7's approval check: the act must ask the host's approval reader"
+   "note": "the offer vector (the MCP tool is act, approval required) and scenario 7's approval check: the act must ask the host's approval reader",
+   "reason": "ADR-0027 requires owner taxonomy before admission; missing classification no longer receives a default. The taxonomy mandatory-declaration and approval-widening rows replace this fallback mutation, with Go twins."
   },
   {
    "name": "the schema budget is removed",
@@ -3463,7 +3464,7 @@
   {
    "name": "an act call on a run whose events carry no call ids gets no id: its decision taken by name, another call's",
    "file": "engines/vercel/loop.ts",
-   "find": "      const correlation = session.interactive || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
+   "find": "      const correlation = session.interactive || context.capturesToolFrames || context.sources?.needsApproval(tool.name) ? { callId: crypto.randomUUID() } : {}",
    "replace": "      const correlation = session.interactive ? { callId: crypto.randomUUID() } : {}",
    "tests": [
     "toolSources.test.ts",
@@ -5533,8 +5534,8 @@
   {
    "name": "request values #164: phase tool admission widened",
    "file": "context/session.ts",
-   "find": "return offered.some(tool=>tool.name===name)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))",
-   "replace": "return offered.some(tool=>tool.name===name)",
+   "find": "return offered.some(tool=>tool.name===name)&&(context?.turnRoute?.offers(name,role)??true)&&(phase!=='critic'||(kind==='runtime'?criticMayCall(name):criticMayRead(name)))",
+   "replace": "return offered.some(tool=>tool.name===name)&&(context?.turnRoute?.offers(name,role)??true)",
    "tests": [
     "policySession.test.ts"
    ],
@@ -5809,7 +5810,7 @@
   {
    "name": "record versions refuse future records before body interpretation",
    "file": "recordReader.ts",
-   "find": "if(Number(version)>RECORD_VERSIONS[kind])throw new UnsupportedRecordVersion(kind,Number(version))",
+   "find": "if(Number(version)>READ_VERSIONS[kind])throw new UnsupportedRecordVersion(kind,Number(version))",
    "replace": "if(false)throw new UnsupportedRecordVersion(kind,Number(version))",
    "tests": [
     "recordReader.test.ts"
@@ -5831,8 +5832,8 @@
   {
    "name": "record versions stamp every final event",
    "file": "recordReader.ts",
-   "find": "return {...event,version:1}",
-   "replace": "return {...event} as T&{version:1}",
+   "find": "return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}",
+   "replace": "return {...event} as T&{version:1|2}",
    "tests": [
     "recordReader.test.ts",
     "certification/records.test.ts"
@@ -5843,8 +5844,8 @@
   {
    "name": "record versions keep the historical member inventory frozen",
    "file": "recordReader.ts",
-   "find": "version===0||kind==='checkpoint'&&version===1?shapes.historical:shapes.current",
-   "replace": "version===0?shapes.historical:shapes.current",
+   "find": "version===0||kind==='checkpoint'&&version===1?shapes.historical:",
+   "replace": "version===0?shapes.historical:",
    "tests": [
     "recordReader.test.ts"
    ],
@@ -5854,7 +5855,7 @@
   {
    "name": "record versions stamp checkpoints before their digest",
    "file": "records.ts",
-   "find": "version:(schema===CHECKPOINT_SCHEMA?2:1)",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
    "replace": "version:1",
    "tests": [
     "recordReader.test.ts",
@@ -6365,8 +6366,8 @@
   {
    "name": "storage foundation idempotency content",
    "file": "storage/run.ts",
-   "find": "if(!identical(prior.input,frozen))throw new StorageCommitMismatch();",
-   "replace": "void frozen;",
+   "find": "if(!identical(prior.input,frozen)||prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();",
+   "replace": "if(prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();",
    "tests": [
     "storage/storage.test.ts"
    ],
@@ -6409,7 +6410,7 @@
   {
    "name": "storage foundation receipt acknowledgement",
    "file": "storage/writer.ts",
-   "find": "if(!receipt||receipt.commitId!==commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||output&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()",
+   "find": "if(!receipt||receipt.commitId!==input.commitId||!storageId(receipt.revision)||receipt.revision===this.revision||receipt.cursor!==null&&!storageId(receipt.cursor)||input.events.length>0&&receipt.cursor===null)throw new StorageAcknowledgementInvalid()",
    "replace": "void receipt",
    "tests": [
     "storage/writer.test.ts"
@@ -6590,15 +6591,15 @@
   {
    "name": "task completion binds the active step id",
    "file": "execution/planActions.ts",
-   "find": "if(!active||active.id!==args.id)",
-   "replace": "if(!active)",
+   "find": "const active=current.plan.find(s=>s.id===args.id&&(s.status==='in_progress'||delegated&&s.status==='pending'&&args.outcome==='completed'))",
+   "replace": "const active=current.plan.find(s=>(s.status==='in_progress'||delegated&&s.status==='pending'&&args.outcome==='completed'))",
    "tests": [
     "execution/plan.test.ts",
     "execution/planActions.test.ts"
    ],
    "status": "caught",
    "origin": "agent#180/#181/#182",
-   "note": "Matched Go twin in go/context/plan_actions.go removes `if active == nil || planText(active.Get(\"id\")) != planText(args.Get(\"id\")) {` using `if active == nil {`. Both focused plan test assertions fail under the individual removal; no build-only failure receives credit."
+   "note": "Go twin: go/context/plan_actions.go removes the exact id comparison from the active-step selection while retaining the in-progress/delegated-pending conditions. TestPlanClosureInputRevisionAndActiveGuards fails at want active-step-required; the restored baseline passes."
   },
   {
    "name": "task completion requires successful acknowledged results",
@@ -6663,6 +6664,827 @@
    "status": "caught",
    "origin": "agent#157",
    "note": "Removes only the byte-type predicate. The other-view refusal regression fails on an otherwise valid envelope encoded in a Uint8ClampedArray. Restoring constructor-identity validation separately fails the cross-realm acceptance regression. Go RunEventPage bytes are statically []byte and have no constructor-realm predicate to change."
-  }
+  },
+  {
+   "name": "taxonomy mandatory declaration",
+   "file": "toolTaxonomy.ts",
+   "find": "return 'mandatory tool taxonomy is missing or malformed'",
+   "replace": "return ''",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy operation effect compatibility",
+   "file": "toolTaxonomy.ts",
+   "find": "if (!compatible[t.operation].includes(t.effect))",
+   "replace": "if (false && !compatible[t.operation].includes(t.effect))",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy runtime owner provenance",
+   "file": "toolTaxonomy.ts",
+   "find": "t.operation === 'evaluate' && !runtime",
+   "replace": "t.operation === 'evaluate' && !runtime && false",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy act approval cannot widen",
+   "file": "toolSources.ts",
+   "find": "t.effect === 'act' && tool.approval === 'none'",
+   "replace": "t.effect === 'act' && tool.approval === 'none' && false",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy strongest skill effect",
+   "file": "toolTaxonomy.ts",
+   "find": "effect = t.effect",
+   "replace": "effect = 'pure'",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy unknown skill reference",
+   "file": "toolTaxonomy.ts",
+   "find": "const t = tools.get(name)",
+   "replace": "const t = tools.get(name) ?? ({operation:'ask',effect:'pure'} as ToolTaxonomy)",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy dependency taxonomy pin",
+   "file": "skills.ts",
+   "find": "taxonomy: tools.get(name)",
+   "replace": "taxonomy: {operation:'ask',effect:'pure'}",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/skills.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy skill tags approval pin",
+   "file": "skills.ts",
+   "find": "...(skill.tags === undefined ? {} : {tags: skill.tags})",
+   "replace": "...{}",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/skills.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy skill preset profile filter",
+   "file": "skills.ts",
+   "find": "preset !== undefined && !profileFits(skill.profile, presetLimit(preset))",
+   "replace": "preset !== undefined && !profileFits(skill.profile, presetLimit(preset)) && false",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/skills.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy external receipt verified result",
+   "file": "toolSources.ts",
+   "find": "if (!verified) {",
+   "replace": "if (!verified && false) {",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/sources.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy unsupported runtime action refusal",
+   "file": "toolTaxonomy.ts",
+   "find": "if (!['discover','read','check','transform','evaluate'].includes(t.operation) || !['pure','read',...(name==='experimental_evaluate'?['act']:[])].includes(t.effect)) return 'runtime taxonomy exceeds its local computation contract'",
+   "replace": "if (false) return 'runtime taxonomy exceeds its local computation contract'",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy host narrow family limit",
+   "file": "toolTaxonomy.ts",
+   "find": "t.operation === 'ask' || ((limit.operations",
+   "replace": "true || t.operation === 'ask' || ((limit.operations",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/tooltaxonomy.go; TestTaxonomy tests."
+  },
+  {
+   "name": "taxonomy malformed host limit",
+   "file": "toolTaxonomy.ts",
+   "find": "list.some(v=>!(allowed as readonly unknown[]).includes(v))",
+   "replace": "list.some(v=>false && !(allowed as readonly unknown[]).includes(v))",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin: go/context/tooltaxonomy.go; TestTaxonomySharedTools."
+  },
+  {
+   "name": "taxonomy receipt execution outcome",
+   "file": "toolSources.ts",
+   "find": "code: 'tool-failed', source: 'tool', outcome: 'unknown', detail",
+   "replace": "code: 'tool-failed', source: 'tool', outcome: 'not-started', detail",
+   "tests": [
+    "toolTaxonomy.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#214",
+   "note": "Go twin in go/context/sources.go: TestTaxonomyExternalReceiptBinding requires unknown after execution and consumed source-call accounting."
+  },
+  {
+     "name": "dialect authoring requires a prior exact read",
+     "file": "dialects.ts",
+     "find": "if(!seen||!same(seen,expected))",
+     "replace": "if(false)",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: replace !ok || !dialectSame(seen, a.DialectIdentity) with ok && !dialectSame(seen, a.DialectIdentity); otherwise_exact_input_needs_prior_read must fail its expected refusal."
+  },
+  {
+     "name": "dialect authoring checks raw current identity",
+     "file": "dialects.ts",
+     "find": "if(!same(await identity(s),expected))",
+     "replace": "if(false)",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: compare dialectIdentity(s) with itself; exact_pack_bytes_repeated_revision and exact_dialect_bytes_repeated_revision must fail their expected refusals."
+  },
+  {
+     "name": "dialect authoring rechecks after preview",
+     "file": "dialects.ts",
+     "find": "if(!same(await identity(current),expected))",
+     "replace": "if(false)",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: compare dialectIdentity(current) with itself; changed-preview must fail its expected refusal."
+  },
+  {
+     "name": "dialect authoring binds Runtime pack bytes",
+     "file": "dialects.ts",
+     "find": "compat.pack.sha256!==expected.packDigest.slice(7)",
+     "replace": "false",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: compare pack[sha256] with itself; wrong-pack must fail its expected refusal."
+  },
+  {
+     "name": "dialect authoring verifies retention acknowledgment",
+     "file": "dialects.ts",
+     "find": "ack.fingerprint!==fingerprint",
+     "replace": "false",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: compare ack.Fingerprint with itself; wrong-ack must fail its unknown-outcome assertion."
+  },
+  {
+     "name": "dialect authoring never retries an unknown retention",
+     "file": "dialects.ts",
+     "find": "if(state?.unknown||state?.busy)",
+     "replace": "if(state?.busy)",
+     "tests": [
+        "dialects.test.ts",
+        "certification/dialects.test.ts",
+        "dialects-runtime.test.ts"
+     ],
+     "status": "caught",
+     "origin": "agent#171",
+     "note": "Go twin: remove state.Unknown from the candidate latch while retaining state.Busy; lost-ack must fail its no-extra-write assertion after identical reentry."
+  },
+{
+  "name": "asking well requires actual question offer",
+  "file": "askingWell.ts",
+  "find": "if(!offersAskUser(tools))return declared",
+  "replace": "if(false)return declared",
+  "note": "Go twin: remove the SelectAskingWell absent-offer return; absent question must not insert assertion fails.",
+  "tests": [
+    "askingWell.test.ts",
+    "certification/asking-well.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#220"
+},
+{
+  "name": "asking well inserts the pinned default",
+  "file": "askingWell.ts",
+  "find": "return [...(declared??[]),askingWellSkill()]",
+  "replace": "return declared",
+  "note": "Go twin: return declared without default from SelectAskingWell; profile and actual-run loaded assertions fail.",
+  "tests": [
+    "askingWell.test.ts",
+    "certification/asking-well.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#220"
+},
+{
+  "name": "asking well checks replacement method kind",
+  "file": "askingWell.ts",
+  "find": "s.kind!=='method'||!Array.isArray(s.tools)",
+  "replace": "false||!Array.isArray(s.tools)",
+  "note": "Go twin: remove s.Kind != method from SelectAskingWell replacement guard; invalid replacement accepted assertion fails.",
+  "tests": [
+    "askingWell.test.ts",
+    "certification/asking-well.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#220"
+},
+{
+  "name": "asking well requires catalogue admission",
+  "file": "askingWell.ts",
+  "find": "if(!selected||selected.kind!=='method'||selected.profile.effect!=='pure'||selected.profile.operations.length!==1||selected.profile.operations[0]!=='ask')refuse()",
+  "replace": "if(false)refuse()",
+  "note": "Go twin: return nil instead of final askingWellRefusal in RequireAskingWell; stale pin must refuse without fallback assertion fails.",
+  "tests": [
+    "askingWell.test.ts",
+    "certification/asking-well.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#220"
+},
+{
+  "name": "asking well uses pinned digest admission",
+  "file": "skills.ts",
+  "find": "if (digest !== skill.pinnedDigest) {",
+  "replace": "if (false) {",
+  "note": "Go twin: replace digest != skill.PinnedDigest by false in DeclareSkills; stale pin must refuse without fallback assertion fails.",
+  "tests": [
+    "askingWell.test.ts",
+    "certification/asking-well.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#220"
+},
+{
+  "name": "repeat204 hashes exact acknowledged result bytes",
+  "file": "repeatTools.ts",
+  "find": "sha256(row.repeatResultJson)",
+  "replace": "sha256(canonicalJSON(row.result))",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204ExactResultAndLosslessArguments fails at exact numeric custody identity changed.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 preserves lossless canonical arguments",
+  "file": "repeatTools.ts",
+  "find": "args:canonicalRepeatArgs(row.request)",
+  "replace": "args:canonicalJSON(JSON.parse(row.request))",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204ExactResultAndLosslessArguments fails at exact numeric custody identity changed.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 includes exact source identity",
+  "file": "repeatTools.ts",
+  "find": "source:row.source",
+  "replace": "source:'source'",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedHandwrittenVectors fails at count/reminder/stop.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 counts repeats across interleaving",
+  "file": "repeatTools.ts",
+  "find": "repeated=next.seen.some(item=>item.keyDigest===keyDigest)",
+  "replace": "repeated=next.seen.at(-1)?.keyDigest===keyDigest",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedHandwrittenVectors fails at count/reminder/stop.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 counts each physical dispatch once",
+  "file": "repeatTools.ts",
+  "find": "if(state.seen.some(item=>item.dispatchId===row.id))return",
+  "replace": "if(false)return",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedHandwrittenVectors fails at dispatch ID counted twice.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 enforces original physical dispatch stop",
+  "file": "storage/writer.ts",
+  "find": "if(this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution)?.stopped)throw new DispatchCanceled(new RepeatedToolLimit())",
+  "replace": "if(false)throw new DispatchCanceled(new RepeatedToolLimit())",
+  "tests": [
+    "repeatTools.integration.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204WriterInterleavingRolesChildrenAndStop fails at bypassed named stop.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 issues only the first reminder",
+  "file": "repeatTools.ts",
+  "find": "reminder=!next.reminded&&next.count>=next.remindAt",
+  "replace": "reminder=next.count>=next.remindAt",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedHandwrittenVectors fails at count/reminder/stop.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 validates retained result custody",
+  "file": "execution/state.ts",
+  "find": "if(!validRepeatRecordCustody(value))return fail()",
+  "replace": "if(false)return fail()",
+  "tests": [
+    "repeatTools.contract.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedExactCustodyRecord fails at invalid exact custody accepted.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 omits off policy defaults",
+  "file": "policy.ts",
+  "find": "if(members['repeatTools.mode']?.value==='off')",
+  "replace": "if(false)",
+  "tests": [
+    "repeatTools.contract.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedRecordVersionsAndRefusals fails at off resolved policy changed bytes.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 selects event2 for repeat events",
+  "file": "recordReader.ts",
+  "find": "event.type==='repeat_detected'||",
+  "replace": "",
+  "tests": [
+    "repeatTools.contract.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204RecordSelectorsAndPolicy fails at Invalid record.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 preserves explicit checkpoint3 selection",
+  "file": "records.ts",
+  "find": "(value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||",
+  "replace": "",
+  "tests": [
+    "repeatTools.contract.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204RecordSelectorsAndPolicy fails at explicit current checkpoint downstamped.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 captures result custody before projection",
+  "file": "storage/writer.ts",
+  "find": "claim.repeatResultJson=text",
+  "replace": "claim.repeatResultJson=canonicalJSON(value)",
+  "tests": [
+    "repeatTools.integration.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204WriterExactPrecisionCustodyAndResume fails at precision-changing raw result counted as repeat.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 bounds retained physical observations",
+  "file": "repeatTools.ts",
+  "find": "if(state.seen.length>=REPEAT_DISPATCH_LIMIT)",
+  "replace": "if(false)",
+  "tests": [
+    "repeatTools.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204CapacityAndDeliveredReminder fails at physical observation capacity bypassed.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 retains one delivered assembler reminder",
+  "file": "prompt.ts",
+  "find": "state?.reminded&&!state.reminderDelivered",
+  "replace": "state?.reminded",
+  "tests": [
+    "repeatTools.integration.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204CapacityAndDeliveredReminder fails at delivered reminder replayed.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 validates threshold ordering",
+  "file": "policy.ts",
+  "find": "if(Number(members['repeatTools.remindAt']?.value)>Number(members['repeatTools.stopAt']?.value))",
+  "replace": "if(false)",
+  "tests": [
+    "repeatTools.contract.test.ts"
+  ],
+  "note": "Go twin: TestRepeat204SharedRecordVersionsAndRefusals fails at invalid policy accepted.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "repeat204 acknowledges empty state before first dispatch",
+  "file": "context/session.ts",
+  "find": "persistence.writer.attachRepeatScope(persistence,repeats,",
+  "replace": "false&&persistence.writer.attachRepeatScope(persistence,repeats,",
+  "tests": [
+    "repeatTools.integration.test.ts"
+  ],
+  "note": "Go twin: remove the early attachRepeatScope call; TestRepeat204StartupCheckpointBeforeDispatch fails at empty repeat state not acknowledged before dispatch.",
+  "status": "caught",
+  "origin": "agent#204"
+},
+{
+  "name": "turn route172 refuses undeclared tool selections",
+  "file": "turnRoute.ts",
+  "find": "if(s.tools!=='all'&&s.tools.some(x=>!c.tools.some(t=>t.name===x)))return 'tool-not-admitted'",
+  "replace": "",
+  "tests": [
+    "turnRoute.test.ts"
+  ],
+  "note": "Go twin: remove only the tool-not-admitted return in RouteSelectionProblem; TestTurnRouteHandwrittenParity/invalid-host-default fails at precedence changed.",
+  "status": "caught",
+  "origin": "agent#172"
+},
+{
+  "name": "turn route172 widens only once including declared skills",
+  "file": "turnRoute.ts",
+  "find": "if(route.widened||routeOffers(route,c,name)||",
+  "replace": "if(routeOffers(route,c,name)||",
+  "tests": [
+    "turnRoute.test.ts"
+  ],
+  "note": "Go twin: remove only r.Widened from WidenedTurnRoute; TestTurnRouteHandwrittenParity/host-first fails at route widened twice for a declared skill. The skill case avoids the independent already-offered-tool guard.",
+  "status": "caught",
+  "origin": "agent#172"
+},
+{
+  "name": "dialect retained declared-fact-policy",
+  "file": "dialects.ts",
+  "find": "conversion:{contractVersion:'1',column:f.column,...f.conversion}",
+  "replace": "editorConversion:{contractVersion:'1',column:f.column,...f.conversion}",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedPolicy$; intended assertion: declared conversion leaves differ."
+},
+{
+  "name": "dialect retained declared-availability",
+  "file": "dialects.ts",
+  "find": "availability:{contractVersion:'1',column:e.column}",
+  "replace": "editorAvailability:{contractVersion:'1',column:e.column}",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedPolicy$; intended assertion: declared conversion leaves differ."
+},
+{
+  "name": "dialect retained complete-original-inventory",
+  "file": "dialects.ts",
+  "find": "columns:s.columns,researchDeclarations:s.researchDeclarations??null",
+  "replace": "columns:s.columns,researchDeclarations:null",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedPolicy$; intended assertion: lost complete original declaration inventory."
+},
+{
+  "name": "dialect retained strict-original-declaration",
+  "file": "dialects.ts",
+  "find": "!declaration(f.name,f.fieldJson)",
+  "replace": "false",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedMalformedDeclarations$; intended assertion: malformed original declaration accepted."
+},
+{
+  "name": "dialect retained trusted-opt-in",
+  "file": "dialects.ts",
+  "find": "selectedContract(ports.conversionContract)",
+  "replace": "void ports.conversionContract",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedCapabilityIdentity/missing-opt-in$; intended assertion: exact conversion capability guard missing."
+},
+{
+  "name": "dialect retained discovery-spec-pin",
+  "file": "dialects.ts",
+  "find": "!contractIdentity(contract,selection)",
+  "replace": "false",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedCapabilityIdentity/discovery-spec$; intended assertion: exact conversion capability guard missing."
+},
+{
+  "name": "dialect retained checked-spec-pin",
+  "file": "dialects.ts",
+  "find": "!contractIdentity(r,selection)",
+  "replace": "false",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedCapabilityIdentity/checked-spec$; intended assertion: exact conversion capability guard missing."
+},
+{
+  "name": "dialect retained discovered-ceiling",
+  "file": "dialects.ts",
+  "find": "utf8Bytes(input)>Math.min(L.documentBytes,Number(limits.documentBytes))",
+  "replace": "false",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedDiscoveredCeiling$; intended assertion: missing byte ceiling refusal."
+},
+{
+  "name": "dialect retained selected-generated-occurrence",
+  "file": "dialects.ts",
+  "find": "sources[0].read.copy=bound",
+  "replace": "mapping.case=bound",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedSelectedOccurrence$; intended assertion: generated read became asserted case."
+},
+{
+  "name": "dialect retained unique-selected-occurrence",
+  "file": "dialects.ts",
+  "find": "sources.length!==1||",
+  "replace": "false||",
+  "tests": [
+    "dialects-retained.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#171",
+  "note": "Go twin: ^TestDialectRetainedAmbiguousOccurrence$; intended assertion: ambiguous source occurrence accepted."
+},
+{
+  "name": "native Plan pause R1 coordinator-semantic-reserve",
+  "file": "taskSteps.ts",
+  "find": "!count(value.childReserve,Number(value.limit))",
+  "replace": "!count(value.childReserve)",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #219 rejects semantic coordinator bounds independently of structural schema. Semantic coordinator bounds no longer reject an excessive child reserve. Go counterpart caught: semantic coordinator guard missing for childReserve. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 coordinator-original-binding",
+  "file": "storage/writer.ts",
+  "find": "if((retained!==undefined||this.restoredTaskHead)&&canonicalJSON(retained??null)!==canonicalJSON(expected)||this.nativeTaskCoordinator&&canonicalJSON(this.nativeTaskCoordinator)!==canonicalJSON(expected))throw new ContinuationIdentityChanged()",
+  "replace": "if(false)throw new ContinuationIdentityChanged()",
+  "tests": [
+    "taskSteps.integration.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.integration.test.ts > #219 original native coordinator pin > persists original enrollment before dispatch and refuses missing or changed restart registration. Missing or changed restart coordinator registration no longer throws. Go counterpart caught: changed original coordinator limit admitted. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 first-candidate-original-pin",
+  "file": "storage/writer.ts",
+  "find": "if(expected||this.nativeTaskCoordinator){const pinned=source.snapshot();",
+  "replace": "if(false){const pinned=source.snapshot();",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 actual native standalone first-departure accept keeps released Plan pause unknown and starts a distinct invocation. The original coordinator pin is lost and the accepted first departure emits a storage error. Go counterpart caught: actual first adapter did not pause for Plan drift. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 actual-release-required",
+  "file": "storage/nativePlanPause.ts",
+  "find": "!slot.invalid&&slot.released&&!!slot.pause",
+  "replace": "!slot.invalid&&!!slot.pause",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 native missing release never forgives the unknown claim. Missing actual provider release incorrectly persists Plan pause evidence. Go counterpart caught: unreleased or cancelled pause gained receipt. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 predecision-retained-proof",
+  "file": "storage/writer.ts",
+  "find": "const invocation=await verifyNativePlanEvidence(this.store,head,this.latest,old,undefined,false,signal)",
+  "replace": "const invocation={dispatchId:old.id,requestDigest:old.requestDigest}",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 retained truncated proof refuses before a new provider. Truncated retained proof permits a second provider call (2 rather than 1). Go counterpart caught: contradictory native proof allowed decision. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 restored-retained-proof",
+  "file": "storage/writer.ts",
+  "find": "await verifyNativePlanEvidence(this.store,head,this.latest,old,decision,true,signal);",
+  "replace": ";",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 decided retained missing-pause evidence cannot restore the private exemption. Missing retained pause evidence restores an exemption and permits a third provider call (3 rather than 2). Go counterpart caught: incomplete decided proof restored native exemption:. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 single-unknown-exemption",
+  "file": "storage/writer.ts",
+  "find": "const plan=this.nativePlanSuperseded.get(row.id)",
+  "replace": "if(this.nativePlanSuperseded.size>0)return true;const plan=this.nativePlanSuperseded.get(row.id)",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 a released Plan decision never forgives the next unknown invocation. The next unknown invocation loses its required refusal event (false rather than true); calls remain 2, so this is not extra-dispatch proof. Go counterpart caught: single-claim exemption forgave distinct unknown:. Restored focused checks pass. This proves typed request-preparation refusal; it does not claim an extra provider dispatch."
+},
+{
+  "name": "native Plan pause R1 composed-partial-release",
+  "file": "storage/release.ts",
+  "find": "if(!results.every(Boolean)){for(const owner of owners)owner.acknowledge(Object.freeze({}));return false}",
+  "replace": "if(!results.every(Boolean)){return false}",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 composed release invalidates live owners if another owner has already closed. A live release owner remains valid after another composed owner has already closed. Go counterpart caught: invalid composed proof released live owner1 after owner0 closed. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 native-event-version",
+  "file": "recordReader.ts",
+  "find": "event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||",
+  "replace": "",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #219 selects current versions for native pause and decision producers. The native decision event selects published version 1 rather than current version 2. Go counterpart caught: native decision did not select current event2. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 schema-coordinator",
+  "file": "contract/record-shapes.json",
+  "find": "\"taskCoordinator\":{\"$ref\":\"#/$defs/taskCoordinatorBinding\"}",
+  "replace": "\"taskCoordinator_REMOVED\":{\"$ref\":\"#/$defs/taskCoordinatorBinding\"}",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #183 shared current record native-original-coordinator-pin. The handwritten coordinator vector fails with unknown member /planState/taskCoordinator. Go counterpart caught: Unknown record member. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 schema-native-pause",
+  "file": "contract/record-shapes.json",
+  "find": "\"planPause\":{\"$ref\":\"#/$defs/nativePlanPause\"}",
+  "replace": "\"planPause_REMOVED\":{\"$ref\":\"#/$defs/nativePlanPause\"}",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #183 shared current record native-released-plan-pause. The handwritten native pause vector fails with unknown member /durable/dispatches/0/planPause. Go counterpart caught: Unknown record member. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 schema-native-decision",
+  "file": "contract/record-shapes.json",
+  "find": "\"nativeInvocation\":{\"$ref\":\"#/$defs/nativePlanInvocation\"}",
+  "replace": "\"nativeInvocation_REMOVED\":{\"$ref\":\"#/$defs/nativePlanInvocation\"}",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #183 shared current record native-decided-plan-pause. The handwritten native decision vector fails with unknown member /planState/decisions/0/nativeInvocation. Go counterpart caught: Unknown record member. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R1 schema-native-event",
+  "file": "contract/record-shapes.json",
+  "find": "\"nativeInvocation\":{\"$ref\":\"checkpoint.json#/$defs/nativePlanInvocation\"}",
+  "replace": "\"nativeInvocation_REMOVED\":{\"$ref\":\"checkpoint.json#/$defs/nativePlanInvocation\"}",
+  "tests": [
+    "taskSteps.contract.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #183 shared current event native-plan-decision-invocation. The handwritten native decision event fails with unknown member /nativeInvocation. Go counterpart caught: Unknown record member. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R4 distinct unknown without task budgets",
+  "file": "storage/writer.ts",
+  "find": "  // A Plan decision exempts its exact claim, never another unknown in that scope.\n  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()\n",
+  "replace": "",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at the actual interrupted-terminal native test with taskSteps=false: expected 3 provider calls to be 2. The taskSteps=true control passes. Go twin removes only len(w.nativePlanSuperseded) > 0 from supersededNativePlanLocked; the paired task-steps-off fixture fails calls=3 want=2. The acknowledged Plan decision and exact original unknown audit remain retained; this proves refusal before an extra physical provider dispatch, not a repeated host side effect. Restored focused checks are recorded in the R4 handoff."
+}
  ]
 }

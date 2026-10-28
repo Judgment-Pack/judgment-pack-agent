@@ -24,7 +24,17 @@
           }
         }
       },
-      "effect": "plan"
+      "effect": "plan",
+      "taxonomy": {
+        "operation": "own-state",
+        "effect": "pure"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
     }
   ]
 }

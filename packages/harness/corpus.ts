@@ -1,3 +1,4 @@
+import {durableOwner} from './storage/writer'
 import {canonicalJSON} from './context/chat'
 import type {AssistantEvent,ModelRequest,McpToolResult} from './engine'
 import type {AgentCallbacks,AgentRequest,AgentEvent,AgentToolCall} from './agent'
@@ -137,7 +138,7 @@ export async function replayCorpus(entry:CorpusEntry,run:(server:ScriptedCorpusS
 
 /** Wrap a session before its engine starts, then write its complete host-visible stream before end. */
 export function recordSession<T extends import('./engine').EngineSession>(session:T):{session:T;stream:(events:AsyncIterable<AssistantEvent>)=>AsyncIterable<AssistantEvent>}{
- if(session.record!==true||session.corpus===undefined)return {session,stream:events=>events}
+ if(((session.context?.runStore?.store as Partial<import('./storage/history').HistoryRunStore>|undefined)?.historyVersion===1&&session.context?.runStore?.store.durability!=='single-writer-callback')||session.context?.[durableOwner]?.writer.hasLiveCapture===true||session.record!==true||session.corpus===undefined)return {session,stream:events=>events}
  const requests:RecordedRequest[]=[],toolResults:RecordedToolResult[]=[],calls=new Map<string,Record<string,unknown>[]>(),configuration=session.corpus
  const held={...session} as T
  if('model'in held){

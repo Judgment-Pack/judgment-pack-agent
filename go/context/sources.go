@@ -48,6 +48,8 @@ import (
 // before each call. A digest other than the pinned one refuses the source until the host declares
 // the new one, which only the person's re-approval gives it.
 type ToolSource struct {
+	VerifyReceipt   func(context.Context, ReceiptEvidence) (bool, error)
+	GatewayReceipt  *GatewayReceiptTrust
 	Kind            string
 	ID              string
 	Trust           string
@@ -58,6 +60,7 @@ type ToolSource struct {
 	// CurrentDigest is the legacy tool-list observer; snapshot mode uses the raw observer below.
 	CurrentDigest             func(ctx context.Context) (string, error)
 	DescriptorSnapshot        []byte
+	DescriptorApproval        *DescriptorApproval
 	CurrentDescriptorSnapshot func(ctx context.Context) ([]byte, error)
 }
 
@@ -251,6 +254,7 @@ func WireName(source, tool string) string {
 
 // ListedTool is one tool of a source as its list's digest reads it.
 type ListedTool struct {
+	Taxonomy    *ToolTaxonomy
 	Name        string
 	Description string
 	InputSchema json.RawMessage
@@ -269,6 +273,11 @@ func ToolListDigest(tools []ListedTool) string {
 			if schema, err := ParseJSON(tool.InputSchema); err == nil {
 				item.Set("inputSchema", schema)
 			}
+		}
+		if tool.Taxonomy != nil {
+			raw, _ := json.Marshal(tool.Taxonomy)
+			taxonomy, _ := ParseJSON(raw)
+			item.Set("taxonomy", taxonomy)
 		}
 		list.Append(item)
 	}
@@ -345,17 +354,17 @@ func declarationProblem(tool HostTool) string {
 		return "its tool list digest is not sha256: and 64 lower-case hex digits"
 	case s.Version == "" && s.ToolListDigest == "":
 		return "its source names neither a version nor a tool list digest"
-	case s.Kind == "mcp" && s.ToolListDigest == "":
-		return "its source is an MCP server whose tool list is not pinned by digest"
+	case s.ToolListDigest == "":
+		return "its source has no approved taxonomy-bound tool-list digest"
 	case s.Identity != nil && (s.Identity.Kind != "person" && s.Identity.Kind != "service" && s.Identity.Kind != "connection" || s.Identity.Label == "" || U16Length(s.Identity.Label) > 128):
 		return "its identity is not a person, service or connection with a label of 1 to 128 characters"
-	case s.DescriptorSnapshot != nil && s.Kind != "mcp":
+	case s.DescriptorSnapshot != nil && s.Kind != "mcp" && s.Kind != "gateway":
 		return "its descriptor snapshot is not MCP snapshot bytes"
-	case s.DescriptorSnapshot != nil && s.CurrentDescriptorSnapshot == nil:
-		return "its descriptor snapshot has no current snapshot observer"
+	case s.DescriptorSnapshot != nil && (s.CurrentDescriptorSnapshot == nil || s.DescriptorApproval == nil):
+		return "its V2 descriptor snapshot requires an observer and independent approval context"
 	case s.DescriptorSnapshot != nil && s.CurrentDigest != nil:
 		return "its snapshot declaration also carries the legacy currentDigest observer"
-	case s.DescriptorSnapshot == nil && s.CurrentDescriptorSnapshot != nil:
+	case s.DescriptorSnapshot == nil && (s.CurrentDescriptorSnapshot != nil || s.DescriptorApproval != nil):
 		return "its current snapshot observer has no approved snapshot"
 	case tool.Name == "" || U16Length(tool.Name) > 128:
 		return "its name is not 1 to 128 characters"
@@ -372,7 +381,7 @@ func declarationProblem(tool HostTool) string {
 		return "its effect class is not read, propose or act"
 	case tool.Approval != "" && tool.Approval != "none" && tool.Approval != "required":
 		return "its approval is not none or required"
-	case tool.Delegation != "" && tool.EffectClass != "read":
+	case tool.Delegation != "" && LegacyClass(tool.Taxonomy) != "read":
 		return "it is offered to delegated children without being declared a read"
 	}
 	return ""
@@ -385,6 +394,19 @@ func declarationProblem(tool HostTool) string {
 // are the Runtime tools' names the session offers.
 func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 	out := &Declared{Entries: map[string]*SourceEntry{}}
+	admitted := []HostTool{}
+	for _, tool := range tools {
+		if problem := HostTaxonomyProblem(tool); problem != "" {
+			return nil, failure.Authored("configuration", "Tool taxonomy refused: "+problem+". Nothing was sent.", "context")
+		}
+		taxonomy := *tool.Taxonomy
+		tool.Taxonomy = &taxonomy
+		tool.Annotations = TaxonomyAnnotations(taxonomy.Effect)
+
+		admitted = append(admitted, tool)
+	}
+	tools = admitted
+
 	sources := map[string]ToolSource{}
 	bySource := map[string][]ListedTool{}
 	type admittedSnapshot struct {
@@ -401,6 +423,7 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 	}
 	var declared []held
 	for _, tool := range tools {
+
 		if tool.Source == nil {
 			continue
 		}
@@ -424,6 +447,9 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 			data := append([]byte{}, tool.Source.DescriptorSnapshot...)
 			snapshot, err := ReadDescriptorSnapshot(data)
 			digest, digestErr := DescriptorSnapshotDigest(data)
+			if err == nil && DescriptorApprovalProblem(snapshot, tool.Source.DescriptorApproval, tool.Name, tool.Taxonomy) != "" {
+				err = descriptorError()
+			}
 			earlier, known := snapshots[tool.Source.ID]
 			if err != nil || digestErr != nil || known && !bytes.Equal(earlier.data, data) {
 				return nil, failure.Authored("configuration", "The source "+tool.Source.ID+" has a malformed or inconsistent descriptor snapshot. Nothing was sent.", "context")
@@ -448,14 +474,11 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 			sources[record.ID] = *tool.Source
 			out.Sources = append(out.Sources, *tool.Source)
 		}
-		bySource[record.ID] = append(bySource[record.ID], ListedTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema})
+		bySource[record.ID] = append(bySource[record.ID], ListedTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, Taxonomy: tool.Taxonomy})
 		declared = append(declared, held{tool: tool, wire: WireName(record.ID, tool.Name)})
 	}
 	unapproved := map[string]bool{}
 	for _, source := range out.Sources {
-		if source.Kind != "mcp" {
-			continue
-		}
 		digest := ToolListDigest(bySource[source.ID])
 		if snapshot, ok := snapshots[source.ID]; ok {
 			allowed := true
@@ -499,6 +522,10 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 		if unapproved[id] {
 			continue
 		}
+		if !TaxonomyFits(d.tool.Taxonomy, d.tool.TaxonomyLimit) {
+			out.Withheld = append(out.Withheld, Withheld{Tool: "taxonomy", Detail: "The host taxonomy limit withholds this tool."})
+			continue
+		}
 		if HeldNames[d.tool.Name] {
 			out.Withheld = append(out.Withheld, Withheld{Tool: d.wire, Detail: id + " serves a tool named " + d.tool.Name +
 				", a name the Runtime or the harness keeps; it is not offered, and a Runtime's tools reach the model only through the gate"})
@@ -513,13 +540,10 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 				" is also another offered tool's; neither is offered"})
 			continue
 		}
-		class := d.tool.EffectClass
-		if class == "" {
-			class = "act"
-		}
+		class := LegacyClass(d.tool.Taxonomy)
 		approval := d.tool.Approval
 		if approval == "" {
-			approval = approvalDefault[class]
+			approval = DefaultApproval(d.tool.Taxonomy.Effect)
 		}
 		shown := d.tool
 		shown.Name = d.wire
@@ -535,7 +559,11 @@ func DeclareSources(tools []HostTool, served []string) (*Declared, error) {
 	at := 0
 	for _, tool := range tools {
 		if tool.Source == nil {
-			out.HostTools = append(out.HostTools, tool)
+			if TaxonomyFits(tool.Taxonomy, tool.TaxonomyLimit) {
+				out.HostTools = append(out.HostTools, tool)
+			} else {
+				out.Withheld = append(out.Withheld, Withheld{Tool: "taxonomy", Detail: "The host taxonomy limit withholds this tool."})
+			}
 			continue
 		}
 		if shown, ok := offered[at]; ok {
@@ -892,7 +920,7 @@ func OfferedHostTools(tools []HostTool, served []string, policy Policy) ([]contr
 		out = append(out, tool.Declaration())
 	}
 	if catalogue {
-		out = append(out, contract.ToolOfferHostTool{Name: LoadTool, Description: LoadToolDescription, InputSchema: json.RawMessage(LoadToolSchema)})
+		out = append(out, contract.ToolOfferHostTool{Name: LoadTool, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: LoadToolDescription, InputSchema: json.RawMessage(LoadToolSchema)})
 	}
 	return out, nil
 }
@@ -913,7 +941,7 @@ func OfferedSkillTools(tools []HostTool, served []string, skills []Skill, policy
 	for _, tool := range declared.HostTools {
 		names = append(names, tool.Name)
 	}
-	admitted, err := DeclareSkills(skills, names, policy, declared.Sources)
+	admitted, err := DeclareSkills(skills, names, policy, declared.Sources, ToolTaxonomies(declared.HostTools))
 	if err != nil {
 		return nil, err
 	}
@@ -923,8 +951,8 @@ func OfferedSkillTools(tools []HostTool, served []string, skills []Skill, policy
 	}
 	plan := "plan"
 	return []contract.ToolOfferHostTool{
-		{Name: LoadSkill, Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema), Effect: &plan},
-		{Name: UnloadSkill, Description: UnloadSkillDescription, InputSchema: json.RawMessage(UnloadSkillSchema), Effect: &plan},
+		{Name: LoadSkill, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema), Effect: &plan},
+		{Name: UnloadSkill, Taxonomy: contract.ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Description: UnloadSkillDescription, InputSchema: json.RawMessage(UnloadSkillSchema), Effect: &plan},
 	}, nil
 }
 
@@ -1148,13 +1176,13 @@ func (g *SourceGate) refuse(tool, detail string, reason ...string) error {
 // required by default. The delegation coordinator offers such a tool on an agent capability only
 // while the invocation that continues after its pause remains.
 func AsksApproval(tool HostTool) bool {
-	class := tool.EffectClass
-	if class == "" {
-		class = "act"
+	class := "act"
+	if tool.Taxonomy != nil {
+		class = LegacyClass(tool.Taxonomy)
 	}
 	approval := tool.Approval
 	if approval == "" {
-		approval = approvalDefault[class]
+		approval = DefaultApproval(class)
 	}
 	return tool.Source != nil && class == "act" && (approval == "required" || tool.Source.Identity != nil && tool.Source.Identity.Kind == "service")
 }
@@ -1195,15 +1223,27 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		drawn = randomUUID()
 	}
 	closed := ""
+	claimPending := false
 	if g.book != nil {
 		closed = g.book.Closed()
+	}
+	if claim, ok := g.book.(interface {
+		ClaimApproval() bool
+		ReleaseApproval()
+	}); ok {
+		if claim.ClaimApproval() {
+			defer claim.ReleaseApproval()
+		} else {
+			claimPending = true
+			closed = "Another act call is being prepared or waits for approval; nothing was run."
+		}
 	}
 	served := true
 	g.mu.Lock()
 	altered := g.changed[id]
 	g.publishLocked()
 	g.mu.Unlock()
-	if check := entry.Declared.Source.CurrentDigest; closed == "" && check != nil && entry.Record.Kind == "mcp" && !altered {
+	if check := entry.Declared.Source.CurrentDigest; closed == "" && check != nil && (entry.Record.Kind == "mcp" || entry.Declared.Source.DescriptorSnapshot != nil) && !altered {
 		now, err := check(WithCallID(ctx, callID))
 		served = err == nil && entry.Record.ToolListDigest != nil && now == *entry.Record.ToolListDigest
 		if !served && entry.Declared.Source.DescriptorSnapshot != nil {
@@ -1222,6 +1262,10 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	row := g.row(id)
 	given, _ := ParseJSON(nonEmptyArgs(args))
 	switch {
+	case claimPending:
+		held = decision{answer: "pending", detail: closed}
+		row.Refused++
+		g.mark(name, callID, mark{})
 	case closed != "":
 		held = decision{answer: "closed", detail: closed}
 	case identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
@@ -1368,6 +1412,13 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
+	if entry.Declared.Source.GatewayReceipt != nil {
+		g.mu.Lock()
+		err := g.refused(entry, record.CallID, g.refuse(record.Name, "Gateway acquisition verification cannot execute an approved action; this call was not run"))
+		g.publishLocked()
+		g.mu.Unlock()
+		return refusedWith(err)
+	}
 	id := entry.Record.ID
 	args, err := json.Marshal(record.Args)
 	if err != nil {
@@ -1417,7 +1468,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		g.mu.Unlock()
 		return refusedWith(err)
 	}
-	if check := entry.Declared.Source.CurrentDigest; check != nil && entry.Record.Kind == "mcp" {
+	if check := entry.Declared.Source.CurrentDigest; check != nil && (entry.Record.Kind == "mcp" || entry.Declared.Source.DescriptorSnapshot != nil) {
 		now, err := check(ctx)
 		if unchanged := err == nil && entry.Record.ToolListDigest != nil && now == *entry.Record.ToolListDigest; !unchanged {
 			g.mu.Lock()
@@ -1431,10 +1482,40 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	}
 	limit := time.Duration(min(g.policy.SourceCallMilliseconds, g.policy.ToolCallMilliseconds)) * time.Millisecond
 	started := time.Now()
-	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) { return run(bounded, args) })
+	var invocation GatewayExecutionContext
+	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) {
+		if entry.Declared.Source.GatewayReceipt != nil {
+			var err error
+			bounded, invocation, err = beginGatewayInvocation(bounded)
+			if err != nil {
+				return ToolResult{}, err
+			}
+		}
+		return run(bounded, args)
+	})
+	gatewayVerified := false
+	if err == nil && entry.Declared.Source.GatewayReceipt != nil {
+		source := entry.Declared.Source
+		remaining := limit - time.Since(started)
+		if remaining > 0 {
+			verified, verificationErr := withSourceDeadline(ctx, remaining, func(bounded context.Context) (ToolResult, error) {
+				held, _, err := VerifyGatewayResult(bounded, result, source.GatewayReceipt, source.DescriptorApproval, source.DescriptorSnapshot, *entry.Record.Tool, args, invocation, GatewayReceiptEnvelopeBytes)
+				return held, err
+			})
+			if verificationErr == nil {
+				result = verified
+				gatewayVerified = true
+			}
+		}
+	}
 	g.mu.Lock()
 	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row(id).Milliseconds += time.Since(started).Milliseconds()
+	if err == nil && entry.Declared.Source.GatewayReceipt != nil && !gatewayVerified {
+		detail := "Gateway receipt verification failed; its result was withheld. The call ran; do not retry automatically."
+		g.refuse(record.Name, detail)
+		return ToolResult{}, true, g.refused(entry, record.CallID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "unknown", Detail: &detail}))
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return ToolResult{}, true, failure.Cancelled
@@ -1532,6 +1613,13 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	}
 	id := entry.Record.ID
 	callID := CallIDOf(ctx)
+	if entry.Declared.Source.GatewayReceipt != nil && (entry.EffectClass != "read" || entry.Declared.Taxonomy == nil || entry.Declared.Taxonomy.Effect != "read-external") {
+		g.mu.Lock()
+		err := g.refused(entry, callID, g.refuse(name, "Gateway acquisition verification requires read-external taxonomy; this call was not run"))
+		g.publishLocked()
+		g.mu.Unlock()
+		return ToolResult{}, err
+	}
 	// ADR-0008: an act call is answered by the decision taken before its tool_call, or by one taken
 	// now; the call the run's approval waits on is held whatever reaches here.
 	var decided *decision
@@ -1642,7 +1730,7 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		g.mu.Unlock()
 		return ToolResult{}, err
 	}
-	if check := entry.Declared.Source.CurrentDigest; check != nil && entry.Record.Kind == "mcp" {
+	if check := entry.Declared.Source.CurrentDigest; check != nil && (entry.Record.Kind == "mcp" || entry.Declared.Source.DescriptorSnapshot != nil) {
 		now, err := check(ctx)
 		if err != nil || entry.Record.ToolListDigest == nil || now != *entry.Record.ToolListDigest {
 			g.mu.Lock()
@@ -1680,10 +1768,64 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	}
 	limit := time.Duration(min(g.policy.SourceCallMilliseconds, g.policy.ToolCallMilliseconds)) * time.Millisecond
 	started := time.Now()
-	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) { return run(bounded, args) })
+	argsValue, _ := ParseJSON(args)
+	argsEvidence := CanonicalJSON(argsValue)
+	var invocation GatewayExecutionContext
+	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) {
+		if entry.Declared.Source.GatewayReceipt != nil {
+			var err error
+			bounded, invocation, err = beginGatewayInvocation(bounded)
+			if err != nil {
+				return ToolResult{}, err
+			}
+		}
+		return run(bounded, args)
+	})
+	gatewayVerified := false
+	if err == nil && entry.Declared.Source.GatewayReceipt != nil {
+		source := entry.Declared.Source
+		remaining := limit - time.Since(started)
+		if remaining > 0 {
+			verified, verificationErr := withSourceDeadline(ctx, remaining, func(bounded context.Context) (ToolResult, error) {
+				held, _, err := VerifyGatewayResult(bounded, result, source.GatewayReceipt, source.DescriptorApproval, source.DescriptorSnapshot, *entry.Record.Tool, args, invocation, GatewayReceiptEnvelopeBytes)
+				return held, err
+			})
+			if verificationErr == nil {
+				result = verified
+				gatewayVerified = true
+			}
+		}
+	}
+	if err == nil {
+		receipt := result.Receipt
+		result = result.Clone()
+		result.Receipt = receipt
+	}
+	receiptOK := true
+	if err == nil && entry.Declared.Taxonomy.Effect == "read-external" {
+		shown := result
+		shown.Receipt = ""
+		sourceJSON, _ := json.Marshal(entry.Record)
+		sourceValue, _ := ParseJSON(sourceJSON)
+		resultValue, _ := ParseJSON(shown.JSON())
+		remaining := limit - time.Since(started)
+		if remaining <= 0 {
+			remaining = time.Millisecond
+		}
+		if entry.Declared.Source.GatewayReceipt != nil {
+			receiptOK = gatewayVerified
+		} else {
+			receiptOK = result.Receipt != "" && U16Length(result.Receipt) <= 128 && verifyReceipt(ctx, remaining, entry.Declared.Source.VerifyReceipt, ReceiptEvidence{Source: CanonicalJSON(sourceValue), Tool: *entry.Record.Tool, Args: argsEvidence, Result: CanonicalJSON(resultValue), Receipt: result.Receipt})
+		}
+	}
 	g.mu.Lock()
 	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row(id).Milliseconds += time.Since(started).Milliseconds()
+	if !receiptOK {
+		detail := "External read receipt verification failed; its result was withheld. The call ran; do not retry automatically."
+		g.refuse(name, detail)
+		return ToolResult{}, g.refused(entry, callID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "unknown", Detail: &detail}))
+	}
 	if err != nil {
 		g.mark(name, callID, mark{})
 		return ToolResult{}, err
@@ -1802,7 +1944,7 @@ func (g *SourceGate) loadedSchema(name string) *Value {
 // catalogued tool's schema per call.
 func (g *SourceGate) LoadToolHost() HostTool {
 	return HostTool{
-		Name: LoadTool, Effect: "read", Description: LoadToolDescription, InputSchema: json.RawMessage(LoadToolSchema),
+		Name: LoadTool, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "read", Description: LoadToolDescription, InputSchema: json.RawMessage(LoadToolSchema),
 		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 			var asked struct {
 				Name any `json:"name"`
@@ -1980,6 +2122,26 @@ type descriptorObservation struct {
 func descriptorHostTool(tool HostTool, data []byte, snapshot DescriptorSnapshot, observation *descriptorObservation) (HostTool, error) {
 	source := *tool.Source
 	source.DescriptorSnapshot = append([]byte{}, data...)
+	if source.GatewayReceipt != nil {
+		trust := *source.GatewayReceipt
+		if trust.Adapter != nil {
+			adapter := *trust.Adapter
+			trust.Adapter = &adapter
+		}
+		source.GatewayReceipt = &trust
+	}
+	if source.DescriptorApproval != nil {
+		approved := *source.DescriptorApproval
+		approved.ToolTaxonomies = map[string]*ToolTaxonomy{}
+		for name, t := range source.DescriptorApproval.ToolTaxonomies {
+			approved.ToolTaxonomies[name] = wire.CloneTaxonomy(t)
+		}
+		if approved.Endpoint != nil {
+			endpoint := *approved.Endpoint
+			approved.Endpoint = &endpoint
+		}
+		source.DescriptorApproval = &approved
+	}
 	if source.Identity != nil {
 		identity := *source.Identity
 		source.Identity = &identity

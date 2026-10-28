@@ -92,7 +92,7 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
   }
   const rawOperational=(base:ts.Expression,name:string):boolean=>{
    const operational:Record<string,string[]>={
-    AssistantSession:['input','record','corpus','prompt','testPrompt','purpose','replyLanguage','allowConversation','interactive','callTool','signal','context'],
+    AssistantSession:['input','record','corpus','tools','childDefinition','route','routeFacts','prompt','testPrompt','purpose','replyLanguage','allowConversation','interactive','callTool','signal','context'],
     ContextInput:['currentRequest','currentState','phase','objective','artifactProposals','authorize','checkpoint','execution','approval','chat','runtime','memory','documents','acceptedDocuments','plan','link','delegationReuse']
    }
    const type=checker.getTypeAtLocation(base),symbol=type&&checker.getPropertyOfType(type,name)
@@ -189,6 +189,28 @@ export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'
     'probe.ts:5:effort','probe.ts:6:effort','probe.ts:7:thinking',
     'probe.ts:8:criticReasoning','probe.ts:8:effort','probe.ts:9:effort','probe.ts:10:thinking','probe.ts:17:effort'
    ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
+ it('allows declared operational inputs without admitting adjacent raw reasoning or model fields',()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'request-operational-')),path=join(directory,'probe.ts')
+  writeFileSync(path,`import type {AgentAssistantSession} from ${JSON.stringify(join(harness,'engine'))}
+export function operational(raw:AgentAssistantSession) {
+ void raw.tools
+ void raw.childDefinition
+ void raw.route
+ void raw.routeFacts
+ void raw.corpus?.manifest
+ void raw.corpus?.sink
+ void raw.effort
+ void raw.agent.model
+}`)
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['probe.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   const project=snapshot.getProjects()[0]!
+   expect(project.program.getSyntacticDiagnostics(path)).toEqual([])
+   expect(project.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual(['probe.ts:9:effort','probe.ts:10:agent','probe.ts:10:model'].sort())
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })
  it('binds conversion exemptions to canonical declarations',()=>{
@@ -289,8 +311,19 @@ export function probe(raw:AgentAssistantSession,assistant:RequestAssistantSessio
  it('carries the complete shared request book, including compactor and a future member',()=>{
   for(const members of requestValuesVector.items){const view=new RequestValues(members as PolicyMembers);for(const [name,member]of Object.entries(members))expect(view.member(name),name).toEqual(member);expect(view.reasoning('author')).toBeUndefined();expect(view.reasoning('compactor')).toBeUndefined()}
  })
+ it('checks runtime critic admission in the prepared consumer wrapper',async()=>{
+  const callTool=vi.fn(async()=>({content:[]}))
+  const opened=await contextualSession({...base(),tools:[{name:'validate',inputSchema:{type:'object'},_meta:{operation:'check',effect:'pure',checkKind:'validate'}}],callTool},'codex')
+  try{
+   opened.context.beginCriticPhase()
+   await expect(opened.session.callTool('write_file',{})).rejects.toThrow('not one of the tools the critic may call')
+   expect(callTool).not.toHaveBeenCalled()
+   await opened.session.callTool('validate',{})
+   expect(callTool).toHaveBeenCalledExactlyOnceWith('validate',{})
+  }finally{opened.context.close()}
+ })
  it('keeps admitted binding and tool data detached',async()=>{
-  const original=base(),selected={model:'admitted',run:vi.fn()},host={name:'read_evidence',description:'Read evidence.',inputSchema:{type:'object'},execute:vi.fn(async()=>({}))}
+  const original=base(),selected={model:'admitted',run:vi.fn()},host={name:'read_evidence',description:'Read evidence.',taxonomy:{operation:'read' as const,effect:'read' as const},inputSchema:{type:'object'},execute:vi.fn(async()=>({}))}
   const session:AgentAssistantSession={...original,hostTools:[host],policy:{models:{author:{provider:'selected',model:'selected'}}},policyConnections:{selected:{agent:selected}}}
   const opened=await contextualSession(session,'codex')
   try{expect(opened.session.values.allowsTool('read_evidence','host','critic')).toBe(false);expect(opened.session.values.allowsTool('read_evidence','host','reformat')).toBe(false);selected.model='changed raw';host.inputSchema.type='array';expect(opened.session.values.agent.model).toBe('admitted');const tools=opened.session.values.hostTools;expect(tools.find(t=>t.name==='read_evidence')!.inputSchema).toEqual({type:'object'});tools[0]!.name='changed copy';expect(opened.session.values.hostTools[0]!.name).toBe('read_evidence')}finally{opened.context.close()}

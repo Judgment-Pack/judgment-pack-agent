@@ -1,0 +1,1211 @@
+{
+  "items": [
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "checked",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": "candidate:one",
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ]
+      },
+      "check": {
+        "results": [
+          {
+            "operation": "dialect_validate",
+            "resultJson": "{\"content\":[{\"type\":\"text\",\"text\":\"refused validation\"}]}"
+          },
+          {
+            "operation": "dialect_check",
+            "resultJson": "{\"content\":[{\"type\":\"text\",\"text\":\"refused coverage\"}]}"
+          }
+        ],
+        "failure": {
+          "code": "check-refused",
+          "message": "Returned Runtime evidence did not establish accepted validation and coverage."
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "checked",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": "candidate:one",
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ]
+      },
+      "check": {
+        "results": [],
+        "failure": {
+          "code": "report-unavailable",
+          "message": "Full Runtime evidence was unavailable; no complete report was retained."
+        }
+      }
+    },
+    {
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "receipt": "candidate:one",
+      "status": "draft"
+    },
+    {
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "checked",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": "candidate:one",
+      "receipt": "checked:one",
+      "status": "draft"
+    },
+    {
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "candidateReceipt": "candidate:one",
+      "checkedReceipt": "checked:one",
+      "checkedDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": null,
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:unavailable",
+            "fields": null
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:legacy",
+            "fields": [
+              {
+                "name": "legacy",
+                "fieldJson": "{\"name\":\"legacy\",\"type\":\"string\",\"original\":1.2300}"
+              },
+              {
+                "name": "n",
+                "fieldJson": "{\"name\":\"n\",\"type\":\"number\"}"
+              }
+            ]
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:old",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "decimal",
+                "fieldJson": "{\"name\":\"decimal\",\"type\":\"decimal\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "boolean",
+                "fieldJson": "{\"name\":\"boolean\",\"type\":\"boolean\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "text-list",
+                "fieldJson": "{\"name\":\"text-list\",\"type\":\"text-list\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "range",
+                "fieldJson": "{\"name\":\"range\",\"type\":\"range\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "string",
+                "fieldJson": "{\"name\":\"string\",\"type\":\"string\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "number",
+                "fieldJson": "{\"name\":\"number\",\"type\":\"number\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:next",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"integer\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:unavailable",
+            "fields": null
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:old",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "decimal",
+                "fieldJson": "{\"name\":\"decimal\",\"type\":\"decimal\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "boolean",
+                "fieldJson": "{\"name\":\"boolean\",\"type\":\"boolean\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "text-list",
+                "fieldJson": "{\"name\":\"text-list\",\"type\":\"text-list\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "range",
+                "fieldJson": "{\"name\":\"range\",\"type\":\"range\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "string",
+                "fieldJson": "{\"name\":\"string\",\"type\":\"string\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "number",
+                "fieldJson": "{\"name\":\"number\",\"type\":\"number\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:next",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"integer\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:unavailable",
+            "fields": null
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        },
+        "retainedRead": {
+          "documentJson": "{\"version\":2,\"case\":{\"facts\":[],\"evidence\":[]},\"sources\":[{\"name\":\"before\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-before\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"retained-generated\",\"kind\":\"operation\",\"profile\":\"reviewed-input\",\"profileDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"maxAge\":60,\"arguments\":{\"tool\":\"existing-reviewed-frame\",\"arguments\":{\"record\":\"opaque:generated\"}},\"read\":{\"unwrap\":[\"/payload\"],\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"after\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-after\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}}]}",
+          "occurrence": {
+            "kind": "source",
+            "name": "retained-generated"
+          },
+          "framePointer": "/retained"
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:old",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "decimal",
+                "fieldJson": "{\"name\":\"decimal\",\"type\":\"decimal\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "boolean",
+                "fieldJson": "{\"name\":\"boolean\",\"type\":\"boolean\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "text-list",
+                "fieldJson": "{\"name\":\"text-list\",\"type\":\"text-list\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "range",
+                "fieldJson": "{\"name\":\"range\",\"type\":\"range\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "string",
+                "fieldJson": "{\"name\":\"string\",\"type\":\"string\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "number",
+                "fieldJson": "{\"name\":\"number\",\"type\":\"number\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:next",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"integer\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:unavailable",
+            "fields": null
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        },
+        "retainedRead": {
+          "documentJson": "{\"version\":2,\"case\":{\"facts\":[],\"evidence\":[]},\"sources\":[{\"name\":\"before\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-before\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"retained-generated\",\"kind\":\"operation\",\"profile\":\"reviewed-input\",\"profileDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"maxAge\":60,\"arguments\":{\"tool\":\"existing-reviewed-frame\",\"arguments\":{\"record\":\"opaque:generated\"}},\"read\":{\"unwrap\":[\"/payload\"],\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"after\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-after\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}}]}",
+          "occurrence": {
+            "kind": "case"
+          },
+          "framePointer": "/retained"
+        }
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": [
+          {
+            "revision": "recipe:old",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "decimal",
+                "fieldJson": "{\"name\":\"decimal\",\"type\":\"decimal\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "boolean",
+                "fieldJson": "{\"name\":\"boolean\",\"type\":\"boolean\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "text-list",
+                "fieldJson": "{\"name\":\"text-list\",\"type\":\"text-list\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "range",
+                "fieldJson": "{\"name\":\"range\",\"type\":\"range\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "string",
+                "fieldJson": "{\"name\":\"string\",\"type\":\"string\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              },
+              {
+                "name": "number",
+                "fieldJson": "{\"name\":\"number\",\"type\":\"number\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:next",
+            "fields": [
+              {
+                "name": "typed",
+                "fieldJson": "{\"name\":\"typed\",\"type\":\"integer\",\"originalNumericSpelling\":1.2300,\"unsafe\":9007199254740993}"
+              }
+            ]
+          },
+          {
+            "revision": "recipe:unavailable",
+            "fields": null
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "Draft RFC0029",
+            "revision": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c",
+            "schemaSha256": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f",
+            "corpusSha256": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+          }
+        },
+        "retainedRead": null
+      }
+    },
+    {
+      "version": 1,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "researchDeclarations": null,
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "0.3.0-rc.2",
+            "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+            "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+            "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+          }
+        }
+      }
+    }
+  ],
+  "schema": "dialect-draft.json",
+  "description": "Handwritten bounded editable draft checkpoints, acknowledgments, and final lineage; diagnostic evidence never authorizes saving.",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/dialects.ts"
+    ]
+  }
+}

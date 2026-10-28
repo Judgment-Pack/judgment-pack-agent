@@ -367,7 +367,7 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 				return nil
 			}
 			run := lifecycleRun(store, "callback-drain", false, provider, func(contract.RunEvent) {})
-			run.HostTools = []runcontext.HostTool{{Name: "read_fixture", Description: "Read a fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: "read", Execute: func(given context.Context, _ json.RawMessage) (runcontext.ToolResult, error) {
+			run.HostTools = []runcontext.HostTool{{Name: "read_fixture", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read a fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: "read", Execute: func(given context.Context, _ json.RawMessage) (runcontext.ToolResult, error) {
 				callbackActive.Store(true)
 				defer callbackActive.Store(false)
 				close(entered)
@@ -380,7 +380,7 @@ func TestStorageProviderOutcomeWaitsForAdmittedCallback(t *testing.T) {
 			}}}
 			g := gate.New(gate.Options{})
 			effect := "read"
-			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{turn.DelegationTool(turn.TaskProfiles), {Name: "read_fixture", Description: "Read a fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
+			g.SetOffer(contract.ToolOffer{Tools: []contract.ToolOfferRuntimeTool{}, HostTools: []contract.ToolOfferHostTool{turn.DelegationTool(turn.TaskProfiles), {Name: "read_fixture", Taxonomy: contract.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read a fixture", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`), Effect: &effect}}})
 			run.Gate = g.Calls()
 			var runErr error
 			go func() {

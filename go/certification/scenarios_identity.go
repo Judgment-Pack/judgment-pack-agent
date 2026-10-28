@@ -162,16 +162,16 @@ type identityHost struct{ read, act int }
 func identityTools(file identityFile, current contract.ToolOfferIdentity, host *identityHost) []runcontext.HostTool {
 	source := func() *runcontext.ToolSource {
 		identity := file.Identity
-		return &runcontext.ToolSource{Kind: "gateway", ID: "expenses", Trust: "connected", Version: "4", Identity: &identity,
+		return &runcontext.ToolSource{Kind: "custom", ID: "expenses", Trust: "connected", Version: "4", ToolListDigest: "sha256:0ac0f98e7d5460fa755143ee87a3f61ece0c95be89252beb352b86fa09d663ff", Identity: &identity,
 			CurrentIdentity: func(context.Context) (contract.ToolOfferIdentity, error) { return current, nil }}
 	}
 	return []runcontext.HostTool{
-		{Name: file.Read.Name, Description: file.Read.Description, InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "read", Source: source(),
+		{Name: file.Read.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Description: file.Read.Description, InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "read", Source: source(),
 			Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				host.read++
 				return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent(file.Read.Result)}, nil), nil
 			}},
-		{Name: file.Act.Name, Description: file.Act.Description, InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "act", Source: source(),
+		{Name: file.Act.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, Description: file.Act.Description, InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "act", Source: source(),
 			Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 				host.act++
 				return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("submitted")}, nil), nil

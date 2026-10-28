@@ -1,0 +1,8 @@
+{
+  "documentJson": "{\"version\":2,\"case\":{\"facts\":[],\"evidence\":[]},\"sources\":[{\"name\":\"before\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-before\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"retained-generated\",\"kind\":\"operation\",\"profile\":\"reviewed-input\",\"profileDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"maxAge\":60,\"arguments\":{\"tool\":\"existing-reviewed-frame\",\"arguments\":{\"record\":\"opaque:generated\"}},\"read\":{\"unwrap\":[\"/payload\"],\"copy\":{\"facts\":[],\"evidence\":[]}}},{\"name\":\"after\",\"kind\":\"operation\",\"profile\":\"existing\",\"profileDigest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"maxAge\":60,\"arguments\":{\"tool\":\"keep-after\"},\"read\":{\"copy\":{\"facts\":[],\"evidence\":[]}}}]}",
+  "occurrence": {
+    "kind": "source",
+    "name": "retained-generated"
+  },
+  "framePointer": "/retained"
+}

@@ -1,0 +1,29 @@
+{
+  "authority": "gateway:test",
+  "session": "agent-0000000000000000000000000000000000000000000000000000000000000000",
+  "tool": "query",
+  "args": {"id": 7},
+  "artifact": {"content": [{"type": "text", "text": "seven"}], "structuredContent": {"id": 7}},
+  "adapter": {"name": "adapter-mcp", "version": "0", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+  "cases": [
+    {"name": "wrong-signature", "change": "signature"},
+    {"name": "wrong-key", "change": "key"},
+    {"name": "wrong-key-id", "change": "keyId"},
+    {"name": "wrong-authority", "change": "authority"},
+    {"name": "wrong-source", "change": "source"},
+    {"name": "prior-session", "change": "session"},
+    {"name": "noninitial-index", "change": "index"},
+    {"name": "previous-signature", "change": "previous"},
+    {"name": "different-call", "change": "args"},
+    {"name": "different-result", "change": "result"},
+    {"name": "different-statement", "change": "statement"},
+    {"name": "text-structured-twins", "change": "twins"},
+    {"name": "different-endpoint", "change": "endpoint"},
+    {"name": "different-server", "change": "server"},
+    {"name": "different-executable", "change": "adapter"},
+    {"name": "action-is-not-acquisition", "change": "action"},
+    {"name": "unsafe-integer", "change": "number"},
+    {"name": "duplicate-member", "change": "duplicate"},
+    {"name": "oversized-envelope", "change": "oversize"}
+  ]
+}

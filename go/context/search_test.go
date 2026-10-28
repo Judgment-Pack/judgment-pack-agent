@@ -376,7 +376,7 @@ func TestSearchIsDeclaredAsTheContractStates(t *testing.T) {
 		t.Fatal("the vector does not declare search")
 	}
 	declared := ObjectOf("name", String(held.Name), "effect", String(held.Effect),
-		"description", String(held.Description), "inputSchema", MustParseJSON(string(held.InputSchema)))
+		"taxonomy", ObjectOf("operation", String(held.Taxonomy.Operation), "effect", String(held.Taxonomy.Effect)), "description", String(held.Description), "inputSchema", MustParseJSON(string(held.InputSchema)))
 	if CanonicalJSON(declared) != CanonicalJSON(item) {
 		t.Errorf("the declaration is\n%s\nand the vector is\n%s", CanonicalJSON(declared), CanonicalJSON(item))
 	}

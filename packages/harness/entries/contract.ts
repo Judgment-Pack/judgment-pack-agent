@@ -59,3 +59,31 @@ export type {TaskStep,ExecutionCheckpoint} from '../execution/state'
 export type {PlanState,PlanRevision,PlanChange,PlanOrigin,StepEvidence,AcceptedPlan,Departure,DepartureKind,PlanRefusal,PlanDecision,PendingDeparture} from '../execution/plan'
 
 export * from '../runReport'
+
+export * from '../toolTaxonomy'
+export {SKILL_KINDS,skillDigest,declareSkills,catalogueSkills} from '../skills'
+
+export * from '../storage/history'
+export * from '../history/codec'
+export * from '../context/chatSnapshot'
+export * from '../context/storedChat'
+
+export {MemoryUsageBudgetStore,UsageBudgetExceeded,UsageBudgetUnknown,UsageBudgetUnsupported,UsageBudgetIdentityChanged,UsageBudgetCapacity} from '../storage/usageBudget'
+export type {UsageDimension,UsageAmounts,UsageBudgetScope,UsageReservation,UsageSettlement,UsageBudgetReceipt,UsageReserveResult,UsageReservationHead,UsageBudgetStore,UsageBudgetSeed,MemoryUsageBudgetOptions} from '../storage/usageBudget'
+export type {UsageBudgetInput,UsageBoundRequest,UsageTotals} from '../storage/usageJournal'
+
+export type {RuntimeExecutionOwner,RuntimeApprovalBinding,RuntimeApprovalRequest,RuntimeActionPort} from '../runtimeActions'
+
+// Host-only history, display archives and feedback metadata; none grants execution authority.
+export * from '../history/types'
+export * from '../history/view'
+export * from '../history/query'
+export * from '../history/archive'
+export * from '../history/feedback'
+export * from '../history/report'
+export * from '../corpusCandidate'
+export {readHistoryRelationEvidence,type HistoryRelationEvidence} from '../history/relations'
+
+export {readCapturedCorpus,readArchiveCapturedCorpus,readCapturedCorpusView,readArchiveCapturedCorpusView,ReplayUnavailable,type CorpusReplayView,type CaptureReadView,type CapturePublicationResult} from '../history/capture'
+
+export {readCorpusCheckpointView,type CorpusCheckpointView} from '../history/corpusCheckpointView'

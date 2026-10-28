@@ -136,7 +136,7 @@ func TestTheBoundaryDigestsCanonicalProposalJSON(t *testing.T) {
 func TestTheBoundaryCarriesTheFailureOfAContextThatCannotOpen(t *testing.T) {
 	// A host tool that takes a name the boundary reserves: the run cannot open.
 	session, _ := trackedSession(t)
-	session.HostTools = []HostTool{{Name: SearchTool, Description: "A reserved name.",
+	session.HostTools = []HostTool{{Name: SearchTool, Taxonomy: &ToolTaxonomy{Operation: "discover", Effect: "read"}, Description: "A reserved name.",
 		InputSchema: json.RawMessage(`{"type":"object"}`),
 		Execute:     func(ctx context.Context, args json.RawMessage) (ToolResult, error) { return ResultOf(nil, nil), nil }}}
 	_, err := ContextualSession(context.Background(), session)

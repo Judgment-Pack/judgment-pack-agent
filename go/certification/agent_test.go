@@ -46,7 +46,7 @@ func TestScenariosThreeSevenEightNineAndTenHoldOnTheAgentCapability(t *testing.T
 func naive(inner adapter.Adapter) adapter.Adapter {
 	return adapter.Func(func(ctx context.Context, run *adapter.Run) error {
 		declared := turn.DelegationTool(turn.TaskProfiles)
-		tool := runcontext.HostTool{Name: declared.Name, Description: declared.Description, InputSchema: declared.InputSchema,
+		tool := runcontext.HostTool{Name: declared.Name, Taxonomy: &runcontext.ToolTaxonomy{Operation: "propose", Effect: "propose"}, Description: declared.Description, InputSchema: declared.InputSchema,
 			Execute: func(ctx context.Context, args json.RawMessage) (runcontext.ToolResult, error) {
 				request, err := turn.ReadDelegationRequest(args)
 				if err != nil {
@@ -73,7 +73,11 @@ func naive(inner adapter.Adapter) adapter.Adapter {
 func TestTheFakeAccountCatchesANaiveSynchronousWrapper(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	findings, err := certification.AgentChecks[0].Run(ctx, server, certification.StandIn(), naive, agent.New())
+	at := slices.IndexFunc(certification.AgentChecks, func(check certification.AgentCheck) bool { return check.Group == "handoff" })
+	if at < 0 {
+		t.Fatal("the handoff certification check is missing")
+	}
+	findings, err := certification.AgentChecks[at].Run(ctx, server, certification.StandIn(), naive, agent.New())
 	if err != nil {
 		t.Fatal(err)
 	}

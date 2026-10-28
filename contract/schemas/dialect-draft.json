@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dialect draft checkpoint, acknowledgment and final lineage",
+  "description": "Portable host retention only. Byte ceilings, exact content/digest/receipt chains, stage order and authority limits are additionally enforced by the tool factory. A draft permits inspection and editing, never saving or execution. New factories retain conversionContract and complete researchDeclarations (null means unavailable); older version-1 checkpoints remain inspectable and grant no new contract support.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/checkpoint"
+    },
+    {
+      "$ref": "#/$defs/ack"
+    },
+    {
+      "$ref": "#/$defs/lineage"
+    }
+  ],
+  "$defs": {
+    "conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "text",
+            "decimal",
+            "number",
+            "boolean",
+            "research-value"
+          ]
+        },
+        "trueValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "falseValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "column",
+        "conversion"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "conversion": {
+          "$ref": "#/$defs/conversion"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirement",
+        "column"
+      ],
+      "properties": {
+        "requirement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "valueJson",
+        "origin"
+      ],
+      "properties": {
+        "valueJson": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "research": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "fieldJson"
+      ],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "fieldJson": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "samples"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "samples": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/sample"
+          }
+        },
+        "research": {
+          "$ref": "#/$defs/research"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "packKey",
+        "packDigest",
+        "dialectDigest",
+        "documentJson",
+        "packJson",
+        "conversions",
+        "facts",
+        "evidence",
+        "summary",
+        "columns"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "packKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "packDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "dialectDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          ]
+        },
+        "documentJson": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "packJson": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "conversions": {
+          "type": "object",
+          "maxProperties": 1000,
+          "additionalProperties": {
+            "$ref": "#/$defs/conversion"
+          }
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "columns": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/column"
+          }
+        },
+        "researchDeclarations": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "$ref": "#/$defs/originalRevision"
+              }
+            }
+          ]
+        },
+        "conversionContract": {
+          "$ref": "#/$defs/conversionContract"
+        },
+        "retainedRead": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/retainedRead"
+            }
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "resultJson"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "dialect_validate",
+            "dialect_check"
+          ]
+        },
+        "resultJson": {
+          "type": "string",
+          "maxLength": 4194304
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "report-unavailable",
+            "check-refused"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "results"
+      ],
+      "properties": {
+        "results": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/result"
+          }
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "attemptId",
+        "fingerprint",
+        "stage",
+        "digest",
+        "previousReceipt",
+        "candidate"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "stage": {
+          "enum": [
+            "candidate",
+            "checked"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "previousReceipt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "check": {
+          "$ref": "#/$defs/check"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "stage": {
+                "const": "candidate"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "previousReceipt": {
+                "type": "null"
+              }
+            },
+            "not": {
+              "required": [
+                "check"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "check"
+            ],
+            "properties": {
+              "previousReceipt": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "stage",
+        "digest",
+        "previousReceipt",
+        "receipt",
+        "status"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "stage": {
+          "enum": [
+            "candidate",
+            "checked"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "previousReceipt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "receipt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "const": "draft"
+        }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attemptId",
+        "fingerprint",
+        "candidateReceipt",
+        "checkedReceipt",
+        "checkedDigest"
+      ],
+      "properties": {
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "candidateReceipt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "checkedReceipt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "checkedDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "originalField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fieldJson"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "fieldJson": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      }
+    },
+    "originalRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "fields"
+      ],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "fields": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "$ref": "#/$defs/originalField"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "conversionContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "profile",
+        "spec"
+      ],
+      "properties": {
+        "contract": {
+          "const": "retained-column/1"
+        },
+        "profile": {
+          "const": "base"
+        },
+        "spec": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "revision",
+                "schemaSha256",
+                "corpusSha256"
+              ],
+              "properties": {
+                "version": {
+                  "const": "0.3.0-rc.2"
+                },
+                "revision": {
+                  "const": "bcac15b7537ce21879201b5e5dfe795496225121"
+                },
+                "schemaSha256": {
+                  "const": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557"
+                },
+                "corpusSha256": {
+                  "const": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "revision",
+                "schemaSha256",
+                "corpusSha256"
+              ],
+              "properties": {
+                "version": {
+                  "const": "Draft RFC0029"
+                },
+                "revision": {
+                  "const": "ade3914b0b81ef299e5b9a8d6147f37ff3f0976c"
+                },
+                "schemaSha256": {
+                  "const": "sha256:996cec17473987eebf1aa553536df0ce5a740971532567f411282ee70036879f"
+                },
+                "corpusSha256": {
+                  "const": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "retainedRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documentJson",
+        "occurrence",
+        "framePointer"
+      ],
+      "properties": {
+        "documentJson": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "framePointer": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "occurrence": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "case"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "name"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "source"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/dialect-draft.json"
+}

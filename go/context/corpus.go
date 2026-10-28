@@ -21,7 +21,10 @@ type CorpusManifest struct {
 	PackageVersion string         `json:"packageVersion"`
 	Policy         map[string]any `json:"policy"`
 	Files          struct {
-		Requests, ToolResults, Events, Checkpoint string
+		Requests    string `json:"requests"`
+		ToolResults string `json:"toolResults"`
+		Events      string `json:"events"`
+		Checkpoint  string `json:"checkpoint"`
 	} `json:"files"`
 	Expected struct {
 		File string `json:"file"`

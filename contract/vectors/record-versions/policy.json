@@ -4,7 +4,7 @@
   "items": [
     {},
     {
-      "version": 1
+      "version": 2
     }
   ],
   "cases": [
@@ -14,19 +14,19 @@
       "outcome": "accepted"
     },
     {
-      "name": "current",
+      "name": "published version 1",
       "input": {
         "version": 1
       },
       "outcome": "accepted"
     },
     {
-      "name": "future before unknown body",
+      "name": "current version before unknown body",
       "input": {
         "version": 2,
         "future": true
       },
-      "outcome": "UnsupportedRecordVersion"
+      "outcome": "UnknownRecordMember"
     },
     {
       "name": "unknown envelope",
@@ -128,6 +128,21 @@
           "invocationsPerDay": null,
           "bytesPerDay": null
         }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "future before unknown body",
+      "input": {
+        "version": 3,
+        "future": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "current version 2",
+      "input": {
+        "version": 2
       },
       "outcome": "accepted"
     }

@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -38,15 +39,20 @@ func oneTool(t *testing.T, tool runcontext.HostTool, run adapter.AgentRun) (*ada
 		defer mu.Unlock()
 		*events = append(*events, event)
 	}
+	// The actual contextual session supplies the final declarations, including its
+	// source framing marker and package tools, through EnrollContext below.
 	g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: emit})
-	offer, err := g.Open(context.Background(), []contract.ToolOfferHostTool{tool.Declaration()})
+	offer, err := g.Open(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return &adapter.Run{ModelName: "agent-model", Agent: &adapter.Agent{Model: "agent-model", Run: run}, Gate: g.Calls(), Tools: offer.Tools,
 		HostTools: []runcontext.HostTool{tool}, Prompt: "Write the note.", AllowConversation: true, Critic: "off",
-		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "Write the note."}}, Emit: emit}, events
+		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "Write the note."}}, Emit: emit,
+		EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+			return g.EnrollContext(offer.ID, offer.HostTools)
+		}}, events
 }
 
 func aliasOf(request adapter.AgentRequest, name string) string {
@@ -58,19 +64,27 @@ func aliasOf(request adapter.AgentRequest, name string) string {
 	return name
 }
 
+// writeNoteSource pins the handwritten action declaration, independently of the production digest.
+func writeNoteSource() *runcontext.ToolSource {
+	digest := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(`[{"description":"Writes a note.","inputSchema":{"type":"object"},"name":"write_note","taxonomy":{"effect":"act","operation":"act"}}]`)))
+	return &runcontext.ToolSource{Kind: "custom", ID: "notes", Trust: "person", Version: "1", ToolListDigest: digest,
+		CurrentDigest: func(context.Context) (string, error) { return digest, nil }}
+}
+
 // An invocation that reached a callback was admitted: its error is its outcome, whatever class it
 // carries. One that ran a write and then answered an error wrapping ErrBusy is not sent again, and
 // the write ran once (review of #70, row 4).
 func TestAnAdmittedInvocationIsNotRetriedOnABusyError(t *testing.T) {
 	var writes, calls atomic.Int32
-	note := runcontext.HostTool{Name: "write_note", Effect: "write", Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	note := runcontext.HostTool{Name: "write_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, EffectClass: "act", Approval: "required", Source: writeNoteSource(),
+		Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`),
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			writes.Add(1)
 			return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("written")}, nil), nil
 		}}
 	run, events := oneTool(t, note, func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
 		calls.Add(1)
-		if _, err := callbacks.Tool(ctx, adapter.AgentToolCall{ID: "c1", Name: aliasOf(request, "write_note"), Arguments: json.RawMessage(`{}`)}); err != nil {
+		if _, err := callbacks.Tool(ctx, adapter.AgentToolCall{ID: "c1", Name: aliasOf(request, "notes__write_note"), Arguments: json.RawMessage(`{}`)}); err != nil {
 			return err
 		}
 		return fmt.Errorf("the account said busy after the run: %w", adapter.ErrBusy)
@@ -93,7 +107,7 @@ func TestAnAdmittedInvocationIsNotRetriedOnABusyError(t *testing.T) {
 // A busy refusal before any callback is still sent again: nothing ran.
 func TestABusyRefusalBeforeAnyCallbackIsSentAgain(t *testing.T) {
 	var calls atomic.Int32
-	note := runcontext.HostTool{Name: "read_note", Effect: "read", Description: "Reads a note.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	note := runcontext.HostTool{Name: "read_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Description: "Reads a note.", InputSchema: json.RawMessage(`{"type":"object"}`),
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("read")}, nil), nil
 		}}
@@ -120,7 +134,7 @@ func TestABusyRefusalBeforeAnyCallbackIsSentAgain(t *testing.T) {
 func TestTheAdapterWaitsForACallStillRunningWhenTheHostReturns(t *testing.T) {
 	var finished atomic.Bool
 	started := make(chan struct{})
-	slow := runcontext.HostTool{Name: "read_note", Effect: "read", Description: "Reads a note slowly.", InputSchema: json.RawMessage(`{"type":"object"}`),
+	slow := runcontext.HostTool{Name: "read_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Description: "Reads a note slowly.", InputSchema: json.RawMessage(`{"type":"object"}`),
 		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 			close(started)
 			time.Sleep(200 * time.Millisecond)
@@ -145,7 +159,7 @@ func TestTheAdapterWaitsForACallStillRunningWhenTheHostReturns(t *testing.T) {
 func TestRetiredReviewRefusesPresence(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		calls := 0
-		note := runcontext.HostTool{Name: "read_note", Effect: "read", Description: "Reads a note.", InputSchema: json.RawMessage(`{"type":"object"}`)}
+		note := runcontext.HostTool{Name: "read_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Description: "Reads a note.", InputSchema: json.RawMessage(`{"type":"object"}`)}
 		run, events := oneTool(t, note, func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error { calls++; return nil })
 		run.Review = &legacy
 		run.Critic = "on"
@@ -173,10 +187,11 @@ func TestRetiredReviewRefusesPresence(t *testing.T) {
 
 func TestPlanDriftStopsProviderInvocation(t *testing.T) {
 	var effects atomic.Int32
-	note := runcontext.HostTool{Name: "write_note", Effect: "write", Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
-		effects.Add(1)
-		return runcontext.ResultOf(nil, nil), nil
-	}}
+	note := runcontext.HostTool{Name: "write_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, EffectClass: "act", Approval: "required", Source: writeNoteSource(),
+		Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+			effects.Add(1)
+			return runcontext.ResultOf(nil, nil), nil
+		}}
 	afterPause := false
 	run, events := oneTool(t, note, func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
 		_, err := callbacks.Tool(ctx, adapter.AgentToolCall{ID: "departure", Name: aliasOf(request, "update_plan"), Arguments: json.RawMessage(`{"explanation":"Narrow accepted work","plan":[{"id":"step-2","step":"Report","status":"pending"}]}`)})
@@ -184,14 +199,9 @@ func TestPlanDriftStopsProviderInvocation(t *testing.T) {
 			t.Error("provider invocation continued after plan pause")
 		}
 		afterPause = true
-		_, _ = callbacks.Tool(ctx, adapter.AgentToolCall{ID: "later-call", Name: aliasOf(request, "write_note"), Arguments: json.RawMessage(`{}`)})
+		_, _ = callbacks.Tool(ctx, adapter.AgentToolCall{ID: "later-call", Name: aliasOf(request, "notes__write_note"), Arguments: json.RawMessage(`{}`)})
 		return err
 	})
-	// This fixture opens its gate before the boundary adds package execution tools.
-	// Admit the exact package tool exercised here through that gate as well.
-	g := gate.New(gate.Options{Runtime: emptyRuntime, Granted: gate.Ceiling, Emit: run.Emit})
-	g.SetOffer(contract.ToolOffer{Tools: run.Tools, HostTools: []contract.ToolOfferHostTool{note.Declaration(), {Name: "update_plan"}}})
-	run.Gate = g.Calls()
 	run.Context.Plan = runcontext.MustParseJSON(`{"id":"accepted-plan","revision":1,"objective":"Inspect and report","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-10-01T00:00:00.000Z","acceptedAt":"2026-10-01T00:00:00.000Z"}`)
 	if err := agent.New().Run(context.Background(), run); err != nil {
 		t.Fatal(err)

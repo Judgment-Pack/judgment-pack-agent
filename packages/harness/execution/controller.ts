@@ -50,8 +50,9 @@ export class ExecutionController {
  loadedDrafts?:()=>string
  private planQueue:Promise<unknown>=Promise.resolve()
  private serialPlan<T>(run:()=>Promise<T>):Promise<T>{const task=this.planQueue.then(run);this.planQueue=task.catch(()=>{});return task}
+ taskProfiles?:()=>import('../subagents').SubagentRecord[]
  planRefused?:()=>void
- proof?:()=>{book:import('../storage/writer').DurableBook;scope:import('../storage/writer').DurableScope}|undefined
+ proof?:()=>import('./planActions').PlanProof|undefined
  publishPlan?: (state:ExecutionCheckpoint,event:PlanEvent)=>Promise<void>
  private planDecisionEvent?:Extract<AssistantEvent,{type:'plan_drift_decided'}>
  async publishPlanDecision(){if(this.planDecisionEvent){await this.publishPlan?.(this.snapshot(),this.planDecisionEvent);this.planDecisionEvent=undefined}}
@@ -134,7 +135,7 @@ export class ExecutionController {
    const plan=this.session.context?.plan
    if(plan&&['accepted','started'].includes(plan.status))this.mutate({plan:plan.steps.map(step=>({step,status:'pending'}))})
   }
-  this.mutate({...identifyPlan(this.state.plan,this.state.planState),version:2})
+  this.mutate({...identifyPlan(this.state.plan,this.state.planState),version:this.state.version===3?3:2})
   const accepted=this.session.context?.plan
   if(!restored&&accepted&&['accepted','started'].includes(accepted.status)){
    if(!accepted.acceptedAt||!Number.isFinite(Date.parse(accepted.acceptedAt))||accepted.questions.length||accepted.steps.length<1||accepted.steps.length>20||!accepted.steps.every(s=>s.trim()&&s.length<=1000))throw toolInputFailure('PlanAcceptanceInvalid: use the host-selected accepted plan.')
@@ -250,7 +251,8 @@ export class ExecutionController {
  /** The part of the guidance that changes between requests: the repetition note, the request
   * counters, the plan, the operations index. A model loop sends it after the history, at the end
   * of every request, and EXECUTION_INSTRUCTIONS once in its stable system text. */
- requestState(){const tools=this.toolAllowance?.();return this.progress.guidance+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:JSON.parse(importCanonicalPlan(this.state.plan)),planDecision:this.state.planState?.decisions?.length?JSON.parse(importCanonicalPlan(this.state.planState.decisions.at(-1))):undefined,planEvidence:availablePlanEvidence(this.proof?.()),planRevision:this.state.planState?.revision,planSequence:this.state.planState?.sequence,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
+ repeatGuidance?:()=>string
+ requestState(){const tools=this.toolAllowance?.();return (this.repeatGuidance?.()??this.progress.guidance)+'\n'+JSON.stringify({requests:this.state.unit==='model-requests'?{unit:this.state.unit,used:this.state.used,limit:this.state.limit,remaining:this.remaining}:{unit:this.state.unit,note:'The subscription provider manages its internal model loop; tool calls are not model-request counts.'},...(tools?{toolCalls:{unit:'tool-calls',used:tools.used,limit:tools.limit,remaining:Math.max(0,tools.limit-tools.used),scope:tools.scope,note:tools.scope==='response'?'Tool calls this response may make, yours and your delegated children’s together; the context tools are not counted.':'Tool calls this task may make; the context tools are not counted.'}}:{}),tasks:JSON.parse(importCanonicalPlan(this.state.plan)),planDecision:this.state.planState?.decisions?.length?JSON.parse(importCanonicalPlan(this.state.planState.decisions.at(-1))):undefined,planEvidence:availablePlanEvidence(this.proof?.()),planRevision:this.state.planState?.revision,planSequence:this.state.planState?.sequence,explanation:this.state.explanation,retainedOperations:this.operationsReference,...(this.restoredResults.length?{resumeFromCompletedResults:this.restoredResults}:{}),completedOperationCount:this.state.operations.length})+((loaded)=>loaded?'\n'+loaded:'')(this.loadedSchemas?.())+((skills)=>skills?'\n'+skills:'')(this.loadedSkills?.())+((draft)=>draft?'\n'+draft:'')(this.loadedDrafts?.())}
  async retainProgress(includeIndex=true){
   if(!this.state.operations.length)return
   const rows=[]
@@ -272,7 +274,7 @@ export class ExecutionController {
   if(event.type==='tool_result'){
    const operations=this.state.operations
    const op=event.callId?operations.find(o=>o.id===this.inFlight.get(event.callId!)):[...operations].reverse().find(o=>o.name===event.name&&o.status==='running')
-   if(op){op.status=event.isError?'failed':'complete';op.result={isError:event.isError,content:[{type:'text',text:event.text}],...(event.structured===undefined?{}:{structuredContent:structuredClone(event.structured)})};if(event.callId)this.inFlight.delete(event.callId);this.progress.observe(op);this.mutate({operations})}
+   if(op){op.status=event.isError?'failed':'complete';op.result={isError:event.isError,content:[{type:'text',text:event.text}],...(event.structured===undefined?{}:{structuredContent:structuredClone(event.structured)})};if(event.callId)this.inFlight.delete(event.callId);if(!this.repeatGuidance)this.progress.observe(op);this.mutate({operations})}
   }
  }
  recordCompletion(result:import('../completion').ModelCompletion,phase:'work'|'synthesis'|'review'){
@@ -344,11 +346,11 @@ export class ExecutionController {
   }
  }
  tool():HostTool {
-  return {name:'update_plan',effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{id:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'},step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed','not-needed']},detail:{type:'string',maxLength:1500}},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>this.serialPlan(async()=>{
+  return {name:'update_plan',taxonomy:{operation:'own-state',effect:'pure'},effect:'plan',description:'Track this task’s execution progress. Use for multi-stage work, not simple answers. This does not approve a plan, increase limits, save artifacts or prove success. Refer to current steps by their package id; omit id only for a new step. Keep completed steps and explain material changes. At most one step is in progress.',inputSchema:{type:'object',properties:{explanation:{type:'string',maxLength:2000},plan:{type:'array',minItems:1,maxItems:20,items:{type:'object',properties:{id:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'},step:{type:'string',maxLength:1000},status:{type:'string',enum:['pending','in_progress','completed','not-needed']},detail:{type:'string',maxLength:1500},...(this.session.context?.taskSteps===true?{dependsOn:{type:'array',maxItems:19,uniqueItems:true,items:{type:'string',pattern:'^step-[1-9][0-9]{0,15}$'}},budget:{type:'object',properties:{requests:{type:'integer',minimum:1,maximum:100}},required:['requests'],additionalProperties:false},...((this.taskProfiles?.().length??0)>0?{delegation:{enum:this.taskProfiles!()}}:{})}:{})},required:['step','status'],additionalProperties:false}}},required:['explanation','plan'],additionalProperties:false},execute:async(args,signal)=>this.serialPlan(async()=>{
    signal.throwIfAborted()
    if(this.state.planState?.pending)throw toolInputFailure('PlanApprovalRequired: this run waits for its plan decision.')
-   if(Array.isArray(args.plan)&&args.plan.some(s=>s&&typeof s==='object'&&Object.keys(s).some(k=>!['id','step','status','detail'].includes(k)))){this.planRefused?.();throw toolInputFailure('PlanIdentityInvalid: package-owned task fields cannot be supplied.')}
-   if(Object.keys(args).some(k=>!["explanation","plan"].includes(k))||!validPlanInput(args.plan)||typeof args.explanation!=='string'||args.explanation.length>2000){this.planRefused?.();throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')}
+   if(Array.isArray(args.plan)&&args.plan.some(s=>s&&typeof s==='object'&&Object.keys(s).some(k=>!(this.session.context?.taskSteps===true?['id','step','status','detail','dependsOn','budget','delegation']:['id','step','status','detail']).includes(k)))){this.planRefused?.();throw toolInputFailure('PlanIdentityInvalid: package-owned task fields cannot be supplied.')}
+   if(Object.keys(args).some(k=>!["explanation","plan"].includes(k))||!validPlanInput(args.plan,this.session.context?.taskSteps===true)||typeof args.explanation!=='string'||args.explanation.length>2000){this.planRefused?.();throw toolInputFailure('Provide one to twenty task steps, at most one in progress, and a short explanation.')}
    let next:ReturnType<typeof revisePlan>
    try{next=revisePlan(identifyPlan(this.state.plan,this.state.planState),args.plan,args.explanation)}catch(error){this.planRefused?.();throw error}
    const event:Extract<AssistantEvent,{type:'plan_revised'}>={type:'plan_revised',execution:this.state.id,...next.planState.history.at(-1)!}
@@ -360,9 +362,11 @@ export class ExecutionController {
   const pending=this.state.planState?.pending
   if(pending)return {type:'approval_requested',purpose:'plan-drift',callId:pending.callId,plan:{execution:this.state.id,revision:pending.revision,candidateRevision:pending.candidate.planState.revision,explanation:pending.explanation,departures:structuredClone(pending.departures)}}
   const asked=this.state.approval
-  if(asked?.state==='asked')return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:structuredClone(asked.source),args:structuredClone(asked.args)}
+  if(asked?.state==='asked')return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:structuredClone(asked.source),args:structuredClone(asked.args),...(asked.runtime?{runtime:structuredClone(asked.runtime)}:{})}
  }
  private async applyPlan(next:ReturnType<typeof identifyPlan>,explanation:string,event:PlanEvent){
+  const before={plan:structuredClone(this.state.plan),planState:structuredClone(this.state.planState),explanation:this.state.explanation,status:this.state.status}
+  try{
   const changes=changedDepartures(identifyPlan(this.state.plan,this.state.planState),next,explanation)
   if(changes.length){
    const state=next.planState;state.departures??=[];state.departuresDiscarded??=0
@@ -377,8 +381,9 @@ export class ExecutionController {
   this.mutate({...next,explanation})
   if(changes.length)await this.publishPlan?.(this.snapshot(),{type:'plan_departed',execution:this.state.id,revision:next.planState.revision,acceptedRevision:next.planState.accepted!.revision,explanation,departures:changes})
   await this.publishPlan?.(this.snapshot(),event)
+  }catch(error){this.mutate(before);this.planRefused?.();throw error}
  }
- completionTool():HostTool{return {name:'complete_plan_step',effect:'plan',description:'Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.',inputSchema:{type:'object',properties:{id:{type:'string',maxLength:100},expectedRevision:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},outcome:{enum:['completed','not-needed']},reason:{type:'string',minLength:1,maxLength:1500},evidence:{type:'object',properties:{operations:{type:'array',maxItems:20,items:{type:'string',maxLength:256}},artifacts:{type:'array',maxItems:20,items:{type:'object',properties:{kind:{enum:['artifact','dialect']},id:{type:'string',maxLength:256},digest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'}},required:['kind','id','digest'],additionalProperties:false}}},required:['operations','artifacts'],additionalProperties:false}},required:['id','expectedRevision','outcome'],additionalProperties:false,oneOf:[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]},execute:async(args,signal)=>this.serialPlan(async()=>{
+ completionTool():HostTool{return {name:'complete_plan_step',taxonomy:{operation:'own-state',effect:'pure'},effect:'plan',description:'Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.',inputSchema:{type:'object',properties:{id:{type:'string',maxLength:100},expectedRevision:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},outcome:{enum:['completed','not-needed']},reason:{type:'string',minLength:1,maxLength:1500},evidence:{type:'object',properties:{...(this.session.context?.taskSteps===true?{child:{type:'object',properties:{task:{type:'string',maxLength:100},checkpointDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},resultDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},eventDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},commitId:{type:'string',maxLength:100}},required:['task','checkpointDigest','resultDigest','eventDigest','commitId'],additionalProperties:false}}:{}),operations:{type:'array',maxItems:20,items:{type:'string',maxLength:256}},artifacts:{type:'array',maxItems:20,items:{type:'object',properties:{kind:{enum:['artifact','dialect']},id:{type:'string',maxLength:256},digest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'}},required:['kind','id','digest'],additionalProperties:false}}},required:['operations','artifacts'],additionalProperties:false}},required:['id','expectedRevision','outcome'],additionalProperties:false,oneOf:[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]},execute:async(args,signal)=>this.serialPlan(async()=>{
   signal.throwIfAborted()
   if(this.state.planState?.pending)throw toolInputFailure('PlanApprovalRequired: this run waits for its plan decision.')
   const current=identifyPlan(this.state.plan,this.state.planState),result=closePlan(current,args,this.proof?.())
@@ -394,7 +399,7 @@ export class ExecutionController {
  })}}
 
  budgetTool():HostTool {
-  return {name:'request_budget_increase',effect:'plan',description:'Pause near the request limit and ask the person for more compute. Explain useful remaining work and the next concrete step. This never grants more requests or action permissions. Use ask_user for missing policy decisions instead.',inputSchema:{type:'object',properties:{reason:{type:'string',maxLength:1000},nextStep:{type:'string',maxLength:900}},required:['reason','nextStep'],additionalProperties:false},execute:async(args,signal)=>{
+  return {name:'request_budget_increase',taxonomy:{operation:'ask',effect:'pure'},effect:'plan',description:'Pause near the request limit and ask the person for more compute. Explain useful remaining work and the next concrete step. This never grants more requests or action permissions. Use ask_user for missing policy decisions instead.',inputSchema:{type:'object',properties:{reason:{type:'string',maxLength:1000},nextStep:{type:'string',maxLength:900}},required:['reason','nextStep'],additionalProperties:false},execute:async(args,signal)=>{
    signal.throwIfAborted()
    if(typeof args.reason!=='string'||!args.reason.trim()||args.reason.length>1000||typeof args.nextStep!=='string'||!args.nextStep.trim()||args.nextStep.length>900)throw toolInputFailure('Explain why more requests are needed and the next concrete step.')
    if(this.state.unit!=='model-requests')return answer({status:'unavailable',message:'The subscription agent owns its internal request budget. Return findings or ask for missing information.'})

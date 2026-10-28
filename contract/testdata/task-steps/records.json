@@ -1,0 +1,1219 @@
+{
+  "description": "Handwritten current task records. Retained child tuples are facts only; the original writer must corroborate physical claims and acknowledged history before completion. No fixture was captured from implementation output.",
+  "items": [
+    {
+      "name": "pending-whole-selection",
+      "checkpoint": {
+        "version": 3,
+        "id": "task-vector",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 6,
+        "grants": [],
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "Inspect evidence",
+            "status": "pending",
+            "dependsOn": [],
+            "budget": {
+              "requests": 3
+            },
+            "delegation": {
+              "id": "auditor",
+              "digest": "sha256:995fe5f09c48582de11b7109d3def5927eda8003a884f7fd2c63925edd4393d6",
+              "source": {
+                "kind": "custom",
+                "id": "project",
+                "version": "1",
+                "trust": "person"
+              }
+            }
+          }
+        ],
+        "explanation": "Handwritten task state.",
+        "operations": [],
+        "context": {
+          "scope": "task-vector-scope",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:b14ead139e82560060dc060263524ebe18eb0a46c77302a76e571298503b9678",
+          "sequence": 0,
+          "nextId": 2,
+          "discarded": 0,
+          "history": [],
+          "taskSchedule": {
+            "version": 1,
+            "binding": {
+              "run": "task-vector",
+              "execution": "task-vector",
+              "planRevision": "sha256:b14ead139e82560060dc060263524ebe18eb0a46c77302a76e571298503b9678",
+              "scopeDigest": "sha256:3629bd5624b0ca84da7d07207eb584eb4316593507dc002e46a93170c489f443",
+              "unit": "model-requests"
+            },
+            "definitionDigest": "sha256:fdc438e72b790b8afcc819a4b78155427e0c4bb8691f85dfe68980237938329a",
+            "rows": [
+              {
+                "id": "step-1",
+                "limit": 3,
+                "claims": []
+              }
+            ],
+            "pending": {
+              "planRevision": "sha256:b14ead139e82560060dc060263524ebe18eb0a46c77302a76e571298503b9678",
+              "requestDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "steps": [
+                "step-1"
+              ]
+            }
+          }
+        },
+        "requestCap": 6
+      }
+    },
+    {
+      "name": "child-held-admitted-unknown-facts",
+      "checkpoint": {
+        "version": 3,
+        "id": "task-vector",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 3,
+        "limit": 6,
+        "grants": [],
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "Inspect evidence",
+            "status": "completed",
+            "dependsOn": [],
+            "budget": {
+              "requests": 3
+            },
+            "delegation": {
+              "id": "auditor",
+              "digest": "sha256:995fe5f09c48582de11b7109d3def5927eda8003a884f7fd2c63925edd4393d6",
+              "source": {
+                "kind": "custom",
+                "id": "project",
+                "version": "1",
+                "trust": "person"
+              }
+            },
+            "evidence": {
+              "operations": [],
+              "artifacts": [],
+              "child": {
+                "task": "11111111-1111-4111-8111-111111111111",
+                "checkpointDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "resultDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "eventDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "commitId": "child-result-commit"
+              }
+            }
+          }
+        ],
+        "explanation": "Handwritten task state.",
+        "operations": [],
+        "context": {
+          "scope": "task-vector-scope",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:de816e39f07c2bb57b4c26879048757cba3049e3172086c27a83c522f0fb7d43",
+          "sequence": 0,
+          "nextId": 2,
+          "discarded": 0,
+          "history": [],
+          "taskSchedule": {
+            "version": 1,
+            "binding": {
+              "run": "task-vector",
+              "execution": "task-vector",
+              "planRevision": "sha256:de816e39f07c2bb57b4c26879048757cba3049e3172086c27a83c522f0fb7d43",
+              "scopeDigest": "sha256:3629bd5624b0ca84da7d07207eb584eb4316593507dc002e46a93170c489f443",
+              "unit": "model-requests"
+            },
+            "definitionDigest": "sha256:fdc438e72b790b8afcc819a4b78155427e0c4bb8691f85dfe68980237938329a",
+            "rows": [
+              {
+                "id": "step-1",
+                "limit": 3,
+                "claims": [
+                  {
+                    "id": "claim-held",
+                    "requestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "state": "held"
+                  },
+                  {
+                    "id": "claim-admitted",
+                    "requestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "state": "admitted"
+                  },
+                  {
+                    "id": "claim-unknown",
+                    "requestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                    "state": "unknown"
+                  }
+                ],
+                "child": {
+                  "task": "11111111-1111-4111-8111-111111111111",
+                  "execution": "11111111-1111-4111-8111-111111111111",
+                  "planRevision": "sha256:b14ead139e82560060dc060263524ebe18eb0a46c77302a76e571298503b9678",
+                  "profile": {
+                    "id": "auditor",
+                    "digest": "sha256:995fe5f09c48582de11b7109d3def5927eda8003a884f7fd2c63925edd4393d6",
+                    "source": {
+                      "kind": "custom",
+                      "id": "project",
+                      "version": "1",
+                      "trust": "person"
+                    }
+                  },
+                  "result": {
+                    "checkpointDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "resultDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    "eventDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "commitId": "child-result-commit"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "requestCap": 6
+      }
+    },
+    {
+      "name": "native-host-envelope",
+      "checkpoint": {
+        "version": 3,
+        "id": "task-vector",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "running",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "Inspect native evidence",
+            "status": "in_progress",
+            "budget": {
+              "requests": 1
+            }
+          }
+        ],
+        "explanation": "Handwritten task state.",
+        "operations": [],
+        "context": {
+          "scope": "task-vector-scope",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:dd314f8a94285dd763f1c0529ed5d7fc9bc7591075ac33ba628a6a3e8441b030",
+          "sequence": 0,
+          "nextId": 2,
+          "discarded": 0,
+          "history": [],
+          "taskSchedule": {
+            "version": 1,
+            "binding": {
+              "run": "task-vector",
+              "execution": "task-vector",
+              "planRevision": "sha256:dd314f8a94285dd763f1c0529ed5d7fc9bc7591075ac33ba628a6a3e8441b030",
+              "scopeDigest": "sha256:3629bd5624b0ca84da7d07207eb584eb4316593507dc002e46a93170c489f443",
+              "unit": "provider-managed"
+            },
+            "definitionDigest": "sha256:97de5490f4ad16d1d4cdd800299bccb134d0ec8e24b390a5c33b1c24cb4fc4ca",
+            "rows": [
+              {
+                "id": "step-1",
+                "limit": 1,
+                "claims": []
+              }
+            ]
+          },
+          "taskEnvelope": {
+            "run": "task-vector",
+            "execution": "task-vector",
+            "scopeDigest": "sha256:3629bd5624b0ca84da7d07207eb584eb4316593507dc002e46a93170c489f443",
+            "configuration": {
+              "id": "host-envelope",
+              "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "unit": "provider-invocations",
+              "limit": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "native-original-coordinator-pin",
+      "checkpoint": {
+        "version": 3,
+        "id": "coordinator-vector",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "running",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "coordinator-scope",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "sequence": 0,
+          "nextId": 1,
+          "discarded": 0,
+          "history": [],
+          "taskCoordinator": {
+            "version": 1,
+            "owner": "native-delegation",
+            "run": "coordinator-vector",
+            "execution": "coordinator-vector",
+            "scopeDigest": "sha256:34f7babba3257a436af68dc3c15fde12622234a7154e52a4c224d9021fd91b6a",
+            "limit": 6,
+            "childReserve": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "native-released-plan-pause",
+      "checkpoint": {
+        "version": 3,
+        "id": "extended-plan",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "paused",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          {
+            "id": "step-2",
+            "step": "Report",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          }
+        ],
+        "explanation": "Inspect current content",
+        "operations": [],
+        "context": {
+          "scope": "plan-fixture",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+          "sequence": 1,
+          "nextId": 3,
+          "discarded": 0,
+          "history": [
+            {
+              "sequence": 1,
+              "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+              "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+              "explanation": "Inspect current content",
+              "diff": [
+                {
+                  "id": "step-1",
+                  "kind": "status",
+                  "before": {
+                    "id": "step-1",
+                    "step": "Inspect",
+                    "status": "pending",
+                    "origin": {
+                      "plan": "accepted-plan",
+                      "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                      "index": 0
+                    }
+                  },
+                  "after": {
+                    "id": "step-1",
+                    "step": "Inspect",
+                    "status": "in_progress",
+                    "origin": {
+                      "plan": "accepted-plan",
+                      "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "accepted": {
+            "id": "accepted-plan",
+            "sourceRevision": 1,
+            "objective": "Inspect and report",
+            "steps": [
+              "Inspect",
+              "Report"
+            ],
+            "references": [],
+            "acceptedAt": "2026-10-01T00:00:00.000Z",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "validatedReferences": []
+          },
+          "driftPolicy": [
+            "removed"
+          ],
+          "pending": {
+            "purpose": "plan-drift",
+            "callId": "plan-decision-1",
+            "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+            "candidate": {
+              "plan": [
+                {
+                  "id": "step-2",
+                  "step": "Report briefly",
+                  "status": "pending",
+                  "origin": {
+                    "plan": "accepted-plan",
+                    "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                    "index": 1
+                  }
+                },
+                {
+                  "id": "step-3",
+                  "step": "Summarize",
+                  "status": "pending"
+                }
+              ],
+              "planState": {
+                "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+                "sequence": 2,
+                "nextId": 4,
+                "discarded": 0,
+                "history": [
+                  {
+                    "sequence": 1,
+                    "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+                    "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                    "explanation": "Inspect current content",
+                    "diff": [
+                      {
+                        "id": "step-1",
+                        "kind": "status",
+                        "before": {
+                          "id": "step-1",
+                          "step": "Inspect",
+                          "status": "pending",
+                          "origin": {
+                            "plan": "accepted-plan",
+                            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                            "index": 0
+                          }
+                        },
+                        "after": {
+                          "id": "step-1",
+                          "step": "Inspect",
+                          "status": "in_progress",
+                          "origin": {
+                            "plan": "accepted-plan",
+                            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                            "index": 0
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "sequence": 2,
+                    "previous": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                    "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+                    "explanation": "Narrow the accepted work",
+                    "diff": [
+                      {
+                        "id": "step-1",
+                        "kind": "removed",
+                        "before": {
+                          "id": "step-1",
+                          "step": "Inspect",
+                          "status": "in_progress",
+                          "origin": {
+                            "plan": "accepted-plan",
+                            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                            "index": 0
+                          }
+                        },
+                        "from": 0
+                      },
+                      {
+                        "id": "step-2",
+                        "kind": "changed",
+                        "before": {
+                          "id": "step-2",
+                          "step": "Report",
+                          "status": "pending",
+                          "origin": {
+                            "plan": "accepted-plan",
+                            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                            "index": 1
+                          }
+                        },
+                        "after": {
+                          "id": "step-2",
+                          "step": "Report briefly",
+                          "status": "pending",
+                          "origin": {
+                            "plan": "accepted-plan",
+                            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                            "index": 1
+                          }
+                        }
+                      },
+                      {
+                        "id": "step-2",
+                        "kind": "reordered",
+                        "from": 1,
+                        "to": 0
+                      },
+                      {
+                        "id": "step-3",
+                        "kind": "added",
+                        "after": {
+                          "id": "step-3",
+                          "step": "Summarize",
+                          "status": "pending"
+                        },
+                        "to": 1
+                      }
+                    ]
+                  }
+                ],
+                "accepted": {
+                  "id": "accepted-plan",
+                  "sourceRevision": 1,
+                  "objective": "Inspect and report",
+                  "steps": [
+                    "Inspect",
+                    "Report"
+                  ],
+                  "references": [],
+                  "acceptedAt": "2026-10-01T00:00:00.000Z",
+                  "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                  "validatedReferences": []
+                },
+                "driftPolicy": [
+                  "removed"
+                ],
+                "departures": [
+                  {
+                    "revision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+                    "explanation": "Narrow the accepted work",
+                    "changes": [
+                      {
+                        "kind": "removed",
+                        "step": "step-1",
+                        "index": 0
+                      },
+                      {
+                        "kind": "changed",
+                        "step": "step-2",
+                        "index": 1
+                      },
+                      {
+                        "kind": "reordered",
+                        "step": "step-2",
+                        "index": 1
+                      },
+                      {
+                        "kind": "added",
+                        "step": "step-3"
+                      }
+                    ]
+                  }
+                ],
+                "departuresDiscarded": 0
+              }
+            },
+            "explanation": "Narrow the accepted work",
+            "departures": [
+              {
+                "kind": "removed",
+                "step": "step-1",
+                "index": 0
+              },
+              {
+                "kind": "changed",
+                "step": "step-2",
+                "index": 1
+              },
+              {
+                "kind": "reordered",
+                "step": "step-2",
+                "index": 1
+              },
+              {
+                "kind": "added",
+                "step": "step-3"
+              }
+            ]
+          }
+        },
+        "durable": {
+          "dispatches": [
+            {
+              "id": "original-native-invocation",
+              "scope": {
+                "execution": "extended-plan",
+                "role": "author"
+              },
+              "kind": "agent",
+              "source": "fixture",
+              "tool": "native",
+              "fingerprint": "sha256:45495a774e0584320ce36d246c4ed6a60c692b5ed41f27422a13323f462319c1",
+              "request": "{}",
+              "requestDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+              "state": "unknown",
+              "read": true,
+              "planPause": {
+                "callId": "plan-decision-1",
+                "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1"
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      }
+    },
+    {
+      "name": "native-decided-plan-pause",
+      "checkpoint": {
+        "version": 3,
+        "id": "extended-plan",
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "phase": "work",
+        "status": "running",
+        "unit": "provider-managed",
+        "used": 0,
+        "limit": 1,
+        "grants": [],
+        "plan": [
+          {
+            "id": "step-1",
+            "step": "Inspect",
+            "status": "in_progress",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 0
+            }
+          },
+          {
+            "id": "step-2",
+            "step": "Report",
+            "status": "pending",
+            "origin": {
+              "plan": "accepted-plan",
+              "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+              "index": 1
+            }
+          }
+        ],
+        "explanation": "Inspect current content",
+        "operations": [],
+        "context": {
+          "scope": "plan-fixture",
+          "entries": []
+        },
+        "planState": {
+          "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+          "sequence": 1,
+          "nextId": 3,
+          "discarded": 0,
+          "history": [
+            {
+              "sequence": 1,
+              "previous": "sha256:4bd3bd759ee580fc35f2ed601e4bef8755137f65e2c6b44bbb252106e96364aa",
+              "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+              "explanation": "Inspect current content",
+              "diff": [
+                {
+                  "id": "step-1",
+                  "kind": "status",
+                  "before": {
+                    "id": "step-1",
+                    "step": "Inspect",
+                    "status": "pending",
+                    "origin": {
+                      "plan": "accepted-plan",
+                      "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                      "index": 0
+                    }
+                  },
+                  "after": {
+                    "id": "step-1",
+                    "step": "Inspect",
+                    "status": "in_progress",
+                    "origin": {
+                      "plan": "accepted-plan",
+                      "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "accepted": {
+            "id": "accepted-plan",
+            "sourceRevision": 1,
+            "objective": "Inspect and report",
+            "steps": [
+              "Inspect",
+              "Report"
+            ],
+            "references": [],
+            "acceptedAt": "2026-10-01T00:00:00.000Z",
+            "revision": "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233",
+            "validatedReferences": []
+          },
+          "driftPolicy": [
+            "removed"
+          ],
+          "decisions": [
+            {
+              "callId": "plan-decision-1",
+              "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+              "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+              "approved": false,
+              "nativeInvocation": {
+                "dispatchId": "original-native-invocation",
+                "requestDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+              }
+            }
+          ],
+          "decisionsDiscarded": 0
+        },
+        "durable": {
+          "dispatches": [
+            {
+              "id": "original-native-invocation",
+              "scope": {
+                "execution": "extended-plan",
+                "role": "author"
+              },
+              "kind": "agent",
+              "source": "fixture",
+              "tool": "native",
+              "fingerprint": "sha256:45495a774e0584320ce36d246c4ed6a60c692b5ed41f27422a13323f462319c1",
+              "request": "{}",
+              "requestDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+              "state": "unknown",
+              "read": true,
+              "planPause": {
+                "callId": "plan-decision-1",
+                "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+                "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1"
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "duplicate-pending-step",
+      "base": 0,
+      "path": [
+        "planState",
+        "taskSchedule",
+        "pending",
+        "steps"
+      ],
+      "value": [
+        "step-1",
+        "step-1"
+      ]
+    },
+    {
+      "name": "changed-pending-revision",
+      "base": 0,
+      "path": [
+        "planState",
+        "taskSchedule",
+        "pending",
+        "planRevision"
+      ],
+      "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "name": "foreign-scope-envelope",
+      "base": 2,
+      "path": [
+        "planState",
+        "taskEnvelope",
+        "execution"
+      ],
+      "value": "foreign"
+    },
+    {
+      "name": "host-limit-exceeds-feature-bound",
+      "base": 2,
+      "path": [
+        "planState",
+        "taskEnvelope",
+        "configuration",
+        "limit"
+      ],
+      "value": 101
+    },
+    {
+      "name": "missing-child-commit",
+      "base": 1,
+      "path": [
+        "plan",
+        0,
+        "evidence",
+        "child",
+        "commitId"
+      ],
+      "remove": true
+    },
+    {
+      "name": "unknown-claim-state",
+      "base": 1,
+      "path": [
+        "planState",
+        "taskSchedule",
+        "rows",
+        0,
+        "claims",
+        0,
+        "state"
+      ],
+      "value": "released"
+    },
+    {
+      "name": "coordinator-invalid-version",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "version"
+      ],
+      "value": 2
+    },
+    {
+      "name": "coordinator-invalid-owner",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "owner"
+      ],
+      "value": "host"
+    },
+    {
+      "name": "coordinator-invalid-run",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "run"
+      ],
+      "value": "other"
+    },
+    {
+      "name": "coordinator-invalid-execution",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "execution"
+      ],
+      "value": "other"
+    },
+    {
+      "name": "coordinator-invalid-scopeDigest",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "scopeDigest"
+      ],
+      "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "name": "coordinator-invalid-limit",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "limit"
+      ],
+      "value": 0
+    },
+    {
+      "name": "coordinator-invalid-childReserve",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "childReserve"
+      ],
+      "value": 7
+    },
+    {
+      "name": "coordinator-invalid-extra",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "extra"
+      ],
+      "value": true
+    },
+    {
+      "name": "coordinator-missing-version",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "version"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-owner",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "owner"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-run",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "run"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-execution",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "execution"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-scopeDigest",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "scopeDigest"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-limit",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "limit"
+      ],
+      "remove": true
+    },
+    {
+      "name": "coordinator-missing-childReserve",
+      "base": 3,
+      "path": [
+        "planState",
+        "taskCoordinator",
+        "childReserve"
+      ],
+      "remove": true
+    },
+    {
+      "name": "native-plan-pause-invalid-callId",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "callId"
+      ],
+      "value": ""
+    },
+    {
+      "name": "native-plan-pause-invalid-revision",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "revision"
+      ],
+      "value": "bad"
+    },
+    {
+      "name": "native-plan-pause-invalid-candidateRevision",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "candidateRevision"
+      ],
+      "value": "bad"
+    },
+    {
+      "name": "native-plan-pause-invalid-extra",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "extra"
+      ],
+      "value": true
+    },
+    {
+      "name": "native-plan-pause-missing-callId",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "callId"
+      ],
+      "remove": true
+    },
+    {
+      "name": "native-plan-pause-missing-revision",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "revision"
+      ],
+      "remove": true
+    },
+    {
+      "name": "native-plan-pause-missing-candidateRevision",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "planPause",
+        "candidateRevision"
+      ],
+      "remove": true
+    },
+    {
+      "name": "native-plan-pause-semantic-kind",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "kind"
+      ],
+      "value": "host"
+    },
+    {
+      "name": "native-plan-pause-semantic-state",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "state"
+      ],
+      "value": "result"
+    },
+    {
+      "name": "native-plan-pause-semantic-read",
+      "base": 4,
+      "path": [
+        "durable",
+        "dispatches",
+        0,
+        "read"
+      ],
+      "value": false
+    },
+    {
+      "name": "native-plan-decision-invalid-dispatchId",
+      "base": 5,
+      "path": [
+        "planState",
+        "decisions",
+        0,
+        "nativeInvocation",
+        "dispatchId"
+      ],
+      "value": "other"
+    },
+    {
+      "name": "native-plan-decision-invalid-requestDigest",
+      "base": 5,
+      "path": [
+        "planState",
+        "decisions",
+        0,
+        "nativeInvocation",
+        "requestDigest"
+      ],
+      "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "native-plan-decision-invalid-extra",
+      "base": 5,
+      "path": [
+        "planState",
+        "decisions",
+        0,
+        "nativeInvocation",
+        "extra"
+      ],
+      "value": true
+    },
+    {
+      "name": "native-plan-decision-missing-dispatchId",
+      "base": 5,
+      "path": [
+        "planState",
+        "decisions",
+        0,
+        "nativeInvocation",
+        "dispatchId"
+      ],
+      "remove": true
+    },
+    {
+      "name": "native-plan-decision-missing-requestDigest",
+      "base": 5,
+      "path": [
+        "planState",
+        "decisions",
+        0,
+        "nativeInvocation",
+        "requestDigest"
+      ],
+      "remove": true
+    }
+  ],
+  "events": [
+    {
+      "name": "current-revision",
+      "event": {
+        "version": 2,
+        "type": "plan_revised",
+        "execution": "task-vector",
+        "sequence": 1,
+        "previous": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "explanation": "Ready graph accepted.",
+        "diff": []
+      }
+    },
+    {
+      "name": "current-departure",
+      "event": {
+        "version": 2,
+        "type": "plan_departed",
+        "execution": "task-vector",
+        "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "acceptedRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "explanation": "Replan work.",
+        "departures": []
+      }
+    },
+    {
+      "name": "current-completion-refusal",
+      "event": {
+        "version": 2,
+        "type": "plan_completion_refused",
+        "execution": "task-vector",
+        "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "reason": "evidence-unavailable",
+        "step": "step-1"
+      }
+    },
+    {
+      "name": "current-drift-decision",
+      "event": {
+        "version": 2,
+        "type": "plan_drift_decided",
+        "execution": "task-vector",
+        "callId": "host-decision",
+        "revision": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "candidateRevision": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "approved": false,
+        "note": "Retain current plan."
+      }
+    },
+    {
+      "name": "native-plan-decision-invocation",
+      "event": {
+        "type": "plan_drift_decided",
+        "version": 2,
+        "execution": "extended-plan",
+        "callId": "plan-decision-1",
+        "revision": "sha256:aaf85232ee18a58923bc941605cd1aa5d4575cac1319f3258e31ae02fc7deeb0",
+        "candidateRevision": "sha256:a8641e88a3e5c770fe8450659f105ef82b68c4fbffec3b939d8639503d31cac1",
+        "approved": false,
+        "nativeInvocation": {
+          "dispatchId": "original-native-invocation",
+          "requestDigest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        }
+      }
+    }
+  ]
+}

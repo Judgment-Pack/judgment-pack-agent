@@ -44,7 +44,14 @@ func planIdentityRefused() error {
 
 // revisePlan constructs a detached candidate. Its caller publishes checkpoint and event together.
 func revisePlan(current, state, incoming *Value, explanation string, closure ...bool) (*Value, *Value, error) {
-	state = state.Clone()
+	hadSchedule := state.Has("taskSchedule")
+	detached := Object()
+	for _, key := range state.Keys() {
+		if key != "taskSchedule" {
+			detached.Set(key, state.Get(key).Clone())
+		}
+	}
+	state = detached
 	next := planNumber(state.Get("nextId"))
 	if planNumber(state.Get("sequence")) >= 9007199254740991 || next > 9007199254740991-float64(newPlanIDs(incoming)) {
 		return nil, nil, planIdentityRefused()
@@ -86,6 +93,15 @@ func revisePlan(current, state, incoming *Value, explanation string, closure ...
 		step.Set("id", String(id))
 		plan.Append(step)
 	}
+	configured := hadSchedule
+	for _, step := range plan.Items() {
+		configured = configured || taskConfigured(step)
+	}
+	if configured {
+		if err := validateTaskPlan(plan, nil); err != nil {
+			return nil, nil, err
+		}
+	}
 	diff := Array()
 	for i, s := range current.Items() {
 		id := planText(s.Get("id"))
@@ -102,7 +118,7 @@ func revisePlan(current, state, incoming *Value, explanation string, closure ...
 			diff.Append(ObjectOf("id", String(id), "kind", String("removed"), "before", s.Clone(), "from", Number(float64(i))))
 			continue
 		}
-		if planText(s.Get("step")) != planText(after.Get("step")) || s.Has("detail") != after.Has("detail") || planText(s.Get("detail")) != planText(after.Get("detail")) {
+		if planText(s.Get("step")) != planText(after.Get("step")) || s.Has("detail") != after.Has("detail") || planText(s.Get("detail")) != planText(after.Get("detail")) || taskConfigurationJSON(s) != taskConfigurationJSON(after) {
 			diff.Append(ObjectOf("id", String(id), "kind", String("changed"), "before", s.Clone(), "after", after.Clone()))
 		}
 		if planText(s.Get("status")) != planText(after.Get("status")) {
@@ -149,6 +165,28 @@ func validPlanState(plan, state *Value) bool {
 	}
 	if !state.IsObject() || !validPlanExtensions(plan, state) || !isCount(state.Get("sequence"), 9007199254740991) || !isCount(state.Get("discarded"), 9007199254740991) || !isCount(state.Get("nextId"), 9007199254740991) || planNumber(state.Get("nextId")) < 1 || planText(state.Get("revision")) != planDigest(plan) {
 		return false
+	}
+	if state.Has("taskCoordinator") {
+		if _, err := readTaskCoordinatorBinding(state.Get("taskCoordinator")); err != nil {
+			return false
+		}
+	}
+	if state.Has("taskEnvelope") {
+		if _, err := readTaskEnvelopeBinding(state.Get("taskEnvelope")); err != nil {
+			return false
+		}
+	}
+	configured := state.Has("taskSchedule")
+	for _, step := range plan.Items() {
+		configured = configured || taskConfigured(step)
+	}
+	if configured {
+		if validateTaskPlan(plan, state.Get("taskSchedule")) != nil {
+			return false
+		}
+		if state.Has("taskSchedule") && planText(state.Get("taskSchedule").Get("binding").Get("planRevision")) != planText(state.Get("revision")) {
+			return false
+		}
 	}
 	sequence, discarded := planNumber(state.Get("sequence")), planNumber(state.Get("discarded"))
 	history := state.Get("history")

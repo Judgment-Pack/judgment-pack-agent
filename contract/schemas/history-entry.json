@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/history-entry.json",
+  "title": "Retained run history entry",
+  "description": "Canonical v1 storage-observed commit, sequence and timestamp. Sequences own ordering; clocks are host observations. Checkpoint-only commits are retained. This format does not claim replay or complete legacy history.",
+  "type": "object",
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "eventStart": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "eventCount": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256
+    },
+    "commitId": {
+      "type": "string"
+    },
+    "executionRevision": {
+      "type": "string"
+    },
+    "recordedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "previousDigest": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "checkpoint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4194304
+            }
+          },
+          "required": [
+            "digest",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304
+          }
+        },
+        "required": [
+          "digest",
+          "bytes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 256
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304
+          }
+        },
+        "required": [
+          "digest",
+          "bytes"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 256
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "object",
+          "properties": {
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 4194304
+            }
+          },
+          "required": [
+            "digest",
+            "bytes"
+          ],
+          "additionalProperties": false
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "closed": {
+          "const": true
+        },
+        "privateScope": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": [
+        "chatId",
+        "revision",
+        "manifest",
+        "turn"
+      ],
+      "additionalProperties": false
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "version",
+    "sequence",
+    "eventStart",
+    "eventCount",
+    "commitId",
+    "executionRevision",
+    "recordedAt",
+    "previousDigest",
+    "checkpoint",
+    "events",
+    "observations",
+    "digest"
+  ],
+  "additionalProperties": false
+}

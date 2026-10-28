@@ -1,0 +1,200 @@
+{
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/descriptorSnapshot.ts",
+      "packages/harness/toolSources.ts"
+    ]
+  },
+  "schema": "tool-offer.json#/$defs/toolListDigest",
+  "gatewayCommit": "17168fc11cac3a9f4947564dfb65b2f239827681",
+  "invalid": [
+    {
+      "name": "whitespace",
+      "old": "\"policy\":1",
+      "new": "\"policy\": 1"
+    },
+    {
+      "name": "fractional spelling",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1.0"
+    },
+    {
+      "name": "exponent spelling",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1e0"
+    },
+    {
+      "name": "duplicate member",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1,\"policy\":1"
+    },
+    {
+      "name": "escaped duplicate member",
+      "old": "\"policy\":1",
+      "new": "\"policy\":1,\"pol\\u0069cy\":1"
+    },
+    {
+      "name": "lone surrogate",
+      "old": "Search tickets",
+      "new": "Search \\ud800"
+    },
+    {
+      "name": "unknown member",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"extra\":1,\"platform\":\"tickets\""
+    },
+    {
+      "name": "unsafe integer",
+      "old": "\"policy\":1",
+      "new": "\"policy\":9007199254740992"
+    },
+    {
+      "name": "unknown policy",
+      "old": "\"policy\":1",
+      "new": "\"policy\":2"
+    },
+    {
+      "name": "wrong canonical codepoint key order",
+      "old": "\"�\":{\"description\":\"Replacement letter tool\"},\"𐀀\":{\"description\":\"Linear B tool\"}",
+      "new": "\"𐀀\":{\"description\":\"Linear B tool\"},\"�\":{\"description\":\"Replacement letter tool\"}"
+    },
+    {
+      "name": "invalid date",
+      "old": "2026-10-24T01:02:03Z",
+      "new": "2026-02-30T01:02:03Z"
+    },
+    {
+      "name": "unpinned binding",
+      "old": "tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "new": "tickets"
+    },
+    {
+      "name": "invalid platform",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"platform\":\"tickets/path\""
+    },
+    {
+      "name": "platform newer than Unicode 15",
+      "old": "\"platform\":\"tickets\"",
+      "new": "\"platform\":\"𮯰\""
+    },
+    {
+      "name": "invalid endpoint",
+      "old": "https://tickets.example/mcp",
+      "new": "http://tickets.example/mcp"
+    },
+    {
+      "name": "schema object instead of original text",
+      "old": "\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"",
+      "new": "\"inputSchemaText\":{\"type\":\"object\"}"
+    },
+    {
+      "name": "empty candidate",
+      "old": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"}",
+      "new": "\"close\":{}"
+    },
+    {
+      "name": "server without version",
+      "old": "\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"",
+      "new": "\"name\":\"tickets-mcp\""
+    },
+    {
+      "name": "server version not string",
+      "old": "\"version\":\"2.4.1\"",
+      "new": "\"version\":2"
+    },
+    {
+      "name": "policy not integer",
+      "old": "\"policy\":1",
+      "new": "\"policy\":\"1\""
+    },
+    {
+      "name": "tool description not string",
+      "old": "\"description\":\"Search tickets\"",
+      "new": "\"description\":true"
+    },
+    {
+      "name": "tool unknown member",
+      "old": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\"}",
+      "new": "\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"title\":\"x\"}"
+    },
+    {
+      "name": "missing binding",
+      "old": "\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",",
+      "new": ""
+    }
+  ],
+  "description": "Handwritten current V2 descriptor fixture for source-gate tests. The historical descriptor-snapshot.json bytes stay unchanged. Approval contexts are independent host declarations; digests identify authored bytes and do not claim producer signatures.",
+  "snapshotText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"snapshotVersion\":\"2\",\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"search_tickets\":{\"description\":\"Search tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"�\":{\"description\":\"Replacement letter tool\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"𐀀\":{\"description\":\"Linear B tool\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}}}}",
+  "digest": "sha256:8727d010e3bb320cded4c660e8d6f80f0bb41f80f8ec3e6d0259a289c85880b8",
+  "changedText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"snapshotVersion\":\"2\",\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"search_tickets\":{\"description\":\"Search all tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"�\":{\"description\":\"Replacement letter tool\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}},\"𐀀\":{\"description\":\"Linear B tool\",\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"read\"}}}}",
+  "changedDigest": "sha256:9d974c047abed919ccee0054f69dadd0f7dbb758fb39223fe1b5372261c4209c",
+  "approval": {
+    "platform": "tickets",
+    "binding": "tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "operation": "live",
+    "endpoint": "https://tickets.example/mcp",
+    "toolTaxonomies": {
+      "close": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "search_tickets": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "�": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "𐀀": {
+        "operation": "read",
+        "effect": "read-external"
+      }
+    }
+  },
+  "actSnapshotText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"snapshotVersion\":\"2\",\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"search_tickets\":{\"description\":\"Search tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"�\":{\"description\":\"Replacement letter tool\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"𐀀\":{\"description\":\"Linear B tool\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}}}}",
+  "actDigest": "sha256:30f97ae183290c6470d3d5d174ea5f3f051beafec61546a0a8ce732b1304b3d4",
+  "actChangedText": "{\"binding\":\"tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"capturedAt\":\"2026-10-24T01:02:03Z\",\"endpoint\":\"https://tickets.example/mcp\",\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"tickets-mcp\",\"version\":\"2.4.1\"},\"snapshotVersion\":\"2\",\"tools\":{\"close\":{\"inputSchemaText\":\"{\\\"type\\\":\\\"object\\\"}\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"search_tickets\":{\"description\":\"Search all tickets\",\"inputSchemaText\":\"{ \\\"type\\\": \\\"object\\\", \\\"properties\\\": {\\\"limit\\\": {\\\"type\\\": \\\"integer\\\", \\\"minimum\\\": 1.0}} }\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"�\":{\"description\":\"Replacement letter tool\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}},\"𐀀\":{\"description\":\"Linear B tool\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}}}}",
+  "actChangedDigest": "sha256:65459c7e4149fd70066bf72b8e9c0cec696cd266b75cda4a1776f80599035ef8",
+  "actApproval": {
+    "platform": "tickets",
+    "binding": "tickets@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "operation": "live",
+    "endpoint": "https://tickets.example/mcp",
+    "toolTaxonomies": {
+      "close": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "search_tickets": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "�": {
+        "operation": "act",
+        "effect": "act"
+      },
+      "𐀀": {
+        "operation": "act",
+        "effect": "act"
+      }
+    }
+  },
+  "items": [
+    "sha256:8727d010e3bb320cded4c660e8d6f80f0bb41f80f8ec3e6d0259a289c85880b8",
+    "sha256:9d974c047abed919ccee0054f69dadd0f7dbb758fb39223fe1b5372261c4209c",
+    "sha256:30f97ae183290c6470d3d5d174ea5f3f051beafec61546a0a8ce732b1304b3d4",
+    "sha256:65459c7e4149fd70066bf72b8e9c0cec696cd266b75cda4a1776f80599035ef8"
+  ],
+  "refusal": {
+    "agentCode": "permission",
+    "agentOutcome": "not-started",
+    "agentDetail": "the tool list tickets serves is no longer the one the person approved (sha256:8727d010e3bb320cded4c660e8d6f80f0bb41f80f8ec3e6d0259a289c85880b8); its tools are refused until the person approves the new list, and this call was not run",
+    "gatewayContains": "does not digest to its pin"
+  }
+}

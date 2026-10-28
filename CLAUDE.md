@@ -5,12 +5,25 @@ Edit `AGENTS.md` and run `scripts/sync-agent-docs.sh` to regenerate `CLAUDE.md`.
 
 ## Before you open a pull request
 
-- Run `scripts/dev/check.sh` (or `jpdev check` where the kit is installed) once. It runs the
-  checks listed in `dev.json` in order and prints one summary block.
-- Paste that summary block in the pull request body, under a "Checks" heading.
-- If a check fails: read its first lines in the block, fix the cause, re-run that one check with
-  `--only NAME`, then run the whole list once more. Do not loop on the whole list.
-- Start no CI watch. Push, report once, and stop; CI owns everything deterministic.
+- Define the related issues, dependency order and acceptance criteria, then implement a coherent
+  batch with handwritten acceptance and regression fixtures alongside the code. Do not run a
+  full local suite or CI cycle merely per issue, intermediate commit or handoff.
+- During development, run useful focused checks for changed paths, affected contracts and
+  relevant interactions, including both readers of shared language vectors. Use
+  `scripts/dev/check.sh --only NAME[,NAME]` (or `jpdev check --only NAME[,NAME]`).
+- Run the required full checklist once for the stable integrated candidate before CI:
+  `scripts/dev/check.sh` (or `jpdev check`). This gate belongs to the coherent batch, not each
+  issue or intermediate handoff. Every merge candidate still requires its own exact-head checks.
+- Paste the actual summary in the pull request body under "Checks". Record the exact candidate
+  identity (head and any uncommitted diff), scope, commands, results and remaining CI ownership.
+  A skipped or unrun check is not a pass.
+- After failures, group related fixes and rerun affected checks with `--only NAME`. Repeat broad
+  validation only when actual repository requirements, substantive changes or unresolved evidence
+  warrant it, including unknown affected coverage or changed runner/check-selection semantics.
+- Keep automatic CI enabled. Full deterministic validation remains required in CI for the
+  integrated candidate, default branch and release under the repository's actual gates. Review
+  begins only after green CI on the exact reviewed head. Start no CI watch; report once and stop
+  after pushing.
 - Push with `jpdev push [BRANCH]`, or where the kit is not installed with
   `git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -u origin BRANCH`.
   The machine's stored git credential can be another account's, and a plain `git push` is then
@@ -33,7 +46,9 @@ Run these self-checks on the builder's own head before writing the commit messag
 - (f) An interrupted and resumed run carries every new checkpoint member.
 - (g) The design's words and the code agree sentence by sentence.
 
-Run the check list with `--only <touched steps>` while iterating and whole exactly once at the end.
+Record applicable self-checks and the stable batch checklist result, or identify the coordinator
+who owns that gate when handing off an incomplete batch. Keep heavy checks
+serialized under the repository lock and temporary state beneath the session scratch/TMPDIR.
 Change the paths in `dev.json` `handover.shared_paths` by appending only, never by reordering or
 rewriting, because a sibling build may be open. Never fetch, rebase or merge; the coordinator
 carries `main` into the branch after the push.
@@ -41,6 +56,19 @@ carries `main` into the branch after the push.
 A HIGH (a path that executes twice, runs without approval, or crosses a boundary the issue did not
 open) is fixed in the pull request before review. MEDIUMs named by the review of record are fixed in
 the same fix round; a MEDIUM found only on a re-read goes to the pre-release batch. LOW rides.
+
+## Testing
+
+- Verify claims against artifacts: inspect the actual files, candidate identity, working directory,
+  command output and assertions. A report alone does not prove files were included or tests ran.
+- Prefer real implementations and consumer entry paths (commands, endpoints or exported APIs).
+  Use mocks only for dependencies that cannot run in CI, and state that limitation.
+- Resolve the product under test to the candidate's explicit source or build path; never let an
+  installed product of the same name silently run instead. This does not prohibit model CLIs or
+  toolchains used as dependencies; record their identity when relevant.
+- Write acceptance/regression vectors and fixtures by hand, not from the implementation's output.
+- Remove each new fix or safeguard once in scratch and show its regression test fails at the
+  intended assertion. Setup, compilation errors and timeouts do not demonstrate that assertion.
 
 ## Rules
 

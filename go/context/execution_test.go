@@ -117,7 +117,12 @@ func TestTheExecutionDetectsModifiedRetainedValuesAndMalformedGrants(t *testing.
 
 func TestTheReadCacheServesUnchangedContractsAndNeverWrites(t *testing.T) {
 	session, calls := trackedSession(t)
-	session.Tools = []RuntimeTool{{Name: "get_schema"}}
+	session.Tools = []RuntimeTool{{Name: "get_schema", Meta: &ToolTaxonomy{Operation: "read", Effect: "read"}}}
+	writes := 0
+	session.HostTools = []HostTool{{Name: "save_fixture", Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "workflow", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+		writes++
+		return ResultOf(nil, nil), nil
+	}}}
 	run := openRun(t, session)
 	for at := 0; at < 2; at++ {
 		if _, err := run.Session.CallTool(context.Background(), "get_schema", json.RawMessage(`{}`)); err != nil {
@@ -125,12 +130,12 @@ func TestTheReadCacheServesUnchangedContractsAndNeverWrites(t *testing.T) {
 		}
 	}
 	for at := 0; at < 2; at++ {
-		if _, err := run.Session.CallTool(context.Background(), "save_pack", json.RawMessage(`{"id":"one"}`)); err != nil {
+		if _, err := hostTool(t, run, "save_fixture").Execute(context.Background(), json.RawMessage(`{"id":"one"}`)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if *calls != 3 {
-		t.Errorf("the runtime was called %d times", *calls)
+	if *calls != 1 || writes != 2 {
+		t.Errorf("the runtime was called %d times and the workflow %d times", *calls, writes)
 	}
 }
 
@@ -144,11 +149,11 @@ func TestTheReadCacheFollowsTheHostsDeclaration(t *testing.T) {
 		}
 	}
 	session.HostTools = []HostTool{
-		{Name: "future_contract", Effect: "read", ContextPolicy: &ToolContextPolicy{Immutable: true, Reference: true},
+		{Name: "future_contract", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", ContextPolicy: &ToolContextPolicy{Immutable: true, Reference: true},
 			Description: "Contract", InputSchema: json.RawMessage(`{}`), Execute: count(&immutable, "stable")},
-		{Name: "future_current_reference", Effect: "read", ContextPolicy: &ToolContextPolicy{Reference: true},
+		{Name: "future_current_reference", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", ContextPolicy: &ToolContextPolicy{Reference: true},
 			Description: "Current reference", InputSchema: json.RawMessage(`{}`), Execute: count(&mutable, "current")},
-		{Name: "future_write", Effect: "workflow", Delegation: "read", ContextPolicy: &ToolContextPolicy{Immutable: true},
+		{Name: "future_write", Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "workflow", Delegation: "read", ContextPolicy: &ToolContextPolicy{Immutable: true},
 			Description: "Write", InputSchema: json.RawMessage(`{}`), Execute: count(&write, "")},
 	}
 	run := openRun(t, session)

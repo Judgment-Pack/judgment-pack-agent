@@ -545,13 +545,13 @@
       "outcome": "accepted"
     },
     {
-      "name": "future before unfamiliar type",
+      "name": "current version before unfamiliar type",
       "input": {
         "version": 2,
         "type": "future",
         "payload": true
       },
-      "outcome": "UnsupportedRecordVersion"
+      "outcome": "InvalidRecord"
     },
     {
       "name": "unknown envelope",
@@ -709,6 +709,15 @@
       },
       "raw": "{\"version\":1,\"type\":\"execution_checkpoint\",\"durable\":true,\"checkpoint\":{\"version\":2e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0.0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]}}}",
       "outcome": "accepted"
+    },
+    {
+      "name": "future before unfamiliar type",
+      "input": {
+        "version": 3,
+        "type": "future",
+        "payload": true
+      },
+      "outcome": "UnsupportedRecordVersion"
     }
   ],
   "source": {

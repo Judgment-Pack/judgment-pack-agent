@@ -2,6 +2,7 @@ package eino
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"sync"
@@ -56,19 +57,23 @@ func (m *relayModel) Generate(ctx context.Context, input []*schema.Message, _ ..
 		messages = append(messages, r.toWire(message))
 	}
 	encoded := wire.EncodeRequest(wire.Request{
-		Family:          r.family,
-		Model:           m.model,
-		System:          step.system,
-		Messages:        messages,
-		Tools:           step.tools,
-		OneCallPerTurn:  step.oneCall && len(step.tools) > 0,
-		Tier:            step.tier,
-		MaxOutputTokens: r.outputTokens(),
-		ReasoningField:  r.reasoningField(),
-		WholeAnswer:     r.capabilities.StreamingQuirks.WholeJSONAnswer,
-		Images:          r.imageBounds(),
-		Placement:       r.placement,
+		Family:             r.family,
+		Model:              m.model,
+		System:             step.system,
+		Messages:           messages,
+		Tools:              step.tools,
+		OneCallPerTurn:     step.oneCall && len(step.tools) > 0,
+		Tier:               step.tier,
+		MaxOutputTokens:    r.outputTokens(),
+		OutputTokenCeiling: r.run.OutputCeiling(),
+		ReasoningField:     r.reasoningField(),
+		WholeAnswer:        r.capabilities.StreamingQuirks.WholeJSONAnswer,
+		Images:             r.imageBounds(),
+		Placement:          r.placement,
 	})
+	if err := r.sc.CheckPhysicalRequest(encoded.ModelRequest().Body); err != nil {
+		return nil, err
+	}
 	response, err := r.call(ctx, encoded.Suffix, encoded.ModelRequest())
 	if err != nil {
 		return nil, err
@@ -78,9 +83,21 @@ func (m *relayModel) Generate(ctx context.Context, input []*schema.Message, _ ..
 		body, _ := readLimited(response)
 		return nil, &wire.RelayRefusal{Status: response.StatusCode, Body: body, Headers: response.Header}
 	}
-	answer, err := wire.ReadAnswer(ctx, r.family, response, r.listener, r.reasoningField(), func() string { return "call-" + wire.RandomUUID() })
+	var listener wire.Listener = r.listener
+	if r.observation != nil || r.sc.RouteClassifying() {
+		listener = wire.NoListener{}
+	}
+	answer, err := wire.ReadAnswer(ctx, r.family, response, listener, r.reasoningField(), func() string { return "call-" + wire.RandomUUID() })
 	if err != nil {
 		return nil, err
+	}
+	if !r.sc.RouteClassifying() {
+		for _, call := range answer.ToolCalls {
+			if err := r.sc.RequireRouteCapability(call.Name, json.RawMessage(call.Arguments)); err != nil {
+				r.sc.Execution.RecordCompletion(completionOf(answer), "work")
+				return nil, err
+			}
+		}
 	}
 	if step.answered != nil {
 		step.answered(answer)

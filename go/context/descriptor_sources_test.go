@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -12,12 +13,73 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
+// Current source admission uses authored V2 bytes and a separately supplied approval.
+// The historical snapshot parser vectors remain in descriptor_snapshot_test.go unchanged.
+func currentSourceSnapshotVector(t *testing.T, act bool) descriptorVector {
+	t.Helper()
+	raw, err := os.ReadFile("../../contract/vectors/tool-offer/descriptor-snapshot-current.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out descriptorVector
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if act {
+		var row struct {
+			SnapshotText  string `json:"actSnapshotText"`
+			Digest        string `json:"actDigest"`
+			ChangedText   string `json:"actChangedText"`
+			ChangedDigest string `json:"actChangedDigest"`
+		}
+		if err := json.Unmarshal(raw, &row); err != nil {
+			t.Fatal(err)
+		}
+		out.Refusal.AgentDetail = strings.Replace(out.Refusal.AgentDetail, out.Digest, row.Digest, 1)
+		out.SnapshotText, out.Digest, out.ChangedText, out.ChangedDigest = row.SnapshotText, row.Digest, row.ChangedText, row.ChangedDigest
+	}
+	return out
+}
+func currentSnapshotApproval(t *testing.T, act bool) *DescriptorApproval {
+	t.Helper()
+	raw, err := os.ReadFile("../../contract/vectors/tool-offer/descriptor-snapshot-current.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row struct {
+		Read *DescriptorApproval `json:"approval"`
+		Act  *DescriptorApproval `json:"actApproval"`
+	}
+	if err := json.Unmarshal(raw, &row); err != nil {
+		t.Fatal(err)
+	}
+	if act {
+		return row.Act
+	}
+	return row.Read
+}
+func snapshotActHostTool(t *testing.T) HostTool {
+	tool := snapshotHostTool(t)
+	v := currentSourceSnapshotVector(t, true)
+	tool.Taxonomy = &ToolTaxonomy{Operation: "act", Effect: "act"}
+	tool.EffectClass = "act"
+	tool.Source.ToolListDigest = v.Digest
+	tool.Source.DescriptorSnapshot = []byte(v.SnapshotText)
+	tool.Source.DescriptorApproval = currentSnapshotApproval(t, true)
+	tool.Source.CurrentDescriptorSnapshot = func(context.Context) ([]byte, error) { return []byte(v.SnapshotText), nil }
+	tool.Source.VerifyReceipt = nil
+	return tool
+}
+
 func snapshotHostTool(t *testing.T) HostTool {
 	t.Helper()
-	v := snapshotVector(t)
-	return HostTool{Name: "search_tickets", Description: "Unpinned host text", InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "read", Source: &ToolSource{Kind: "mcp", ID: "tickets", Trust: "public", ToolListDigest: v.Digest, DescriptorSnapshot: []byte(v.SnapshotText), CurrentDescriptorSnapshot: func(context.Context) ([]byte, error) { return []byte(v.SnapshotText), nil }}, Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
-		return ResultOf([]Content{TextContent("found")}, nil), nil
+	v := currentSourceSnapshotVector(t, false)
+	tool := HostTool{Name: "search_tickets", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read-external"}, Description: "Unpinned host text", InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "read", Source: &ToolSource{Kind: "mcp", ID: "tickets", Trust: "public", ToolListDigest: v.Digest, DescriptorSnapshot: []byte(v.SnapshotText), DescriptorApproval: currentSnapshotApproval(t, false), CurrentDescriptorSnapshot: func(context.Context) ([]byte, error) { return []byte(v.SnapshotText), nil }}, Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+		result := ResultOf([]Content{TextContent("found")}, nil)
+		result.Receipt = "descriptor-found"
+		return result, nil
 	}}
+	return withSourceReceiptRows([]HostTool{tool}, []sourceReceiptRow{{`{}`, `{"content":[{"text":"found","type":"text"}]}`, "descriptor-found"}})[0]
 }
 func snapshotEventValid(t *testing.T, event contract.RunEvent) {
 	t.Helper()
@@ -29,6 +91,23 @@ func snapshotEventValid(t *testing.T, event contract.RunEvent) {
 		t.Fatalf("invalid event: %v", err)
 	}
 }
+func TestHistoricalSnapshotBytesRemainReadableButCannotAdmitCurrentOwner(t *testing.T) {
+	historical := snapshotVector(t)
+	if _, err := ReadDescriptorSnapshot([]byte(historical.SnapshotText)); err != nil {
+		t.Fatal(err)
+	}
+	tool := snapshotHostTool(t)
+	tool.Source.ToolListDigest = historical.Digest
+	tool.Source.DescriptorSnapshot = []byte(historical.SnapshotText)
+	ran := false
+	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran = true; return ToolResult{}, nil }
+	_, err := DeclareSources([]HostTool{tool}, nil)
+	if err == nil || !strings.Contains(err.Error(), "descriptor snapshot") || ran {
+		t.Fatalf("historical admission: %v ran=%v", err, ran)
+	}
+	snapshotEventValid(t, failure.Event(err, "context"))
+}
+
 func TestSnapshotSourceAdmissionAndCapturedOffer(t *testing.T) {
 	tool := snapshotHostTool(t)
 	out, err := DeclareSources([]HostTool{tool}, nil)
@@ -46,10 +125,17 @@ func TestSnapshotSourceAdmissionAndCapturedOffer(t *testing.T) {
 			if kind == "missing name" {
 				second.Name = "unapproved"
 			} else {
-				first.Source.ToolListDigest = snapshotVector(t).ChangedDigest
+				first.Source.ToolListDigest = currentSourceSnapshotVector(t, false).ChangedDigest
 				second.Source.ToolListDigest = first.Source.ToolListDigest
 			}
 			out, err := DeclareSources([]HostTool{first, second}, nil)
+			if kind == "missing name" {
+				if err == nil || !strings.Contains(err.Error(), "descriptor snapshot") {
+					t.Fatalf("uncaptured V2 owner admitted: %v", err)
+				}
+				snapshotEventValid(t, failure.Event(err, "context"))
+				return
+			}
 			if err != nil || len(out.HostTools) != 0 || len(out.Withheld) != 1 {
 				t.Fatalf("not withheld whole: %+v %v", out, err)
 			}
@@ -59,7 +145,7 @@ func TestSnapshotSourceAdmissionAndCapturedOffer(t *testing.T) {
 	}
 }
 func TestSnapshotSourceNeverFallsBackToLegacy(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, false)
 	for _, data := range [][]byte{{}, []byte(`{}`), []byte(vector.SnapshotText + "\n"), []byte(strings.Replace(vector.SnapshotText, "Search tickets", strings.Repeat("x", DescriptorSnapshotBytes), 1))} {
 		tool := snapshotHostTool(t)
 		tool.Source.DescriptorSnapshot = data
@@ -104,7 +190,7 @@ func TestSnapshotSourceNeverFallsBackToLegacy(t *testing.T) {
 	}
 }
 func TestSnapshotSourceCurrentObservationRefusesAndLatchesWholeSource(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, false)
 	for _, kind := range []string{"changed", "empty", "missing", "oversized", "error"} {
 		t.Run(kind, func(t *testing.T) {
 			broken := false
@@ -127,9 +213,15 @@ func TestSnapshotSourceCurrentObservationRefusesAndLatchesWholeSource(t *testing
 					return nil, errors.New("untrusted observation detail")
 				}
 			}
-			tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ResultOf(nil, nil), nil }
+			tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) {
+				ran++
+				result := ResultOf([]Content{}, nil)
+				result.Receipt = "descriptor-empty"
+				return result, nil
+			}
 			other := tool
 			other.Name = "close"
+			tool = withSourceReceiptRows([]HostTool{tool}, []sourceReceiptRow{{`{}`, `{"content":[]}`, "descriptor-empty"}})[0]
 			gate, tools, _ := sourceGate(t, []HostTool{tool, other}, Defaults, false)
 			if _, err := callThrough(gate, tools, "tickets__search_tickets", `{}`); err != nil {
 				t.Fatal(err)
@@ -158,7 +250,7 @@ func TestSnapshotSourceCurrentObservationRefusesAndLatchesWholeSource(t *testing
 	}
 }
 func TestSnapshotSourceFreezesObserverAndRetainsHostValidator(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, false)
 	ran := 0
 	changed := false
 	tool := snapshotHostTool(t)
@@ -170,7 +262,13 @@ func TestSnapshotSourceFreezesObserverAndRetainsHostValidator(t *testing.T) {
 		}
 		return []byte(vector.SnapshotText), nil
 	}
-	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ResultOf(nil, nil), nil }
+	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) {
+		ran++
+		result := ResultOf([]Content{}, nil)
+		result.Receipt = "descriptor-empty"
+		return result, nil
+	}
+	tool = withSourceReceiptRows([]HostTool{tool}, []sourceReceiptRow{{`{"ticket":"T-1"}`, `{"content":[]}`, "descriptor-empty"}})[0]
 	gate, tools, _ := sourceGate(t, []HostTool{tool}, Defaults, false)
 	var name string
 	for key, shown := range tools {
@@ -202,14 +300,13 @@ func TestSnapshotSourceFreezesObserverAndRetainsHostValidator(t *testing.T) {
 	}
 }
 func TestSnapshotSourceDecisionAndApprovedContinuation(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, true)
 	for _, kind := range []string{"changed", "error", "malformed"} {
 		t.Run(kind, func(t *testing.T) {
 			changed := true
 			approved := 0
 			ran := 0
-			tool := snapshotHostTool(t)
-			tool.EffectClass = "act"
+			tool := snapshotActHostTool(t)
 			tool.Source.CurrentDescriptorSnapshot = func(context.Context) ([]byte, error) {
 				if changed {
 					switch kind {
@@ -270,7 +367,7 @@ func TestSnapshotSourceDecisionAndApprovedContinuation(t *testing.T) {
 	}
 }
 func TestSnapshotSourceOverlappingObservationCannotClearFailure(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, false)
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var mu sync.Mutex
@@ -315,7 +412,7 @@ func TestSnapshotSourceOverlappingObservationCannotClearFailure(t *testing.T) {
 	}
 }
 func TestSnapshotSourceActualSessionRefusesBeforeHostCall(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, false)
 	ran := 0
 	authorized := 0
 	tool := snapshotHostTool(t)
@@ -350,11 +447,10 @@ func TestSnapshotSourceActualSessionRefusesBeforeHostCall(t *testing.T) {
 }
 
 func TestSnapshotSourceDecisionFailureSharedWithDelegatedGate(t *testing.T) {
-	vector := snapshotVector(t)
+	vector := currentSourceSnapshotVector(t, true)
 	changed := true
 	ran := 0
-	tool := snapshotHostTool(t)
-	tool.EffectClass = "act"
+	tool := snapshotActHostTool(t)
 	tool.Source.CurrentDescriptorSnapshot = func(context.Context) ([]byte, error) {
 		if changed {
 			return []byte(vector.ChangedText), nil
@@ -367,7 +463,8 @@ func TestSnapshotSourceDecisionFailureSharedWithDelegatedGate(t *testing.T) {
 		t.Fatal(answer)
 	}
 	changed = false
-	tool.EffectClass = "read"
+	tool = snapshotHostTool(t)
+	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { ran++; return ResultOf(nil, nil), nil }
 	declared, err := DeclareSources([]HostTool{tool}, nil)
 	if err != nil {
 		t.Fatal(err)

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/historycapture"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/usagewitness"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,9 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 			prompt += "\n\n" + steers
 		}
 	}
+	if err := r.buildRoutes(); err != nil {
+		return "", err
+	}
 	tools := r.offeredTo(phase)
 	offered := map[string]bool{}
 	for _, tool := range tools {
@@ -83,7 +88,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		if r.run.RequestContext() != nil {
 			current = r.run.RequestContext().CurrentRequest
 		}
-		parts, err := r.sc.Opening(prompt, instructions+stated, shown, current)
+		parts, err := r.sc.OpeningProjected(ctx, prompt, instructions+stated, shown, current, r.run.OpeningProjection())
 		if err != nil {
 			return "", err
 		}
@@ -146,6 +151,9 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	if marshalErr != nil {
 		return "", marshalErr
 	}
+	if err := r.sc.CheckPhysicalRequest(body); err != nil {
+		return "", err
+	}
 	body, err = runcontext.PrepareDurableRequest(r.sc.Persistence(role), "agent", r.sc.ProviderStorageIdentity(role), request.Model, body)
 	if err != nil {
 		return "", err
@@ -153,16 +161,22 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	if err = json.Unmarshal(body, &request); err != nil {
 		return "", err
 	}
-	r.sc.Execution.RecordPrompt(body)
+	if binding := r.sc.Persistence(role); binding == nil || !binding.Writer.TaskStepsEnabled() {
+		r.sc.Execution.RecordPrompt(body)
+	}
 	// Durable before dispatch: the coordinator counts the invocation and writes the checkpoint; a run
 	// it did not start writes its own. A checkpoint not acknowledged dispatches nothing.
-	if agent.HasBegin() {
-		err = agent.Begin(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(role)), request)
-	} else {
-		err = r.save(ctx)
+	budgeted := r.sc.UsageBudgetEnabled()
+	begin := func() error {
+		if agent.HasBegin() {
+			return agent.Begin(runcontext.WithDurableDispatchScope(ctx, r.sc.Persistence(role)), request)
+		}
+		return r.save(ctx)
 	}
-	if err != nil {
-		return "", err
+	if !budgeted {
+		if err = begin(); err != nil {
+			return "", err
+		}
 	}
 	held := &invocation{partial: map[string]string{}}
 	var runErr error
@@ -175,38 +189,93 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 		if runErr = r.pauseError(); runErr != nil {
 			break
 		}
+		var captureProof *historycapture.NativeBindings
+		var aliases map[string]string
+		if r.sc.NativeCaptureRequested(role) {
+			aliases = map[string]string{}
+			for _, tool := range request.Tools {
+				if route, ok := r.routes[tool.Name]; ok {
+					aliases[tool.Name] = route.name
+				}
+			}
+			captureProof, err = historycapture.NewNativeBindings(body, aliases)
+			if err != nil {
+				return "", err
+			}
+		}
+		budgetConnection := r.sc.Provider(role).Connection
+		if r.run.HasConnection() {
+			budgetConnection = r.run.Connection(role)
+		}
+		dispatchCtx, err := r.sc.PrepareUsageRequest(ctx, role, "agent", r.sc.ProviderStorageIdentity(role), request.Model, budgetConnection, request.Model, body, body, "native")
+		if err != nil {
+			return "", err
+		}
+		if budgeted {
+			if err = begin(); err != nil {
+				return "", err
+			}
+		}
 		// A pause belongs to this physical provider attempt. It stops the provider and its
 		// tools, while the caller's context still governs dispatch and durable acknowledgements.
 		invCtx, pause := context.WithCancel(ctx)
 		watched := &callbacksHeld{}
 		watched.idle = sync.NewCond(&watched.mu)
-		callbacks := watched.wrap(adapter.AgentCallbacks{Event: r.event(invCtx, phase, held), Tool: r.tool(invCtx, offered, recorder, pause)})
-		_, runErr = runcontext.InvokeDurable(ctx, r.sc.Persistence(role), "agent", r.sc.ProviderStorageIdentity(role), request.Model, body, true, func(raw []byte) (struct{}, error) {
-			// Close callback admission and drain admitted callbacks before the writer freezes the
-			// outcome. Each retry gets a new window; an old host cannot call into the next attempt.
+		event, tool := r.event(invCtx, phase, held), r.tool(invCtx, offered, recorder, pause)
+		runErr = r.sc.InvokeNativeRoute(dispatchCtx, role, r.sc.ProviderStorageIdentity(role), request.Model, body, func(privateCtx context.Context, raw []byte, release *adapter.ProviderRelease) error {
 			defer watched.closeAndWait()
+			callbacks := watched.wrap(adapter.AgentCallbacks{ProviderRelease: release,
+				CapabilityNeeded: func(_ context.Context, need adapter.RouteCapabilityNeed) error {
+					usagewitness.Observe(runcontext.NativeUsageWitness(privateCtx))
+					return r.sc.NativeRouteCapability(privateCtx, need.Kind, need.Name)
+				}, Event: func(ctx context.Context, e adapter.AgentEvent) error {
+					if (e.Type == "text" || e.Type == "message") && e.Text != "" {
+						usagewitness.Observe(runcontext.NativeUsageWitness(privateCtx))
+					}
+					return event(ctx, e)
+				}, Tool: func(ctx context.Context, call adapter.AgentToolCall) (adapter.AgentToolAnswer, error) {
+					usagewitness.Observe(runcontext.NativeUsageWitness(privateCtx))
+					return tool(ctx, call)
+				}})
 			var prepared adapter.AgentRequest
 			if err := json.Unmarshal(raw, &prepared); err != nil {
-				return struct{}{}, err
+				return err
 			}
 			if err := r.sc.Authorize(ctx); err != nil {
-				return struct{}{}, err
+				return err
 			}
 			if ctx.Err() != nil {
-				return struct{}{}, failure.Cancelled
+				return failure.Cancelled
 			}
 			if err := r.pauseError(); err != nil {
-				return struct{}{}, err
+				return err
 			}
-			err := agent.Run(runcontext.WithDurableDispatchScope(invCtx, r.sc.Persistence(role)), prepared, callbacks)
+			// The host context deliberately excludes the private attempt slot.
+			recorded := func(given context.Context, request adapter.AgentRequest, observed adapter.AgentCallbacks) error {
+				return agent.Run(given, request, observed)
+			}
+			if runcontext.NativeCaptureEnabled(privateCtx) {
+				recorded = adapter.RecordAgentRun(func(given context.Context, request adapter.AgentRequest, observed adapter.AgentCallbacks) error {
+					err := agent.Run(given, request, observed)
+					watched.closeAndWait()
+					return err
+				}, func(_ adapter.AgentRequest, body json.RawMessage) {
+					runcontext.RecordNativeCapture(privateCtx, body, aliases)
+				})
+			}
+			err := recorded(runcontext.WithDurableDispatchScope(invCtx, r.sc.Persistence(role)), prepared, callbacks)
 			watched.closeAndWait()
-			if err == nil {
-				// A host may return nil after an intentional pause. The pause is still an
-				// unknown provider outcome, never a successful dispatch result.
-				err = r.pauseError()
+			paused := r.pauseError()
+			if errors.Is(paused, errWaiting) && r.sc.Execution.State().PlanState.Has("pending") {
+				if markErr := r.sc.MarkNativePlanPause(privateCtx); markErr != nil {
+					return markErr
+				}
 			}
-			return struct{}{}, err
-		}, func(struct{}) bool { return false }, nil)
+			if err == nil {
+				err = paused
+			}
+			return err
+		}, captureProof)
 		// A claim can fail before execute is entered, so close that unused window as well.
 		watched.closeAndWait()
 		cancelled := invCtx.Err() != nil
@@ -230,13 +299,15 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 				r.deliver(contract.RunEvent{ConnectionSwitched: &contract.RunEventConnectionSwitched{Type: "connection_switched", Role: role, From: from, To: to, Reason: classified.Code}})
 				// The replacement is a separate provider invocation and its request body belongs to
 				// the replacement connection's ledger row before dispatch.
-				if marshalErr == nil {
+				if binding := r.sc.Persistence(role); marshalErr == nil && (binding == nil || !binding.Writer.TaskStepsEnabled()) {
 					r.sc.Execution.RecordPrompt(body)
 				}
-				if agent.HasBegin() {
-					runErr = agent.Begin(ctx, request)
-				} else {
-					runErr = r.save(ctx)
+				if !budgeted {
+					if agent.HasBegin() {
+						runErr = agent.Begin(ctx, request)
+					} else {
+						runErr = r.save(ctx)
+					}
 				}
 				if runErr != nil {
 					break
@@ -276,8 +347,9 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 	fatal, handoff, waiting := r.fatal, r.handoff, r.awaitingInput
 	r.held.Unlock()
 	var storageUnknown *runcontext.StorageOutcomeUnknown
+	var releaseUnknown *runcontext.ProviderReleaseUnknown
 	switch {
-	case errors.As(runErr, &storageUnknown):
+	case errors.As(runErr, &storageUnknown), errors.As(runErr, &releaseUnknown):
 		return "", runErr
 	case fatal != nil:
 		return "", fatal
@@ -359,6 +431,17 @@ func (h *callbacksHeld) closeAndWait() {
 
 func (h *callbacksHeld) wrap(callbacks adapter.AgentCallbacks) adapter.AgentCallbacks {
 	return adapter.AgentCallbacks{
+		ProviderRelease: callbacks.ProviderRelease, NativeTermination: callbacks.NativeTermination,
+		CapabilityNeeded: func(ctx context.Context, need adapter.RouteCapabilityNeed) error {
+			if !h.enter() {
+				return errLate
+			}
+			defer h.leave()
+			if callbacks.CapabilityNeeded == nil {
+				return runcontext.ErrTurnRouteIdentityChanged
+			}
+			return callbacks.CapabilityNeeded(ctx, need)
+		},
 		Event: func(ctx context.Context, event adapter.AgentEvent) error {
 			if !h.enter() {
 				return errLate
@@ -477,6 +560,13 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		}
 		args := nonEmpty(call.Arguments)
 		held, known := r.routes[call.Name]
+		capability := call.Name
+		if known {
+			capability = held.name
+		}
+		if err := r.sc.RequireRouteCapability(capability, args); err != nil {
+			return adapter.AgentToolAnswer{}, err
+		}
 		// ADR-0010: request_review reaches the switch's own tool only in the author's invocation of a
 		// run it is offered to; anywhere else it is refused here, with the guardrail review refused,
 		// before anything runs and before the gate, and nothing is recorded.
@@ -515,6 +605,26 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 				r.deliver(*asked)
 				pause()
 				return adapter.AgentToolAnswer{}, errWaiting
+			}
+		}
+		if held.host == nil {
+			runtime, err := r.sc.PrepareRuntimeCall(ctx, held.name, args, call.ID)
+			if err != nil {
+				if runcontext.IsRouteCapabilityNeeded(err) {
+					return adapter.AgentToolAnswer{}, err
+				}
+				result := failed(err)
+				r.deliver(resultEvent(call.ID, held.name, result, ""))
+				return adapter.AgentToolAnswer{Text: textOfResult(result), IsError: true}, nil
+			}
+			held.runtime = runtime
+			if runtime != nil {
+				if runtime.Requested != nil {
+					r.deliver(*runtime.Requested)
+					pause()
+					return adapter.AgentToolAnswer{}, errWaiting
+				}
+				args = runtime.Args
 			}
 		}
 		if held.host == nil || held.host.Interaction == "" {
@@ -623,6 +733,9 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 	host := held.host
 	if host == nil {
 		result, err := turn.WithDeadline(ctx, limit, late, func(ctx context.Context) (runcontext.ToolResult, error) {
+			if held.runtime != nil {
+				return held.runtime.Execute(ctx)
+			}
 			return r.session.CallTool(ctx, held.name, args)
 		})
 		return result, err == nil, err
@@ -634,7 +747,10 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 	case host.Interaction == "delegation":
 		// The handoff (ADR-0007): the call's request and id go to the coordinator, the invocation is
 		// stopped, and the run ends once the host's function has returned.
-		request, err := turn.ReadDelegationRequest(args)
+		request, registered, err := runcontext.NormalizeTaskDelegation(ctx, *host, r.sc.Persistence("author"), args)
+		if !registered {
+			request, err = turn.ReadDelegationRequest(args)
+		}
 		if err != nil {
 			return runcontext.ToolResult{}, false, err
 		}

@@ -5,6 +5,7 @@
 Schemas:
 
 - `contract/schemas/tool-offer.json`
+- `contract/schemas/tool-taxonomy.json`
 - `contract/schemas/provenance.json`
 
 Package files (`packages/harness`), with the symbols read:
@@ -26,6 +27,27 @@ Package files (`packages/harness`), with the symbols read:
 The Runtime tools a run may be offered, per profile; the names the harness reserves; a host tool’s declaration; effect classes, approval and tool sources.
 
 See also: [skills.md](skills.md), [delegation.md](delegation.md), [critic.md](critic.md), [budget.md](budget.md), [reasons.md](reasons.md).
+
+## Owner taxonomy
+
+### Mandatory declaration
+
+ADR-0027 owner-declared operation and effect. In-process taxonomy is separate from legacy HostTool.effect. Runtime publishes these members in MCP _meta; no metadata or trust label grants authority.
+
+Closed: a member the schema does not name is refused.
+
+| Member | Required | Type | Description |
+| --- | --- | --- | --- |
+| `operation` | yes | enum `discover`, `read`, `answer`, `check`, `transform`, `evaluate`, `propose`, `act`, `run`, `own-state`, `ask` |  |
+| `effect` | yes | enum `pure`, `read`, `read-external`, `propose`, `act` |  |
+| `checkKind` |  | enum `validate`, `check`, `verify`, `test`, `analyze`, `advise` |  |
+| `experimental` |  | boolean |  |
+
+Conditions beyond the members (allOf) are in the schema file.
+
+Host tools carry taxonomy; Runtime publishes its operation/effect/checkKind/experimental directly in MCP _meta. Missing or contradictory metadata is refused. Legacy effect remains execution bookkeeping and effectClass is a checked projection. Review admits discover/read/check, work adds propose/act, and both retain a pure ask. Runtime act metadata is refused until canonical Runtime approval is supported; existing rehearsal rewriting never relabels owner capability. See ADR-0027.
+
+External reads require a host verifier over immutable canonical source/descriptor identity, source tool, arguments captured before execution, result and receipt. The host verifies signatures and binding; Agent requires true before publishing success and does not infer verification from source/trust labels.
 
 ## Runtime tools
 
@@ -208,13 +230,22 @@ Open: a member the schema does not name is accepted.
 | `presentation.provider` | yes | string |  |
 | `source` |  | `$defs/sourceRecord` | Where the tool comes from (ADR-0006), on a tool a source outside the host serves; absent on the host's own tools. On the offer it carries tool, the tool's own name at its source. |
 | `effectClass` |  | `$defs/effectClass` |  |
-| `approval` |  | enum `none`, `required` | Whether a call needs the person's approval before the host runs it (ADR-0006, ADR-0008): the host's approval policy (HostTool.approve, Go ApprovalPolicy) answers each call at once, $defs/approvalPolicy: allow runs it, refuse refuses it (the model reads a refused result and a guardrail says why), ask pauses the run (run-event.json#/$defs/approval_requested) until the person decides. A required tool without a policy answers ask. none: the call runs without asking, the host's declared decision. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules. |
+| `approval` |  | enum `none`, `required` | Whether a call needs the person's approval before the host runs it (ADR-0006, ADR-0008): the host's approval policy (HostTool.approve, Go ApprovalPolicy) answers each call at once, $defs/approvalPolicy: allow runs it, refuse refuses it (the model reads a refused result and a guardrail says why), ask pauses the run (run-event.json#/$defs/approval_requested) until the person decides. A required tool without a policy answers ask. none: the call runs without asking, the host's declared decision. Default by effect class: none for read and propose (a proposal's approval is its review card), required for act. Read on a tool with a source; the host's own tools keep their own rules. ADR-0027 forbids lowering act approval to none; taxonomy determines the default. |
+| `taxonomy` | yes | `tool-taxonomy.json` |  |
+| `taxonomyLimit` |  | object |  |
+| `taxonomyLimit.operations` |  | array of enum `discover`, `read`, `answer`, `check`, `transform`, `evaluate`, `propose`, `act`, `run`, `own-state`, `ask` |  |
+| `taxonomyLimit.effects` |  | array of enum `pure`, `read`, `read-external`, `propose`, `act` |  |
+| `annotations` |  | object |  |
+| `annotations.readOnlyHint` | yes | boolean |  |
+| `annotations.destructiveHint` | yes | boolean |  |
+| `annotations.idempotentHint` | yes | boolean |  |
+| `annotations.openWorldHint` | yes | boolean |  |
 
 ## Effect classes and approval
 
 ### Effect class of a tool with a source
 
-What a call of a tool with a source may do (ADR-0006): read (it only reads; its result is data), propose (it is never run during the run: the call is held as a proposal for the person's review card, as propose_pack's is, and the host runs it on acceptance, after the run, under its grants) or act (it changes something outside the run, and by default needs the person's approval before each call). A tool with a source is act, with approval required, unless the host declares it a read or a proposal; the model's arguments never change it. On the offer the package sets the host tool's effect from it: read is effect read, propose is effect proposal, act is no effect, so Plan mode and a delegated child, which admit reads only, never offer an act.
+Legacy execution compatibility projection read/propose/act; if supplied it must agree with mandatory owner taxonomy. Never a fallback or authority.
 
 | Effect class | Default approval |
 | --- | --- |
@@ -250,12 +281,6 @@ Closed: a member the schema does not name is refused.
 
 Conditions beyond the members (if, anyOf) are in the schema file.
 
-### Gateway descriptor snapshot pins
+### Taxonomy migration and descriptor snapshots
 
-New MCP registrations supply approved raw UTF-8 descriptorSnapshot bytes (Go DescriptorSnapshot), their complete sha256 pin as toolListDigest, and required currentDescriptorSnapshot (Go CurrentDescriptorSnapshot). readDescriptorSnapshot and descriptorSnapshotDigest are public helpers. A snapshot is at most 327680 bytes and must match Gateway SPEC 1.1 canonical bytes: Unicode code-point key order, strict UTF-8, no lone surrogate, duplicate member, noninteger numeric spelling or trailing text. Agent record canonicalization is unchanged. inputSchemaText stays opaque original text in the pin.
-
-Only host-declared captured tool names are admitted; an uncaptured name or wrong digest withholds that source whole. Offered descriptors derive from captured candidates; absent schema projects open while the original host schema is independently checked in the package-supported subset. The host executor retains every other validation and authorization rule. Snapshot platform/server metadata does not replace the local source id or execution identity.
-
-The observer reports current server descriptor content under the approved metadata before ordinary calls, approval decisions and approved continuations. Binding, endpoint, capturedAt, policy and server identity are pinned: a fresh capture timestamp requires re-approval. Agent does not independently verify the host observer. Observers may overlap and run outside observation locks; they must not recursively invoke source tools. A changed, malformed or failed observation latches refusal for the source within the run; an older overlapping observation cannot clear it.
-
-Absent descriptorSnapshot explicitly selects legacy list-pin behavior with toolListDigest/ToolListDigest and currentDigest/CurrentDigest. Snapshot mode cannot also supply the legacy observer; malformed supplied snapshots never fall back. Migrate through a newly person-approved snapshot declaration, and re-supply its observer on resume. Historical checkpoint and event bytes stay unchanged; this change adds no persisted record member. See ADR-0006 and contract/vectors/tool-offer/descriptor-snapshot.json.
+All new source registrations require an approved taxonomy-bound toolListDigest, including gateway/custom declarations formerly admitted by version alone. The list pin binds name, description, inputSchema and taxonomy. Historical descriptor snapshots remain readable by the public descriptor helpers, bounded at 327680 bytes, but cannot be admitted because their captured descriptors omit owner taxonomy. Published Gateway v0.22.0-alpha.1 supplies producer taxonomy metadata; final Agent integrated verification and artifact pairing remain release gates. Local host strings never stand in for captured owner metadata. Historical record bytes and reader inventories remain unchanged.

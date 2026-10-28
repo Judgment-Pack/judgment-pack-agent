@@ -665,7 +665,7 @@ func DelegationTool(profiles []TaskProfile) contract.ToolOfferHostTool {
 	schema.set("properties", properties)
 
 	return contract.ToolOfferHostTool{
-		Name:        DelegateTool,
+		Name: DelegateTool, Taxonomy: contract.ToolTaxonomy{Operation: "run", Effect: "read"},
 		Interaction: ptr("delegation"),
 		Description: "Delegate independent read-only tasks within this response’s shared limits. The call returns when its children finish: their findings are its result. Pass material by reference: references are ids from your context (list_context, a result reference’s contextId, a document id) that the child reads itself; nothing is copied. Resume a finished task with its id in resume to continue it with its earlier context. Each child gets only its references and its profile’s tools. No child can approve, save, start workflows or delegate again. Use for substantial independent work, not simple questions.",
 		InputSchema: raw(schema),

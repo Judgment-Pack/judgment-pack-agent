@@ -1,3 +1,6 @@
+import {MemoryHistoryJournal,freezeHistoryInput,type RunHistoryCommit,type RunHistoryReceipt,type HistoryResource,type ContextSnapshotUpdate,type HistoryObjectPage} from './history'
+import type {HistoryObject} from '../history/codec'
+import {canonicalJSON} from '../context/chat'
 import {bytesCopy,requireId,requireLimit,sameBytes,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
 import type {StorageRevision,StorageCursor} from './common'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
@@ -21,10 +24,12 @@ export interface RunStore {
  commit(input:RunCommit,signal?:AbortSignal):Promise<RunReceipt>
  readEvents(runId:string,after:StorageCursor|null,limit:number,signal?:AbortSignal):Promise<RunEventPage>
 }
-interface HeldRun {head:RunHead;events:StoredRunEvent[];commits:Map<string,{input:RunCommit;receipt:RunReceipt}>}
+interface HeldRun {head:RunHead;events:StoredRunEvent[];commits:Map<string,{input:RunCommit;receipt:RunReceipt;historyInput?:string;historyReceipt?:RunHistoryReceipt}>}
 export interface MemoryRunStoreOptions {
  /** Fault injection only. Hooks must not call this store recursively. */
  beforeCommit?:()=>void|Promise<void>;afterCommit?:()=>void|Promise<void>
+ /** Storage observation clock; idempotent commits retain their first value. */
+ now?:()=>Date
 }
 function copyCommit(input:RunCommit):RunCommit {
  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['runId','expectedRevision','commitId','checkpoint','events'].includes(k)))throw new StorageInputError()
@@ -41,35 +46,63 @@ const copyHead=(head:RunHead):RunHead=>({...head,checkpoint:head.checkpoint===nu
 /** Conforms to the atomic port in one process; all data is ephemeral. Tokens are unique per instance. */
 export class MemoryRunStore implements RunStore {
  readonly durability:RunStoreDurability='memory'
+ readonly historyVersion=1 as const
+ private readonly journal:MemoryHistoryJournal
  private runs=new Map<string,HeldRun>()
  private tail:Promise<unknown>=Promise.resolve()
- constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){}
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now)}
  async load(runId:string,signal?:AbortSignal){signal?.throwIfAborted();requireId(runId);const held=this.runs.get(runId);return held?copyHead(held.head):undefined}
- commit(input:RunCommit,signal?:AbortSignal):Promise<RunReceipt> {
+ commit(input:RunCommit,signal?:AbortSignal):Promise<RunReceipt> {return this.commitTransaction(input,signal).then(value=>value.receipt)}
+ commitHistory(input:RunHistoryCommit,signal?:AbortSignal):Promise<RunHistoryReceipt>{
+  if(!input||typeof input!=='object')return Promise.reject(new StorageInputError())
+  const {run,...extra}=input
+  let frozen:ReturnType<typeof freezeHistoryInput>;try{frozen=freezeHistoryInput(extra)}catch(error){return Promise.reject(error)}
+  return this.commitTransaction(run,signal,frozen).then(value=>value.historyReceipt!)
+ }
+ private commitTransaction(input:RunCommit,signal?:AbortSignal,extra?:Omit<RunHistoryCommit,'run'>):Promise<{receipt:RunReceipt;historyReceipt:RunHistoryReceipt}> {
   // Detach before the first asynchronous boundary, including while another commit owns the queue.
   let frozen:RunCommit
   try{signal?.throwIfAborted();frozen=copyCommit(input)}catch(error){return Promise.reject(error)}
   const result=this.tail.then(async()=>{
    signal?.throwIfAborted()
    const held=this.runs.get(frozen.runId),prior=held?.commits.get(frozen.commitId)
-   if(prior){if(!identical(prior.input,frozen))throw new StorageCommitMismatch();return {...prior.receipt}}
+   if(prior){if(!identical(prior.input,frozen)||prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();return {receipt:{...prior.receipt},historyReceipt:structuredClone(prior.historyReceipt!)}}
    if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)
+   const preliminary={revision:crypto.randomUUID(),cursor:null,commitId:frozen.commitId}
+   const prepared=this.journal.prepare(frozen,preliminary,frozen.checkpoint??held?.head.checkpoint??null,extra)
    await this.options.beforeCommit?.()
    signal?.throwIfAborted()
    if(frozen.checkpoint!==null)await this.acknowledge?.(new Uint8Array(frozen.checkpoint),signal)
    signal?.throwIfAborted()
    const events=frozen.events.map(bytes=>({cursor:crypto.randomUUID(),bytes})),cursor=events.at(-1)?.cursor??held?.head.cursor??null
-   const receipt:RunReceipt={revision:crypto.randomUUID(),cursor,commitId:frozen.commitId}
+   const receipt:RunReceipt={...preliminary,cursor}
+   const historyReceipt:RunHistoryReceipt={...receipt,history:prepared.view.head}
    const head:RunHead={...receipt,runId:frozen.runId,checkpoint:frozen.checkpoint??held?.head.checkpoint??null}
-   const commits=new Map(held?.commits);commits.set(frozen.commitId,{input:frozen,receipt})
+   const commits=new Map(held?.commits);commits.set(frozen.commitId,{input:frozen,receipt,historyInput:canonicalJSON(extra),historyReceipt})
    // Publish only after all validation/acknowledgement. No externally visible partial state.
    this.runs.set(frozen.runId,{head,events:[...(held?.events??[]),...events],commits})
+   this.journal.publish(prepared)
    await this.options.afterCommit?.()
-   return {...receipt}
+   return {receipt:{...receipt},historyReceipt:structuredClone(historyReceipt)}
   })
   this.tail=result.catch(()=>undefined)
   return result
  }
+ async stageHistoryObjects(resource:HistoryResource,objects:readonly HistoryObject[],signal?:AbortSignal){signal?.throwIfAborted();await this.journal.stage(resource,objects);signal?.throwIfAborted()}
+ async readHistoryHead(runId:string,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.head(runId)}
+ async readHistoryPage(runId:string,revision:string,after:number,limit:number,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.page(runId,revision,after,limit)}
+ async readHistoryObject(resource:HistoryResource,revision:string,digest:string,offset:number,limit:number,signal?:AbortSignal):Promise<HistoryObjectPage>{signal?.throwIfAborted();return this.journal.object(resource,revision,digest,offset,limit)}
+ async loadContextSnapshot(chatId:string,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.contextHead(chatId)}
+ async commitContextSnapshot(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal){
+  if(!input)throw new StorageInputError()
+  const frozen=freezeHistoryInput({observations:[],context:input}).context!
+  const result=this.tail.then(()=>{signal?.throwIfAborted();return this.journal.commitContext(frozen,commitId)})
+  this.tail=result.catch(()=>undefined);return result
+ }
+ async commitHistoryMetadata(input:import('./history').HistoryMetadataCommit,signal?:AbortSignal){
+  const frozen=structuredClone(input),result=this.tail.then(async()=>{signal?.throwIfAborted();const prepared=this.journal.prepareMetadata(frozen);if(prepared.replay)return prepared.publish();await this.options.beforeCommit?.();signal?.throwIfAborted();const result=prepared.publish();await this.options.afterCommit?.();return result});this.tail=result.catch(()=>undefined);return result
+ }
+ async readHistoryMetadataPage(runId:string,revision:string,after:number,limit:number,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.metadataPage(runId,revision,after,limit)}
  async readEvents(runId:string,after:StorageCursor|null,limit:number,signal?:AbortSignal):Promise<RunEventPage>{
   signal?.throwIfAborted();requireId(runId);requireLimit(limit)
   if(after!==null){try{requireId(after)}catch{throw new StorageCursorInvalid()}}

@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/dialect-authoring.json",
+  "title": "Certified dialect authoring tool inputs",
+  "description": "First-party read and review-only complete replacement proposal inputs. Hashes bind exact prior read bytes; none is a save, publication, execution or preparation approval. Proposals require a trusted host opt-in to the package-pinned experimental retained-column document contract; model arguments cannot select it.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/read"
+    },
+    {
+      "$ref": "#/$defs/propose"
+    }
+  ],
+  "$defs": {
+    "opaque": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "column": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "text",
+            "decimal",
+            "number",
+            "boolean",
+            "research-value"
+          ]
+        },
+        "trueValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "falseValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "boolean"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "trueValue",
+              "falseValue"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "trueValue"
+                  ]
+                },
+                {
+                  "required": [
+                    "falseValue"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "read": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "packKey"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaque"
+        },
+        "packKey": {
+          "$ref": "#/$defs/opaque"
+        }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "column",
+        "conversion"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "column": {
+          "$ref": "#/$defs/column"
+        },
+        "conversion": {
+          "$ref": "#/$defs/conversion"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirement",
+        "column"
+      ],
+      "properties": {
+        "requirement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "column": {
+          "$ref": "#/$defs/column"
+        }
+      }
+    },
+    "propose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "packKey",
+        "packDigest",
+        "dialectDigest",
+        "facts",
+        "evidence",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaque"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "packKey": {
+          "$ref": "#/$defs/opaque"
+        },
+        "packDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dialectDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
+        "facts": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      }
+    }
+  }
+}

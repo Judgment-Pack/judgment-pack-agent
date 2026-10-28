@@ -1,0 +1,47 @@
+{
+  "schema": "run-report-v2.json",
+  "description": "Handwritten feature report2: attributable known subtotals and explicit incomplete token reporting, never reservations or project totals.",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/runReport.ts",
+      "packages/harness/runReportReader.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 2,
+      "checkpointVersion": 3,
+      "id": "budget-run",
+      "phase": "work",
+      "status": "stopped",
+      "unit": "model-requests",
+      "used": 2,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "usageTotals": {
+        "modelRequests": {
+          "known": 2,
+          "complete": true
+        },
+        "providerInvocations": {
+          "known": 0,
+          "complete": true
+        },
+        "inputTokens": {
+          "known": 4,
+          "complete": false
+        },
+        "outputTokens": {
+          "known": 0,
+          "complete": false
+        }
+      }
+    }
+  ]
+}

@@ -85,12 +85,12 @@
       "outcome": "accepted"
     },
     {
-      "name": "future before unfamiliar body",
+      "name": "current version before unfamiliar body",
       "input": {
         "version": 3,
         "future": true
       },
-      "outcome": "UnsupportedRecordVersion"
+      "outcome": "InvalidRecord"
     },
     {
       "name": "unknown envelope",
@@ -430,7 +430,7 @@
       "outcome": "InvalidRecord"
     },
     {
-      "name": "future exponent before unknown body",
+      "name": "current version exponent before unknown body",
       "input": {
         "version": 2,
         "id": "compatibility",
@@ -451,7 +451,7 @@
         "unfamiliar": true
       },
       "raw": "{\"version\":3e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
-      "outcome": "UnsupportedRecordVersion"
+      "outcome": "UnknownRecordMember"
     },
     {
       "name": "parsed near integer rounds to historical one",
@@ -586,6 +586,38 @@
       },
       "raw": "{\"version\":2,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[{\"id\":\"opaque\",\"name\":\"test\",\"args\":{\"n\":2e0,\"near\":1.00000000000000001},\"status\":\"complete\",\"result\":{\"content\":[],\"structuredContent\":{\"n\":2e0}}}],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"schema\":\"https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json\",\"retainUntil\":\"2099-01-01T00:00:00.000Z\",\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
       "outcome": "accepted"
+    },
+    {
+      "name": "future before unfamiliar body",
+      "input": {
+        "version": 4,
+        "future": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "future exponent before unknown body",
+      "input": {
+        "version": 4,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "unfamiliar": true
+      },
+      "raw": "{\"version\":4e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
+      "outcome": "UnsupportedRecordVersion"
     }
   ],
   "source": {

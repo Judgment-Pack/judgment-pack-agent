@@ -1,0 +1,118 @@
+{
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/policy.ts",
+      "packages/harness/turnRoute.ts",
+      "packages/harness/repeatTools.ts"
+    ]
+  },
+  "schema": "policy.json",
+  "description": "Handwritten current policy members: fixed routing conditions, a bounded classifier and repeat detection settings. Conditions are host metadata and these records grant no tool authority.",
+  "items": [
+    {
+      "version": 2,
+      "routing": {
+        "mode": "auto",
+        "tiers": [
+          "low",
+          "medium"
+        ],
+        "rules": [
+          {
+            "id": "bounded-report",
+            "when": {
+              "mode": "work",
+              "attachments": true,
+              "artifact": false,
+              "turnBytes": 32,
+              "maxTurnBytes": 1024,
+              "slash": "report"
+            },
+            "route": {
+              "route": "agent",
+              "tier": "low",
+              "skills": [],
+              "tools": [],
+              "operations": "all",
+              "planning": "withheld"
+            }
+          }
+        ],
+        "classifier": {
+          "labels": {
+            "report": {
+              "route": "agent",
+              "tier": "medium",
+              "skills": [],
+              "tools": [],
+              "operations": "all",
+              "planning": "withheld"
+            },
+            "planned": {
+              "route": "agent",
+              "tier": "medium",
+              "skills": [],
+              "tools": "all",
+              "operations": [
+                "discover",
+                "read",
+                "answer",
+                "check",
+                "transform",
+                "evaluate",
+                "propose",
+                "act",
+                "run",
+                "own-state",
+                "ask"
+              ],
+              "planning": "offered"
+            }
+          },
+          "maxOutputTokens": 8,
+          "timeoutMilliseconds": 1000
+        }
+      },
+      "repeatTools": {
+        "mode": "on",
+        "remindAt": 1,
+        "stopAt": 5
+      }
+    },
+    {
+      "version": 2,
+      "routing": {
+        "mode": "off"
+      },
+      "repeatTools": {
+        "mode": "off"
+      }
+    },
+    {
+      "version": 2,
+      "routing": {
+        "mode": "rules",
+        "tiers": [
+          "low"
+        ],
+        "rules": [
+          {
+            "id": "direct-reply",
+            "when": {},
+            "route": {
+              "route": "direct",
+              "skills": [],
+              "tools": [],
+              "operations": [],
+              "planning": "withheld"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
