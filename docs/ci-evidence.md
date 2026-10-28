@@ -1,9 +1,11 @@
 # Trusted CI evidence at release
 
-Devkit issue #37 defines the shared `lib/ci_evidence.py` command and handwritten
-collector/CLI fixtures. Repository adoption owns its configuration and workflows;
-Agent issue #213 vendors the identical helper as `scripts/dev/ci_evidence.py`.
-This is a new release-admission CLI and JSON evidence contract (schema 1).
+Agent issue #213 originally adopted the historical Devkit issue #37
+`lib/ci_evidence.py` helper and handwritten collector/CLI fixtures. Agent now owns
+`scripts/dev/ci_evidence.py`, its configuration and workflows. Current Devkit has
+removed that legacy helper and uses a different release-evidence implementation;
+this document does not claim current shared code or migrate Agent to that contract.
+The Agent release-admission CLI and JSON evidence contract use schema 1.
 
 ## Identity and collection
 
@@ -59,7 +61,7 @@ The same source alone does not establish equivalent execution. Each artifact
 records the actual GitHub-hosted image (`ImageOS`, `ImageVersion`), OS release
 hash, platform/architecture and configured tool-version commands. Release resolves
 these independently on its current runner; a changed image or tool resolution
-refuses reuse. Devkit records bash, git, Python, Go, shellcheck and rsync. Agent's
+refuses reuse, except for the explicit v0.11.0 image policy below. Agent's
 baseline contract job is bound to its hosted image; its check job additionally
 records Node/npm/Go, the actual Python virtual-environment interpreter and installed
 Python distribution versions. The release runs the existing Python dependency
@@ -90,6 +92,39 @@ and attestation checks, protected approval, exact draft/published asset identity
 and Agent's paired Go tag remain under their existing gates. The evidence gate
 neither grants an advisory exception nor changes live-quality requirements.
 
+## Approved v0.11.0 image exception
+
+The [maintainer approval](security/v011-runner-image-exception.md) permits only
+ImageVersion 20261023.163.3 and 20261026.180.1 for Agent repository ID 1424951648,
+exact tag `v0.11.0`. Both producer and independently resolved verifier must be in
+that pair and exactly match ubuntu26/Linux/X64 and the approved os_release hash.
+Configured profile tools remain exact. This accepts unknown host library, kernel
+and preinstalled-tool differences; it does not prove cross-image equivalence or
+claim a product behavior change or live validation.
+
+The source config binds the concrete approval record's SHA-256; independent
+release-source inputs must include that same hash. Scope fields cannot be widened
+through config. Missing/extra/malformed scope, wrong repository/tag, either runner
+outside the approved tuple/pair, any tool mismatch or other payload difference
+refuses. Raw artifacts are not normalized. The verifier reports raw producer and
+verifier runtimes per job, per-job `image_version_exception_used`, and top-level
+`runner_image_exception` scope/approval plus `used` (whether any image differed).
+Capture continues to record actual runtime unchanged.
+
+The verifier reads its real UTC clock at entry and again after collection and all
+run/tag rechecks. It must finish before 2026-11-07 00:00:00 UTC; equality and a
+collection crossing that instant refuse, regardless of an earlier run-age clock.
+The configured exception refuses after expiry and on any other release, even if
+images match. Configurations without the exception retain exact legacy matching
+and output. Removing or changing this policy requires a reviewed source change;
+there is no generic ignore-image flag, environment override or local-evidence path.
+
+A new validated main commit and independent review are required. Prior artifacts
+at a different source do not qualify. Latest-attempt, age, complete coverage,
+archive/API integrity and every tag/publication/advisory gate remain in force.
+The one fresh recovery pair exposed the same mismatch; further arbitrary reruns
+or no-op commits are not the remedy. This approval does not waive other gates.
+
 ## Bounded recovery and operation
 
 If reuse is refused, stop that release attempt. A maintainer may explicitly
@@ -117,8 +152,7 @@ a 15-minute bound. API request failures do not fall back to a cache.
 
 ## Verification and measurement limits
 
-Run `python3 tests/ci_evidence_test.py` in Devkit or
-`python3 -m unittest discover -s tests -p test_ci_evidence.py` in Agent for the
+Run `python3 -m unittest discover -s tests -p test_ci_evidence.py` in Agent for the
 focused handwritten fixtures. They exercise the collector and public capture/
 verify commands, including pagination, failed/running/canceled latest runs,
 partial reruns, matrix coverage, artifact/input identities and tag movement.

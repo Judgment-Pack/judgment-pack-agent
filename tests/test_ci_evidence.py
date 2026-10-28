@@ -1,6 +1,7 @@
 """Handwritten Actions fixtures; these are not live-service release evidence."""
 import base64
 import copy
+import contextlib
 import datetime as dt
 import hashlib
 import importlib.util
@@ -375,6 +376,272 @@ class EvidenceTest(unittest.TestCase):
                        'list?per_page=100&page=2': {'total_count':102,'items':[{'id':100}]}})
         with self.assertRaisesRegex(e.Refusal, '^pagination-changed$'):
             api.pages('list','items')
+
+
+class ScopedRunnerImages(unittest.TestCase):
+    """Handwritten API/clock fixtures exercise the full verify entry, not a matcher shortcut."""
+    def setUp(self):
+        self.scope = {
+            'repository': 'Judgment-Pack/judgment-pack-agent', 'repository_id': 1424951648,
+            'tag': 'v0.11.0', 'expires_at': '2026-11-07T00:00:00Z',
+            'image_versions': ['20261023.163.3', '20261026.180.1'],
+            'runner': {'ImageOS': 'ubuntu26', 'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64',
+                       'os_release': 'cf72627ff81aef345d0a9f3807eb80f1035e0f80fe2932d12d94efc02fd68104'},
+            'approval_record': 'docs/security/v011-runner-image-exception.md',
+            'approval_sha256': 'd' * 64}
+        self.config = copy.deepcopy(CONFIG)
+        self.config.update(repository=self.scope['repository'], runner_image_exception=self.scope)
+        self.source = dict(copy.deepcopy(SOURCE), repository=self.scope['repository'],
+                           repository_id=1424951648)
+        self.source['inputs'][self.scope['approval_record']] = 'd' * 64
+        self.producer = {'runner': dict(self.scope['runner'], ImageVersion='20261023.163.3'),
+                         'tools': {'node': 'v22.23.3', 'npm': '10.9.9'}}
+        self.verifier = {'runner': dict(self.scope['runner'], ImageVersion='20261026.180.1'),
+                         'tools': {'node': 'v22.23.3', 'npm': '10.9.9'}}
+        self.config['profiles']['base'] = {'node': ['node', '--version'], 'npm': ['npm', '--version']}
+        self.release_tag = 'v0.11.0'
+        self.build_data()
+        self.commands = patch.object(e, 'command', return_value=('b' * 40 + '\n').encode())
+        self.runtime_patch = patch.object(e, 'runtime', side_effect=lambda *_: copy.deepcopy(self.verifier))
+        self.clock = patch.object(e, 'utc_now', return_value=dt.datetime(2026, 10, 28, tzinfo=dt.timezone.utc))
+        self.commands.start()
+        self.runtime_patch.start()
+        self.clock_mock = self.clock.start()
+        self.addCleanup(self.commands.stop)
+        self.addCleanup(self.runtime_patch.stop)
+        self.addCleanup(self.clock.stop)
+
+    def build_data(self):
+        self.data = fixture(self.source, self.config, self.producer)
+        ref = self.data.pop('git/ref/tags/v1.2.3')
+        ref['ref'] = 'refs/tags/' + self.release_tag
+        self.data['git/ref/tags/' + self.release_tag] = ref
+
+    def payload(self, change):
+        with zipfile.ZipFile(io.BytesIO(self.data['actions/artifacts/300/zip'])) as archive:
+            value = json.loads(archive.read('evidence.json'))
+        change(value)
+        raw = zip_payload(value)
+        self.data['actions/artifacts/300/zip'] = raw
+        artifact = self.data['actions/runs/100/artifacts?per_page=100&page=1']['artifacts'][0]
+        artifact.update(size_in_bytes=len(raw), digest='sha256:' + hashlib.sha256(raw).hexdigest())
+
+    def decision(self):
+        try:
+            self.result = e.verify(FakeAPI(self.data), self.config, self.source, self.release_tag, NOW)
+            return 'reuse'
+        except e.Refusal as error:
+            return str(error)
+
+    def test_both_directions_and_equal_images_keep_raw_identities(self):
+        for producer in ['20261023.163.3', '20261026.180.1']:
+            for verifier in ['20261023.163.3', '20261026.180.1']:
+                with self.subTest(producer=producer, verifier=verifier):
+                    self.producer['runner']['ImageVersion'] = producer
+                    self.verifier['runner']['ImageVersion'] = verifier
+                    self.build_data()
+                    before = self.data['actions/artifacts/300/zip']
+                    self.assertEqual(self.decision(), 'reuse')
+                    job = self.result['workflows'][0]['jobs'][0]
+                    self.assertEqual(job['runtime'], self.producer)
+                    self.assertEqual(job['verifier_runtime'], self.verifier)
+                    self.assertEqual(job['image_version_exception_used'], producer != verifier)
+                    self.assertEqual(self.result['runner_image_exception'], dict(self.scope, used=producer != verifier))
+                    self.assertEqual(self.data['actions/artifacts/300/zip'], before)
+
+    def test_wrong_repository_name_id_or_config_refuses(self):
+        for name, ident in [('other/project', 1424951648), (self.scope['repository'], 1424951649)]:
+            with self.subTest(repository=name, repository_id=ident):
+                self.source.update(repository=name, repository_id=ident)
+                self.config['repository'] = name
+                self.build_data()
+                self.assertEqual(self.decision(), 'image-exception-repository')
+        self.source.update(repository=self.scope['repository'], repository_id=1424951648)
+        self.config['repository'] = 'other/project'
+        self.build_data()
+        self.assertEqual(self.decision(), 'image-exception-repository')
+
+    def test_later_or_other_tag_refuses_even_before_expiry(self):
+        for tag in ['v0.11.1', 'v0.12.0', 'v0.10.0']:
+            with self.subTest(tag=tag):
+                self.release_tag = tag
+                self.build_data()
+                self.assertEqual(self.decision(), 'image-exception-tag')
+
+    def test_malformed_or_widened_scope_refuses(self):
+        original = copy.deepcopy(self.scope)
+        cases = [None, {}, dict(original, unexpected=True),
+                 dict(original, tag='v0.12.0'), dict(original, repository_id=12),
+                 dict(original, expires_at='2026-12-01T00:00:00Z'),
+                 dict(original, expires_at='not-a-time'),
+                 dict(original, image_versions=['20261023.163.3', '*']),
+                 dict(original, approval_record='other.md')]
+        missing = dict(original)
+        del missing['approval_sha256']
+        for scope in cases + [missing]:
+            with self.subTest(scope=scope):
+                self.config['runner_image_exception'] = scope
+                self.assertEqual(self.decision(), 'image-exception-config')
+
+    def test_scope_cannot_add_an_image(self):
+        self.scope['image_versions'].append('20261030.999.1')
+        self.producer['runner']['ImageVersion'] = '20261030.999.1'
+        self.build_data()
+        self.assertEqual(self.decision(), 'image-exception-config')
+
+    def test_missing_malformed_or_unbound_approval_hash_refuses(self):
+        for digest in ['', 'wrong', 'D' * 64, 'e' * 64]:
+            with self.subTest(digest=digest):
+                self.scope['approval_sha256'] = digest
+                self.assertEqual(self.decision(), 'image-exception-approval')
+        self.scope['approval_sha256'] = 'd' * 64
+        del self.source['inputs'][self.scope['approval_record']]
+        self.assertEqual(self.decision(), 'image-exception-approval')
+
+    def test_expiry_is_real_clock_strict_including_matching_images(self):
+        self.producer = copy.deepcopy(self.verifier)
+        self.build_data()
+        for instant in [dt.datetime(2026, 11, 7, tzinfo=dt.timezone.utc),
+                        dt.datetime(2026, 11, 7, 0, 0, 1, tzinfo=dt.timezone.utc)]:
+            with self.subTest(instant=instant):
+                self.clock_mock.return_value = instant
+                # NOW is earlier: the run-age argument must not set the approval clock.
+                self.assertEqual(self.decision(), 'image-exception-expired')
+
+    def test_collection_crossing_expiry_refuses(self):
+        self.clock_mock.side_effect = [dt.datetime(2026, 11, 6, 23, 59, 59, tzinfo=dt.timezone.utc),
+                                       dt.datetime(2026, 11, 7, tzinfo=dt.timezone.utc)]
+        self.assertEqual(self.decision(), 'image-exception-expired')
+        self.assertEqual(self.clock_mock.call_count, 2)
+
+    def test_third_image_in_either_actual_runtime_refuses(self):
+        for target in ['producer', 'verifier']:
+            with self.subTest(target=target):
+                original = copy.deepcopy(getattr(self, target))
+                getattr(self, target)['runner']['ImageVersion'] = '20261030.999.1'
+                self.build_data()
+                self.assertEqual(self.decision(), 'image-exception-image')
+                setattr(self, target, original)
+
+    def test_os_platform_arch_and_release_hash_in_either_runtime_refuse(self):
+        for target in ['producer', 'verifier']:
+            for key, value in [('ImageOS', 'ubuntu24'), ('RUNNER_OS', 'Windows'),
+                               ('RUNNER_ARCH', 'ARM64'), ('os_release', 'different')]:
+                with self.subTest(target=target, key=key):
+                    original = copy.deepcopy(getattr(self, target))
+                    getattr(self, target)['runner'][key] = value
+                    self.build_data()
+                    self.assertEqual(self.decision(), 'image-exception-runner')
+                    setattr(self, target, original)
+
+    def test_missing_extra_or_malformed_runtime_members_refuse(self):
+        for target in ['producer', 'verifier']:
+            original = copy.deepcopy(getattr(self, target))
+            for value in [dict(original, extra='value'), {'runner': original['runner']}]:
+                with self.subTest(target=target, runtime=value):
+                    setattr(self, target, value)
+                    self.build_data()
+                    self.assertEqual(self.decision(), 'image-exception-runtime')
+            for runner in [None, dict(original['runner'], extra='value'),
+                           {k: v for k, v in original['runner'].items() if k != 'ImageVersion'}]:
+                with self.subTest(target=target, runner=runner):
+                    setattr(self, target, dict(original, runner=runner))
+                    self.build_data()
+                    self.assertEqual(self.decision(), 'image-exception-runner')
+            setattr(self, target, original)
+
+    def test_extra_runtime_member_cannot_bypass_scope(self):
+        self.producer['unknown'] = 'must not be ignored'
+        self.build_data()
+        self.assertEqual(self.decision(), 'image-exception-runtime')
+
+    def test_profile_tool_mismatch_still_refuses(self):
+        for target in ['producer', 'verifier']:
+            with self.subTest(target=target):
+                original = copy.deepcopy(getattr(self, target))
+                getattr(self, target)['tools']['node'] = 'v22.99.0'
+                self.build_data()
+                self.assertEqual(self.decision(), 'input-identity')
+                setattr(self, target, original)
+
+    def test_every_other_payload_member_stays_exact(self):
+        for field, value in [('source', 'c' * 40), ('repository_id', 12),
+                             ('inputs', {}), ('workflow', 'other.yml'), ('workflow_blob', 'changed'),
+                             ('run_id', 101), ('attempt', 2), ('event', 'pull_request'),
+                             ('ref', 'refs/heads/other'), ('job', 'other'), ('unknown', True)]:
+            with self.subTest(field=field):
+                self.build_data()
+                self.payload(lambda payload: payload.update({field: value}))
+                self.assertEqual(self.decision(), 'input-identity')
+        self.build_data()
+        self.payload(lambda payload: payload.pop('source'))
+        self.assertEqual(self.decision(), 'input-identity')
+
+    def test_payload_identity_types_stay_exact(self):
+        for field, value in [('schema', True), ('schema', 1.0), ('attempt', True),
+                             ('attempt', 1.0), ('repository_id', 1424951648.0)]:
+            with self.subTest(field=field, value=value):
+                self.build_data()
+                self.payload(lambda payload: payload.update({field: value}))
+                self.assertEqual(self.decision(), 'input-identity')
+
+    def test_coverage_and_latest_attempt_still_refuse(self):
+        self.payload(lambda payload: payload['coverage'].update(unit='SKIP'))
+        self.assertEqual(self.decision(), 'check-result')
+        self.build_data()
+        self.payload(lambda payload: payload['coverage'].pop('unit'))
+        self.assertEqual(self.decision(), 'check-coverage')
+        self.build_data()
+        self.data['actions/runs/100']['status'] = 'in_progress'
+        self.assertEqual(self.decision(), 'run-result')
+
+    def test_main_verify_reports_exception_and_real_runtime(self):
+        # Only API timestamps follow the real CLI age clock; identity expectations stay handwritten.
+        now = dt.datetime.now(dt.timezone.utc)
+        def iso(seconds):
+            return (now + dt.timedelta(seconds=seconds)).isoformat()
+        self.data['actions/runs/100'].update(created_at=iso(-600), run_started_at=iso(-599))
+        for job in self.data['actions/runs/100/attempts/1/jobs?per_page=100&page=1']['jobs']:
+            job.update(started_at=iso(-598), completed_at=iso(-300))
+        self.data['actions/runs/100/artifacts?per_page=100&page=1']['artifacts'][0]['created_at'] = iso(-301)
+        output = io.StringIO()
+        with patch.object(e, 'source_context', return_value=(self.config, self.source)), \
+             patch.object(e, 'API', return_value=FakeAPI(self.data)), \
+             patch.dict(os.environ, RELEASE_TAG='v0.11.0'), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(e.main(['verify']), 0)
+        report = json.loads(output.getvalue())
+        self.assertTrue(report['runner_image_exception']['used'])
+        self.assertEqual(report['workflows'][0]['jobs'][0]['verifier_runtime'], self.verifier)
+
+    def test_capture_retains_actual_identity_without_exception_normalization(self):
+        with tempfile.TemporaryDirectory(prefix='scoped-image-capture-') as directory:
+            log = Path(directory) / 'checks.log'
+            log.write_text('PASS unit 1s\nSKIP audit optional\n')
+            for image in ['20261023.163.3', '20261026.180.1']:
+                self.verifier['runner']['ImageVersion'] = image
+                with patch.dict(os.environ, GITHUB_REF='refs/heads/main', GITHUB_EVENT_NAME='push',
+                                GITHUB_JOB='test', GITHUB_RUN_ID='100', GITHUB_RUN_ATTEMPT='1'):
+                    captured = e.capture(self.config, self.source, 'ci', 'test', [('check', str(log))])
+                self.assertEqual(captured['runtime'], self.verifier)
+                self.assertNotIn('runner_image_exception', captured)
+
+    def test_repository_config_binds_approval_record_bytes(self):
+        config = json.loads((ROOT / '.github/ci-evidence.json').read_text())
+        scope = config['runner_image_exception']
+        self.assertIn(scope['approval_record'], config['inputs'])
+        record = (ROOT / scope['approval_record']).read_bytes()
+        self.assertLess(len(record), 16384)
+        self.assertEqual(scope['approval_sha256'], hashlib.sha256(record).hexdigest())
+
+    def test_unconfigured_legacy_matching_and_output_remain_exact(self):
+        del self.config['runner_image_exception']
+        self.assertEqual(self.decision(), 'input-identity')
+        self.producer = copy.deepcopy(self.verifier)
+        self.build_data()
+        self.assertEqual(self.decision(), 'reuse')
+        self.assertNotIn('runner_image_exception', self.result)
+        self.assertNotIn('verifier_runtime', self.result['workflows'][0]['jobs'][0])
 
 
 class SmallBoundaries(unittest.TestCase):

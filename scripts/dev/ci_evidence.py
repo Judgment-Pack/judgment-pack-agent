@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted exact-source Actions evidence, shared with repository-owned adoptions.
+"""Agent-owned trusted exact-source Actions evidence (historical Devkit adoption).
 
 Only capture and verify are public commands. API fixtures belong in tests, never CLI inputs.
 """
@@ -110,6 +110,58 @@ def runtime(config, profile):
     return {'runner': runner, 'tools': tools}
 
 
+# The maintainer approved this one bounded policy, not a configurable image bypass.
+V011_IMAGE_EXCEPTION = {
+    "repository": "Judgment-Pack/judgment-pack-agent",
+    "repository_id": 1424951648,
+    "tag": "v0.11.0",
+    "expires_at": "2026-11-07T00:00:00Z",
+    "image_versions": [
+        "20261023.163.3",
+        "20261026.180.1"
+    ],
+    "runner": {
+        "ImageOS": "ubuntu26",
+        "RUNNER_OS": "Linux",
+        "RUNNER_ARCH": "X64",
+        "os_release": "cf72627ff81aef345d0a9f3807eb80f1035e0f80fe2932d12d94efc02fd68104"
+    },
+    "approval_record": "docs/security/v011-runner-image-exception.md"
+}
+
+
+def utc_now():
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def image_exception(config, source, release_tag):
+    if 'runner_image_exception' not in config:
+        return None
+    scope = config['runner_image_exception']
+    need(type(scope) is dict and scope == dict(V011_IMAGE_EXCEPTION,
+         approval_sha256=scope.get('approval_sha256')), 'image-exception-config')
+    approval = scope['approval_sha256']
+    need(isinstance(approval, str) and re.fullmatch('[0-9a-f]{64}', approval) and
+         source['inputs'].get(scope['approval_record']) == approval, 'image-exception-approval')
+    need(config['repository'] == scope['repository'] and source['repository'] == scope['repository'] and
+         type(source['repository_id']) is int and source['repository_id'] == scope['repository_id'],
+         'image-exception-repository')
+    need(release_tag == scope['tag'], 'image-exception-tag')
+    need(utc_now() < timestamp(scope['expires_at']), 'image-exception-expired')
+    return scope
+
+
+def check_exception_runtime(producer, verifier, scope):
+    for current in (producer, verifier):
+        need(type(current) is dict and set(current) == {'runner', 'tools'}, 'image-exception-runtime')
+        runner = current['runner']
+        image = runner.get('ImageVersion') if type(runner) is dict else None
+        need(type(runner) is dict and runner == dict(scope['runner'], ImageVersion=image),
+             'image-exception-runner')
+        need(image in scope['image_versions'], 'image-exception-image')
+    need(producer['tools'] == verifier['tools'], 'input-identity')
+
+
 def required_checks(config, spec):
     manifest = json.loads(Path('dev.json').read_text())
     checks = spec.get('checks', [])
@@ -216,7 +268,7 @@ def read_artifact(api, artifact, run, job):
         return json.loads(archive.read(entries[0]))
 
 
-def verify_workflow(api, config, source, key, now):
+def verify_workflow(api, config, source, key, now, scope=None):
     workflow = config['workflows'][key]
     resolved = api.get('actions/workflows/' + quote(Path(workflow['path']).name, safe=''))
     need(resolved['path'] == workflow['path'] and type(resolved['id']) is int and
@@ -249,15 +301,27 @@ def verify_workflow(api, config, source, key, now):
         need(len(matching) == 1, 'artifact-coverage')
         payload = read_artifact(api, matching[0], run, job)
         validate_coverage(config, spec, payload['coverage'])
+        verifier_runtime = runtime(config, spec['profile'])
         expected = dict(source, workflow=workflow['path'], workflow_blob=command([
             'git', 'rev-parse', source['source'] + ':' + workflow['path']]).decode().strip(),
             run_id=run['id'], attempt=run['run_attempt'], event=run['event'],
-            ref='refs/heads/main', job=job_key, runtime=runtime(config, spec['profile']),
+            ref='refs/heads/main', job=job_key, runtime=verifier_runtime,
             coverage=payload['coverage'])
-        need(payload == expected, 'input-identity')
-        reports.append({'job': job_key, 'job_id': job['id'], 'result': job['conclusion'],
-                        'coverage': payload['coverage'], 'runtime': payload['runtime'],
-                        'started_at': job['started_at'], 'completed_at': job['completed_at']})
+        if scope is not None:
+            check_exception_runtime(payload['runtime'], verifier_runtime, scope)
+            # Only the independently checked runtime may differ; never rewrite the artifact.
+            expected['runtime'] = payload['runtime']
+        # Scoped admission also distinguishes JSON booleans/floats from integer identities.
+        need(payload == expected and (scope is None or
+             json.dumps(payload, sort_keys=True) == json.dumps(expected, sort_keys=True)), 'input-identity')
+        report = {'job': job_key, 'job_id': job['id'], 'result': job['conclusion'],
+                  'coverage': payload['coverage'], 'runtime': payload['runtime'],
+                  'started_at': job['started_at'], 'completed_at': job['completed_at']}
+        if scope is not None:
+            report.update(verifier_runtime=verifier_runtime,
+                          image_version_exception_used=payload['runtime']['runner']['ImageVersion'] !=
+                          verifier_runtime['runner']['ImageVersion'])
+        reports.append(report)
     for name in workflow.get('skipped', []):
         job = by_name[name]
         need(job['run_id'] == run['id'] and job['status'] == 'completed' and
@@ -274,15 +338,23 @@ def verify_workflow(api, config, source, key, now):
 
 
 def verify(api, config, source, release_tag, now):
+    scope = image_exception(config, source, release_tag)
     first_tag = tag(api, release_tag, source['source'])
-    reports = [verify_workflow(api, config, source, key, now) for key in config['workflows']]
+    reports = [verify_workflow(api, config, source, key, now, scope) for key in config['workflows']]
     # Recheck every workflow after all artifact collection; cross-workflow collection can take time.
     for key, report in zip(config['workflows'], reports):
         final = select(api, source, config['workflows'][key], report['workflow_id'])
         need((final['id'], final['run_attempt'], final['status'], final['conclusion']) ==
              (report['run_id'], report['attempt'], 'completed', 'success'), 'final-latest-changed')
     need(tag(api, release_tag, source['source']) == first_tag, 'tag-changed')
-    return dict(source, decision='reuse', tag=release_tag, tag_object=first_tag, workflows=reports)
+    # Collection can cross the approval deadline; use a fresh verifier clock reading.
+    image_exception(config, source, release_tag)
+    result = dict(source, decision='reuse', tag=release_tag, tag_object=first_tag, workflows=reports)
+    if scope is not None:
+        result['runner_image_exception'] = dict(scope, used=any(
+            job.get('image_version_exception_used', False)
+            for report in reports for job in report['jobs']))
+    return result
 
 
 def main(argv=None):
