@@ -577,10 +577,18 @@ func (s *nativePlanBasicStore) Commit(ctx context.Context, input runcontext.RunC
 
 func nativePlanPausedFixture(t *testing.T, fault string) (*nativePlanBasicStore, *adapter.Run, *runcontext.Input, runcontext.PlanDecisionExpectation, *int) {
 	t.Helper()
+	return nativePlanPausedFixtureWithTaskSteps(t, fault, true)
+}
+
+func nativePlanPausedFixtureWithTaskSteps(t *testing.T, fault string, taskSteps bool) (*nativePlanBasicStore, *adapter.Run, *runcontext.Input, runcontext.PlanDecisionExpectation, *int) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	store := &nativePlanBasicStore{RunStore: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
-	input := &runcontext.Input{TaskSteps: true, TaskStepEnvelope: &runcontext.TaskStepEnvelope{ID: "original-host", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "native-proof"}, CurrentRequest: &runcontext.CurrentRequest{Message: "Work", Input: "facts"}, Plan: runcontext.MustParseJSON(`{"id":"original","revision":1,"objective":"Work","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-01-01T00:00:00.000Z","acceptedAt":"2026-01-01T00:00:00.000Z"}`)}
+	input := &runcontext.Input{TaskSteps: taskSteps, TaskStepEnvelope: &runcontext.TaskStepEnvelope{ID: "original-host", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "native-proof"}, CurrentRequest: &runcontext.CurrentRequest{Message: "Work", Input: "facts"}, Plan: runcontext.MustParseJSON(`{"id":"original","revision":1,"objective":"Work","steps":["Inspect","Report"],"questions":[],"references":[],"status":"accepted","createdAt":"2026-01-01T00:00:00.000Z","acceptedAt":"2026-01-01T00:00:00.000Z"}`)}
+	if !taskSteps {
+		input.TaskStepEnvelope = nil
+	}
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})
 	calls := new(int)
@@ -619,7 +627,11 @@ func nativePlanPausedFixture(t *testing.T, fault string) (*nativePlanBasicStore,
 		}()
 		for _, tool := range request.Tools {
 			if strings.HasPrefix(tool.Description, "update_plan: ") {
-				_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "pause", Name: tool.Name, Arguments: json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]}`)})
+				arguments := json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending","budget":{"requests":1}}]}`)
+				if !taskSteps {
+					arguments = json.RawMessage(`{"explanation":"Remove accepted work","plan":[{"id":"step-2","step":"Report","status":"pending"}]}`)
+				}
+				_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "pause", Name: tool.Name, Arguments: arguments})
 				if fault == "cancel" {
 					cancel()
 				}

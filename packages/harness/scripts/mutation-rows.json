@@ -7473,6 +7473,18 @@
   "status": "caught",
   "origin": "agent#237",
   "note": "TypeScript safeguard removal caught at taskSteps.contract.test.ts > #183 shared current event native-plan-decision-invocation. The handwritten native decision event fails with unknown member /nativeInvocation. Go counterpart caught: Unknown record member. Restored focused checks pass."
+},
+{
+  "name": "native Plan pause R4 distinct unknown without task budgets",
+  "file": "storage/writer.ts",
+  "find": "  // A Plan decision exempts its exact claim, never another unknown in that scope.\n  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()\n",
+  "replace": "",
+  "tests": [
+    "storage/nativePlanPause.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#237",
+  "note": "TypeScript safeguard removal caught at the actual interrupted-terminal native test with taskSteps=false: expected 3 provider calls to be 2. The taskSteps=true control passes. Go twin removes only len(w.nativePlanSuperseded) > 0 from supersededNativePlanLocked; the paired task-steps-off fixture fails calls=3 want=2. The acknowledged Plan decision and exact original unknown audit remain retained; this proves refusal before an extra physical provider dispatch, not a repeated host side effect. Restored focused checks are recorded in the R4 handoff."
 }
  ]
 }

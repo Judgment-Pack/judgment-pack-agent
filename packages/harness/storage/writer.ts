@@ -560,6 +560,8 @@ export class RunWriter {
  private supersededNative(binding:DurableBinding,row:DurableDispatch){
   const plan=this.nativePlanSuperseded.get(row.id)
   if(plan){if(row.kind!=='agent'||row.state!=='unknown'||!row.read||scopeKey(row.scope)!==scopeKey(binding.scope)||canonicalJSON(row)!==plan)throw new ContinuationIdentityChanged();return true}
+  // A Plan decision exempts its exact claim, never another unknown in that scope.
+  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()
   if(row.kind!=='agent'||scopeKey(row.scope)!==scopeKey(binding.scope)||!this.latest?.turnRoute?.widened)return false
   const marker=this.latest.turnRoute.widenedInvocation,proof=this.nativeSuperseded.get(scopeKey(binding.scope))
   if(!marker||!proof||proof.route!==canonicalJSON(this.latest.turnRoute))throw new ContinuationIdentityChanged()

@@ -115,3 +115,38 @@ for(const fault of ['missing-pause','missing-decision','wrong-request'])it(`#219
  const resumed=await events(input(store,run,'standalone',true,{callId:before.planState.pending.callId,approved:true}),'standalone');expect(resumed.filter(event=>event.type==='error')).toEqual([]);expect(calls).toBe(2)
  corrupt=true;const refused=await events(input(store,run,'standalone',true),'standalone');expect(calls).toBe(2);expect(refused.some(event=>event.type==='error')).toBe(true)
 })
+
+for(const taskSteps of [false,true])it(`#219 interrupted terminal write never replays a later unknown native invocation with taskSteps=${taskSteps}`,async()=>{
+ const memory=new MemoryRunStore();let refuseTerminal=false,terminalRefusals=0,calls=0
+ const store:RunStore={...basic(memory),commit:async(value,signal)=>{
+  if(refuseTerminal&&value.checkpoint&&JSON.parse(new TextDecoder().decode(value.checkpoint)).status==='stopped'){terminalRefusals++;throw Error('fixture interrupted terminal checkpoint')}
+  return memory.commit(value,signal)
+ }}
+ const run:AgentRun=async(request,cb)=>{
+  calls++
+  try{if(calls===1){const tool=request.tools.find(tool=>tool.description.startsWith('update_plan: '))!;expect(tool).toBeDefined();await cb.tool({id:'pause',name:tool.name,arguments:{explanation:'Remove accepted work',plan:[{id:'step-2',step:'Report',status:'pending'}]}},cb.signal)}else throw Error('fixture later native outcome unknown')}
+  finally{expect(cb.providerRelease?.acknowledge(cb.providerRelease.invocation)).toBe(true)}
+ }
+ const session=(resume=false,approval?:{callId:string;approved:boolean})=>{
+  const value=input(store,run,'legacy',resume,approval)
+  if(!taskSteps)delete value.context!.taskSteps
+  return value
+ }
+ const first=await events(session(),'legacy'),before=await checkpoint(store),old=before.durable.dispatches[0]
+ expect(first.filter(event=>event.type==='error')).toEqual([]);expect(calls).toBe(1)
+ expect(before.status).toBe('paused');expect(old).toMatchObject({kind:'agent',state:'unknown',planPause:{callId:before.planState.pending.callId}})
+ refuseTerminal=true
+ try{await events(session(true,{callId:before.planState.pending.callId,approved:true}),'legacy')}catch(error){expect(error).toBeInstanceOf(StorageOutcomeUnknown)}
+ expect(calls).toBe(2);expect(terminalRefusals).toBeGreaterThan(0)
+ const retained=await checkpoint(store),physical=retained.durable.dispatches.filter((row:{kind:string})=>row.kind==='agent')
+ expect(retained.status).toBe('running');expect(retained.planState.pending).toBeUndefined();expect(retained.plan).toHaveLength(1)
+ expect(retained.planState.decisions).toHaveLength(1);expect(retained.planState.decisions[0]).toMatchObject({approved:true,nativeInvocation:{dispatchId:old.id,requestDigest:old.requestDigest}})
+ expect(physical).toHaveLength(2);expect(physical[0]).toEqual(old);expect(physical[1]).toMatchObject({state:'unknown',scope:old.scope});expect(physical[1].id).not.toBe(old.id)
+ const journal=await memory.readEvents('native-plan',null,100),decisions=journal.items.map(row=>JSON.parse(new TextDecoder().decode(row.bytes)).event).filter(event=>event.type==='plan_drift_decided')
+ expect(decisions).toHaveLength(1);expect(decisions[0]).toMatchObject({approved:true,nativeInvocation:{dispatchId:old.id,requestDigest:old.requestDigest}})
+ refuseTerminal=false
+ const refused=await events(session(true),'legacy')
+ expect(calls,'distinct later unknown must refuse before provider dispatch').toBe(2)
+ expect(refused.filter(event=>event.type==='error').map(event=>({code:event.failure?.code,outcome:event.failure?.outcome}))).toEqual([{code:'unknown',outcome:'unknown'}])
+ const final=await checkpoint(store);expect(final.durable.dispatches.filter((row:{kind:string})=>row.kind==='agent')).toEqual(physical)
+})

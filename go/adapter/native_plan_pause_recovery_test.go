@@ -227,3 +227,107 @@ func TestNativePlanActualNextUnknownRefuses(t *testing.T) {
 		t.Fatalf("released Plan decision forgave next unknown: calls=%d events=%+v", *calls, events)
 	}
 }
+
+func TestNativePlanInterruptedTerminalNextUnknownRefuses(t *testing.T) {
+	for _, taskSteps := range []bool{false, true} {
+		name := "task-steps-off"
+		if taskSteps {
+			name = "task-steps-on"
+		}
+		t.Run(name, func(t *testing.T) {
+			store, run, held, expected, calls := nativePlanPausedFixtureWithTaskSteps(t, "", taskSteps)
+			read := func() *runcontext.Value {
+				t.Helper()
+				head, err := store.Load(context.Background(), "native-proof")
+				if err != nil || head == nil {
+					t.Fatal("missing retained head", err)
+				}
+				return runcontext.MustParseJSON(string(head.Checkpoint))
+			}
+			old := read().Get("durable").Get("dispatches").Items()[0].Clone()
+			if old.Get("state").Str() != "unknown" || old.Get("planPause") == nil {
+				t.Fatal("original invocation did not retain released Plan pause")
+			}
+			prepared, decisions, err := runcontext.PreparePlanDecision(context.Background(), held, expected)
+			if err != nil || len(decisions) != 1 || *calls != 1 {
+				t.Fatalf("legitimate decision failed before continuation: %v events=%+v calls=%d", err, decisions, *calls)
+			}
+			base, refuseTerminal, terminalRefusals := store.RunStore, true, 0
+			store.commit = func(ctx context.Context, input runcontext.RunCommit) (runcontext.RunReceipt, error) {
+				if refuseTerminal && len(input.Checkpoint) > 0 {
+					var cp contract.Checkpoint
+					if err := json.Unmarshal(input.Checkpoint, &cp); err != nil {
+						t.Fatal(err)
+					}
+					if cp.Status == "stopped" {
+						terminalRefusals++
+						return runcontext.RunReceipt{}, errors.New("fixture interrupted terminal checkpoint")
+					}
+				}
+				return base.Commit(ctx, input)
+			}
+			run.Agent.Run = func(_ context.Context, _ adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+				*calls++
+				defer func() {
+					if cb.ProviderRelease == nil || !cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation) {
+						t.Error("exact continuation release refused")
+					}
+				}()
+				return errors.New("fixture later native outcome unknown")
+			}
+			resume := func(input *runcontext.Input) ([]contract.RunEvent, error) {
+				t.Helper()
+				g := gate.New(gate.Options{})
+				g.SetOffer(contract.ToolOffer{})
+				run.Context, run.Gate = input, g.Calls()
+				run.EnrollContext = func(_ context.Context, offer adapter.ContextOffer) error {
+					return g.EnrollContext(offer.ID, offer.HostTools)
+				}
+				var events []contract.RunEvent
+				run.Emit = func(event contract.RunEvent) { events = append(events, event) }
+				err := native.New().Run(context.Background(), run)
+				return events, err
+			}
+			_, err = resume(prepared)
+			var storageUnknown *runcontext.StorageOutcomeUnknown
+			if err != nil && !errors.As(err, &storageUnknown) {
+				t.Fatal("unexpected terminal interruption", err)
+			}
+			if *calls != 2 || terminalRefusals == 0 {
+				t.Fatalf("later unknown did not reach interrupted terminal write: calls=%d refused=%d", *calls, terminalRefusals)
+			}
+			retained := read()
+			var physical []*runcontext.Value
+			for _, row := range retained.Get("durable").Get("dispatches").Items() {
+				if row.Get("kind").Str() == "agent" {
+					physical = append(physical, row)
+				}
+			}
+			if retained.Get("status").Str() != "running" || retained.Get("planState").Get("pending") != nil || retained.Get("plan").Len() != 1 {
+				t.Fatal("interruption lost acknowledged running decision")
+			}
+			decision := retained.Get("planState").Get("decisions")
+			if decision.Len() != 1 || !decision.Items()[0].Get("approved").Truth() || decision.Items()[0].Get("nativeInvocation").Get("dispatchId").Str() != old.Get("id").Str() || decision.Items()[0].Get("nativeInvocation").Get("requestDigest").Str() != old.Get("requestDigest").Str() {
+				t.Fatal("legitimate decision lost exact original invocation")
+			}
+			if len(physical) != 2 || physical[0].Text() != old.Text() || physical[1].Get("kind").Str() != "agent" || physical[1].Get("state").Str() != "unknown" || physical[1].Get("id").Str() == old.Get("id").Str() || physical[1].Get("scope").Text() != old.Get("scope").Text() {
+				t.Fatal("distinct unknown claims were not retained exactly")
+			}
+			refuseTerminal = false
+			events, err := resume(nativePlanCurrentInput(t, store, held))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if *calls != 2 {
+				t.Fatalf("distinct later unknown must refuse before provider dispatch: calls=%d want=2", *calls)
+			}
+			if !nativePlanHasError(events) {
+				t.Fatal("later unknown did not produce refusal event")
+			}
+			final := read().Get("durable").Get("dispatches")
+			if final.Text() != retained.Get("durable").Get("dispatches").Text() {
+				t.Fatal("refusal changed retained unknown audit rows")
+			}
+		})
+	}
+}
