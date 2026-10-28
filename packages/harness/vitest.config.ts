@@ -9,6 +9,8 @@ export default defineConfig({
     setupFiles: ['testing/setup.ts'],
     include: ['**/*.test.ts'],
     exclude: ['node_modules/**', 'dist/**'],
+    // Limit file worker contention between semantic guards and actual adapter fixtures.
+    maxWorkers: 2,
     testTimeout: 20_000
   }
 })
