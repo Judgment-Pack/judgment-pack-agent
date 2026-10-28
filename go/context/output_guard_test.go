@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -424,5 +425,88 @@ func TestOutputUndeclaredNameMalformedRefusal(t *testing.T) {
 				t.Fatal("missing guarded name or refusal labels")
 			}
 		})
+	}
+}
+
+func TestOutputJSONWorkspaceConcurrentRedactionAndRecords(t *testing.T) {
+	counts := map[string]int64{}
+	allow := []string{}
+	for _, pattern := range baseOutputPatterns {
+		allow = append(allow, pattern.Name)
+	}
+	guard, err := NewOutputGuard(PolicyMembers{
+		"outputAllow": {Value: allow},
+		"outputPatterns": {Value: []OutputPattern{
+			{Name: "whole", Pattern: "^secret$"},
+			{Name: "emoji", Pattern: "😀"},
+			{Name: "letter", Pattern: "X|Y"},
+			{Name: "label-word", Pattern: "redacted"},
+		}},
+	}, func() map[string]int64 { return counts })
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed an issued label through the public entry point. Record scans must
+	// preserve it while scanning both surrounding segments with the same workspace.
+	if _, err := guard.Text("secret", "message", false); err != nil {
+		t.Fatal(err)
+	}
+	input := json.RawMessage(`["secret","😀X","plain",{"😀":"Y"},"",true,null,12]`)
+	want := `["[redacted: whole]","[redacted: emoji][redacted: letter]","plain",{"[redacted: emoji]":"[redacted: letter]"},"",true,null,12]`
+	recordInput := json.RawMessage(`["[redacted: whole]","😀[redacted: whole]X"]`)
+	recordWant := `["[redacted: whole]","[redacted: emoji][redacted: whole][redacted: letter]"]`
+	var group sync.WaitGroup
+	for worker := 0; worker < 8; worker++ {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for pass := 0; pass < 4; pass++ {
+				clean, err := guard.JSON(input, "tool argument", false)
+				if err != nil || string(clean) != want {
+					t.Errorf("JSON redaction changed: %s, %v", clean, err)
+					return
+				}
+				marker := &RecordMarker{Redactions: map[string]int64{}}
+				clean, err = guard.JSON(recordInput, "records", false, marker)
+				if err != nil || string(clean) != recordWant || !reflect.DeepEqual(marker.Redactions, map[string]int64{"emoji": 1, "letter": 1}) {
+					t.Errorf("JSON record segments changed: %s, %v, %v", clean, err, marker.Redactions)
+					return
+				}
+			}
+		}()
+	}
+	group.Wait()
+	if len(guard.Counts()) != 0 || len(guard.TakeNotices()) != 0 {
+		t.Fatal("unrecorded JSON scans published counts or notices")
+	}
+}
+
+func TestOutputJSONWorkspaceAllocationBound(t *testing.T) {
+	allow := []string{}
+	for _, pattern := range baseOutputPatterns {
+		allow = append(allow, pattern.Name)
+	}
+	patterns := []OutputPattern{}
+	for _, name := range []string{"scan-a", "scan-b", "scan-c", "scan-d", "scan-e", "scan-f", "scan-g", "scan-h"} {
+		patterns = append(patterns, OutputPattern{Name: name, Pattern: "a?b?c?d?e?f?g?h?i?j?k?l?m?n?o?p?z"})
+	}
+	guard, err := NewOutputGuard(PolicyMembers{
+		"outputAllow":    {Value: allow},
+		"outputPatterns": {Value: patterns},
+	}, func() map[string]int64 { return map[string]int64{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := json.RawMessage("[" + strings.Repeat(`"x",`, 31) + `"x"]`)
+	allocations := testing.AllocsPerRun(5, func() {
+		clean, err := guard.JSON(input, "tool argument", false)
+		if err != nil || string(clean) != string(input) {
+			t.Fatal("no-match JSON changed")
+		}
+	})
+	// Decoding, text conversion and JSON walking may allocate per string;
+	// the five VM buffers must be reused across all 256 pattern scans.
+	if allocations > 900 {
+		t.Fatalf("JSON matcher workspace allocations: %.0f exceeds 900", allocations)
 	}
 }

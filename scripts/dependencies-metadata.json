@@ -1194,12 +1194,12 @@
       "repository": "https://go.googlesource.com/arch",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/crypto@v0.57.0": {
+    "golang.org/x/crypto@v0.58.0": {
       "binding": {
-        "go_mod_sum": "h1:Fdz0i5U6CoizGwLda9DttjSk6qlZo25zYNtR+ycvuZA=",
+        "go_mod_sum": "h1:Xh+kl5A+M0gMiWDytH2Hhr5Z7WbNCpv/eB/EFgfSk+w=",
         "path": "golang.org/x/crypto",
-        "sum": "h1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=",
-        "version": "v0.57.0"
+        "sum": "h1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54=",
+        "version": "v0.58.0"
       },
       "evidence": [
         {
@@ -1209,12 +1209,12 @@
         {
           "file": "module-version.info",
           "origin": {
-            "Hash": "3f62bf119e84c6e35e8518a2958089ade622d1a3",
-            "Ref": "refs/tags/v0.57.0",
+            "Hash": "8fdf07b3114278fb3b78c1cf1814e08bd851eb4c",
+            "Ref": "refs/tags/v0.58.0",
             "URL": "https://go.googlesource.com/crypto",
             "VCS": "git"
           },
-          "sha256": "b5711159f8090af77db970774d86305791718dae7c54256a898a9b432e98375a"
+          "sha256": "b11aa615962a25256853dcf67838352d2f5523f6719a8d75181ebcbb7ce615ec"
         }
       ],
       "license": "unknown: versioned license text requires manual identification",
@@ -1277,12 +1277,12 @@
       "repository": "https://go.googlesource.com/mod",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/net@v0.60.0": {
+    "golang.org/x/net@v0.62.0": {
       "binding": {
-        "go_mod_sum": "h1:2DA/G1UfVbCpQPeWTmMPGY7Cs2PkBkwu743bVX5PIVg=",
+        "go_mod_sum": "h1:WgDCOTH8iwtB66T4/GfI94AHo/hhdb7Hah9NDseQfiI=",
         "path": "golang.org/x/net",
-        "sum": "h1:79p50tfZlm0J9YfoDsSi639qSXNGVwEzOPLCxM2FsYU=",
-        "version": "v0.60.0"
+        "sum": "h1:18ELalfM5+XNRwzM2nYqXsZQ9ByS1uhj2O/U7+5jqRY=",
+        "version": "v0.62.0"
       },
       "evidence": [
         {
@@ -1292,12 +1292,12 @@
         {
           "file": "module-version.info",
           "origin": {
-            "Hash": "18ece0ce30bc35fa81fe72028bf309bb3ff3f4a5",
-            "Ref": "refs/tags/v0.60.0",
+            "Hash": "3de643db506517b3e652a13cc0b56034cea6b8e6",
+            "Ref": "refs/tags/v0.62.0",
             "URL": "https://go.googlesource.com/net",
             "VCS": "git"
           },
-          "sha256": "374e92c32cc0392f788b8904f77fd3d400df28def232813a9f2b3fa9e36205f0"
+          "sha256": "6adc90d9df36b729ca3e6bb697f9743faf486b09dce49afffb731f724b508c7d"
         }
       ],
       "license": "unknown: versioned license text requires manual identification",
@@ -1305,24 +1305,12 @@
       "repository": "https://go.googlesource.com/net",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/sync@v0.23.0": {
+    "golang.org/x/sync@v0.24.0": {
       "binding": {
-        "go_mod_sum": null,
+        "go_mod_sum": "h1:sUUOizhqBxiL6pEWpqNLUiaJn1ShEbZ6BBqskPbjZm0=",
         "path": "golang.org/x/sync",
-        "sum": null,
-        "version": "v0.23.0"
-      },
-      "evidence": [],
-      "license": "unknown: no versioned license file available locally",
-      "publishing_owner": "unknown: Go module metadata does not declare publishing owner",
-      "repository": "unknown: no cached versioned origin URL"
-    },
-    "golang.org/x/sys@v0.48.0": {
-      "binding": {
-        "go_mod_sum": "h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=",
-        "path": "golang.org/x/sys",
-        "sum": "h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=",
-        "version": "v0.48.0"
+        "sum": "h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=",
+        "version": "v0.24.0"
       },
       "evidence": [
         {
@@ -1332,12 +1320,40 @@
         {
           "file": "module-version.info",
           "origin": {
-            "Hash": "613e2570718ecde85c04e69ebd5585c3881c442c",
-            "Ref": "refs/tags/v0.48.0",
+            "Hash": "36f2d70ecde9857dc4e363242a1369c7645d6770",
+            "Ref": "refs/tags/v0.24.0",
+            "URL": "https://go.googlesource.com/sync",
+            "VCS": "git"
+          },
+          "sha256": "d12e1a2d422a79235baceab349c3c55ab3de707214338884cade9af3bb1a5b70"
+        }
+      ],
+      "license": "unknown: versioned license text requires manual identification",
+      "publishing_owner": "unknown: Go module metadata does not declare publishing owner",
+      "repository": "https://go.googlesource.com/sync",
+      "repository_owner": "unknown: origin URL is not an ownership assertion"
+    },
+    "golang.org/x/sys@v0.49.0": {
+      "binding": {
+        "go_mod_sum": "h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=",
+        "path": "golang.org/x/sys",
+        "sum": "h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA=",
+        "version": "v0.49.0"
+      },
+      "evidence": [
+        {
+          "file": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        },
+        {
+          "file": "module-version.info",
+          "origin": {
+            "Hash": "b6b8557e8e2974925aec7a136ba0e323eedc5f43",
+            "Ref": "refs/tags/v0.49.0",
             "URL": "https://go.googlesource.com/sys",
             "VCS": "git"
           },
-          "sha256": "f52c0a8146a472f3c780756e50b62c11d7fcd1f29dd379a962b5cb5cc392cbec"
+          "sha256": "b1eeba05824e4c555cee0454171f3dbc0b9bce51e322237b5bd98ceb14a62346"
         }
       ],
       "license": "unknown: versioned license text requires manual identification",
@@ -1345,12 +1361,12 @@
       "repository": "https://go.googlesource.com/sys",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/term@v0.46.0": {
+    "golang.org/x/term@v0.47.0": {
       "binding": {
-        "go_mod_sum": "h1:+K02xbkittuwc0Am4abfA3Fc+XRGXkvBXNO88NCXPoc=",
+        "go_mod_sum": "h1:efAfAuG6RKABvg1ArGebRkvX6LXul14SM67o2e4mUCY=",
         "path": "golang.org/x/term",
-        "sum": "h1:3+OXuTbaKDgwk8jTi3aSLHRlmWqHEUDUtxnbFigO4YE=",
-        "version": "v0.46.0"
+        "sum": "h1:cpyOwQkr2Nzxe2p6KnrTG7Ei2wtzjsuSjhpXXepZ/BM=",
+        "version": "v0.47.0"
       },
       "evidence": [
         {
@@ -1360,12 +1376,12 @@
         {
           "file": "module-version.info",
           "origin": {
-            "Hash": "6226200ed12cba417a9d9e799c2a7179d3fc0e27",
-            "Ref": "refs/tags/v0.46.0",
+            "Hash": "0851034afad912733699827b3bb94436f059797f",
+            "Ref": "refs/tags/v0.47.0",
             "URL": "https://go.googlesource.com/term",
             "VCS": "git"
           },
-          "sha256": "9cc8085269ff2b8089d9b7e91363a1dd9d822d94e5c33c79bfc768cae41de5eb"
+          "sha256": "cb0fa8a9dcf9f9ab5849f254e285d0465691f97825b19d0eda8e82bdad64bb23"
         }
       ],
       "license": "unknown: versioned license text requires manual identification",
@@ -1373,12 +1389,12 @@
       "repository": "https://go.googlesource.com/term",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/text@v0.42.0": {
+    "golang.org/x/text@v0.43.0": {
       "binding": {
-        "go_mod_sum": "h1:ojzP1Z+2QtioaF8DTtO8K5q7JWVVYwZKenzujK0Zd0E=",
+        "go_mod_sum": "h1:hbSIYA/amXcRXTFSZqh8tWHEoqRvvbKPJ2uz/KU+a+s=",
         "path": "golang.org/x/text",
-        "sum": "h1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=",
-        "version": "v0.42.0"
+        "sum": "h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=",
+        "version": "v0.43.0"
       },
       "evidence": [
         {
@@ -1388,12 +1404,12 @@
         {
           "file": "module-version.info",
           "origin": {
-            "Hash": "fafe4a06967e06550e69ee42787d9902845d2a3f",
-            "Ref": "refs/tags/v0.42.0",
+            "Hash": "ac40b0f06c159afb5bfca4d1860f8b4b60dbc160",
+            "Ref": "refs/tags/v0.43.0",
             "URL": "https://go.googlesource.com/text",
             "VCS": "git"
           },
-          "sha256": "5b9b61f55293ec161f0cce9c4357abf80071864a801f8971490c68b84019df87"
+          "sha256": "9bcbfda1bbd803b06a02932a06d8a1ba56e2bc944ce30674e415e010b48580fb"
         }
       ],
       "license": "unknown: versioned license text requires manual identification",
@@ -1401,26 +1417,30 @@
       "repository": "https://go.googlesource.com/text",
       "repository_owner": "unknown: origin URL is not an ownership assertion"
     },
-    "golang.org/x/tools@v0.49.0": {
+    "golang.org/x/tools@v0.51.0": {
       "binding": {
-        "go_mod_sum": "h1:SJNXV9DBKT0UbdttsQjbfJlAE/q+y36++zo3uL3N0Oo=",
+        "go_mod_sum": "h1:9eEncMayCV6zRMGhR5eZEC2iBx98qWcF1HZ9Z7wJOoA=",
         "path": "golang.org/x/tools",
-        "sum": null,
-        "version": "v0.49.0"
+        "sum": "h1:k4Xc/1Om9jwkBJBo4NVLMSARBoWtK10mx+W5BnXCeAI=",
+        "version": "v0.51.0"
       },
       "evidence": [
         {
+          "file": "LICENSE",
+          "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+        },
+        {
           "file": "module-version.info",
           "origin": {
-            "Hash": "18332fec72972efbb8ab9881984fec2d8cfc2b58",
-            "Ref": "refs/tags/v0.49.0",
+            "Hash": "ea2f152dc35325e4b9b639583972375972350a84",
+            "Ref": "refs/tags/v0.51.0",
             "URL": "https://go.googlesource.com/tools",
             "VCS": "git"
           },
-          "sha256": "96121a4335b289b365ce47b0aebecfa1101ecc8cc0bb68498cde42b165e4f0d2"
+          "sha256": "bc599612a9c2f6f84a7295b4e592344f6d8326b957fa636fef38e6528c8320d9"
         }
       ],
-      "license": "unknown: no versioned license file available locally",
+      "license": "unknown: versioned license text requires manual identification",
       "publishing_owner": "unknown: Go module metadata does not declare publishing owner",
       "repository": "https://go.googlesource.com/tools",
       "repository_owner": "unknown: origin URL is not an ownership assertion"

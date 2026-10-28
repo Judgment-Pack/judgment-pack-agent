@@ -94,15 +94,15 @@ Go framework transitive JSON and utility libraries remain individually visible b
 | github.com/yargevad/filepathx | v1.0.0 | indirect | none | in configured package closure (1 packages) | MIT | unknown: Go module metadata does not declare publishing owner | unknown: no cached versioned origin URL |
 | go.uber.org/mock | v0.4.0 | indirect | none | module graph only | Apache-2.0 | unknown: Go module metadata does not declare publishing owner | https://github.com/uber/mock |
 | golang.org/x/arch | v0.11.0 | indirect | none | in configured package closure (1 packages) | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/arch |
-| golang.org/x/crypto | v0.57.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/crypto |
+| golang.org/x/crypto | v0.58.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/crypto |
 | golang.org/x/exp | v0.0.0-20230713183714-613f0c0eb8a1 | indirect | none | in configured package closure (2 packages) | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/exp |
 | golang.org/x/mod | v0.41.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/mod |
-| golang.org/x/net | v0.60.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/net |
-| golang.org/x/sync | v0.23.0 | indirect | none | module graph only | unknown: no versioned license file available locally | unknown: Go module metadata does not declare publishing owner | unknown: no cached versioned origin URL |
-| golang.org/x/sys | v0.48.0 | indirect | none | in configured package closure (1 packages) | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/sys |
-| golang.org/x/term | v0.46.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/term |
-| golang.org/x/text | v0.42.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/text |
-| golang.org/x/tools | v0.49.0 | indirect | none | module graph only | unknown: no versioned license file available locally | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/tools |
+| golang.org/x/net | v0.62.0 | direct | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/net |
+| golang.org/x/sync | v0.24.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/sync |
+| golang.org/x/sys | v0.49.0 | indirect | none | in configured package closure (1 packages) | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/sys |
+| golang.org/x/term | v0.47.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/term |
+| golang.org/x/text | v0.43.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/text |
+| golang.org/x/tools | v0.51.0 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | https://go.googlesource.com/tools |
 | gopkg.in/check.v1 | v1.0.0-20180628173108-788fd7840127 | indirect | none | module graph only | unknown: versioned license text requires manual identification | unknown: Go module metadata does not declare publishing owner | unknown: no cached versioned origin URL |
 | gopkg.in/fsnotify.v1 | v1.4.7 | indirect | none | module graph only | unknown: no versioned license file available locally | unknown: Go module metadata does not declare publishing owner | unknown: no cached versioned origin URL |
 | gopkg.in/tomb.v1 | v1.0.0-20141024135613-dd632973f1e7 | indirect | none | module graph only | unknown: no versioned license file available locally | unknown: Go module metadata does not declare publishing owner | unknown: no cached versioned origin URL |
@@ -448,10 +448,10 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 
 Metadata records bind exact module/version/sum or npm location/version/integrity; evidence SHA-256 values refer to local versioned package manifests, module origin records or license text. Missing local package metadata is retained as unknown. Refresh uses no registry query. CI regeneration reads the checked-in metadata snapshot and resolves the graph/closure with the configured toolchain.
 
-- `go/go.mod`: `3a9e6edad6088dc10e71a24ec158f669d0b4d1c285f19280cb55e9e604c682db`
-- `go/go.sum`: `0c0521042ae1a4cae2337734cf8ae0ab2692a9c8f6755328f915896c3038fcec`
+- `go/go.mod`: `a5e7847150e3d021ba92d575887e3fac069ca012d940bb0a207ddfb8241dff99`
+- `go/go.sum`: `90154d6afad1d1c9111dfc54d4ce606142976ef83bb43d3866e587777a2c902d`
 - `package-lock.json`: `c4440cf4db5fdcc86b2a803449954dcbd940629ed262193cfbb9f713ea44d944`
 - `scripts/dependencies-config.json`: `02fbaac28ac926d8abe15484f60c9f8c2833a188bf8c375d149568dddcb56a9b`
-- `scripts/dependencies-metadata.json`: `03bba0570f6bc8238f73e4e1732077663da60b384e28a3eba590dbc4b26d856c`
+- `scripts/dependencies-metadata.json`: `3ea9e16a6740ebaf6b7c30233ff659835f845249e33530f25606afd7f2331fb7`
 
 Selected third-party modules: 77. npm installation entries: 296.

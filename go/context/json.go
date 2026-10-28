@@ -167,7 +167,7 @@ func readValue(decoder *json.Decoder) (*Value, error) {
 
 // arrayIndex reports a name a JavaScript object orders as an integer index.
 func arrayIndex(key string) (uint64, bool) {
-	if key == "" || (len(key) > 1 && key[0] == '0') {
+	if key == "" || key[0] < '0' || key[0] > '9' || (len(key) > 1 && key[0] == '0') {
 		return 0, false
 	}
 	n, err := strconv.ParseUint(key, 10, 64)
@@ -244,15 +244,22 @@ func (v *Value) Set(key string, val *Value) *Value {
 			return v
 		}
 	}
-	v.o = append(v.o, member{key, val})
-	sort.SliceStable(v.o, func(i, j int) bool {
-		a, aIndex := arrayIndex(v.o[i].key)
-		b, bIndex := arrayIndex(v.o[j].key)
-		if aIndex && bIndex {
-			return a < b
+	// Existing members already have JavaScript's enumeration order. Ordinary
+	// names append; only an integer index needs insertion into the sorted prefix.
+	at := len(v.o)
+	if index, numeric := arrayIndex(key); numeric {
+		at = 0
+		for at < len(v.o) {
+			prior, isIndex := arrayIndex(v.o[at].key)
+			if !isIndex || prior > index {
+				break
+			}
+			at++
 		}
-		return aIndex && !bIndex
-	})
+	}
+	v.o = append(v.o, member{})
+	copy(v.o[at+1:], v.o[at:])
+	v.o[at] = member{key, val}
 	return v
 }
 

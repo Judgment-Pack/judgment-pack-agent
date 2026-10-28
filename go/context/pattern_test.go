@@ -238,6 +238,10 @@ func TestMatchRangesWorkspaceEdgesAndBudget(t *testing.T) {
 		{"😀", "x😀y😀", 100, [][2]int{{1, 3}, {4, 6}}, true, 84},
 		{"a", "a", 2, nil, false, 0},
 		{"a", "a", 7, nil, false, -1},
+		// Hand-counted branch and assertion programs retain instruction-order charges.
+		{"a|b", "b", 100, [][2]int{{0, 1}}, true, 81},
+		{"a|b", "b", 18, nil, false, -1},
+		{"^a$", "a", 100, [][2]int{{0, 1}}, true, 86},
 	}
 	for _, c := range cases {
 		p, err := CompilePattern(c.pattern, false)
@@ -292,4 +296,103 @@ func TestMatchRangesWorkspaceIsolatedAcrossCalls(t *testing.T) {
 		}()
 	}
 	group.Wait()
+}
+
+func TestMatchRangesDenseProgramAllocationBound(t *testing.T) {
+	// Many live instructions exercise the sparse active list and its per-position reset.
+	p, err := CompilePattern("a?b?c?d?e?f?g?h?i?j?k?l?m?n?o?p?z", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Repeat("x", 512)
+	allocations := testing.AllocsPerRun(5, func() {
+		budget := PatternBudget{Steps: 1000000}
+		ranges, ok := MatchRanges(p, text, &budget)
+		if !ok || len(ranges) != 0 {
+			t.Fatal("dense program changed a no-match result")
+		}
+	})
+	if allocations > 14 {
+		t.Fatalf("dense program workspace allocations: %.0f exceeds 14", allocations)
+	}
+}
+
+func TestMatchRangesWorkspaceResetsAcrossPatternsAndTexts(t *testing.T) {
+	// Vary program size, both list orientations, empty/UTF-16 text and the
+	// return points before any thread and after a branch exhausts its budget.
+	cases := []struct {
+		pattern, text string
+		limit         int
+		ranges        [][2]int
+		ok            bool
+		remaining     int
+	}{
+		{"^a$", "a", 100, [][2]int{{0, 1}}, true, 86},
+		{"a", "aa", 100, [][2]int{{0, 1}, {1, 2}}, true, 88},
+		{"a|b", "b", 18, nil, false, -1},
+		{"a", "a", 2, nil, false, 0},
+		{"😀", "x😀y😀", 100, [][2]int{{1, 3}, {4, 6}}, true, 84},
+		{"a", "a", 7, nil, false, -1},
+		{"a{0}", "a", 100, [][2]int{{0, 0}, {1, 1}}, true, 95},
+		{"a|b", "b", 100, [][2]int{{0, 1}}, true, 81},
+		{"a", "", 100, [][2]int{}, true, 96},
+		{"a", "a", 100, [][2]int{{0, 1}}, true, 92},
+	}
+	var workspace matchRangesWorkspace
+	for pass := 0; pass < 3; pass++ {
+		for _, c := range cases {
+			pattern, err := CompilePattern(c.pattern, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			budget := PatternBudget{Steps: c.limit}
+			ranges, ok := workspace.match(pattern, c.text, &budget)
+			if !reflect.DeepEqual(ranges, c.ranges) || ok != c.ok || budget.Steps != c.remaining {
+				t.Fatalf("pass %d %q %q: ranges %v ok %v remaining %d", pass, c.pattern, c.text, ranges, ok, budget.Steps)
+			}
+			for _, state := range [][]int{workspace.current, workspace.next} {
+				for _, start := range state[:cap(state)] {
+					if start != -1 {
+						t.Fatal("workspace retained a touched counter after return")
+					}
+				}
+			}
+			if len(workspace.pcs) != 0 || len(workspace.nextPCs) != 0 || len(workspace.stack) != 0 {
+				t.Fatal("workspace retained an active list after return")
+			}
+			freshBudget := PatternBudget{Steps: c.limit}
+			fresh, freshOK := MatchRanges(pattern, c.text, &freshBudget)
+			if !reflect.DeepEqual(ranges, fresh) || ok != freshOK || budget != freshBudget {
+				t.Fatal("reused workspace differed from an isolated invocation")
+			}
+		}
+	}
+	pattern, _ := CompilePattern("a", false)
+	budget := PatternBudget{Steps: 100}
+	retained, _ := workspace.match(pattern, "aa", &budget)
+	budget.Steps = 100
+	workspace.match(pattern, "a", &budget)
+	if !reflect.DeepEqual(retained, [][2]int{{0, 1}, {1, 2}}) {
+		t.Fatal("workspace reuse changed previously returned ranges")
+	}
+}
+
+func TestMatchRangesReusedWorkspaceAllocationBound(t *testing.T) {
+	pattern, err := CompilePattern("a?b?c?d?e?f?g?h?i?j?k?l?m?n?o?p?z", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.Repeat("x", 512)
+	var workspace matchRangesWorkspace
+	allocations := testing.AllocsPerRun(5, func() {
+		budget := PatternBudget{Steps: 1000000}
+		ranges, ok := workspace.match(pattern, text, &budget)
+		if !ok || len(ranges) != 0 {
+			t.Fatal("reused workspace changed a no-match result")
+		}
+	})
+	// Only UTF-16 conversion may allocate after the workspace is warm.
+	if allocations > 2 {
+		t.Fatalf("reused matcher workspace allocations: %.0f exceeds 2", allocations)
+	}
 }
