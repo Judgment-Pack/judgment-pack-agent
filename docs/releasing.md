@@ -120,7 +120,7 @@ Every job works on the commit the run was started for, by its digest, not on the
    environment has a reviewer rule. Matching host upgrade guidance and its notes
    link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
-2. **Verifies trusted exact-source CI evidence.** The shared
+2. **Verifies trusted exact-source CI evidence.** The Agent-owned
    [evidence gate](ci-evidence.md) requires complete successful `contract`/`check` and full
    mutation-table coverage on the exact release commit from trusted main workflows, with
    independently resolved current inputs. Tag-sensitive checks and fresh advisory review
@@ -161,7 +161,7 @@ fails: release a new version.
 
 The full mutation table still runs on every main push, weekly and by dispatch;
 PRs run a sample. Release verifies all four full shards and `every row applies`
-through the shared [trusted CI evidence gate](ci-evidence.md), together with
+through the [trusted CI evidence gate](ci-evidence.md), together with
 `contract` and `check`. It selects the latest applicable main run and its latest
 attempt without filtering for completion; a newer failed, canceled or running
 attempt blocks reuse. A PR sample and a partial rerun cannot qualify.
@@ -175,6 +175,14 @@ exception decisions remain required; the optional audit's CI skip proves nothing
 about current advisories. Actual-tag upgrade, packaging, approval, publication and
 paired Go-tag gates stay in force. See the gate document for identities, API
 limits, observed baseline durations and candidate measurement limits.
+
+For v0.11.0 only, the [approved two-image exception](security/v011-runner-image-exception.md)
+permits the two recorded ImageVersions until 2026-11-07 00:00:00 UTC. Both actual
+producer and verifier must satisfy its exact scope/OS tuple and all configured
+tools must still match. Verification checks expiry again after collection; later
+versions and verification at/after expiry refuse. This accepts unknown host-image
+differences and does not establish image equivalence. New validated main evidence
+and independent review are required; every other gate above remains in force.
 
 ### The window that remains
 
