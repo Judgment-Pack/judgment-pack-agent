@@ -356,6 +356,7 @@ async function toolsPage(page) {
 
   page.add('## Owner taxonomy', page.rootOf('tool-taxonomy.json','### Mandatory declaration'),
     'Host tools carry taxonomy; Runtime publishes its operation/effect/checkKind/experimental directly in MCP _meta. Missing or contradictory metadata is refused. Legacy effect remains execution bookkeeping and effectClass is a checked projection. Review admits discover/read/check, work adds propose/act, and both retain a pure ask. Runtime act metadata is refused until canonical Runtime approval is supported; existing rehearsal rewriting never relabels owner capability. See ADR-0027.',
+    'The check subkind `rehearse` (ADR-0027 amendment, #241) is a non-binding dry evaluation of an artifact the host declares: effect pure or read only, never read-external or act; its description begins "Rehearsal, non-binding"; it writes no audit, resource or run state and grants no evaluation authority.',
     'External reads require a host verifier over immutable canonical source/descriptor identity, source tool, arguments captured before execution, result and receipt. The host verifies signatures and binding; Agent requires true before publishing success and does not infer verification from source/trust labels.')
 
   page.add('## Runtime tools', '', nodeSection('### The ceiling', ceiling, 'tool-offer.json').replace(/\nType: .*\n/, '\n'))

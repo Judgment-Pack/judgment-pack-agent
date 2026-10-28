@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten owner taxonomy schema records; behavior and malformed inputs are in contract/testdata/taxonomy.",
+  "description": "Handwritten owner taxonomy schema records; behavior and malformed inputs are in contract/testdata/taxonomy. The two rehearse records are the ADR-0027 amendment's (#241): a non-binding rehearsal declares check with effect read or pure. refused are host declarations both validators refuse, each with the reason they state (problem): evaluate with read, which only the gated Runtime path may declare (the schema admits it as a record; the owner decides), rehearse under read, rehearse with read-external and rehearse with act; the last three fail the schema too. Written by hand; toolTaxonomy.test.ts and go/context/tooltaxonomy_test.go hold both validators to each.",
   "schema": "tool-taxonomy.json",
   "source": {
     "harness": {
@@ -54,6 +54,16 @@
       "checkKind": "advise"
     },
     {
+      "operation": "check",
+      "effect": "read",
+      "checkKind": "rehearse"
+    },
+    {
+      "operation": "check",
+      "effect": "pure",
+      "checkKind": "rehearse"
+    },
+    {
       "operation": "transform",
       "effect": "pure"
     },
@@ -82,6 +92,39 @@
     {
       "operation": "ask",
       "effect": "pure"
+    }
+  ],
+  "refused": [
+    {
+      "taxonomy": {
+        "operation": "evaluate",
+        "effect": "read"
+      },
+      "problem": "only the gated runtime may declare evaluate"
+    },
+    {
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read",
+        "checkKind": "rehearse"
+      },
+      "problem": "tool taxonomy checkKind contradicts its operation"
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "read-external",
+        "checkKind": "rehearse"
+      },
+      "problem": "tool taxonomy rehearse admits only a pure or read effect"
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "act",
+        "checkKind": "rehearse"
+      },
+      "problem": "tool taxonomy rehearse admits only a pure or read effect"
     }
   ]
 }

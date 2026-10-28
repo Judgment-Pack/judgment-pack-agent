@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest'
 import vectors from '../../contract/testdata/taxonomy/tools.json'
 import profiles from '../../contract/testdata/taxonomy/profiles.json'
+import declarations from '../../contract/vectors/taxonomy/declarations.json'
 import {taxonomyProblem,runtimeTaxonomyProblem,taxonomyFits,presetLimit,capabilityProfile,profileFits,defaultApproval,taxonomyAnnotations,type ToolTaxonomy,type TaxonomyEffect,type TaxonomyLimit} from './toolTaxonomy'
 import {declareSources,toolListDigest,SourceGate} from './toolSources'
 import {declareSkills,skillDigest,catalogueSkills,type SkillDeclaration} from './skills'
@@ -87,5 +88,34 @@ describe('ADR0027 taxonomy foundation',()=>{
   expect(rows.find(row=>row.source==='notes')).toMatchObject({calls:3,refused:2})
   await expect(declareSources([{...t,source:{...t.source!,verifyReceipt:undefined}}],[])).rejects.toThrow('requires a host receipt verifier')
   const changed=await declareSources([{...t,taxonomy:{operation:'answer',effect:'read-external'}}],[]);expect(changed.hostTools).toHaveLength(0)
+ })
+ it('admits rehearse only as a pure or read check whose description opens non-binding (#241)',async()=>{
+  const refusal=async(tool:HostTool,problem:string)=>{
+   try {await declareSources([tool],[]);throw Error('missing refusal')}
+   catch(error){
+    expect(error).toBeInstanceOf(AIFailureError)
+    expect((error as AIFailureError).failure.code).toBe('configuration')
+    expect((error as Error).message).toBe(`Tool taxonomy refused: ${problem}. Nothing was sent.`)
+    expect(()=>readRunEvent(failureEvent((error as AIFailureError).failure))).not.toThrow()
+   }
+  }
+  for(const t of declarations.items)expect(taxonomyProblem(t,true)).toBe('')
+  expect(declarations.items.filter(t=>'checkKind' in t&&t.checkKind==='rehearse')).toHaveLength(2)
+  expect(declarations.refused).toHaveLength(4)
+  for(const row of declarations.refused){
+   expect(taxonomyProblem(row.taxonomy)).toBe(row.problem)
+   await refusal({...local(),description:'Rehearsal, non-binding: read notes',taxonomy:row.taxonomy as ToolTaxonomy},row.problem)
+  }
+  for(const row of vectors.rehearsal.admitted){
+   const out=await declareSources([{...row.declaration,execute:async()=>({content:[]})} as HostTool],[])
+   expect(out.hostTools).toHaveLength(1)
+   const admitted=out.hostTools[0]!
+   expect(admitted.annotations).toEqual(row.annotations)
+   expect(defaultApproval(admitted.taxonomy!.effect)).toBe(row.approval)
+   expect(taxonomyFits(admitted.taxonomy!,presetLimit('review'))).toBe(row.review)
+   expect(taxonomyFits(admitted.taxonomy!,presetLimit('work'))).toBe(row.work)
+  }
+  expect(vectors.rehearsal.refused).toHaveLength(4)
+  for(const row of vectors.rehearsal.refused)await refusal({...row.declaration,execute:async()=>({content:[]})} as HostTool,row.problem)
  })
 })

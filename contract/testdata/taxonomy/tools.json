@@ -89,6 +89,26 @@
     },
     {
       "taxonomy": {
+        "operation": "check",
+        "effect": "read",
+        "checkKind": "rehearse"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
+        "operation": "check",
+        "effect": "pure",
+        "checkKind": "rehearse"
+      },
+      "approval": "none",
+      "review": true,
+      "work": true
+    },
+    {
+      "taxonomy": {
         "operation": "transform",
         "effect": "pure"
       },
@@ -452,5 +472,153 @@
       },
       "allowed": true
     }
-  ]
+  ],
+  "rehearsal": {
+    "admitted": [
+      {
+        "declaration": {
+          "name": "graph_rehearse",
+          "description": "Rehearsal, non-binding: evaluate every node of one declared saved graph with the given inputs. Nothing is recorded and the result grants no authority.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "graph": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "graph",
+              "inputs"
+            ]
+          },
+          "taxonomy": {
+            "operation": "check",
+            "effect": "read",
+            "checkKind": "rehearse"
+          }
+        },
+        "approval": "none",
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "review": true,
+        "work": true
+      }
+    ],
+    "refused": [
+      {
+        "declaration": {
+          "name": "graph_rehearse",
+          "description": "Evaluate every node of one declared saved graph with the given inputs.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "graph": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "graph",
+              "inputs"
+            ]
+          },
+          "taxonomy": {
+            "operation": "check",
+            "effect": "read",
+            "checkKind": "rehearse"
+          }
+        },
+        "problem": "a rehearse check's description must begin \"Rehearsal, non-binding\""
+      },
+      {
+        "declaration": {
+          "name": "graph_rehearse",
+          "description": "Evaluate one declared saved graph with the given inputs. Rehearsal, non-binding.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "graph": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "graph",
+              "inputs"
+            ]
+          },
+          "taxonomy": {
+            "operation": "check",
+            "effect": "read",
+            "checkKind": "rehearse"
+          }
+        },
+        "problem": "a rehearse check's description must begin \"Rehearsal, non-binding\""
+      },
+      {
+        "declaration": {
+          "name": "graph_rehearse",
+          "description": "rehearsal, non-binding: evaluate every node of one declared saved graph with the given inputs.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "graph": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "graph",
+              "inputs"
+            ]
+          },
+          "taxonomy": {
+            "operation": "check",
+            "effect": "read",
+            "checkKind": "rehearse"
+          }
+        },
+        "problem": "a rehearse check's description must begin \"Rehearsal, non-binding\""
+      },
+      {
+        "declaration": {
+          "name": "graph_rehearse",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "graph": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "graph",
+              "inputs"
+            ]
+          },
+          "taxonomy": {
+            "operation": "check",
+            "effect": "read",
+            "checkKind": "rehearse"
+          }
+        },
+        "problem": "a rehearse check's description must begin \"Rehearsal, non-binding\""
+      }
+    ]
+  }
 }

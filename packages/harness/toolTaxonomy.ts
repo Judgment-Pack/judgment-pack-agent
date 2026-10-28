@@ -2,13 +2,17 @@ import {ASSISTANT_TOOLS} from './host'
 /** ADR-0027. Owner declarations are separate from legacy execution bookkeeping. */
 export const OPERATION_FAMILIES = ['discover', 'read', 'answer', 'check', 'transform', 'evaluate', 'propose', 'act', 'run', 'own-state', 'ask'] as const
 export const TAXONOMY_EFFECTS = ['pure', 'read', 'read-external', 'propose', 'act'] as const
-export const CHECK_KINDS = ['validate', 'check', 'verify', 'test', 'analyze', 'advise'] as const
+export const CHECK_KINDS = ['validate', 'check', 'verify', 'test', 'analyze', 'advise', 'rehearse'] as const
 export type OperationFamily = typeof OPERATION_FAMILIES[number]
 export type TaxonomyEffect = typeof TAXONOMY_EFFECTS[number]
 export interface ToolTaxonomy { operation: OperationFamily; effect: TaxonomyEffect; checkKind?: typeof CHECK_KINDS[number]; experimental?: boolean }
 export interface CapabilityProfile { effect: TaxonomyEffect; operations: OperationFamily[] }
 export interface TaxonomyLimit { operations?: readonly OperationFamily[]; effects?: readonly TaxonomyEffect[] }
 export type PermissionPreset = 'review' | 'work'
+/** ADR-0027 amendment (#241): a rehearsal reads declared local state at most; never read-external or act. */
+export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read']
+/** A host's rehearse declaration opens its offered description with these words, so the model reads the result as non-binding. */
+export const REHEARSAL_DESCRIPTION = 'Rehearsal, non-binding'
 const compatible: Record<OperationFamily, readonly TaxonomyEffect[]> = {
   discover: ['pure','read','read-external'], read: ['read','read-external'], answer: ['pure','read','read-external'],
   check: ['pure','read','read-external'], transform: ['pure'], evaluate: ['pure','read','act'], propose: ['propose'], act: ['act'],
@@ -21,6 +25,7 @@ export function taxonomyProblem(value: unknown, runtime = false): string {
   if (Object.keys(value).some(k => !['operation','effect','checkKind','experimental'].includes(k))) return 'tool taxonomy contains an unsupported member'
   if (!(OPERATION_FAMILIES as readonly unknown[]).includes(value.operation) || !(TAXONOMY_EFFECTS as readonly unknown[]).includes(value.effect)) return 'tool taxonomy operation or effect is undeclared'
   const t = value as unknown as ToolTaxonomy
+  if (t.operation === 'check' && t.checkKind === 'rehearse' && !REHEARSE_EFFECTS.includes(t.effect)) return 'tool taxonomy rehearse admits only a pure or read effect'
   if (!compatible[t.operation].includes(t.effect)) return 'tool taxonomy operation contradicts its effect'
   if (t.operation === 'check' ? !(CHECK_KINDS as readonly unknown[]).includes(t.checkKind) : value.checkKind !== undefined) return 'tool taxonomy checkKind contradicts its operation'
   if (value.experimental !== undefined && typeof value.experimental !== 'boolean') return 'tool taxonomy experimental must be boolean'

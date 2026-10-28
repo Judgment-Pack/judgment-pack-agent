@@ -4,6 +4,17 @@
 
 Runtime must publish `{operation,effect,checkKind?,experimental?}` directly inside MCP `_meta`. Gateway snapshot-backed registrations require current V2 owner taxonomy and independent full approval context; historical V1 remains readable but cannot authorize current admission. An external read's host verifier must authenticate the receipt and bind its source, descriptor pin, tool, canonical arguments and canonical result. Returning true merely because a receipt string exists violates the host contract.
 
+Check subkinds for hosts: `validate`, `check`, `verify`, `test`, `analyze`, `advise` and, since the
+ADR-0027 amendment of 2026-10-29 (#241), `rehearse`: a non-binding dry evaluation of an artifact
+the host declares (a saved graph or pack identity), whose result carries no authority and whose
+execution writes no audit, resource or run state. A rehearse tool declares
+`{operation:'check',effect:'read'|'pure',checkKind:'rehearse'}`; read-external, act or any other
+operation is refused. Its description begins "Rehearsal, non-binding", or host admission refuses
+it. The executor resolves and re-checks the declared artifact, always passes the Runtime's
+rehearsal flag and requires the rehearsal marker on the answer; the package cannot see those steps,
+and the label grants no evaluation authority. It derives readOnly and idempotent hints and approval
+none like any read check. The Desk's `graph_rehearse` is the first declarer.
+
 A host approving a skill computes its pin with `skillDigest` / `SkillDigest` and the admitted tool taxonomy map. Pass that same run's map to skill admission. Unknown dependencies never receive a default profile. Optional kind/tags affect the pin; a computed profile is never accepted from an author or model. Preset helpers always retain a valid pure ask, preserving `ask_user`. Routing #172 must consume these helpers and still apply all existing phase, approval and name gates.
 
 
