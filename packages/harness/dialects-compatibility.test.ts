@@ -64,7 +64,7 @@ for(const stage of ['candidate','checked'] as const)for(const drift of ['lost','
  await expect(x.tools[1]!.execute(args,stop.signal)).rejects.toMatchObject({failure:{outcome:'unknown'}})
  const before=[...x.state.calls]
  await expect(x.propose(bound)).rejects.toMatchObject({failure:{outcome:'unknown'}})
- expect(x.state.calls.slice(before.length)).toEqual(['read'])
+ expect(x.state.calls.slice(before.length)).toEqual(['read','page'])
  expect(x.state.drafts).toHaveLength(stage==='candidate'?1:2);expect(x.state.retained).toHaveLength(0)
  expect(x.state.calls.includes('preview')).toBe(false)
 })
@@ -90,7 +90,7 @@ it('refuses final receipt lineage drift and never retries through new nonce',asy
  const x=dialectFixture(),bound=await x.read(),original=x.ports.retain;x.ports.retain=async(...args)=>{const ack=await original(...args);return {...ack,draft:{...ack.draft,checkedReceipt:'wrong'}}}
  await expect(x.propose(bound)).rejects.toMatchObject({failure:{outcome:'unknown'}})
  const before=[...x.state.calls];await expect(x.propose(bound)).rejects.toMatchObject({failure:{outcome:'unknown'}})
- expect(x.state.calls.slice(before.length)).toEqual(['read']);expect(x.state.retained).toHaveLength(1)
+ expect(x.state.calls.slice(before.length)).toEqual(['read','page']);expect(x.state.retained).toHaveLength(1)
 })
 it('pinned actual review rechecks edited draft; preview refusal and fresh pack/CAS refusal cannot save',async()=>{
  const preview=source('ConversionPreview.tsx'),from=preview.indexOf('async function check(){')+'async function check(){'.length,to=preview.indexOf('return <Disclosure',from)

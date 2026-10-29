@@ -1,0 +1,358 @@
+{
+  "description": "Handwritten #243 paging witnesses: the complete original inventory travels as an index of SHA-256 digests and its declarations arrive in read-port pages bound to the collection revision and inventory digest. Items are the host pages the cases serve by cursor; inventory, index, changedInventory and changedIndex are the host collection before and after a change during preview. Digests are SHA-256 over the exact declaration bytes and over the canonical JSON of index.revisions, computed outside the package. Go and TypeScript drive both factories through every case.",
+  "schema": "dialect-authoring.json#/$defs/page",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/dialects.ts (researchIndex, declarationPage, readDialectDeclarations, dialectResearchIndex)",
+      "packages/harness/dialects.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 0,
+      "declarations": [
+        {
+          "revision": "original-recipe:one",
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        },
+        {
+          "revision": "original-recipe:one",
+          "name": "amount",
+          "fieldJson": "{\"name\":\"amount\",\"type\":\"decimal\",\"description\":\"Original amount, revision one.\",\"precision\":2}"
+        }
+      ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 2,
+      "declarations": [
+        {
+          "revision": "original-recipe:two",
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"description\":\"Retyped in revision two.\"}"
+        },
+        {
+          "revision": "original-recipe:two",
+          "name": "note",
+          "fieldJson": "{\"name\":\"note\",\"type\":\"text-list\",\"description\":\"Free notes.\"}"
+        }
+      ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 4,
+      "declarations": [
+        {
+          "revision": "original-recipe:two",
+          "name": "count",
+          "fieldJson": "{\"name\":\"count\",\"type\":\"integer\",\"description\":\"A count, kept as 007 in its spelling.\"}"
+        }
+      ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 2,
+      "declarations": [
+        {
+          "revision": "original-recipe:two",
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"description\":\"Retyped in revision 2.\"}"
+        },
+        {
+          "revision": "original-recipe:two",
+          "name": "note",
+          "fieldJson": "{\"name\":\"note\",\"type\":\"text-list\",\"description\":\"Free notes.\"}"
+        }
+      ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:other",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 0,
+      "declarations": [
+        {
+          "revision": "original-recipe:one",
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        },
+        {
+          "revision": "original-recipe:one",
+          "name": "amount",
+          "fieldJson": "{\"name\":\"amount\",\"type\":\"decimal\",\"description\":\"Original amount, revision one.\",\"precision\":2}"
+        }
+      ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "cursor": 4,
+      "declarations": []
+    }
+  ],
+  "request": {
+    "id": "collection:opaque/one",
+    "packKey": "declared:pack",
+    "revision": "revision:one"
+  },
+  "inventory": [
+    {
+      "revision": "original-recipe:one",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        },
+        {
+          "name": "amount",
+          "fieldJson": "{\"name\":\"amount\",\"type\":\"decimal\",\"description\":\"Original amount, revision one.\",\"precision\":2}"
+        }
+      ]
+    },
+    {
+      "revision": "original-recipe:two",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"description\":\"Retyped in revision two.\"}"
+        },
+        {
+          "name": "note",
+          "fieldJson": "{\"name\":\"note\",\"type\":\"text-list\",\"description\":\"Free notes.\"}"
+        },
+        {
+          "name": "count",
+          "fieldJson": "{\"name\":\"count\",\"type\":\"integer\",\"description\":\"A count, kept as 007 in its spelling.\"}"
+        }
+      ]
+    },
+    {
+      "revision": "original-recipe:retired",
+      "fields": null
+    }
+  ],
+  "index": {
+    "digest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+    "revisions": [
+      {
+        "revision": "original-recipe:one",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
+          },
+          {
+            "name": "amount",
+            "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
+          }
+        ]
+      },
+      {
+        "revision": "original-recipe:two",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
+          },
+          {
+            "name": "note",
+            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
+          },
+          {
+            "name": "count",
+            "digest": "sha256:9f1980155fc5db29e4d23988791f98190e133afdeac45e77faf7e06b050c3735"
+          }
+        ]
+      },
+      {
+        "revision": "original-recipe:retired",
+        "fields": null
+      }
+    ]
+  },
+  "changedInventory": [
+    {
+      "revision": "original-recipe:one",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        },
+        {
+          "name": "amount",
+          "fieldJson": "{\"name\":\"amount\",\"type\":\"decimal\",\"description\":\"Original amount, revision one.\",\"precision\":2}"
+        }
+      ]
+    },
+    {
+      "revision": "original-recipe:two",
+      "fields": [
+        {
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"text\",\"description\":\"Retyped in revision two.\"}"
+        },
+        {
+          "name": "note",
+          "fieldJson": "{\"name\":\"note\",\"type\":\"text-list\",\"description\":\"Free notes.\"}"
+        },
+        {
+          "name": "count",
+          "fieldJson": "{\"name\":\"count\",\"type\":\"integer\",\"description\":\"A count, edited after the read.\"}"
+        }
+      ]
+    },
+    {
+      "revision": "original-recipe:retired",
+      "fields": null
+    }
+  ],
+  "changedIndex": {
+    "digest": "sha256:efd090df55b1b4b84bb81ccb4aaa47efaaf988350f3a64640880510ae356fa90",
+    "revisions": [
+      {
+        "revision": "original-recipe:one",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
+          },
+          {
+            "name": "amount",
+            "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
+          }
+        ]
+      },
+      {
+        "revision": "original-recipe:two",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
+          },
+          {
+            "name": "note",
+            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
+          },
+          {
+            "name": "count",
+            "digest": "sha256:3823de0d25e759a10ab13739b7fd41743d7794159ffd4fa321bccc0832af2826"
+          }
+        ]
+      },
+      {
+        "revision": "original-recipe:retired",
+        "fields": null
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "paged inventory succeeds",
+      "pages": [
+        0,
+        1,
+        2
+      ],
+      "expect": "retained",
+      "requests": [
+        {
+          "id": "collection:opaque/one",
+          "packKey": "declared:pack",
+          "revision": "revision:one",
+          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "cursor": 0,
+          "limit": 5
+        },
+        {
+          "id": "collection:opaque/one",
+          "packKey": "declared:pack",
+          "revision": "revision:one",
+          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "cursor": 2,
+          "limit": 3
+        },
+        {
+          "id": "collection:opaque/one",
+          "packKey": "declared:pack",
+          "revision": "revision:one",
+          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "cursor": 4,
+          "limit": 1
+        }
+      ]
+    },
+    {
+      "name": "declaration does not match its digest",
+      "pages": [
+        0,
+        3,
+        2
+      ],
+      "expect": "refused",
+      "message": "does not match its indexed digest"
+    },
+    {
+      "name": "page from another collection revision",
+      "pages": [
+        4,
+        1,
+        2
+      ],
+      "expect": "refused",
+      "message": "another collection revision"
+    },
+    {
+      "name": "page omits an indexed declaration",
+      "pages": [
+        0,
+        1,
+        5
+      ],
+      "expect": "refused",
+      "message": "omitted an indexed declaration"
+    },
+    {
+      "name": "retain against another inventory digest",
+      "pages": [
+        0,
+        1,
+        2
+      ],
+      "changeDuringPreview": true,
+      "expect": "refused",
+      "message": "changed during preview"
+    },
+    {
+      "name": "index over its bound",
+      "generate": {
+        "revisions": 9,
+        "fields": 1000,
+        "nameBytes": 160
+      },
+      "indexBytes": 2296781,
+      "expect": "refused",
+      "message": "index exceeds its byte limit"
+    }
+  ]
+}

@@ -1,14 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/dialect-authoring.json",
-  "title": "Certified dialect authoring tool inputs",
-  "description": "First-party read and review-only complete replacement proposal inputs. Hashes bind exact prior read bytes; none is a save, publication, execution or preparation approval. Proposals require a trusted host opt-in to the package-pinned experimental retained-column document contract; model arguments cannot select it.",
+  "title": "Certified dialect authoring tool inputs and the paged declaration read",
+  "description": "First-party read and review-only complete replacement proposal inputs. Hashes bind exact prior read bytes; none is a save, publication, execution or preparation approval. Proposals require a trusted host opt-in to the package-pinned experimental retained-column document contract; model arguments cannot select it. A read with cursor returns one page of original field declarations. The read port's paged exchange (pageRequest, page) carries original declarations by position in the inventory index, bound to the exact collection revision and inventory digest; the factory checks every declaration against its indexed SHA-256 digest (#243).",
   "oneOf": [
     {
       "$ref": "#/$defs/read"
     },
     {
       "$ref": "#/$defs/propose"
+    },
+    {
+      "$ref": "#/$defs/pageRequest"
+    },
+    {
+      "$ref": "#/$defs/page"
     }
   ],
   "$defs": {
@@ -100,6 +106,11 @@
         },
         "packKey": {
           "$ref": "#/$defs/opaque"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
         }
       }
     },
@@ -199,6 +210,109 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4000
+        }
+      }
+    },
+    "pageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "packKey",
+        "revision",
+        "inventoryDigest",
+        "cursor",
+        "limit"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaque"
+        },
+        "packKey": {
+          "$ref": "#/$defs/opaque"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "name",
+        "fieldJson"
+      ],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "fieldJson": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "packKey",
+        "revision",
+        "inventoryDigest",
+        "cursor",
+        "declarations"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaque"
+        },
+        "packKey": {
+          "$ref": "#/$defs/opaque"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "inventoryDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "cursor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "declarations": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/declaration"
+          }
         }
       }
     }

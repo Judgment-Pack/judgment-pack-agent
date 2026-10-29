@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Dialect draft checkpoint, acknowledgment and final lineage",
-  "description": "Portable host retention only. Byte ceilings, exact content/digest/receipt chains, stage order and authority limits are additionally enforced by the tool factory. A draft permits inspection and editing, never saving or execution. New factories retain conversionContract and complete researchDeclarations (null means unavailable); older version-1 checkpoints remain inspectable and grant no new contract support.",
+  "description": "Portable host retention only. Byte ceilings, exact content/digest/receipt chains, stage order and authority limits are additionally enforced by the tool factory. A draft permits inspection and editing, never saving or execution. Version-2 checkpoints (#243) carry the complete original inventory by digest as researchIndex (null means unavailable) and never researchDeclarations; version-1 checkpoints written by v0.11.0 keep their inline researchDeclarations, never carry researchIndex, remain inspectable and grant no new contract support.",
   "oneOf": [
     {
       "$ref": "#/$defs/checkpoint"
@@ -264,6 +264,16 @@
               "$ref": "#/$defs/retainedRead"
             }
           ]
+        },
+        "researchIndex": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/researchIndex"
+            }
+          ]
         }
       }
     },
@@ -341,7 +351,10 @@
       ],
       "properties": {
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "attemptId": {
           "type": "string",
@@ -405,6 +418,40 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 128
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "version": {
+                "const": 2
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "candidate": {
+                "required": [
+                  "researchIndex"
+                ],
+                "not": {
+                  "required": [
+                    "researchDeclarations"
+                  ]
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "candidate": {
+                "not": {
+                  "required": [
+                    "researchIndex"
+                  ]
+                }
               }
             }
           }
@@ -656,6 +703,75 @@
               }
             }
           ]
+        }
+      }
+    },
+    "indexField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "digest"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "indexRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "fields"
+      ],
+      "properties": {
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "fields": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "$ref": "#/$defs/indexField"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "researchIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "revisions"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "revisions": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/indexRevision"
+          }
         }
       }
     }

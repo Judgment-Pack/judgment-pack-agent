@@ -26,6 +26,13 @@ type dialectFixtureFile struct {
 		Fact json.RawMessage `json:"fact"`
 	} `json:"refusals"`
 }
+
+// The host's complete original inventory; the test read port serves its index and pages.
+type dialectFixtureInventory struct {
+	Snapshot struct {
+		ResearchDeclarations []DialectResearchRevision `json:"researchDeclarations"`
+	} `json:"snapshot"`
+}
 type dialectTestWorld struct {
 	t        *testing.T
 	fixture  dialectFixtureFile
@@ -37,6 +44,33 @@ type dialectTestWorld struct {
 	preview  *DialectCandidate
 	tools    []HostTool
 	ports    DialectAuthoringPorts
+	// declarations is the host collection's complete original inventory (nil: unavailable).
+	declarations []DialectResearchRevision
+	pageSize     int
+	pages        []DialectDeclarationPageRequest
+}
+
+// dialectServePage is the test host's handwritten pager: the flattened inventory from the cursor.
+func dialectServePage(inventory []DialectResearchRevision, request DialectDeclarationPageRequest, size int) DialectDeclarationPage {
+	flat := []DialectDeclaration{}
+	for _, r := range inventory {
+		for _, f := range r.Fields {
+			flat = append(flat, DialectDeclaration{Revision: r.Revision, Name: f.Name, FieldJSON: f.FieldJSON})
+		}
+	}
+	page := DialectDeclarationPage{ID: request.ID, PackKey: request.PackKey, Revision: request.Revision, InventoryDigest: request.InventoryDigest, Cursor: request.Cursor, Declarations: []DialectDeclaration{}}
+	// The host fills a page up to the declaration limit and the page byte bound.
+	empty, _ := dialectCanonical(page)
+	total := len(empty)
+	for at := request.Cursor; at < len(flat) && len(page.Declarations) < min(size, request.Limit); at++ {
+		one, _ := dialectCanonical(flat[at])
+		if total+len(one)+1 > DialectPageBytes {
+			break
+		}
+		total += len(one) + 1
+		page.Declarations = append(page.Declarations, flat[at])
+	}
+	return page
 }
 
 func newDialectWorld(t *testing.T) *dialectTestWorld {
@@ -49,13 +83,28 @@ func newDialectWorld(t *testing.T) *dialectTestWorld {
 	if err = json.Unmarshal(raw, &w.fixture); err != nil {
 		t.Fatal(err)
 	}
+	var inventory dialectFixtureInventory
+	if err = json.Unmarshal(raw, &inventory); err != nil {
+		t.Fatal(err)
+	}
+	w.declarations = inventory.Snapshot.ResearchDeclarations
+	w.pageSize = DialectPageDeclarations
 	w.snapshot, _ = dialectClone(w.fixture.Snapshot)
 	selection := DialectRetainedColumnDraft()
 	w.ports = DialectAuthoringPorts{
 		ConversionContract: &selection,
 		Read: func(context.Context, DialectReadRequest) (DialectSnapshot, error) {
 			w.calls = append(w.calls, "read")
-			return dialectClone(w.snapshot)
+			s, err := dialectClone(w.snapshot)
+			if err == nil {
+				s.ResearchIndex, err = DialectResearchIndexOf(w.declarations)
+			}
+			return s, err
+		},
+		ReadDeclarations: func(_ context.Context, request DialectDeclarationPageRequest) (DialectDeclarationPage, error) {
+			w.calls = append(w.calls, "page")
+			w.pages = append(w.pages, request)
+			return dialectServePage(w.declarations, request, w.pageSize), nil
 		},
 		Runtime: func(_ context.Context, name string, args map[string]string) (ToolResult, error) {
 			w.calls = append(w.calls, name)
@@ -205,7 +254,30 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 		for _, row := range vectors.Items {
 			w := newDialectWorld(t)
 			encoded, _ := json.Marshal(row)
-			if _, propose := row["revision"]; propose {
+			_, limit := row["limit"]
+			_, declarations := row["declarations"]
+			_, cursor := row["cursor"]
+			if limit {
+				// The read port's page request: the factory's own first request for the fixture inventory.
+				var want DialectDeclarationPageRequest
+				_ = json.Unmarshal(encoded, &want)
+				w.read()
+				if len(w.pages) == 0 || w.pages[0] != want {
+					t.Fatal("page request witness differs", w.pages)
+				}
+			} else if declarations {
+				// The read port's page, served verbatim and accepted.
+				var page DialectDeclarationPage
+				_ = json.Unmarshal(encoded, &page)
+				w.ports.ReadDeclarations = func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error) { return page, nil }
+				w.tools = NewDialectTools(w.ports)
+				w.read()
+			} else if cursor {
+				w.read()
+				if _, err = w.tools[0].Execute(context.Background(), encoded); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, propose := row["revision"]; propose {
 				if string(row["dialectDigest"]) == "null" {
 					w.snapshot.DialectJSON = nil
 				}
@@ -250,7 +322,7 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 		if len(w.retained) != 1 || w.retained[0].DocumentJSON != w.fixture.ExpectedDocument || w.retained[0].Fingerprint != w.fixture.ExpectedFingerprint || w.retained[0].MappingDigest != w.fixture.ExpectedMappingDigest {
 			t.Fatalf("wrong replacement: %#v", w.retained)
 		}
-		if strings.Join(w.calls, ",") != "read,read,draft:candidate,get_dialect_contract,dialect_validate,dialect_check,draft:checked,preview,read,retain" {
+		if strings.Join(w.calls, ",") != "read,page,read,page,draft:candidate,get_dialect_contract,dialect_validate,dialect_check,draft:checked,preview,read,retain" {
 			t.Fatal(w.calls)
 		}
 		if w.retained[0].PackJSON != w.fixture.Snapshot.PackJSON || *bound.DialectDigest != dialectHash(*w.fixture.Snapshot.DialectJSON) {
@@ -324,7 +396,7 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 				*w.snapshot.DialectJSON += " "
 			}
 			_, err := w.propose(w.args(bound))
-			if strings.Join(w.calls, ",") != "read,read" {
+			if strings.Join(w.calls, ",") != "read,page,read" {
 				t.Fatal("stale snapshots reached Runtime", w.calls)
 			}
 			if err == nil || !strings.Contains(err.Error(), "changed") {

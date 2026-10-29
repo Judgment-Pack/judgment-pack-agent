@@ -1,15 +1,33 @@
 import fixture from '../../../contract/testdata/dialect-authoring/authoring.json'
-import {DIALECT_RETAINED_COLUMN_DRAFT,dialectTools,type DialectAuthoringPorts,type DialectSnapshot,type DialectReviewProposal,type DialectCandidate,type DialectDraftCheckpoint} from '../dialects'
+import {DIALECT_AUTHORING_LIMITS,DIALECT_RETAINED_COLUMN_DRAFT,dialectResearchIndex,dialectTools,type DialectAuthoringPorts,type DialectSnapshot,type DialectReviewProposal,type DialectCandidate,type DialectDraftCheckpoint,type DialectDeclarationPageRequest,type DialectResearchRevision} from '../dialects'
 import {contextDigest} from '../context/ledger'
+import {canonicalJSON} from '../context/chat'
+import {utf8Bytes} from '../context/policy'
 import type {McpToolResult} from '../engine'
 const signal=()=>new AbortController().signal
 const sha=async(s:string)=>'sha256:'+await contextDigest(s)
 const body=(r:McpToolResult)=>JSON.parse(r.content![0]!.text!) as Record<string,unknown>
+/** The test host's handwritten pager: the flattened inventory from the cursor, at most size per page. */
+export function servePage(inventory:readonly DialectResearchRevision[]|null|undefined,request:DialectDeclarationPageRequest,size:number){
+ const flat=(inventory??[]).flatMap(r=>(r.fields??[]).map(f=>({revision:r.revision,name:f.name,fieldJson:f.fieldJson})))
+ const page={id:request.id,packKey:request.packKey,revision:request.revision,inventoryDigest:request.inventoryDigest,cursor:request.cursor,declarations:[] as typeof flat}
+ // The host fills a page up to the declaration limit and the page byte bound.
+ let total=utf8Bytes(canonicalJSON(page))
+ for(let at=request.cursor;at<flat.length&&page.declarations.length<Math.min(size,request.limit);at++){
+  const one=utf8Bytes(canonicalJSON(flat[at]))
+  if(total+one+1>DIALECT_AUTHORING_LIMITS.pageBytes)break
+  total+=one+1;page.declarations.push(flat[at]!)
+ }
+ return page
+}
 export function dialectFixture(){
- const state={snapshot:structuredClone(fixture.snapshot) as DialectSnapshot,drafts:[] as DialectDraftCheckpoint[],retained:[] as DialectReviewProposal[],calls:[] as string[],mode:'',previewCandidate:undefined as DialectCandidate|undefined}
+ const {researchDeclarations,...snapshot}=structuredClone(fixture.snapshot)
+ /** declarations is the host collection's complete original inventory (null: unavailable; absent: not stated). */
+ const state={snapshot:snapshot as DialectSnapshot,declarations:researchDeclarations as DialectResearchRevision[]|null|undefined,pageSize:DIALECT_AUTHORING_LIMITS.pageDeclarations as number,pages:[] as DialectDeclarationPageRequest[],drafts:[] as DialectDraftCheckpoint[],retained:[] as DialectReviewProposal[],calls:[] as string[],mode:'',previewCandidate:undefined as DialectCandidate|undefined}
  const ports:DialectAuthoringPorts={
   conversionContract:DIALECT_RETAINED_COLUMN_DRAFT,
-  read:async()=>{state.calls.push('read');return structuredClone(state.snapshot)},
+  read:async()=>{state.calls.push('read');return {...structuredClone(state.snapshot),...(state.declarations===undefined?{}:{researchIndex:await dialectResearchIndex(state.declarations)})}},
+  readDeclarations:async(request)=>{state.calls.push('page');state.pages.push(structuredClone(request));return servePage(state.declarations,request,state.pageSize)},
   runtime:async(name,args)=>{
    state.calls.push(name)
    const selection=DIALECT_RETAINED_COLUMN_DRAFT,limits={documentBytes:1048576,frameBytes:2097152}

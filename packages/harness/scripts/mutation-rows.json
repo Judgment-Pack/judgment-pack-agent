@@ -6836,7 +6836,7 @@
   {
      "name": "dialect authoring requires a prior exact read",
      "file": "dialects.ts",
-     "find": "if(!seen||!same(seen,expected))",
+     "find": "if(!seen||!same(seen.identity,expected))",
      "replace": "if(false)",
      "tests": [
         "dialects.test.ts",
@@ -7225,26 +7225,27 @@
 {
   "name": "dialect retained complete-original-inventory",
   "file": "dialects.ts",
-  "find": "columns:s.columns,researchDeclarations:s.researchDeclarations??null",
-  "replace": "columns:s.columns,researchDeclarations:null",
+  "find": "columns:s.columns,researchIndex:s.researchIndex??null",
+  "replace": "columns:s.columns,researchIndex:null",
   "tests": [
     "dialects-retained.test.ts"
   ],
   "status": "caught",
   "origin": "agent#171",
-  "note": "Go twin: ^TestDialectRetainedPolicy$; intended assertion: lost complete original declaration inventory."
+  "note": "Go twin: ^TestDialectRetainedPolicy$; intended assertion: lost complete original declaration inventory. Since #243 the inventory is the digest index (researchIndex)."
 },
 {
   "name": "dialect retained strict-original-declaration",
   "file": "dialects.ts",
-  "find": "!declaration(f.name,f.fieldJson)",
-  "replace": "false",
+  "find": "if(!declaration(want.name,d.fieldJson))",
+  "replace": "if(false)",
   "tests": [
-    "dialects-retained.test.ts"
+    "dialects-retained.test.ts",
+    "dialects-inventory.test.ts"
   ],
   "status": "caught",
   "origin": "agent#171",
-  "note": "Go twin: ^TestDialectRetainedMalformedDeclarations$; intended assertion: malformed original declaration accepted."
+  "note": "Go twin: ^TestDialectRetainedMalformedDeclarations$; intended assertion: malformed original declaration accepted. Since #243 the check runs on each declaration page (dialectPage)."
 },
 {
   "name": "dialect retained trusted-opt-in",
@@ -7641,6 +7642,198 @@
   "status": "caught",
   "origin": "agent#242",
   "note": "Restores the acceptance of any unsigned salts member besides args and statement (the #247 review's F1, present since v0.11.0): a verified envelope is retained whole, so the member's bytes became ordinary retained context. Caught at gatewayReceipt.test.ts: refuses unsigned-salts-member (the shared contract/testdata/taxonomy/gateway-receipt-v3.json case) and withholds a Gateway envelope that carries an unsigned salts member (the source's answer is the artifact, not the withheld refusal). Go twin (by hand, dropping the descriptorMembers(salts, ...) clause in VerifyGatewayResult): caught at TestGatewayReceiptSharedRefusals/unsigned-salts-member (receipt safeguard admitted) and TestAGatewayEnvelopeWithAnUnsignedSaltsMemberIsWithheld (the source's answer)."
+},
+{
+  "name": "dialect inventory checks each paged declaration against its digest",
+  "file": "dialects.ts",
+  "find": "if(await hash(d.fieldJson as string)!==want.digest)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace dialectHash(d.FieldJSON) != want.digest with false in dialectPage; ^TestDialectInventoryPagingVectors/declaration_does_not_match_its_digest$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory refuses a page from another collection revision",
+  "file": "dialects.ts",
+  "find": "page.revision!==request.revision||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove page.Revision != request.Revision || in dialectPage; ^TestDialectInventoryPagingVectors/page_from_another_collection_revision$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory retain binds the candidate inventory digest",
+  "file": "dialects.ts",
+  "find": "if(indexDigest(current.researchIndex)!==indexDigest(candidate.researchIndex))",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace the dialectSameInventory check on current and candidate with false after preview; ^TestDialectInventoryPagingVectors/retain_against_another_inventory_digest$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory page byte bound",
+  "file": "dialects.ts",
+  "find": "if(utf8Bytes(raw)>L.pageBytes)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace len(canonical) > DialectPageBytes with false in dialectPage; ^TestDialectInventoryHostRefusals/page_over_its_byte_bound$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory index byte bound",
+  "file": "dialects.ts",
+  "find": "if(utf8Bytes(canonicalJSON(value))>L.indexBytes)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace len(canonical) > DialectIndexBytes with false in dialectIndex; ^TestDialectInventoryPagingVectors/index_over_its_bound$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory index digest covers its entries",
+  "file": "dialects.ts",
+  "find": "if(await hash(canonicalJSON(index.revisions))!==index.digest)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace digest != index.Digest with false in dialectIndex; ^TestDialectInventoryHostRefusals/index_digest_differs_from_its_entries$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory refuses a page that omits a declaration",
+  "file": "dialects.ts",
+  "find": "if(declarations.length===0)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove the len(page.Declarations) == 0 refusal in dialectPage; ^TestDialectInventoryPagingVectors/page_omits_an_indexed_declaration$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory proposal rechecks the read inventory",
+  "file": "dialects.ts",
+  "find": "if(indexDigest(s.researchIndex)!==seen.inventory)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: replace the dialectSameInventory check on s and seen.inventory with false in proposeTool; ^TestDialectInventoryChangedBeforePropose$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory page echoes its cursor",
+  "file": "dialects.ts",
+  "find": "page.cursor!==cursor",
+  "replace": "false",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove || page.Cursor != cursor in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_cursor$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory page echoes its id",
+  "file": "dialects.ts",
+  "find": "page.id!==request.id||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove page.ID != request.ID || in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_id$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory page echoes its packKey",
+  "file": "dialects.ts",
+  "find": "page.packKey!==request.packKey||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove page.PackKey != request.PackKey || in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_packKey$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory checks a copy of the page, not the host object",
+  "file": "dialects.ts",
+  "find": "copyPage(await bounded(signal,s=>readPage(copy(request),s)))",
+  "replace": "await bounded(signal,s=>readPage(copy(request),s))",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "TypeScript only (Go pages are values with immutable strings): restoring check-then-copy lets a host accessor change fieldJson after the checks; the accessor test fails at its checked-bytes assertion. Review of record F4."
 }
  ]
 }

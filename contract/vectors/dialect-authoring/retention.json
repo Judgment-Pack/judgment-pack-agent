@@ -1117,6 +1117,204 @@
       }
     },
     {
+      "version": 2,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "0.3.0-rc.2",
+            "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+            "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+            "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+          }
+        },
+        "researchIndex": {
+          "digest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "revisions": [
+            {
+              "revision": "original-recipe:one",
+              "fields": [
+                {
+                  "name": "typed",
+                  "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
+                },
+                {
+                  "name": "amount",
+                  "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
+                }
+              ]
+            },
+            {
+              "revision": "original-recipe:two",
+              "fields": [
+                {
+                  "name": "typed",
+                  "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
+                },
+                {
+                  "name": "note",
+                  "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
+                },
+                {
+                  "name": "count",
+                  "digest": "sha256:9f1980155fc5db29e4d23988791f98190e133afdeac45e77faf7e06b050c3735"
+                }
+              ]
+            },
+            {
+              "revision": "original-recipe:retired",
+              "fields": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "version": 2,
+      "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "stage": "candidate",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "previousReceipt": null,
+      "candidate": {
+        "id": "opaque-resource",
+        "revision": "revision-one",
+        "packKey": "declared-pack",
+        "packDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "dialectDigest": null,
+        "documentJson": "{\"version\":2}",
+        "packJson": "{\"id\":\"declared-pack\"}",
+        "conversions": {
+          "/active": {
+            "kind": "boolean",
+            "trueValue": "yes",
+            "falseValue": "no"
+          },
+          "/amount": {
+            "kind": "decimal"
+          },
+          "/text": {
+            "kind": "text"
+          },
+          "/number": {
+            "kind": "number"
+          },
+          "/typed": {
+            "kind": "research-value"
+          }
+        },
+        "facts": [
+          {
+            "target": "/active",
+            "column": "active",
+            "conversion": {
+              "kind": "boolean",
+              "trueValue": "yes",
+              "falseValue": "no"
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "requirement": "source",
+            "column": "source"
+          }
+        ],
+        "summary": "Review exact replacement draft",
+        "columns": [
+          {
+            "name": "active",
+            "samples": [
+              {
+                "valueJson": "false",
+                "origin": "generated"
+              }
+            ],
+            "research": {
+              "revision": "original-one",
+              "fieldJson": "{\"name\":\"active\",\"type\":\"boolean\"}"
+            }
+          }
+        ],
+        "conversionContract": {
+          "contract": "retained-column/1",
+          "profile": "base",
+          "spec": {
+            "version": "0.3.0-rc.2",
+            "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+            "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+            "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+          }
+        },
+        "researchIndex": null
+      }
+    },
+    {
       "version": 1,
       "attemptId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
