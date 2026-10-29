@@ -2126,13 +2126,13 @@
     },
     "node_modules/@hono/node-server": {
       "binding": {
-        "integrity": "sha512-ELuehkj5VCBdgEw9zs+ivkKwyzzUCSQuE96YmiPvn1ECBoZCczbFXJLeEGMTYjphP6gydh4pHMqEYPVMYUVgQg==",
-        "version": "2.1.1"
+        "integrity": "sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==",
+        "version": "2.1.5"
       },
       "evidence": [
         {
           "file": "package.json",
-          "sha256": "66f3aa3ddef3a6b54c5b99ec22e76cc85b1f5bcabe9bb7849675edd0f7221553"
+          "sha256": "28b7c255c6c7ae6b994ceae9326211b6c6877c4746adb85b780b759ce1ceba41"
         }
       ],
       "license": "MIT",
