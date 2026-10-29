@@ -253,3 +253,116 @@ question member types, as well as required thread visibility, before creating a 
 It refuses unsupported Go-only row semantics or unrestricted task visibility; this is an
 explicit cross-language limitation. Extra host members on otherwise valid TypeScript rows
 remain intact. Both decoders can read these bounded wire forms independently of live restore.
+
+## Run leases and fencing (#223)
+
+This section is for the implementer of a host store kind's lease (desk #609, one lease per store
+kind) and for a reader of the same records in another process (runner #147: worker restart and
+fencing). It implements ADR-0025 decision 1; the vocabulary is that decision's and its amendment's.
+The records are `contract/schemas/run-lease.json`, version 1, with handwritten shared vectors in
+`contract/vectors/lease/`. TypeScript is `packages/harness/storage/lease.ts`; Go is
+`go/context/run_lease.go`. Both read the same vectors.
+
+**The lease.** One resource (a run id, or a chat id for a chat-scoped lease) has at most one row:
+`{version:1, resource, owner, epoch, expiry, state}`. `owner` is an opaque storage identifier the
+acquiring worker chooses. `expiry` is the **authoritative expiry**: the store's own clock plus the
+requested duration (1 ms to 24 hours), written as UTC with exactly millisecond precision. A caller
+never supplies a time, so no worker's clock can extend a lease. `state` is `held` or `released`;
+expired is never stored, because the store's clock decides it at every check, and an expiry equal
+to the store's time is expired. The **epoch** is a base-10 string from `1` to `999999999999999999`
+(18 digits, no sign, leading zero, fraction or exponent). It fits a signed 64-bit integer exactly,
+so a Postgres `bigint` column can hold it, but on the wire it is never a JSON number, so no reader
+rounds it through a floating-point value. Readers refuse any other spelling as `invalid`.
+
+**The transitions.** A store kind implements the `LeaseStore` port (Go `LeaseStore`), each
+transition atomic under the same serialization as its commits:
+
+- `acquireLease({resource, owner, expectedRevision, durationMs})` compares `expectedRevision` with
+  the resource's current revision (`revision-changed`), refuses while an unexpired `held` row exists
+  (`held`), and otherwise writes epoch = previous epoch + 1, or `1` for a resource never leased.
+  At the largest epoch it refuses `epoch-exhausted`; it never wraps.
+- `renewLease(fence, durationMs)` requires the fence to be current and sets a new expiry from the
+  store's clock. A renewal after expiry refuses `expired`: an expired lease is never revived, even
+  when no other worker has acquired it. Only a new acquisition, with a greater epoch, follows.
+- `releaseLease(fence)` sets `released` and **keeps the row and its epoch**. Deleting the row would
+  let the next acquisition start again at `1`; that reset by deleting state is what the epoch exists
+  to prevent, including across a restart or a restore from backup. A store kind whose rows can be
+  lost declares that rather than reusing epochs.
+- `readLease(resource)` and `checkFence(fence)` are reads. `checkFence` is the authority an effect
+  host checks against.
+
+**The fence.** `{version:1, resource, owner, epoch}` is the evidence a writer presents. It is
+current when the row has this epoch (`stale-epoch` otherwise, including a forged greater epoch),
+this owner (`other-owner`), is not released (`released`) and is unexpired by the store's clock
+(`expired`); a missing row is `no-lease`, a fence for another resource is `resource-mismatch`.
+These named reasons, with `held`, `revision-changed`, `epoch-exhausted`, `invalid` and the effect
+host's `already-admitted`, are the complete refusal record `{version:1, reason}`.
+
+**Every checkpoint commit.** A lease run store also implements `commitFenced(commit, fence)` and,
+when it has the history capability, `commitHistoryFenced(commit, fence)` and
+`commitContextSnapshotFenced(update, commitId, fence)`. The fence check and the
+revision compare are one transaction. The memory kind checks the fence when the transaction is
+admitted and again immediately before publication, after its own awaits, so a lease that expires
+while the store waits on its disk or network is not published. `fencedRunStore(store, fence,
+effectHost)` (Go `FencedRunStore`) returns the view the durable run uses as its `RunStore` (and as
+the store of its stored chat scope): every claim, result and checkpoint the writer commits through
+it presents the fence, so loss of the lease closes new dispatch at the next claim. The view adds no
+member to any checkpoint or event: a fenced run's stored bytes have the same shape as an unfenced
+run's, and with no lease configured nothing changes. The view's chat-snapshot commits present the
+run's fence too, so a driver that lost its lease cannot release, through `StoredChatScope.close()`,
+the turn its takeover restores. Metadata writes (feedback, capture) are not read on resume and are
+not fenced. Pass the view to the run unwrapped: effect admission is bound to the view object itself,
+and a host object that only delegates to it keeps the commits fenced but loses the effect host. `fencedChatStore(store, fence)` does the same for a lease
+chat store's `updateFenced`. Go has no ChatStore.
+
+**Every effect admission.** A store compare-and-set is not protection against a duplicate
+external effect: a worker can pass its claim commit, lose its lease, and still call out. So the
+effect host itself receives the fence. Whether a host tool's call is a read is decided by its
+effect, not by how its answer is framed: a tool with a source (gateway, MCP or custom) is a read
+only when its effect class is `read`, and an owner-declared `act` or `propose` effect is never a
+read. Under a fenced view, every non-read host or runtime dispatch goes through `EffectHost.dispatch(admission, perform)` (Go `Dispatch`) with
+`{version:1, fence, operation, idempotencyKey}`; the effect host checks the fence at its own
+admission boundary, against the store's `checkFence` or an enforcement service in front of it, and
+only then performs the effect. The operation is the stable idempotency identity `{run, operation,
+source, tool, requestDigest}`: the run, the acknowledged claim's id, the target and the request
+digest. `idempotencyKey` is the SHA-256 of its canonical JSON. It carries no epoch, so a takeover
+presents the same key for the same operation; a host that admitted that key before answers
+`already-admitted` and does not perform it again. The Gateway may bind both identities (gateway
+#316) but must not use the fence alone as its idempotency key. `ReferenceEffectHost` (Go
+`NewReferenceEffectHost`) is the reference: it serializes admission, checks the fence, records the
+key, then performs. A fenced view with no effect host refuses a non-read effect as
+`effect-host-unfenced` before it runs.
+
+**Unknown outcomes and takeover.** Expiry stops new admission; it cannot undo an admitted call. A
+claim whose result was never acknowledged stays `claimed` in the stored checkpoint, and a resumed
+writer refuses it as `HostOutcomeUnknown` before any dispatch, whatever its epoch. Takeover never
+replays it; its own host reconciles it. Fencing is not an exactly-once claim across independent
+systems.
+
+**Certifying an effect host.** `effectHostConformance(authority => host)` (Go
+`CheckEffectHostConformance`) hands the factory a lease authority the kit controls and requires the
+host to admit a current fence once and to refuse, without performing, an identity it admitted
+before (also under a takeover's fence), another owner, a stale or forged epoch, a fence for another
+run than the operation's, a key that is not its operation's, an expired lease and a released one.
+`certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) runs it and returns the host built
+over the real authority. Unattended admission accepts only that host or the package's
+`ReferenceEffectHost`: a declared `effectFencing: 'enforced'` is not evidence.
+
+**Truthful kinds and unattended admission.** `leaseLifetime` is `durable` only when rows survive
+the store's process. `MemoryRunStore` and `MemoryChatStore` implement the transitions within their
+process (`process`); the callback and legacy chat adapters have no lease port at all.
+`admitUnattended({store, effectHost, chatStore})` (Go `AdmitUnattended`) and `unattendedRunStore`
+refuse, by the record `{version:1, reason}`, a store without the port (`store-unsupported`), a
+store whose leases end with its process (`store-lifetime`), and an effect host that is missing,
+non-enforcing, or neither certified nor the reference host (`effect-host-unfenced`). They never
+fall back to revision checks.
+
+**Certifying a store kind.** `runStoreLeaseConformance(now => store)` (Go
+`CheckRunStoreLeaseConformance`) builds a fresh store whose lease clock is the probe's, then checks
+revision-checked acquisition, the first epoch, `held`, current/forged/stale/expired/released commits,
+renewal from the store clock, equal-time expiry, no revival, a strictly greater epoch after expiry
+and after release, and atomic competing acquisitions. Every port the writer and the effect host
+rely on (`checkFence`, `renewLease`, `releaseLease`, `commitFenced` and, with history,
+`commitHistoryFenced` and `commitContextSnapshotFenced`) must refuse a stale epoch (including the
+same owner's earlier epoch), another owner, a released lease and a mismatched resource. It certifies the port; the store's
+durability across its own restarts and backups is the host's to prove.

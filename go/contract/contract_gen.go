@@ -277,6 +277,16 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/route_decided":           func() any { return new(RunEventRouteDecided) },
 	"run-event.json#/$defs/route_widened":           func() any { return new(RunEventRouteWidened) },
 	"run-event.json#/$defs/repeat_detected":         func() any { return new(RunEventRepeatDetected) },
+	"run-lease.json":                                func() any { return new(RunLease) },
+	"run-lease.json#/$defs/identifier":              func() any { return new(string) },
+	"run-lease.json#/$defs/epoch":                   func() any { return new(string) },
+	"run-lease.json#/$defs/expiry":                  func() any { return new(string) },
+	"run-lease.json#/$defs/digest":                  func() any { return new(string) },
+	"run-lease.json#/$defs/fence":                   func() any { return new(RunLeaseFence) },
+	"run-lease.json#/$defs/operation":               func() any { return new(RunLeaseOperation) },
+	"run-lease.json#/$defs/effectAdmission":         func() any { return new(RunLeaseEffectAdmission) },
+	"run-lease.json#/$defs/refusal":                 func() any { return new(RunLeaseRefusal) },
+	"run-lease.json#/$defs/capabilityRefusal":       func() any { return new(RunLeaseCapabilityRefusal) },
 	"run-report-v2.json":                            func() any { return new(RunReportV2) },
 	"run-report-v2.json#/$defs/total":               func() any { return new(RunReportV2Total) },
 	"run-report-v2.json#/$defs/totals":              func() any { return new(RunReportV2Totals) },
@@ -19177,6 +19187,195 @@ func (v *RunEventUserQuestion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventUserQuestion object.
 func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunEventUserQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json. Version 1 lease of one store resource (ADR-0025 decision 1, #223): its
+// owner, its authoritative expiry decided by the store clock, and its exact monotonically
+// increasing epoch. The fence is the evidence a writer presents at every checkpoint commit and an
+// effect host checks at every admission. A lease grants neither tool permission nor approval. A
+// released or expired lease is never revived; the next acquisition takes a strictly greater epoch.
+type RunLease struct {
+	Version  int64  `json:"version"`
+	Resource string `json:"resource"`
+	Owner    string `json:"owner"`
+	Epoch    string `json:"epoch"`
+	Expiry   string `json:"expiry"`
+	State    string `json:"state"`
+}
+
+var runLeaseMembers = []string{"version", "resource", "owner", "epoch", "expiry", "state"}
+
+// UnmarshalJSON decodes a RunLease object and refuses a member the closed schema does not name.
+func (v *RunLease) UnmarshalJSON(data []byte) error {
+	type plain RunLease
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseMembers, true)
+	if err != nil {
+		return errorf("RunLease: %w", err)
+	}
+	*v = RunLease(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLease object.
+func (v RunLease) MarshalJSON() ([]byte, error) {
+	type plain RunLease
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json#/$defs/capabilityRefusal. A store or effect host that cannot give the lease
+// and fence guarantee refuses unattended admission by name, before any dispatch.
+// store-unsupported: the store has no lease port. store-lifetime: its leases end with its process.
+// effect-host-unfenced: no effect host, or one that does not enforce the fence.
+type RunLeaseCapabilityRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runLeaseCapabilityRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunLeaseCapabilityRefusal object and refuses a member the closed schema does not name.
+func (v *RunLeaseCapabilityRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunLeaseCapabilityRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseCapabilityRefusalMembers, true)
+	if err != nil {
+		return errorf("RunLeaseCapabilityRefusal: %w", err)
+	}
+	*v = RunLeaseCapabilityRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLeaseCapabilityRefusal object.
+func (v RunLeaseCapabilityRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunLeaseCapabilityRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json#/$defs/effectAdmission. What an effect host receives before it performs an
+// effect: the fence and the operation. idempotencyKey is the SHA-256 of the canonical JSON of the
+// operation alone.
+type RunLeaseEffectAdmission struct {
+	Version        int64             `json:"version"`
+	Fence          RunLeaseFence     `json:"fence"`
+	Operation      RunLeaseOperation `json:"operation"`
+	IdempotencyKey string            `json:"idempotencyKey"`
+}
+
+var runLeaseEffectAdmissionMembers = []string{"version", "fence", "operation", "idempotencyKey"}
+
+// UnmarshalJSON decodes a RunLeaseEffectAdmission object and refuses a member the closed schema does not name.
+func (v *RunLeaseEffectAdmission) UnmarshalJSON(data []byte) error {
+	type plain RunLeaseEffectAdmission
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseEffectAdmissionMembers, true)
+	if err != nil {
+		return errorf("RunLeaseEffectAdmission: %w", err)
+	}
+	*v = RunLeaseEffectAdmission(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLeaseEffectAdmission object.
+func (v RunLeaseEffectAdmission) MarshalJSON() ([]byte, error) {
+	type plain RunLeaseEffectAdmission
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json#/$defs/fence. The fence: the evidence a writer presents at a checkpoint
+// commit and an effect host checks at an admission. It is current when the store holds a lease of
+// the resource with this owner and exactly this epoch, not released and not expired by the store
+// clock.
+type RunLeaseFence struct {
+	Version  int64  `json:"version"`
+	Resource string `json:"resource"`
+	Owner    string `json:"owner"`
+	Epoch    string `json:"epoch"`
+}
+
+var runLeaseFenceMembers = []string{"version", "resource", "owner", "epoch"}
+
+// UnmarshalJSON decodes a RunLeaseFence object and refuses a member the closed schema does not name.
+func (v *RunLeaseFence) UnmarshalJSON(data []byte) error {
+	type plain RunLeaseFence
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseFenceMembers, true)
+	if err != nil {
+		return errorf("RunLeaseFence: %w", err)
+	}
+	*v = RunLeaseFence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLeaseFence object.
+func (v RunLeaseFence) MarshalJSON() ([]byte, error) {
+	type plain RunLeaseFence
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json#/$defs/operation. The stable idempotency identity of one effect: the run,
+// the operation's claim identity, its target (source and tool) and the request digest. It carries
+// no epoch, so a takeover cannot turn the same uncertain operation into a new action.
+type RunLeaseOperation struct {
+	Run           string `json:"run"`
+	Operation     string `json:"operation"`
+	Source        string `json:"source"`
+	Tool          string `json:"tool"`
+	RequestDigest string `json:"requestDigest"`
+}
+
+var runLeaseOperationMembers = []string{"run", "operation", "source", "tool", "requestDigest"}
+
+// UnmarshalJSON decodes a RunLeaseOperation object and refuses a member the closed schema does not name.
+func (v *RunLeaseOperation) UnmarshalJSON(data []byte) error {
+	type plain RunLeaseOperation
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseOperationMembers, true)
+	if err != nil {
+		return errorf("RunLeaseOperation: %w", err)
+	}
+	*v = RunLeaseOperation(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLeaseOperation object.
+func (v RunLeaseOperation) MarshalJSON() ([]byte, error) {
+	type plain RunLeaseOperation
+	return encodeObject(plain(v), nil)
+}
+
+// From run-lease.json#/$defs/refusal. A named lease or fence refusal. Nothing was admitted or
+// committed. already-admitted is an effect host's answer to an idempotency identity it admitted
+// before: that outcome stays unknown and is never performed again.
+type RunLeaseRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runLeaseRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunLeaseRefusal object and refuses a member the closed schema does not name.
+func (v *RunLeaseRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunLeaseRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runLeaseRefusalMembers, true)
+	if err != nil {
+		return errorf("RunLeaseRefusal: %w", err)
+	}
+	*v = RunLeaseRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunLeaseRefusal object.
+func (v RunLeaseRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunLeaseRefusal
 	return encodeObject(plain(v), nil)
 }
 

@@ -7834,6 +7834,222 @@
   "status": "caught",
   "origin": "agent#243",
   "note": "TypeScript only (Go pages are values with immutable strings): restoring check-then-copy lets a host accessor change fieldJson after the checks; the accessor test fails at its checked-bytes assertion. Review of record F4."
+},
+{
+  "name": "lease fence L1 a commit accepts a stale epoch",
+  "file": "storage/lease.ts",
+  "find": "  if(row.epoch!==held.epoch)throw new LeaseRefused('stale-epoch')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Caught at lease.test.ts: the lease conformance (lease.commit.stale-epoch) and the takeover's stale driver. Go twin (by hand, dropping the row.Epoch != fence.Epoch case of LeaseTable.Check): caught at TestMemoryRunStoreLeaseConformance and TestLeaseTakeoverStaleAndExpiredCommitsRefuse."
+},
+{
+  "name": "lease fence L2 a commit is not checked again at publication",
+  "file": "storage/run.ts",
+  "find": "historyReceipt})\n   fenced()\n",
+  "replace": "historyReceipt})\n",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Publishes a commit whose fence expired during the store's own awaits. Caught at lease.test.ts > the store checks the fence again at publication. Go twin (by hand, dropping the second checkCommitFence in commitTransaction): caught at TestLeaseTheStoreChecksTheFenceAgainAtPublication."
+},
+{
+  "name": "lease fence L3 the fenced view commits history without the fence",
+  "file": "storage/lease.ts",
+  "find": "view.commitHistory=(input:RunHistoryCommit,signal?:AbortSignal)=>lease.commitHistoryFenced!(input,held,signal)",
+  "replace": "view.commitHistory=(input:RunHistoryCommit,signal?:AbortSignal)=>lease.commitHistory!(input,signal)",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The writer commits through the history capability, so an unfenced history commit lets a forged, expired or stale driver write. Caught at lease.test.ts competing drivers, takeover and effect-host cases. Go twin (by hand, fencedHistoryRunStore.CommitHistory calling the unfenced CommitHistory): caught at TestLeaseCompetingDriversOnlyTheHolderCommitsAndDispatches, TestLeaseTakeoverStaleAndExpiredCommitsRefuse and TestLeaseEffectHostRefusesAFenceThatExpiredAfterTheClaim."
+},
+{
+  "name": "lease fence L4 the effect host admits without checking the fence",
+  "file": "storage/lease.ts",
+  "find": "    await this.authority.checkFence(held.fence,signal)\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Caught at lease.test.ts competing drivers (the forged fence is admitted) and the effect-host case (the expired fence is admitted and the effect runs). Go twin (by hand, dropping the authority's CheckFence in ReferenceEffectHost.admit): caught at TestLeaseCompetingDriversOnlyTheHolderCommitsAndDispatches and TestLeaseEffectHostRefusesAFenceThatExpiredAfterTheClaim."
+},
+{
+  "name": "lease fence L5 the writer skips the effect host at admission",
+  "file": "storage/writer.ts",
+  "find": "(kind==='host'||kind==='runtime')&&!read?fencedEffect(",
+  "replace": "false?fencedEffect(",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "A client-side commit check alone: the effect runs without the effect host's admission. Caught at lease.test.ts effect-host, in-flight and no-host cases. Go twin (by hand, `if false &&` on the fenced-effect branch of invokeDurable): caught at TestLeaseEffectHostRefusesAFenceThatExpiredAfterTheClaim, TestLeaseUnknownInFlightOutcomeSurvivesRestartWithoutDuplicateDispatch and TestLeaseFencedRunWithoutEffectHostRefusesAnEffect."
+},
+{
+  "name": "lease fence L6 renewal revives an expired lease",
+  "file": "storage/lease.ts",
+  "find": "renew(fence:LeaseFence,durationMs:number):RunLease{const duration=requireDuration(durationMs),row=this.check(fence);",
+  "replace": "renew(fence:LeaseFence,durationMs:number):RunLease{const duration=requireDuration(durationMs),row=this.rows.get(readLeaseFence(fence).resource)!;",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Caught at lease.test.ts: the lease conformance (lease.renew.no-revival) and restore. Go twin (by hand, LeaseTable.Renew reading the row without Check): caught at TestMemoryRunStoreLeaseConformance and TestLeaseRestoreDoesNotReviveAnExpiredLease."
+},
+{
+  "name": "lease fence L7 a takeover reuses the epoch",
+  "file": "storage/lease.ts",
+  "find": "epoch:nextLeaseEpoch(row?.epoch),",
+  "replace": "epoch:row?.epoch??nextLeaseEpoch(),",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Caught at lease.test.ts: the lease conformance (lease.takeover.greater-epoch), takeover and restore. Go twin (by hand, Acquire keeping row.Epoch): caught at TestMemoryRunStoreLeaseConformance, TestLeaseTakeoverStaleAndExpiredCommitsRefuse and TestLeaseRestoreDoesNotReviveAnExpiredLease."
+},
+{
+  "name": "lease fence L8 release forgets the epoch, so the next lease after a restart starts again",
+  "file": "storage/lease.ts",
+  "find": "release(fence:LeaseFence):RunLease{const row=this.check(fence);row.state='released';return {...row}}",
+  "replace": "release(fence:LeaseFence):RunLease{const row=this.check(fence);this.rows.delete(row.resource);return {...row,state:'released'}}",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The ADR's reset by deleting local state: the next acquisition starts at epoch 1 again. Caught at lease.test.ts > the lease conformance (lease.release.next-greater). Go twin (by hand, LeaseTable.Release deleting the row): caught at TestMemoryRunStoreLeaseConformance."
+},
+{
+  "name": "lease fence L9 the effect host admits an identity it admitted before",
+  "file": "storage/lease.ts",
+  "find": "    if(this.admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "A takeover's host replays an effect whose outcome is unknown. Caught at lease.test.ts > restart with an unknown in-flight effect. Go twin (by hand, dropping the already-admitted check of ReferenceEffectHost.admit): caught at TestLeaseUnknownInFlightOutcomeSurvivesRestartWithoutDuplicateDispatch."
+},
+{
+  "name": "lease fence L10 the idempotency identity carries the epoch",
+  "file": "storage/lease.ts",
+  "find": "return {version:1,fence:readLeaseFence(fence),operation:held,idempotencyKey:effectIdempotencyKey(held)}",
+  "replace": "return {version:1,fence:readLeaseFence(fence),operation:held,idempotencyKey:`sha256:${sha256(canonicalJSON({...held,epoch:readLeaseFence(fence).epoch}))}`}",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "A new epoch turns the same uncertain operation into a new action. Caught at lease.test.ts: the shared admission vectors (the takeover's key) and the in-flight case. Go twin (by hand, the epoch threaded into EffectIdempotencyKey's canonical object): caught at TestLeaseSharedVectorsBothReaders and TestLeaseUnknownInFlightOutcomeSurvivesRestartWithoutDuplicateDispatch."
+},
+{
+  "name": "lease fence L11 a process-lifetime store admits unattended runs",
+  "file": "storage/lease.ts",
+  "find": "  if(lease.leaseLifetime!=='durable')throw new LeaseCapabilityRefused('store-lifetime')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The memory kind would be admitted for unattended runs. Caught at lease.test.ts > refuses unattended admission by name. Go twin (by hand, dropping the LeaseLifetime check of AdmitUnattended): caught at TestLeaseUnattendedAdmissionRefusesByName."
+},
+{
+  "name": "lease fence L12 a chat update skips the fence",
+  "file": "storage/chat.ts",
+  "find": "  this.leases.check(held)\n  return this.update(",
+  "replace": "  return this.update(",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "Caught at lease.test.ts > a chat store fences its updates under a chat-scoped lease. No Go twin: the Go package has no ChatStore."
+},
+{
+  "name": "lease fence L13 a source act is classified as a read (the pre-#223 classification)",
+  "file": "context/session.ts",
+  "find": "canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded",
+  "replace": "canonicalJSON(args),readingTool(tool),invoke,hostSucceeded",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's finding 1: a gateway, MCP or custom act tool is recorded read, never reaches the effect host, is performed by an expired driver and dispatched again by a takeover. Caught at lease.test.ts > a source act is an effect, not a read (all three kinds, both cases). Go twin (by hand, ReadingTool in place of durableReadingTool in ExecuteDurableHost): caught at TestLeaseASourceActIsAnEffectNotARead (gateway, mcp and custom, act and in-flight)."
+},
+{
+  "name": "lease fence L14 a stale driver's chat snapshot commits unfenced",
+  "file": "storage/lease.ts",
+  "find": ";view.commitContextSnapshot=(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal)=>lease.commitContextSnapshotFenced!(input,commitId,held,signal)}",
+  "replace": "}",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's finding 2: a driver that lost its lease releases the chat turn and the takeover cannot restore. Caught at lease.test.ts > the stale close refuses and the takeover restores and resumes. Go twin (by hand, fencedHistoryRunStore.CommitContextSnapshot calling the unfenced CommitContextSnapshot): caught at TestLeaseAStaleDriverCannotReleaseTheTurnItsTakeoverResumes."
+},
+{
+  "name": "lease fence L15 a runtime-kind effect bypasses the effect host",
+  "file": "storage/writer.ts",
+  "find": "(kind==='host'||kind==='runtime')&&!read?fencedEffect(",
+  "replace": "kind==='host'&&!read?fencedEffect(",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's M3. Caught at lease.test.ts > a runtime-kind effect under a fenced view is admitted by the effect host. Go twin (by hand, kind == \"host\" only in invokeDurable): caught at TestLeasePinnedSafeguards/runtime-effect-through-the-host."
+},
+{
+  "name": "lease fence L16 the effect host admits a fence for another run",
+  "file": "storage/lease.ts",
+  "find": "    if(held.fence.resource!==held.operation.run)throw new LeaseRefused('resource-mismatch')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's M2. Caught at lease.test.ts: the effect host refuses a fence for another run, and the effect-host conformance of the reference host (host.resource-mismatch). Go twin (by hand, dropping the resource check of ReferenceEffectHost.admit): caught at TestLeasePinnedSafeguards/host-resource-mismatch and TestLeaseKitsRefuseWhatDoesNotEnforceTheFence."
+},
+{
+  "name": "lease fence L17 unattended admission trusts a host's declaration",
+  "file": "storage/lease.ts",
+  "find": "||!provenHost(input.effectHost))throw",
+  "replace": ")throw",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's finding 3: a host that declares enforced and performs without checking is admitted. Caught at lease.test.ts > the kits refuse what does not enforce the fence (every non-enforcing host, and the uncertified wrapper). Go twin (by hand, dropping provenHost from AdmitUnattended): caught at TestLeaseKitsRefuseWhatDoesNotEnforceTheFence."
+},
+{
+  "name": "lease fence L18 an impossible expiry throws an untyped error",
+  "file": "storage/lease.ts",
+  "find": "return Number.isSafeInteger(ms)&&new Date(ms).toISOString()===value",
+  "replace": "return new Date(ms).toISOString()===value",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#223",
+  "note": "The review's finding 5: month 13 or second 60 throws RangeError instead of LeaseRefused invalid. Caught at lease.test.ts > both readers accept every lease… (the impossible-expiry vectors). No Go twin: Go's reader refuses them by parsing."
 }
  ]
 }

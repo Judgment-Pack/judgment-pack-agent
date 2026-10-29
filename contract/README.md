@@ -88,6 +88,7 @@ root is not.
 | `run-archive.json` | An archive manifest with typed mappings and members plus unique byte objects | closed | the root, `$defs/ref`, `$defs/head` | `packages/harness/history/archive.ts`, `exportRunArchive`, `readRunArchive`; `go/context/history_archive.go`, `ReadRunArchive` |
 | `run-capture.json` | A capture record with run and execution revision, checkpoint, requests, published files and redaction marker | closed | the root | `packages/harness/history/metadata.ts`, `readRunCapture`; `go/context/history_metadata.go`, `ReadRunCapture` |
 | `turn-route.json` | One acknowledged route selection with its decision, binding and catalogue digests, refusals and optional classifier or widening record | closed | the root, `$defs/selection`, `$defs/policy`, `$defs/classifier` | `packages/harness/turnRoute.ts`, `TurnRoute`; `go/context/turn_route.go`, `TurnRoute` |
+| `run-lease.json` | One store resource's lease (ADR-0025, #223): owner, authoritative expiry by the store clock and exact bounded epoch; the fence presented at every checkpoint commit and effect admission; the epoch-free effect idempotency identity; named lease and capability refusals | closed | `$defs/fence`, `$defs/operation`, `$defs/effectAdmission`, `$defs/refusal`, `$defs/capabilityRefusal` | `packages/harness/storage/lease.ts`; `go/context/run_lease.go` |
 
 ## Vectors
 

@@ -828,6 +828,17 @@ critique is guarded on store and carries `schema`, `version`, `digest` and
 accepts the host's records and returns their exact values beside the closed
 `export.json` manifest and an `export_written` event; it reads no package store.
 
+### Run leases and fencing (#223)
+
+`storage/lease.ts` implements ADR-0025 decision 1. A lease store (`MemoryRunStore`,
+`MemoryChatStore`, or a host kind implementing `LeaseStore`) acquires, renews and releases a
+lease with an owner, an expiry from the store's clock and an exact epoch string.
+`fencedRunStore(store, fence, effectHost)` is the run's `RunStore` under that lease: every
+checkpoint commit presents the fence, and every non-read host or runtime effect is admitted by
+`effectHost` with the fence and an epoch-free idempotency key. `admitUnattended` refuses the
+memory and callback kinds and an effect host that is neither the reference host nor certified by
+`certifyEffectHost`, by name. A tool with a source is an effect unless its effect class is read. See `docs/design/storage.md`.
+
 ### Proposal edit refusal details
 
 Proposal edit refusals omit `document` when the identifier is missing, non-string
