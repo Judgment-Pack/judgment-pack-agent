@@ -109,10 +109,11 @@ type MemoryRunStore struct {
 	acknowledge func(context.Context, []byte) error
 	durability  string
 	history     *memoryHistoryJournal
+	leases      *LeaseTable
 }
 
 func NewMemoryRunStore(options MemoryRunStoreOptions) *MemoryRunStore {
-	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now)}
+	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now)}
 }
 func (m *MemoryRunStore) Durability() string { return m.durability }
 func validStorageID(id string) bool {
@@ -191,10 +192,10 @@ func (m *MemoryRunStore) Load(ctx context.Context, id string) (*RunHead, error) 
 	return &head, nil
 }
 func (m *MemoryRunStore) Commit(ctx context.Context, input RunCommit) (RunReceipt, error) {
-	receipt, _, err := m.commitTransaction(ctx, input, nil)
+	receipt, _, err := m.commitTransaction(ctx, input, nil, nil)
 	return receipt, err
 }
-func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit, extra *RunHistoryCommit) (RunReceipt, RunHistoryReceipt, error) {
+func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit, extra *RunHistoryCommit, fence *LeaseFence) (RunReceipt, RunHistoryReceipt, error) {
 	if err := ctx.Err(); err != nil {
 		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
@@ -205,6 +206,10 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
+		return RunReceipt{}, RunHistoryReceipt{}, err
+	}
+	// #223: the fence is checked in the same locked transaction as the revision, and again at publication.
+	if err := m.checkCommitFence(frozen.RunID, fence); err != nil {
 		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
 	held := m.runs[frozen.RunID]
@@ -255,6 +260,9 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 		commits[id] = commit
 	}
 	commits[frozen.CommitID] = heldRunCommit{input: frozen, receipt: receipt, historyInput: historyInputText(extra), historyReceipt: historyReceipt}
+	if err := m.checkCommitFence(frozen.RunID, fence); err != nil {
+		return RunReceipt{}, RunHistoryReceipt{}, err
+	}
 	// All validation/acknowledgement precedes the single publication under the store lock.
 	m.runs[frozen.RunID] = heldRun{head: RunHead{RunReceipt: receipt, RunID: frozen.RunID, Checkpoint: checkpoint}, events: events, commits: commits}
 	m.history.publish(prepared)

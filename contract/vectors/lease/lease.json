@@ -1,0 +1,129 @@
+{
+  "description": "Handwritten version 1 leases: a held lease at the first epoch, a released lease whose epoch is retained, and a lease at the largest epoch. Every refused record is refused by both readers before any transition.",
+  "schema": "run-lease.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/lease.ts (readRunLease)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-alpha",
+      "owner": "worker-a",
+      "epoch": "1",
+      "expiry": "2026-01-01T00:00:30.000Z",
+      "state": "held"
+    },
+    {
+      "version": 1,
+      "resource": "run-alpha",
+      "owner": "worker-b",
+      "epoch": "7",
+      "expiry": "2026-01-01T00:05:00.250Z",
+      "state": "released"
+    },
+    {
+      "version": 1,
+      "resource": "chat-alpha",
+      "owner": "worker-c",
+      "epoch": "999999999999999999",
+      "expiry": "9999-12-31T23:59:59.999Z",
+      "state": "held"
+    }
+  ],
+  "refused": [
+    {
+      "problem": "expired is decided by the store clock, never stored",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "expired"
+      }
+    },
+    {
+      "problem": "expiry without milliseconds",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30Z",
+        "state": "held"
+      }
+    },
+    {
+      "problem": "expiry with an offset instead of UTC",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000+00:00",
+        "state": "held"
+      }
+    },
+    {
+      "problem": "expiry as a number",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": 1767225630000,
+        "state": "held"
+      }
+    },
+    {
+      "problem": "epoch past the largest",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1000000000000000000",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held"
+      }
+    },
+    {
+      "problem": "version 2",
+      "record": {
+        "version": 2,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held"
+      }
+    },
+    {
+      "problem": "an unknown member",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held",
+        "renewals": 3
+      }
+    },
+    {
+      "problem": "no owner",
+      "record": {
+        "version": 1,
+        "resource": "run-alpha",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held"
+      }
+    }
+  ]
+}

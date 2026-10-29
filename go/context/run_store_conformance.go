@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"time"
 )
 
 // StorageConformanceFailure names the violated port property without exposing record content.
@@ -158,6 +159,132 @@ func CheckRunStoreFaultConformance(ctx context.Context, create func(phase string
 		if phase == "after" && receipt.Revision != head.Revision {
 			return fail("run.fault.after.idempotent")
 		}
+	}
+	return nil
+}
+
+// CheckRunStoreLeaseConformance (#223) is for a host store kind's lease port (desk #609). The factory
+// builds a fresh store whose authoritative lease clock is the now it is given, so the probe can move
+// time; every other property is the store's own. The TypeScript twin is runStoreLeaseConformance.
+func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() time.Time) LeaseRunStore) error {
+	fail := func(property string) error { return &StorageConformanceFailure{Property: property} }
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := create(func() time.Time { return at })
+	const run = "lease-run"
+	if store.LeaseVersion() != LeaseRecordVersion || (store.LeaseLifetime() != LeaseLifetimeDurable && store.LeaseLifetime() != LeaseLifetimeProcess) || store.Durability() == RunStoreSingleWriterCallback {
+		return fail("lease.declared")
+	}
+	refuses := func(err error, reason string) bool {
+		var refused *LeaseRefused
+		return errors.As(err, &refused) && refused.Reason == reason
+	}
+	commit := func(commitID, expected string, fence LeaseFence) (RunReceipt, error) {
+		return store.CommitFenced(ctx, RunCommit{RunID: run, ExpectedRevision: expected, CommitID: commitID, Checkpoint: []byte(`{"commit":"` + commitID + `"}`)}, fence)
+	}
+	opened, err := store.Commit(ctx, RunCommit{RunID: run, CommitID: "lease-open", Checkpoint: []byte(`{"commit":"lease-open"}`)})
+	if err != nil {
+		return fail("lease.open")
+	}
+	if _, err = store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-a", DurationMs: 1000}); !refuses(err, "revision-changed") {
+		return fail("lease.acquire.revision-checked")
+	}
+	first, err := store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-a", ExpectedRevision: opened.Revision, DurationMs: 1000})
+	if err != nil || first.Version != 1 || first.Resource != run || first.Owner != "worker-a" || first.Epoch != "1" || first.State != "held" || first.Expiry != "2026-01-01T00:00:01.000Z" {
+		return fail("lease.acquire.first")
+	}
+	if _, err = store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-b", ExpectedRevision: opened.Revision, DurationMs: 1000}); !refuses(err, "held") {
+		return fail("lease.acquire.held")
+	}
+	a := FenceOf(first)
+	current, err := commit("lease-a-1", opened.Revision, a)
+	if head, _ := store.Load(ctx, run); err != nil || current.CommitID != "lease-a-1" || head == nil || head.Revision != current.Revision {
+		return fail("lease.commit.current")
+	}
+	forged := a
+	forged.Owner = "worker-b"
+	if _, err = commit("lease-forged", current.Revision, forged); !refuses(err, "other-owner") {
+		return fail("lease.commit.other-owner")
+	}
+	forged = a
+	forged.Epoch = "2"
+	if _, err = commit("lease-forged", current.Revision, forged); !refuses(err, "stale-epoch") {
+		return fail("lease.commit.future-epoch")
+	}
+	if _, err = store.CommitFenced(ctx, RunCommit{RunID: "lease-other", CommitID: "lease-other", Checkpoint: []byte(`{}`)}, a); !refuses(err, "resource-mismatch") {
+		return fail("lease.commit.resource")
+	}
+	forged = a
+	forged.Epoch = "01"
+	if err = store.CheckFence(ctx, forged); !refuses(err, "invalid") {
+		return fail("lease.fence.exact-epoch")
+	}
+	at = at.Add(500 * time.Millisecond)
+	renewed, err := store.RenewLease(ctx, a, 1000)
+	if err != nil || renewed.Epoch != "1" || renewed.Owner != "worker-a" || renewed.Expiry != "2026-01-01T00:00:01.500Z" {
+		return fail("lease.renew.store-clock")
+	}
+	forged = a
+	forged.Owner = "worker-b"
+	if _, err = store.RenewLease(ctx, forged, 1000); !refuses(err, "other-owner") {
+		return fail("lease.renew.other-owner")
+	}
+	at = time.Date(2026, 1, 1, 0, 0, 1, 500_000_000, time.UTC)
+	if err = store.CheckFence(ctx, a); !refuses(err, "expired") {
+		return fail("lease.expiry.equal-time")
+	}
+	if _, err = store.RenewLease(ctx, a, 1000); !refuses(err, "expired") {
+		return fail("lease.renew.no-revival")
+	}
+	if _, err = commit("lease-a-late", current.Revision, a); !refuses(err, "expired") {
+		return fail("lease.commit.expired")
+	}
+	if head, _ := store.Load(ctx, run); head == nil || head.Revision != current.Revision {
+		return fail("lease.commit.expired-unapplied")
+	}
+	second, err := store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-b", ExpectedRevision: current.Revision, DurationMs: 1000})
+	if err != nil || second.Epoch != "2" || second.Owner != "worker-b" {
+		return fail("lease.takeover.greater-epoch")
+	}
+	if _, err = commit("lease-a-stale", current.Revision, a); !refuses(err, "stale-epoch") {
+		return fail("lease.commit.stale-epoch")
+	}
+	b := FenceOf(second)
+	taken, err := commit("lease-b-1", current.Revision, b)
+	if err != nil {
+		return fail("lease.commit.current")
+	}
+	released, err := store.ReleaseLease(ctx, b)
+	if err != nil || released.State != "released" || released.Epoch != "2" {
+		return fail("lease.release.retains-epoch")
+	}
+	if _, err = commit("lease-b-2", taken.Revision, b); !refuses(err, "released") {
+		return fail("lease.release.fence-ends")
+	}
+	third, err := store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-a", ExpectedRevision: taken.Revision, DurationMs: 1000})
+	read, readErr := store.ReadLease(ctx, run)
+	if err != nil || readErr != nil || third.Epoch != "3" || read == nil || read.Epoch != "3" {
+		return fail("lease.release.next-greater")
+	}
+	if missing, err := store.ReadLease(ctx, "never-leased"); err != nil || missing != nil {
+		return fail("lease.read.missing")
+	}
+	results := make(chan error, 2)
+	for _, owner := range []string{"worker-x", "worker-y"} {
+		go func() {
+			_, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "lease-race", Owner: owner, DurationMs: 1000})
+			results <- err
+		}()
+	}
+	won, held := 0, 0
+	for range 2 {
+		if err := <-results; err == nil {
+			won++
+		} else if refuses(err, "held") {
+			held++
+		}
+	}
+	if won != 1 || held != 1 {
+		return fail("lease.acquire.atomic")
 	}
 	return nil
 }

@@ -1406,6 +1406,20 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		attempt.mu.Unlock()
 		w.mu.Unlock()
 	}
+	if (kind == "host" || kind == "runtime") && !read && leaseViewOf(w.Store) != nil {
+		// #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with
+		// the fence; its idempotency identity is the acknowledged claim's, never the epoch.
+		inner, operation := execute, EffectOperation{Run: w.ID, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest}
+		execute = func(raw []byte) (T, error) {
+			var out T
+			err := fencedEffect(ctx, w.Store, operation, func(context.Context) error {
+				var runErr error
+				out, runErr = inner(raw)
+				return runErr
+			})
+			return out, err
+		}
+	}
 	value, runErr := execute(request)
 	if runErr == nil && admit != nil && ctx.Err() == nil {
 		// The execution ended within its deadline. The check has the rest of the source's deadline,

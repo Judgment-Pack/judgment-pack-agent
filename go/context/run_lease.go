@@ -1,0 +1,700 @@
+package runcontext
+
+// Run leases and fencing (ADR-0025 decision 1, #223; contract/schemas/run-lease.json). The vocabulary is
+// the ADR's: a lease has an owner, an authoritative expiry decided by the store clock and an exact,
+// monotonically increasing epoch. The fence (resource, owner, epoch) is the evidence presented at every
+// checkpoint commit and checked by the effect host at every admission. A lease grants neither tool
+// permission nor approval. The TypeScript twin is packages/harness/storage/lease.ts.
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"math/big"
+	"regexp"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+)
+
+const LeaseRecordVersion = 1
+
+// LeaseEpochMax is the largest epoch: 18 decimal digits, exact in a signed 64-bit integer and never
+// carried as a JSON number.
+const LeaseEpochMax = "999999999999999999"
+
+// LeaseDurationMaxMs bounds a requested lease or renewal duration, in milliseconds of the store clock.
+const LeaseDurationMaxMs = 86_400_000
+
+const LeaseLifetimeDurable = "durable"
+const LeaseLifetimeProcess = "process"
+const EffectFencingEnforced = "enforced"
+const EffectFencingUnsupported = "unsupported"
+
+// The wire records are the generated contract types of run-lease.json.
+type RunLease = contract.RunLease
+type LeaseFence = contract.RunLeaseFence
+type EffectOperation = contract.RunLeaseOperation
+type EffectAdmission = contract.RunLeaseEffectAdmission
+
+// LeaseAcquire asks for a lease of one resource. An empty ExpectedRevision expects the resource to have
+// no revision yet, as RunCommit's does.
+type LeaseAcquire struct {
+	Resource, Owner, ExpectedRevision string
+	DurationMs                        int64
+}
+
+var LeaseRefusalReasons = []string{"invalid", "no-lease", "held", "revision-changed", "stale-epoch", "other-owner", "expired", "released", "epoch-exhausted", "resource-mismatch", "already-admitted"}
+var LeaseCapabilityReasons = []string{"store-unsupported", "store-lifetime", "effect-host-unfenced"}
+
+// LeaseRefused is a named lease or fence refusal. Nothing was committed or admitted, except
+// already-admitted: an effect host admitted that idempotency identity before, so its outcome is unknown
+// and it is never performed again.
+type LeaseRefused struct{ Reason string }
+
+func (e *LeaseRefused) Error() string { return "LeaseRefused: " + e.Reason + "." }
+func (e *LeaseRefused) Unwrap() error {
+	f := failure.New("stale-state", "storage", "not-started")
+	if e.Reason == "already-admitted" {
+		f = failure.New("unknown", "tool", "unknown")
+	}
+	detail := e.Error()
+	f.Detail = &detail
+	return failure.NewError(f)
+}
+func (e *LeaseRefused) Record() contract.RunLeaseRefusal {
+	return contract.RunLeaseRefusal{Version: LeaseRecordVersion, Reason: e.Reason}
+}
+
+// LeaseCapabilityRefused: a store or effect host that cannot give the guarantee refuses unattended
+// admission by name; it never pretends.
+type LeaseCapabilityRefused struct{ Reason string }
+
+func (e *LeaseCapabilityRefused) Error() string { return "LeaseCapabilityRefused: " + e.Reason + "." }
+func (e *LeaseCapabilityRefused) Unwrap() error {
+	f := failure.New("configuration", "storage", "not-started")
+	detail := e.Error()
+	f.Detail = &detail
+	return failure.NewError(f)
+}
+func (e *LeaseCapabilityRefused) Record() contract.RunLeaseCapabilityRefusal {
+	return contract.RunLeaseCapabilityRefusal{Version: LeaseRecordVersion, Reason: e.Reason}
+}
+
+func leaseInvalid() error { return &LeaseRefused{Reason: "invalid"} }
+
+var leaseEpochPattern = regexp.MustCompile(`^[1-9][0-9]{0,17}$`)
+var leaseExpiryPattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$`)
+var leaseDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+const leaseExpiryLayout = "2006-01-02T15:04:05.000Z"
+
+// ValidLeaseEpoch: a canonical base-10 string from 1 to LeaseEpochMax. A sign, fraction, exponent,
+// leading zero or space is not an epoch.
+func ValidLeaseEpoch(epoch string) bool { return leaseEpochPattern.MatchString(epoch) }
+
+// NextLeaseEpoch: 1 for a resource never leased (""), otherwise exactly one more. Never reused or
+// decremented; past LeaseEpochMax it refuses as epoch-exhausted.
+func NextLeaseEpoch(previous string) (string, error) {
+	if previous == "" {
+		return "1", nil
+	}
+	if !ValidLeaseEpoch(previous) {
+		return "", leaseInvalid()
+	}
+	if previous == LeaseEpochMax {
+		return "", &LeaseRefused{Reason: "epoch-exhausted"}
+	}
+	value, _ := new(big.Int).SetString(previous, 10)
+	return value.Add(value, big.NewInt(1)).String(), nil
+}
+
+// CompareLeaseEpochs orders two epochs exactly.
+func CompareLeaseEpochs(a, b string) (int, error) {
+	if !ValidLeaseEpoch(a) || !ValidLeaseEpoch(b) {
+		return 0, leaseInvalid()
+	}
+	x, _ := new(big.Int).SetString(a, 10)
+	y, _ := new(big.Int).SetString(b, 10)
+	return x.Cmp(y), nil
+}
+
+func leaseExpiryMillis(expiry string) (int64, bool) {
+	if !leaseExpiryPattern.MatchString(expiry) {
+		return 0, false
+	}
+	at, err := time.Parse(leaseExpiryLayout, expiry)
+	if err != nil || at.UTC().Format(leaseExpiryLayout) != expiry {
+		return 0, false
+	}
+	return at.UnixMilli(), true
+}
+func leaseExpiryAt(ms int64) (string, error) {
+	text := time.UnixMilli(ms).UTC().Format(leaseExpiryLayout)
+	if _, ok := leaseExpiryMillis(text); !ok {
+		return "", leaseInvalid()
+	}
+	return text, nil
+}
+
+// leaseObject decodes one closed version 1 object with exactly these members. An integral version
+// spelling such as 1.0 is the same version, as ADR-0024 reads schema-owned integers.
+func leaseObject(raw []byte, members ...string) (map[string]json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(&object); err != nil || object == nil || decoder.More() || len(object) != len(members) {
+		return nil, leaseInvalid()
+	}
+	for _, member := range members {
+		if _, ok := object[member]; !ok {
+			return nil, leaseInvalid()
+		}
+	}
+	if version, ok := object["version"]; ok {
+		var number float64
+		if json.Unmarshal(version, &number) != nil || number != LeaseRecordVersion {
+			return nil, leaseInvalid()
+		}
+	}
+	return object, nil
+}
+func leaseString(object map[string]json.RawMessage, member string) (string, error) {
+	var value string
+	if raw := object[member]; len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &value) != nil {
+		return "", leaseInvalid()
+	}
+	return value, nil
+}
+func validLeaseFence(fence LeaseFence) bool {
+	return fence.Version == LeaseRecordVersion && validStorageID(fence.Resource) && validStorageID(fence.Owner) && ValidLeaseEpoch(fence.Epoch)
+}
+func validRunLease(lease RunLease) bool {
+	_, ok := leaseExpiryMillis(lease.Expiry)
+	return lease.Version == LeaseRecordVersion && validStorageID(lease.Resource) && validStorageID(lease.Owner) && ValidLeaseEpoch(lease.Epoch) && ok && (lease.State == "held" || lease.State == "released")
+}
+func validEffectOperation(op EffectOperation) bool {
+	return validStorageID(op.Run) && validStorageID(op.Operation) && validStorageID(op.Source) && validStorageID(op.Tool) && leaseDigestPattern.MatchString(op.RequestDigest)
+}
+
+// ReadLeaseFence reads a version 1 fence record.
+func ReadLeaseFence(raw []byte) (LeaseFence, error) {
+	object, err := leaseObject(raw, "version", "resource", "owner", "epoch")
+	if err != nil {
+		return LeaseFence{}, err
+	}
+	fence := LeaseFence{Version: LeaseRecordVersion}
+	if fence.Resource, err = leaseString(object, "resource"); err != nil {
+		return LeaseFence{}, err
+	}
+	if fence.Owner, err = leaseString(object, "owner"); err != nil {
+		return LeaseFence{}, err
+	}
+	if fence.Epoch, err = leaseString(object, "epoch"); err != nil {
+		return LeaseFence{}, err
+	}
+	if !validLeaseFence(fence) {
+		return LeaseFence{}, leaseInvalid()
+	}
+	return fence, nil
+}
+
+// ReadRunLease reads a version 1 lease record.
+func ReadRunLease(raw []byte) (RunLease, error) {
+	object, err := leaseObject(raw, "version", "resource", "owner", "epoch", "expiry", "state")
+	if err != nil {
+		return RunLease{}, err
+	}
+	lease := RunLease{Version: LeaseRecordVersion}
+	for member, target := range map[string]*string{"resource": &lease.Resource, "owner": &lease.Owner, "epoch": &lease.Epoch, "expiry": &lease.Expiry, "state": &lease.State} {
+		if *target, err = leaseString(object, member); err != nil {
+			return RunLease{}, err
+		}
+	}
+	if !validRunLease(lease) {
+		return RunLease{}, leaseInvalid()
+	}
+	return lease, nil
+}
+
+func readLeaseReason(raw []byte, reasons []string) (string, error) {
+	object, err := leaseObject(raw, "version", "reason")
+	if err != nil {
+		return "", err
+	}
+	reason, err := leaseString(object, "reason")
+	if err != nil || !slices.Contains(reasons, reason) {
+		return "", leaseInvalid()
+	}
+	return reason, nil
+}
+
+// ReadLeaseRefusal reads a version 1 refusal record.
+func ReadLeaseRefusal(raw []byte) (contract.RunLeaseRefusal, error) {
+	reason, err := readLeaseReason(raw, LeaseRefusalReasons)
+	return contract.RunLeaseRefusal{Version: LeaseRecordVersion, Reason: reason}, err
+}
+
+// ReadLeaseCapabilityRefusal reads a version 1 capability refusal record.
+func ReadLeaseCapabilityRefusal(raw []byte) (contract.RunLeaseCapabilityRefusal, error) {
+	reason, err := readLeaseReason(raw, LeaseCapabilityReasons)
+	return contract.RunLeaseCapabilityRefusal{Version: LeaseRecordVersion, Reason: reason}, err
+}
+
+// FenceOf is the fence a lease's holder presents.
+func FenceOf(lease RunLease) LeaseFence {
+	return LeaseFence{Version: LeaseRecordVersion, Resource: lease.Resource, Owner: lease.Owner, Epoch: lease.Epoch}
+}
+
+// EffectIdempotencyKey is the SHA-256 of the canonical JSON of the operation alone. It carries no epoch,
+// so it is the same after a takeover.
+func EffectIdempotencyKey(op EffectOperation) (string, error) {
+	if !validEffectOperation(op) {
+		return "", leaseInvalid()
+	}
+	canonical := CanonicalJSON(ObjectOf("run", String(op.Run), "operation", String(op.Operation), "source", String(op.Source), "tool", String(op.Tool), "requestDigest", String(op.RequestDigest)))
+	return durableDigest([]byte(canonical)), nil
+}
+
+// NewEffectAdmission is what an effect host receives for one operation under one fence.
+func NewEffectAdmission(fence LeaseFence, op EffectOperation) (EffectAdmission, error) {
+	if !validLeaseFence(fence) {
+		return EffectAdmission{}, leaseInvalid()
+	}
+	key, err := EffectIdempotencyKey(op)
+	if err != nil {
+		return EffectAdmission{}, err
+	}
+	return EffectAdmission{Version: LeaseRecordVersion, Fence: fence, Operation: op, IdempotencyKey: key}, nil
+}
+func checkEffectAdmission(admission EffectAdmission) error {
+	held, err := NewEffectAdmission(admission.Fence, admission.Operation)
+	if err != nil || admission.Version != LeaseRecordVersion || held.IdempotencyKey != admission.IdempotencyKey {
+		return leaseInvalid()
+	}
+	return nil
+}
+
+// ReadEffectAdmission reads a version 1 admission record and refuses a key that is not its operation's.
+func ReadEffectAdmission(raw []byte) (EffectAdmission, error) {
+	object, err := leaseObject(raw, "version", "fence", "operation", "idempotencyKey")
+	if err != nil {
+		return EffectAdmission{}, err
+	}
+	fence, err := ReadLeaseFence(object["fence"])
+	if err != nil {
+		return EffectAdmission{}, err
+	}
+	operation, err := leaseObject(object["operation"], "run", "operation", "source", "tool", "requestDigest")
+	if err != nil {
+		return EffectAdmission{}, err
+	}
+	var op EffectOperation
+	for member, target := range map[string]*string{"run": &op.Run, "operation": &op.Operation, "source": &op.Source, "tool": &op.Tool, "requestDigest": &op.RequestDigest} {
+		if *target, err = leaseString(operation, member); err != nil {
+			return EffectAdmission{}, err
+		}
+	}
+	key, err := leaseString(object, "idempotencyKey")
+	if err != nil {
+		return EffectAdmission{}, err
+	}
+	admission := EffectAdmission{Version: LeaseRecordVersion, Fence: fence, Operation: op, IdempotencyKey: key}
+	if err := checkEffectAdmission(admission); err != nil {
+		return EffectAdmission{}, err
+	}
+	return admission, nil
+}
+
+// LeaseStore is the lease port a store kind implements once per resource kind (desk #609). Every
+// transition is atomic and checked against the store's own clock; a caller's clock never extends a lease.
+type LeaseStore interface {
+	LeaseVersion() int
+	// LeaseLifetime is durable when leases and epochs survive the store's process, process when they
+	// end with it (the memory kind).
+	LeaseLifetime() string
+	// AcquireLease compares ExpectedRevision with the resource's current revision and refuses held while
+	// an unexpired lease is held.
+	AcquireLease(context.Context, LeaseAcquire) (RunLease, error)
+	// RenewLease: current owner and epoch only, before expiry. An expired lease is never revived.
+	RenewLease(context.Context, LeaseFence, int64) (RunLease, error)
+	// ReleaseLease retains the epoch, so the next acquisition is strictly greater.
+	ReleaseLease(context.Context, LeaseFence) (RunLease, error)
+	ReadLease(context.Context, string) (*RunLease, error)
+	// CheckFence is the authority an effect host checks a fence against.
+	CheckFence(context.Context, LeaseFence) error
+}
+
+// LeaseRunStore commits with the fence checked in the same transaction as the revision.
+type LeaseRunStore interface {
+	RunStore
+	LeaseStore
+	CommitFenced(context.Context, RunCommit, LeaseFence) (RunReceipt, error)
+}
+
+// LeaseHistoryRunStore is required of a lease store that also has the history capability.
+type LeaseHistoryRunStore interface {
+	LeaseRunStore
+	HistoryRunStore
+	CommitHistoryFenced(context.Context, RunHistoryCommit, LeaseFence) (RunHistoryReceipt, error)
+}
+
+// LeaseTable holds the lease transitions in memory. MemoryRunStore calls it under its own lock; a host
+// store kind implements the same transitions against its own durable rows. It is not safe for
+// concurrent use on its own.
+type LeaseTable struct {
+	rows map[string]RunLease
+	now  func() time.Time
+}
+
+func NewLeaseTable(now func() time.Time) *LeaseTable {
+	if now == nil {
+		now = time.Now
+	}
+	return &LeaseTable{rows: map[string]RunLease{}, now: now}
+}
+func (t *LeaseTable) millis() (int64, error) {
+	at := t.now()
+	if at.IsZero() {
+		return 0, leaseInvalid()
+	}
+	return at.UnixMilli(), nil
+}
+func (t *LeaseTable) Read(resource string) (*RunLease, error) {
+	if !validStorageID(resource) {
+		return nil, leaseInvalid()
+	}
+	row, ok := t.rows[resource]
+	if !ok {
+		return nil, nil
+	}
+	return &row, nil
+}
+func (t *LeaseTable) Acquire(request LeaseAcquire, currentRevision string) (RunLease, error) {
+	if !validStorageID(request.Resource) || !validStorageID(request.Owner) || request.ExpectedRevision != "" && !validStorageID(request.ExpectedRevision) || request.DurationMs < 1 || request.DurationMs > LeaseDurationMaxMs {
+		return RunLease{}, leaseInvalid()
+	}
+	now, err := t.millis()
+	if err != nil {
+		return RunLease{}, err
+	}
+	if request.ExpectedRevision != currentRevision {
+		return RunLease{}, &LeaseRefused{Reason: "revision-changed"}
+	}
+	row, held := t.rows[request.Resource]
+	if held && row.State == "held" {
+		if expiry, _ := leaseExpiryMillis(row.Expiry); now < expiry {
+			return RunLease{}, &LeaseRefused{Reason: "held"}
+		}
+	}
+	epoch, err := NextLeaseEpoch(row.Epoch)
+	if err != nil {
+		return RunLease{}, err
+	}
+	expiry, err := leaseExpiryAt(now + request.DurationMs)
+	if err != nil {
+		return RunLease{}, err
+	}
+	lease := RunLease{Version: LeaseRecordVersion, Resource: request.Resource, Owner: request.Owner, Epoch: epoch, Expiry: expiry, State: "held"}
+	t.rows[lease.Resource] = lease
+	return lease, nil
+}
+
+// Check returns the named reason unless the fence is current: this epoch, this owner, held and
+// unexpired by the store clock. An expiry equal to the store's time is expired.
+func (t *LeaseTable) Check(fence LeaseFence) (RunLease, error) {
+	if !validLeaseFence(fence) {
+		return RunLease{}, leaseInvalid()
+	}
+	now, err := t.millis()
+	if err != nil {
+		return RunLease{}, err
+	}
+	row, ok := t.rows[fence.Resource]
+	switch expiry, _ := leaseExpiryMillis(row.Expiry); {
+	case !ok:
+		return RunLease{}, &LeaseRefused{Reason: "no-lease"}
+	case row.Epoch != fence.Epoch:
+		return RunLease{}, &LeaseRefused{Reason: "stale-epoch"}
+	case row.Owner != fence.Owner:
+		return RunLease{}, &LeaseRefused{Reason: "other-owner"}
+	case row.State == "released":
+		return RunLease{}, &LeaseRefused{Reason: "released"}
+	case now >= expiry:
+		return RunLease{}, &LeaseRefused{Reason: "expired"}
+	}
+	return row, nil
+}
+func (t *LeaseTable) Renew(fence LeaseFence, durationMs int64) (RunLease, error) {
+	if durationMs < 1 || durationMs > LeaseDurationMaxMs {
+		return RunLease{}, leaseInvalid()
+	}
+	row, err := t.Check(fence)
+	if err != nil {
+		return RunLease{}, err
+	}
+	now, err := t.millis()
+	if err != nil {
+		return RunLease{}, err
+	}
+	if row.Expiry, err = leaseExpiryAt(now + durationMs); err != nil {
+		return RunLease{}, err
+	}
+	t.rows[row.Resource] = row
+	return row, nil
+}
+func (t *LeaseTable) Release(fence LeaseFence) (RunLease, error) {
+	row, err := t.Check(fence)
+	if err != nil {
+		return RunLease{}, err
+	}
+	row.State = "released"
+	t.rows[row.Resource] = row
+	return row, nil
+}
+
+func (m *MemoryRunStore) leaseTransition(ctx context.Context, run func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return run()
+}
+
+// MemoryRunStore follows the lease transitions within its own process only: LeaseLifetime is process,
+// so it never qualifies for unattended admission and a new instance starts with no leases.
+func (m *MemoryRunStore) LeaseVersion() int     { return LeaseRecordVersion }
+func (m *MemoryRunStore) LeaseLifetime() string { return LeaseLifetimeProcess }
+func (m *MemoryRunStore) AcquireLease(ctx context.Context, request LeaseAcquire) (lease RunLease, err error) {
+	err = m.leaseTransition(ctx, func() error {
+		lease, err = m.leases.Acquire(request, m.runs[request.Resource].head.Revision)
+		return err
+	})
+	return lease, err
+}
+func (m *MemoryRunStore) RenewLease(ctx context.Context, fence LeaseFence, durationMs int64) (lease RunLease, err error) {
+	err = m.leaseTransition(ctx, func() error { lease, err = m.leases.Renew(fence, durationMs); return err })
+	return lease, err
+}
+func (m *MemoryRunStore) ReleaseLease(ctx context.Context, fence LeaseFence) (lease RunLease, err error) {
+	err = m.leaseTransition(ctx, func() error { lease, err = m.leases.Release(fence); return err })
+	return lease, err
+}
+func (m *MemoryRunStore) ReadLease(ctx context.Context, resource string) (lease *RunLease, err error) {
+	err = m.leaseTransition(ctx, func() error { lease, err = m.leases.Read(resource); return err })
+	return lease, err
+}
+func (m *MemoryRunStore) CheckFence(ctx context.Context, fence LeaseFence) error {
+	return m.leaseTransition(ctx, func() error { _, err := m.leases.Check(fence); return err })
+}
+func (m *MemoryRunStore) CommitFenced(ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+	receipt, _, err := m.commitTransaction(ctx, input, nil, &fence)
+	return receipt, err
+}
+func (m *MemoryRunStore) CommitHistoryFenced(ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+	extra, err := freezeHistoryExtra(input)
+	if err != nil {
+		return RunHistoryReceipt{}, err
+	}
+	_, receipt, err := m.commitTransaction(ctx, input.Run, &extra, &fence)
+	return receipt, err
+}
+
+// checkCommitFence is called under the store lock, at admission and again at publication.
+func (m *MemoryRunStore) checkCommitFence(runID string, fence *LeaseFence) error {
+	if fence == nil {
+		return nil
+	}
+	if !validLeaseFence(*fence) {
+		return leaseInvalid()
+	}
+	if fence.Resource != runID {
+		return &LeaseRefused{Reason: "resource-mismatch"}
+	}
+	_, err := m.leases.Check(*fence)
+	return err
+}
+
+// EffectHost is the effect-host port. The host itself receives the fence and checks it at its own
+// admission boundary, then performs the effect: a client-side check or a store compare-and-set alone
+// does not stop a duplicate external effect.
+type EffectHost interface {
+	EffectFencing() string
+	Dispatch(context.Context, EffectAdmission, func(context.Context) error) error
+}
+
+// LeaseAuthority is where an effect host checks a fence: the store's own lease authority, or an
+// enforcement service in front of it.
+type LeaseAuthority interface {
+	CheckFence(context.Context, LeaseFence) error
+}
+
+// ReferenceEffectHost serializes admission: the fence is checked against the authority and the
+// idempotency identity is recorded before the effect is performed. An identity admitted before is
+// refused as already-admitted whatever the epoch: its outcome is unknown until its own host reconciles
+// it, and a takeover never replays it.
+type ReferenceEffectHost struct {
+	mu        sync.Mutex
+	authority LeaseAuthority
+	admitted  map[string]bool
+	refusals  []contract.RunLeaseRefusal
+}
+
+func NewReferenceEffectHost(authority LeaseAuthority) *ReferenceEffectHost {
+	return &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+}
+func (h *ReferenceEffectHost) EffectFencing() string { return EffectFencingEnforced }
+
+// Refusals is every refusal this host gave, as its versioned record, in order.
+func (h *ReferenceEffectHost) Refusals() []contract.RunLeaseRefusal {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return slices.Clone(h.refusals)
+}
+func (h *ReferenceEffectHost) admit(ctx context.Context, admission EffectAdmission) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	err := ctx.Err()
+	if err == nil {
+		err = checkEffectAdmission(admission)
+	}
+	if err == nil && admission.Fence.Resource != admission.Operation.Run {
+		err = &LeaseRefused{Reason: "resource-mismatch"}
+	}
+	if err == nil {
+		err = h.authority.CheckFence(ctx, admission.Fence)
+	}
+	if err == nil && h.admitted[admission.IdempotencyKey] {
+		err = &LeaseRefused{Reason: "already-admitted"}
+	}
+	if err == nil {
+		h.admitted[admission.IdempotencyKey] = true
+	}
+	if refused, ok := err.(*LeaseRefused); ok {
+		h.refusals = append(h.refusals, refused.Record())
+	}
+	return err
+}
+func (h *ReferenceEffectHost) Dispatch(ctx context.Context, admission EffectAdmission, perform func(context.Context) error) error {
+	if err := h.admit(ctx, admission); err != nil {
+		return err
+	}
+	return perform(ctx)
+}
+
+// fencedRunStore is a view of a lease store whose every checkpoint commit presents its fence, checked by
+// the store in the same transaction. A non-read host or runtime dispatch through a writer on it is
+// admitted by host with the same fence; with no host it refuses effect-host-unfenced.
+type fencedRunStore struct {
+	store LeaseRunStore
+	fence LeaseFence
+	host  EffectHost
+}
+
+func (f *fencedRunStore) Durability() string { return f.store.Durability() }
+func (f *fencedRunStore) Load(ctx context.Context, id string) (*RunHead, error) {
+	return f.store.Load(ctx, id)
+}
+func (f *fencedRunStore) Commit(ctx context.Context, input RunCommit) (RunReceipt, error) {
+	return f.store.CommitFenced(ctx, input, f.fence)
+}
+func (f *fencedRunStore) ReadEvents(ctx context.Context, id, after string, limit int) (RunEventPage, error) {
+	return f.store.ReadEvents(ctx, id, after, limit)
+}
+
+// fencedHistoryRunStore keeps the history capability of a lease history store, fencing both commits.
+type fencedHistoryRunStore struct {
+	HistoryRunStore
+	fenced *fencedRunStore
+	store  LeaseHistoryRunStore
+}
+
+func (f *fencedHistoryRunStore) Commit(ctx context.Context, input RunCommit) (RunReceipt, error) {
+	return f.fenced.Commit(ctx, input)
+}
+func (f *fencedHistoryRunStore) CommitHistory(ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error) {
+	return f.store.CommitHistoryFenced(ctx, input, f.fenced.fence)
+}
+
+// FencedRunStore returns the view a durable run uses as its RunStore under a lease. The store keeps its
+// own durability; the view adds no lifetime it does not have. A store without the lease port, or with
+// history but no fenced history commit, refuses store-unsupported; a host that does not enforce the
+// fence refuses effect-host-unfenced. host may be nil for a run with no non-read effects.
+func FencedRunStore(store RunStore, fence LeaseFence, host EffectHost) (RunStore, error) {
+	lease, ok := store.(LeaseRunStore)
+	if !ok || lease.LeaseVersion() != LeaseRecordVersion || store.Durability() == RunStoreSingleWriterCallback {
+		return nil, &LeaseCapabilityRefused{Reason: "store-unsupported"}
+	}
+	history, withHistory := store.(HistoryRunStore)
+	leaseHistory, fencedHistory := store.(LeaseHistoryRunStore)
+	if withHistory && history.HistoryVersion() == 1 && !fencedHistory {
+		return nil, &LeaseCapabilityRefused{Reason: "store-unsupported"}
+	}
+	if host != nil && host.EffectFencing() != EffectFencingEnforced {
+		return nil, &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
+	}
+	if !validLeaseFence(fence) {
+		return nil, leaseInvalid()
+	}
+	view := &fencedRunStore{store: lease, fence: fence, host: host}
+	if withHistory && history.HistoryVersion() == 1 {
+		return &fencedHistoryRunStore{HistoryRunStore: history, fenced: view, store: leaseHistory}, nil
+	}
+	return view, nil
+}
+
+// AdmitUnattended admits only a store whose leases outlive its process and an effect host that
+// enforces the fence. Anything else refuses by name before a dispatch; in particular the memory and
+// callback kinds never qualify.
+func AdmitUnattended(store RunStore, host EffectHost) error {
+	lease, ok := store.(LeaseRunStore)
+	if !ok || lease.LeaseVersion() != LeaseRecordVersion || store.Durability() == RunStoreSingleWriterCallback {
+		return &LeaseCapabilityRefused{Reason: "store-unsupported"}
+	}
+	if lease.LeaseLifetime() != LeaseLifetimeDurable {
+		return &LeaseCapabilityRefused{Reason: "store-lifetime"}
+	}
+	if host == nil || host.EffectFencing() != EffectFencingEnforced {
+		return &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
+	}
+	return nil
+}
+
+// UnattendedRunStore is AdmitUnattended, then the fenced view the unattended run uses as its RunStore.
+func UnattendedRunStore(store RunStore, fence LeaseFence, host EffectHost) (RunStore, error) {
+	if err := AdmitUnattended(store, host); err != nil {
+		return nil, err
+	}
+	return FencedRunStore(store, fence, host)
+}
+
+func leaseViewOf(store RunStore) *fencedRunStore {
+	switch view := store.(type) {
+	case *fencedRunStore:
+		return view
+	case *fencedHistoryRunStore:
+		return view.fenced
+	}
+	return nil
+}
+
+// fencedEffect admits one non-read effect under the fence of the store the writer writes through.
+func fencedEffect(ctx context.Context, store RunStore, op EffectOperation, perform func(context.Context) error) error {
+	view := leaseViewOf(store)
+	if view == nil {
+		return perform(ctx)
+	}
+	if view.host == nil {
+		return &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
+	}
+	admission, err := NewEffectAdmission(view.fence, op)
+	if err != nil {
+		return err
+	}
+	return view.host.Dispatch(ctx, admission, perform)
+}

@@ -230,6 +230,13 @@ resume is refused before dispatch. `ExportRecords` exports only the records supp
 by the host and returns the closed manifest plus `export_written`. The package owns no
 record store or deletion job.
 
+### Run leases and fencing (#223)
+
+`context/run_lease.go` is the Go twin of the package's lease contract: `LeaseStore` on
+`MemoryRunStore`, `FencedRunStore` for every checkpoint commit, the `EffectHost` port with
+`NewReferenceEffectHost` at every non-read host or runtime admission, `AdmitUnattended`, and
+`CheckRunStoreLeaseConformance` for a host store kind. See `docs/design/storage.md`.
+
 ### Proposal edit host binding
 
 Children and the critic never edit. Hosts supply accepted documents or the first

@@ -480,7 +480,7 @@ func (m *MemoryRunStore) CommitHistory(ctx context.Context, input RunHistoryComm
 	if err != nil {
 		return RunHistoryReceipt{}, err
 	}
-	_, receipt, err := m.commitTransaction(ctx, input.Run, &extra)
+	_, receipt, err := m.commitTransaction(ctx, input.Run, &extra, nil)
 	return receipt, err
 }
 func (m *MemoryRunStore) ReadHistoryHead(ctx context.Context, id string) (*RunHistoryHead, error) {

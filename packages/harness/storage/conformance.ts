@@ -1,6 +1,7 @@
 import {ChatNotFound,ChatRevisionConflict,StorageCommitMismatch,StorageConflict,StorageCursorInvalid} from './common'
 import type {RunStore,RunCommit} from './run'
 import type {ChatStore} from './chat'
+import {fenceOf,LeaseRefused,type LeaseFence,type LeaseRefusalReason,type LeaseRunStore} from './lease'
 export class StorageConformanceFailure extends Error {
  constructor(readonly property:string){super(`Storage conformance failed: ${property}`);this.name='StorageConformanceFailure'}
 }
@@ -92,6 +93,48 @@ async function chatFaultProperties(create:(phase:'before'|'after')=>ChatStore|Pr
  }
 }
 
+/** #223, for a host store kind's lease port (desk #609). The factory builds a fresh store whose authoritative lease
+ * clock is the `now` it is given, so the probe can move time; every other property is the store's own. */
+async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>):Promise<void>{
+ let at=Date.parse('2026-01-01T00:00:00.000Z')
+ const store=await create(()=>new Date(at)),run='lease-run'
+ check('lease.declared',store.leaseVersion===1&&(store.leaseLifetime==='durable'||store.leaseLifetime==='process')&&store.durability!=='single-writer-callback')
+ const refusesLease=async(property:string,attempt:()=>Promise<unknown>,reason:LeaseRefusalReason)=>{try{await attempt()}catch(error){check(property,error instanceof LeaseRefused&&error.reason===reason);return}throw new StorageConformanceFailure(property)}
+ const commit=(commitId:string,expectedRevision:string|null,fence:LeaseFence)=>store.commitFenced({runId:run,expectedRevision,commitId,checkpoint:bytes(`{"commit":"${commitId}"}`),events:[]},fence)
+ const opened=await store.commit({runId:run,expectedRevision:null,commitId:'lease-open',checkpoint:bytes('{"commit":"lease-open"}'),events:[]})
+ await refusesLease('lease.acquire.revision-checked',()=>store.acquireLease({resource:run,owner:'worker-a',expectedRevision:null,durationMs:1000}),'revision-changed')
+ const first=await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:opened.revision,durationMs:1000})
+ check('lease.acquire.first',first.version===1&&first.resource===run&&first.owner==='worker-a'&&first.epoch==='1'&&first.state==='held'&&first.expiry==='2026-01-01T00:00:01.000Z')
+ await refusesLease('lease.acquire.held',()=>store.acquireLease({resource:run,owner:'worker-b',expectedRevision:opened.revision,durationMs:1000}),'held')
+ const a=fenceOf(first),current=await commit('lease-a-1',opened.revision,a)
+ check('lease.commit.current',current.commitId==='lease-a-1'&&(await store.load(run))?.revision===current.revision)
+ await refusesLease('lease.commit.other-owner',()=>commit('lease-forged',current.revision,{...a,owner:'worker-b'}),'other-owner')
+ await refusesLease('lease.commit.future-epoch',()=>commit('lease-forged',current.revision,{...a,epoch:'2'}),'stale-epoch')
+ await refusesLease('lease.commit.resource',()=>store.commitFenced({runId:'lease-other',expectedRevision:null,commitId:'lease-other',checkpoint:bytes('{}'),events:[]},a),'resource-mismatch')
+ await refusesLease('lease.fence.exact-epoch',()=>store.checkFence({...a,epoch:'01'}),'invalid')
+ at+=500
+ const renewed=await store.renewLease(a,1000)
+ check('lease.renew.store-clock',renewed.epoch==='1'&&renewed.owner==='worker-a'&&renewed.expiry==='2026-01-01T00:00:01.500Z')
+ await refusesLease('lease.renew.other-owner',()=>store.renewLease({...a,owner:'worker-b'},1000),'other-owner')
+ at=Date.parse(renewed.expiry)
+ await refusesLease('lease.expiry.equal-time',()=>store.checkFence(a),'expired')
+ await refusesLease('lease.renew.no-revival',()=>store.renewLease(a,1000),'expired')
+ await refusesLease('lease.commit.expired',()=>commit('lease-a-late',current.revision,a),'expired')
+ check('lease.commit.expired-unapplied',(await store.load(run))?.revision===current.revision)
+ const second=await store.acquireLease({resource:run,owner:'worker-b',expectedRevision:current.revision,durationMs:1000})
+ check('lease.takeover.greater-epoch',second.epoch==='2'&&second.owner==='worker-b')
+ await refusesLease('lease.commit.stale-epoch',()=>commit('lease-a-stale',current.revision,a),'stale-epoch')
+ const b=fenceOf(second),taken=await commit('lease-b-1',current.revision,b)
+ const released=await store.releaseLease(b)
+ check('lease.release.retains-epoch',released.state==='released'&&released.epoch==='2')
+ await refusesLease('lease.release.fence-ends',()=>commit('lease-b-2',taken.revision,b),'released')
+ const third=await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:taken.revision,durationMs:1000})
+ check('lease.release.next-greater',third.epoch==='3'&&(await store.readLease(run))?.epoch==='3')
+ check('lease.read.missing',await store.readLease('never-leased')===undefined)
+ const contenders=await Promise.allSettled(['worker-x','worker-y'].map(owner=>store.acquireLease({resource:'lease-race',owner,expectedRevision:null,durationMs:1000})))
+ check('lease.acquire.atomic',contenders.filter(r=>r.status==='fulfilled').length===1&&contenders.some(r=>r.status==='rejected'&&r.reason instanceof LeaseRefused&&r.reason.reason==='held'))
+}
+
 async function conformance(property:string,probe:()=>Promise<void>):Promise<void>{
  try{await probe()}catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure(property)}
 }
@@ -99,3 +142,4 @@ export const runStoreConformance=(create:()=>RunStore|Promise<RunStore>)=>confor
 export const chatStoreConformance=(create:()=>ChatStore|Promise<ChatStore>)=>conformance('chat.operation',()=>chatProperties(create))
 export const runStoreFaultConformance=(create:(phase:'before'|'after')=>RunStore|Promise<RunStore>)=>conformance('run.fault.operation',()=>runFaultProperties(create))
 export const chatStoreFaultConformance=(create:(phase:'before'|'after')=>ChatStore|Promise<ChatStore>)=>conformance('chat.fault.operation',()=>chatFaultProperties(create))
+export const runStoreLeaseConformance=(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>)=>conformance('lease.operation',()=>leaseProperties(create))

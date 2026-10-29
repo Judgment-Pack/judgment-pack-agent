@@ -1,0 +1,37 @@
+{
+  "description": "Handwritten capability refusals of unattended admission, one per reason.",
+  "schema": "run-lease.json#/$defs/capabilityRefusal",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/lease.ts (LeaseCapabilityRefused, admitUnattended)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "reason": "store-unsupported"
+    },
+    {
+      "version": 1,
+      "reason": "store-lifetime"
+    },
+    {
+      "version": 1,
+      "reason": "effect-host-unfenced"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "single-writer"
+    },
+    {
+      "version": 2,
+      "reason": "store-lifetime"
+    }
+  ]
+}

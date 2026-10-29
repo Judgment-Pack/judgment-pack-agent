@@ -1,5 +1,6 @@
 import {ChatNotFound,ChatRevisionConflict,requireId,requireLimit,StorageCursorInvalid,StorageInputError,STORAGE_RECORD_BYTES,STORAGE_TRANSACTION_BYTES} from './common'
 import type {StorageRevision,StorageCursor} from './common'
+import {LeaseRefused,LeaseTable,readLeaseFence,type LeaseAcquire,type LeaseChatStore,type LeaseFence,type LeaseLifetime,type RunLease} from './lease'
 /** Complete JSON chat documents are retained; future plan payload fields are not projected away. */
 export interface StoredChat {id:string;interaction?:'plan'|'work';plans?:unknown[];[key:string]:unknown}
 export interface ChatEntry {chat:StoredChat;revision:StorageRevision;kind:'chat'|'draft'}
@@ -34,14 +35,31 @@ function jsonCopy<T>(input:T):T {
  return JSON.parse(text) as T
 }
 const copyEntry=(entry:ChatEntry):ChatEntry=>jsonCopy(entry)
-/** Test kind only. Seeding is host setup, never an engine capability. Listings use snapshot cursors. */
-export interface MemoryChatStoreOptions {beforeUpdate?:()=>void;afterUpdate?:()=>void}
-export class MemoryChatStore implements ChatStore {
+/** Test kind only. Seeding is host setup, never an engine capability. Listings use snapshot cursors.
+ * Its chat leases end with its process (leaseLifetime 'process'); `now` is its lease clock. */
+export interface MemoryChatStoreOptions {beforeUpdate?:()=>void;afterUpdate?:()=>void;now?:()=>Date}
+export class MemoryChatStore implements ChatStore,LeaseChatStore {
  readonly consistency='atomic' as const
+ readonly leaseVersion=1 as const
+ readonly leaseLifetime:LeaseLifetime='process'
+ private readonly leases:LeaseTable
  private chats=new Map<string,ChatEntry>()
  private pages=new Map<string,{entries:ChatEntry[];offset:number;kind?:'chat'|'draft'}>()
  constructor(seed:{chat:StoredChat;kind?:'chat'|'draft'}[]=[],private options:MemoryChatStoreOptions={}){
+  this.leases=new LeaseTable(()=>this.options.now?.()??new Date())
   for(const item of seed){requireId(item.chat.id);if(this.chats.has(item.chat.id)||item.kind!==undefined&&!['chat','draft'].includes(item.kind))throw new StorageInputError();const chat=jsonCopy(item.chat);this.chats.set(chat.id,{chat,kind:item.kind??'chat',revision:crypto.randomUUID()})}
+ }
+ async acquireLease(request:LeaseAcquire,signal?:AbortSignal):Promise<RunLease>{signal?.throwIfAborted();const id=request&&typeof request==='object'?request.resource:undefined;return this.leases.acquire(request,typeof id==='string'?this.chats.get(id)?.revision??null:null)}
+ async renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{signal?.throwIfAborted();return this.leases.renew(fence,durationMs)}
+ async releaseLease(fence:LeaseFence,signal?:AbortSignal):Promise<RunLease>{signal?.throwIfAborted();return this.leases.release(fence)}
+ async readLease(resource:string,signal?:AbortSignal):Promise<RunLease|undefined>{signal?.throwIfAborted();return this.leases.read(resource)}
+ async checkFence(fence:LeaseFence,signal?:AbortSignal):Promise<void>{signal?.throwIfAborted();this.leases.check(fence)}
+ /** #223: the fence check and the update share one synchronous transaction. */
+ async updateFenced(id:string,patch:ChatPatch,expectedRevision:StorageRevision,fence:LeaseFence,signal?:AbortSignal):Promise<ChatEntry>{
+  signal?.throwIfAborted();const held=readLeaseFence(fence)
+  if(held.resource!==id)throw new LeaseRefused('resource-mismatch')
+  this.leases.check(held)
+  return this.update(id,patch,expectedRevision,signal)
  }
  async get(id:string,signal?:AbortSignal){signal?.throwIfAborted();requireId(id);const entry=this.chats.get(id);return entry?copyEntry(entry):undefined}
  async update(id:string,patch:ChatPatch,expectedRevision:StorageRevision,signal?:AbortSignal):Promise<ChatEntry>{

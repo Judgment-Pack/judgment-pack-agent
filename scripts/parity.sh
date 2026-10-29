@@ -375,6 +375,8 @@ $pkg/storage/sourceApprovalClaim.test.ts
 $pkg/storage/nativePlanPause.test.ts
 $pkg/storage/nativePlanPause.ts
 $pkg/receiptQuarantine.test.ts
+$pkg/storage/lease.ts
+$pkg/storage/lease.test.ts
 EOF
 }
 

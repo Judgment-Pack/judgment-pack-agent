@@ -60,6 +60,26 @@ A new epoch cannot turn the same uncertain operation into a new action. Gateway
 #316 may bind both identities, but must not use the fencing token alone as its
 idempotency key. Storage commit identity also remains distinct.
 
+### Amendment (#223): the lease contract as built
+
+The names this decision left open are fixed here and in `contract/schemas/run-lease.json`
+(version 1), and are used unchanged by the store kinds that implement them (desk #609) and the
+readers of the same records (runner #147). The lease's members are **owner**, **expiry** (the
+authoritative expiry: the store clock plus a requested duration of 1 ms to 24 hours, UTC with
+exactly millisecond precision), **epoch** and `state` (`held` or `released`; expired is decided by
+the store clock at each check and never stored, and equal time is expired), keyed by `resource`.
+The **fence** is `{resource, owner, epoch}`: the evidence presented at every checkpoint commit and
+received by the effect host at every admission. The epoch's exact bounded encoding is a canonical
+base-10 string from `1` to `999999999999999999`; acquiring past it refuses `epoch-exhausted`. A
+release keeps the epoch. The effect's idempotency identity is `{run, operation, source, tool,
+requestDigest}`, keyed by the SHA-256 of its canonical JSON, with no epoch. Refusals are named:
+`invalid`, `no-lease`, `held`, `revision-changed`, `stale-epoch`, `other-owner`, `expired`,
+`released`, `epoch-exhausted`, `resource-mismatch` and `already-admitted`; capability refusals of
+unattended admission are `store-unsupported`, `store-lifetime` and `effect-host-unfenced`. A store
+declares `leaseLifetime` `durable` or `process`; an effect host declares `effectFencing` `enforced`
+or `unsupported`. The fence adds no member to any checkpoint or event format. The host-facing
+contract is in `docs/design/storage.md` (Run leases and fencing).
+
 ## 2. Durable waits and questions
 
 A wait records a unique run-scoped identity, reason, exact expected event/subject

@@ -72,6 +72,7 @@ EXPECTED_SCHEMAS = {
     "run-archive.json",
     "run-capture.json",
     "turn-route.json",
+    "run-lease.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -993,6 +994,59 @@ class VectorTests(unittest.TestCase):
         self.assertEqual(alias["items"][0][0]["text"], record["text"])
         self.assertEqual(record["digest"], "sha256:" + sha256(record["text"]))
         self.assertEqual(len(canonical(record).encode("utf-8")), alias["expected"]["bytes"])
+
+    def test_every_run_lease_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #223: every member of run-lease.json (root and definitions) and every refusal reason is
+        # carried by a handwritten lease vector, and every refused lease, fence and admission fails
+        # the schema. The epoch's bound is the schema's pattern: 18 digits, no sign, no zero.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("lease/")}
+        self.assertEqual(set(rows), {"lease/lease.json", "lease/fence.json", "lease/admission.json", "lease/refusal.json", "lease/capability.json"})
+        schema = self.schemas["run-lease.json"]
+
+        def invalid(changed):
+            return any(problems(validator(changed, row["schema"]), row["items"]) for row in rows.values())
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-lease.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            self.assertTrue(invalid(changed), path)
+        for path in (["properties", "state"], ["$defs", "refusal", "properties", "reason"], ["$defs", "capabilityRefusal", "properties", "reason"]):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-lease.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                self.assertTrue(invalid(changed), (path, value))
+        for name, member in (("lease/lease.json", "record"), ("lease/fence.json", "fence"), ("lease/admission.json", "admission")):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                if refused["problem"] in ("the key of another operation",):
+                    continue  # a digest mismatch only the readers can see
+                with self.subTest(vector=name, problem=refused["problem"]):
+                    self.assertNotEqual(problems(check, [refused[member]]), [])
+        for name in ("lease/refusal.json", "lease/capability.json"):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                self.assertNotEqual(problems(check, [refused]), [])
+        epochs = rows["lease/fence.json"]["epochs"]
+        self.assertEqual(epochs["largest"], "9" * 18)
+        self.assertEqual(problems(validator(self.schemas, "run-lease.json#/$defs/epoch"), [epochs["largest"]]), [])
+        self.assertNotEqual(problems(validator(self.schemas, "run-lease.json#/$defs/epoch"), [str(int(epochs["largest"]) + 1)]), [])
+        admission = rows["lease/admission.json"]
+        self.assertEqual(admission["canonical"], canonical(admission["items"][0]["operation"]))
+        self.assertEqual(admission["items"][0]["idempotencyKey"], "sha256:" + sha256(admission["canonical"]))
 
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the
