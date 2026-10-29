@@ -7485,6 +7485,78 @@
   "status": "caught",
   "origin": "agent#237",
   "note": "TypeScript safeguard removal caught at the actual interrupted-terminal native test with taskSteps=false: expected 3 provider calls to be 2. The taskSteps=true control passes. Go twin removes only len(w.nativePlanSuperseded) > 0 from supersededNativePlanLocked; the paired task-steps-off fixture fails calls=3 want=2. The acknowledged Plan decision and exact original unknown audit remain retained; this proves refusal before an extra physical provider dispatch, not a repeated host side effect. Restored focused checks are recorded in the R4 handoff."
+},
+{
+  "name": "taxonomy rehearse admits read-external",
+  "file": "toolTaxonomy.ts",
+  "find": "export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read']",
+  "replace": "export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read', 'read-external']",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The declarations.json refused row check/read-external/rehearse is admitted. Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomyRehearse fails at the declarations.json refused row by hand."
+},
+{
+  "name": "taxonomy rehearse admits act",
+  "file": "toolTaxonomy.ts",
+  "find": "export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read']",
+  "replace": "export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read', 'act']",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The declarations.json refused row check/act/rehearse then falls to the family rule and is refused with another reason; the exact-reason assertion fails. The check family still refuses act, so the refusal is held twice. Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomyRehearse fails at the declarations.json refused row by hand."
+},
+{
+  "name": "taxonomy rehearse under another operation",
+  "file": "toolTaxonomy.ts",
+  "find": ": value.checkKind !== undefined) return 'tool taxonomy checkKind contradicts its operation'",
+  "replace": ": value.checkKind !== undefined && value.checkKind !== 'rehearse') return 'tool taxonomy checkKind contradicts its operation'",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The declarations.json refused row read/read/rehearse is admitted. Go twin: go/adapter/wire/tooltaxonomy.go; TestTaxonomyRehearse fails at the declarations.json refused row by hand."
+},
+{
+  "name": "taxonomy rehearse description words",
+  "file": "toolTaxonomy.ts",
+  "find": "if (at !== 0) return false",
+  "replace": "if (at < 0) return false",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The tools.json rehearsal refused row whose description ends with the words is admitted. Go twin: go/adapter/wire/tooltaxonomy.go RehearsalDescribed; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
+},
+{
+  "name": "taxonomy rehearse description required",
+  "file": "toolSources.ts",
+  "find": "if (t.checkKind === 'rehearse' && !rehearsalDescribed(tool.description))",
+  "replace": "if (false && t.checkKind === 'rehearse' && !rehearsalDescribed(tool.description))",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "Every tools.json rehearsal refused row is admitted. Go twin: go/context/tooltaxonomy.go HostTaxonomyProblem; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
+},
+{
+  "name": "taxonomy rehearse description boundary",
+  "file": "toolTaxonomy.ts",
+  "find": "return next === '' || REHEARSAL_BOUNDARY.includes(next)",
+  "replace": "return true",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The tools.json rehearsal refused row whose words run into another word (non-bindingly) is admitted. Go twin: go/adapter/wire/tooltaxonomy.go RehearsalDescribed; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
 }
  ]
 }

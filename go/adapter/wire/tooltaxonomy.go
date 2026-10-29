@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"strings"
 )
 
 // ToolTaxonomy is owner-declared; legacy HostTool.Effect remains execution bookkeeping.
@@ -16,7 +17,30 @@ type ToolTaxonomy struct {
 
 var OperationFamilies = []string{"discover", "read", "answer", "check", "transform", "evaluate", "propose", "act", "run", "own-state", "ask"}
 var TaxonomyEffects = []string{"pure", "read", "read-external", "propose", "act"}
-var CheckKinds = []string{"validate", "check", "verify", "test", "analyze", "advise"}
+var CheckKinds = []string{"validate", "check", "verify", "test", "analyze", "advise", "rehearse"}
+
+// RehearseEffects bounds the rehearse check (ADR-0027 amendment, #241): a rehearsal reads declared
+// local state at most; never read-external or act.
+var RehearseEffects = []string{"pure", "read"}
+
+// RehearsalDescription begins a rehearse declaration's own description; host admission requires it.
+const RehearsalDescription = "Rehearsal, non-binding"
+
+// rehearsalBoundary is what may follow the words: the end, whitespace or this punctuation (ASCII,
+// so both languages agree byte for byte).
+const rehearsalBoundary = " \t\n\r.,;:!?)"
+
+// RehearsalDescribed is rehearsalDescribed: whether a declared description begins with the words
+// as words of their own.
+func RehearsalDescribed(description string) bool {
+	at := strings.Index(description, RehearsalDescription)
+	if at != 0 {
+		return false
+	}
+	rest := description[at+len(RehearsalDescription):]
+	return rest == "" || strings.IndexByte(rehearsalBoundary, rest[0]) >= 0
+}
+
 var taxonomyCompatibility = map[string][]string{
 	"discover": {"pure", "read", "read-external"}, "read": {"read", "read-external"}, "answer": {"pure", "read", "read-external"},
 	"check": {"pure", "read", "read-external"}, "transform": {"pure"}, "evaluate": {"pure", "read", "act"}, "propose": {"propose"}, "act": {"act"},
@@ -39,6 +63,9 @@ func TaxonomyProblem(t *ToolTaxonomy, runtime bool) string {
 	}
 	if !taxonomyContains(OperationFamilies, t.Operation) || !taxonomyContains(TaxonomyEffects, t.Effect) {
 		return "tool taxonomy operation or effect is undeclared"
+	}
+	if t.Operation == "check" && t.CheckKind == "rehearse" && !taxonomyContains(RehearseEffects, t.Effect) {
+		return "tool taxonomy rehearse admits only a pure or read effect"
 	}
 	if !taxonomyContains(taxonomyCompatibility[t.Operation], t.Effect) {
 		return "tool taxonomy operation contradicts its effect"

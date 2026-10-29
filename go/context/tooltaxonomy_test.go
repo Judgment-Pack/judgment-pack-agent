@@ -7,6 +7,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"os"
 	"reflect"
 	"strings"
@@ -334,5 +335,132 @@ func TestTaxonomyLimitSharedHostAdmission(t *testing.T) {
 	admitted, err = DeclareSources([]HostTool{tool}, nil)
 	if err != nil || len(admitted.HostTools) != 1 || len(admitted.Withheld) != 0 {
 		t.Fatal("narrowed copy changed original host ceiling", err)
+	}
+}
+
+// TestTaxonomyRehearse holds the ADR-0027 amendment (#241): rehearse is a check of pure or read
+// effect only, refused under any other operation or a stronger effect, and a host declaring it
+// opens its description with the non-binding words.
+func TestTaxonomyRehearse(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/vectors/taxonomy/declarations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var declarations struct {
+		Items   []*ToolTaxonomy
+		Refused []struct {
+			Taxonomy *ToolTaxonomy
+			Problem  string
+		}
+	}
+	if err = json.Unmarshal(raw, &declarations); err != nil {
+		t.Fatal(err)
+	}
+	refusal := func(tool HostTool, problem string) {
+		t.Helper()
+		_, err := DeclareSources([]HostTool{tool}, nil)
+		var refused *failure.Error
+		if !errors.As(err, &refused) || refused.Failure.Code != "configuration" || err.Error() != "Tool taxonomy refused: "+problem+". Nothing was sent." {
+			t.Fatalf("want the configuration refusal %q, got %v", problem, err)
+		}
+		event, err := json.Marshal(failure.Event(err, "context"))
+		var back contract.RunEvent
+		if err != nil || json.Unmarshal(event, &back) != nil || back.Error == nil || back.Error.Failure == nil || back.Error.Failure.Code != "configuration" {
+			t.Fatalf("refusal event does not read back: %s", event)
+		}
+	}
+	rehearse := 0
+	for _, item := range declarations.Items {
+		if p := wire.TaxonomyProblem(item, true); p != "" {
+			t.Fatalf("record %+v refused: %s", item, p)
+		}
+		if item.CheckKind == "rehearse" {
+			rehearse++
+		}
+	}
+	if rehearse != 2 || len(declarations.Refused) != 4 {
+		t.Fatalf("rehearse records %d, refused %d", rehearse, len(declarations.Refused))
+	}
+	for _, row := range declarations.Refused {
+		if p := wire.TaxonomyProblem(row.Taxonomy, false); p != row.Problem {
+			t.Fatalf("%+v: want %q, got %q", row.Taxonomy, row.Problem, p)
+		}
+		tool := taxonomyLocal()
+		tool.Description = "Rehearsal, non-binding: read notes"
+		tool.Taxonomy = row.Taxonomy
+		refusal(tool, row.Problem)
+	}
+	var v struct {
+		Rehearsal struct {
+			Admitted []struct {
+				Declaration  HostTool
+				Approval     string
+				Annotations  map[string]bool
+				Review, Work bool
+			}
+			Refused []struct {
+				Declaration HostTool
+				Problem     string
+			}
+		}
+	}
+	taxonomyVector(t, "tools", &v)
+	execute := func(context.Context, json.RawMessage) (ToolResult, error) { return ResultOf([]Content{}, nil), nil }
+	for _, row := range v.Rehearsal.Admitted {
+		tool := row.Declaration
+		tool.Execute = execute
+		out, err := DeclareSources([]HostTool{tool}, nil)
+		if err != nil || len(out.HostTools) != 1 {
+			t.Fatalf("rehearse declaration refused: %v", err)
+		}
+		admitted := out.HostTools[0]
+		if !reflect.DeepEqual(admitted.Annotations, row.Annotations) || DefaultApproval(admitted.Taxonomy.Effect) != row.Approval {
+			t.Fatalf("rehearse hints %v, approval %s", admitted.Annotations, DefaultApproval(admitted.Taxonomy.Effect))
+		}
+		review, work := PresetLimit("review"), PresetLimit("work")
+		if TaxonomyFits(admitted.Taxonomy, &review) != row.Review || TaxonomyFits(admitted.Taxonomy, &work) != row.Work {
+			t.Fatal("rehearse preset family")
+		}
+	}
+	if len(v.Rehearsal.Admitted) != 2 || len(v.Rehearsal.Refused) != 5 {
+		t.Fatalf("rehearsal admissions %d, refusals %d", len(v.Rehearsal.Admitted), len(v.Rehearsal.Refused))
+	}
+	for _, row := range v.Rehearsal.Refused {
+		tool := row.Declaration
+		tool.Execute = execute
+		refusal(tool, row.Problem)
+	}
+}
+
+// TestTaxonomyRehearseAdmissionOnly holds the ADR-0027 amendment's statement of where the
+// description rule lives: the package refuses a rehearse declaration at host admission
+// (DeclareSources) unless its description begins with the words; tools that reach the gate by
+// other entry points (here SetOffer and EnrollContext) carry whatever admission they passed.
+func TestTaxonomyRehearseAdmissionOnly(t *testing.T) {
+	var v struct {
+		Rehearsal struct {
+			Refused []struct {
+				Declaration HostTool
+				Problem     string
+			}
+		}
+	}
+	taxonomyVector(t, "tools", &v)
+	tool := v.Rehearsal.Refused[0].Declaration
+	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { return ResultOf([]Content{}, nil), nil }
+	if strings.Contains(tool.Description, wire.RehearsalDescription) {
+		t.Fatal("the first refused declaration must lack the words")
+	}
+	if _, err := DeclareSources([]HostTool{tool}, nil); err == nil || !strings.Contains(err.Error(), v.Rehearsal.Refused[0].Problem) {
+		t.Fatalf("host admission must refuse the rehearse declaration: %v", err)
+	}
+	declared := tool.Declaration()
+	g := gate.New(gate.Options{})
+	g.SetOffer(contract.ToolOffer{HostTools: []contract.ToolOfferHostTool{declared}})
+	if offered := g.Offer().HostTools; len(offered) != 1 || offered[0].Description != tool.Description {
+		t.Fatalf("the gate's SetOffer re-checked the description: %+v", offered)
+	}
+	if err := g.EnrollContext("rehearse", []contract.ToolOfferHostTool{declared}); err != nil {
+		t.Fatalf("the gate's EnrollContext re-checked the description: %v", err)
 	}
 }

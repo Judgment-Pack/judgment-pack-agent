@@ -1204,6 +1204,20 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual("sha256:" + sha256(listed["canonical"]), item["toolListDigest"])
         self.assertNotEqual(vector["items"][0]["toolListDigest"], vector["items"][1]["toolListDigest"])
 
+    def test_every_refused_rehearse_taxonomy_fails_the_schema(self):
+        # ADR-0027 amendment (#241): rehearse is a check of pure or read effect only. A host's
+        # evaluate is refused by the owner rule, not the record: the schema admits it.
+        vector = self.vectors["taxonomy/declarations.json"]
+        check = validator(self.schemas, vector["schema"])
+        self.assertEqual(len(vector["refused"]), 4)
+        for refused in vector["refused"]:
+            with self.subTest(problem=refused["problem"], taxonomy=refused["taxonomy"]):
+                found = problems(check, [refused["taxonomy"]])
+                if refused["taxonomy"]["operation"] == "evaluate":
+                    self.assertEqual(found, [])
+                else:
+                    self.assertNotEqual(found, [])
+
     def test_every_refused_source_declaration_fails_the_schema(self):
         vector = self.vectors["tool-offer/source-declarations.json"]
         check = validator(self.schemas, vector["schema"])

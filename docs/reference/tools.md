@@ -40,12 +40,14 @@ Closed: a member the schema does not name is refused.
 | --- | --- | --- | --- |
 | `operation` | yes | enum `discover`, `read`, `answer`, `check`, `transform`, `evaluate`, `propose`, `act`, `run`, `own-state`, `ask` |  |
 | `effect` | yes | enum `pure`, `read`, `read-external`, `propose`, `act` |  |
-| `checkKind` |  | enum `validate`, `check`, `verify`, `test`, `analyze`, `advise` |  |
+| `checkKind` |  | enum `validate`, `check`, `verify`, `test`, `analyze`, `advise`, `rehearse` |  |
 | `experimental` |  | boolean |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 
 Host tools carry taxonomy; Runtime publishes its operation/effect/checkKind/experimental directly in MCP _meta. Missing or contradictory metadata is refused. Legacy effect remains execution bookkeeping and effectClass is a checked projection. Review admits discover/read/check, work adds propose/act, and both retain a pure ask. Runtime act metadata is refused until canonical Runtime approval is supported; existing rehearsal rewriting never relabels owner capability. See ADR-0027.
+
+The check subkind `rehearse` (ADR-0027 amendment, #241) is a non-binding dry evaluation of an artifact the host declares: effect pure or read only, never read-external or act; host admission requires its declared description to begin with the words "Rehearsal, non-binding"; it writes no audit, resource or run state and grants no evaluation authority.
 
 External reads require a host verifier over immutable canonical source/descriptor identity, source tool, arguments captured before execution, result and receipt. The host verifies signatures and binding; Agent requires true before publishing success and does not infer verification from source/trust labels.
 

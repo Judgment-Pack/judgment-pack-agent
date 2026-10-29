@@ -121,6 +121,9 @@ func HostTaxonomyProblem(t HostTool) string {
 	if p := wire.TaxonomyProblem(t.Taxonomy, false); p != "" {
 		return p
 	}
+	if t.Taxonomy.CheckKind == "rehearse" && !wire.RehearsalDescribed(t.Description) {
+		return "a rehearse check's description must begin \"" + wire.RehearsalDescription + "\""
+	}
 	if t.EffectClass != "" && t.EffectClass != LegacyClass(t.Taxonomy) {
 		return "legacy effectClass contradicts owner taxonomy"
 	}

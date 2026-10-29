@@ -1,5 +1,5 @@
 import {gatewayTrustProblem,beginGatewayInvocation,verifyGatewayResult,GATEWAY_RECEIPT_ENVELOPE_BYTES,type GatewayReceiptTrust,type GatewayExecutionContext} from './gatewayReceipt'
-import {taxonomyProblem, taxonomyLimitProblem, taxonomyFits, taxonomyAnnotations, defaultApproval, type ToolTaxonomy} from './toolTaxonomy'
+import {taxonomyProblem, taxonomyLimitProblem, taxonomyFits, taxonomyAnnotations, defaultApproval, REHEARSAL_DESCRIPTION, rehearsalDescribed, type ToolTaxonomy} from './toolTaxonomy'
 import outputPatterns from './contract/output-patterns.json'
 import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, type DescriptorSnapshot, type DescriptorApproval, descriptorApprovalProblem } from './descriptorSnapshot'
 /**
@@ -269,6 +269,7 @@ export function hostTaxonomyProblem(tool: HostTool): string {
   if (problem) return problem
   if (taxonomyLimitProblem(tool.taxonomyLimit)) return taxonomyLimitProblem(tool.taxonomyLimit)
   const t = tool.taxonomy!
+  if (t.checkKind === 'rehearse' && !rehearsalDescribed(tool.description)) return `a rehearse check's description must begin "${REHEARSAL_DESCRIPTION}"`
   if (tool.effectClass !== undefined && tool.effectClass !== legacyClass(t)) return 'legacy effectClass contradicts owner taxonomy'
   if (t.effect === 'act' && tool.approval === 'none') return 'host approval cannot widen the declared act effect'
   if (tool.source === undefined && (t.effect === 'act' || t.effect === 'read-external')) return 'external effects require source provenance'

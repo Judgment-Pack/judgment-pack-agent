@@ -459,7 +459,11 @@ metadata outside signed records. See [storage integration](../docs/design/storag
 Taxonomy consumer fixtures live in `testdata/taxonomy/`: classification and preset expectations,
 profiles, Gateway snapshots and receipts. Their handwritten malformed inputs are exercised by
 both language readers. They are harness inputs and expected behavior, not serialized schema records.
-`vectors/taxonomy/declarations.json` and `profiles.json` carry actual closed taxonomy records.
+The `rehearsal` rows of `tools.json` hold the ADR-0027 amendment's (#241) host declarations of a
+rehearse check, admitted with its hints and approval or refused for its description.
+`vectors/taxonomy/declarations.json` and `profiles.json` carry actual closed taxonomy records;
+`declarations.json` `refused` carries four host declarations both validators refuse, each with
+its reason (a host `evaluate`, and `rehearse` under read, with read-external and with act).
 
 The #171 dialect draft schema additionally admits `originalField`, `originalRevision`,
 `conversionContract` and `retainedRead` definitions. New factory candidates retain the

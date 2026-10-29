@@ -40,7 +40,8 @@
         "verify",
         "test",
         "analyze",
-        "advise"
+        "advise",
+        "rehearse"
       ]
     },
     "experimental": {
@@ -144,6 +145,32 @@
               "pure",
               "read",
               "read-external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "operation",
+          "checkKind"
+        ],
+        "properties": {
+          "operation": {
+            "const": "check"
+          },
+          "checkKind": {
+            "const": "rehearse"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effect": {
+            "enum": [
+              "pure",
+              "read"
             ]
           }
         }
