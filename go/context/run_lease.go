@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -546,6 +547,7 @@ type LeaseAuthority interface {
 // refused as already-admitted whatever the epoch: its outcome is unknown until its own host reconciles
 // it, and a takeover never replays it.
 type ReferenceEffectHost struct {
+	self      *ReferenceEffectHost // identity: a copy shares the key map without the lock, and is not evidence
 	mu        sync.Mutex
 	authority LeaseAuthority
 	admitted  map[string]bool
@@ -554,33 +556,52 @@ type ReferenceEffectHost struct {
 
 func NewReferenceEffectHost(authority LeaseAuthority) *ReferenceEffectHost {
 	host := &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
-	provenHosts.Store(host, true)
+	host.self = host
 	return host
 }
 
-// provenHosts are the effect hosts unattended admission accepts: the package's reference host and hosts
-// certified by CertifyEffectHost. A declaration of EffectFencing alone is not evidence.
-var provenHosts sync.Map
-
-func provenHost(host EffectHost) bool {
-	if host == nil || !reflect.TypeOf(host).Comparable() {
-		return false
-	}
-	_, ok := provenHosts.Load(host)
-	return ok
+// CheckEffectHostConformance (#223 review, #253) is the effect-host conformance. The kit owns the lease
+// authority it hands the factory and moves its clock. The host must refuse, without performing, while the
+// authority is unavailable; admit a current fence once; and refuse, without performing, an identity it
+// admitted before (also under a takeover's fence), another owner, a stale or forged epoch, a fence for
+// another run than the operation's, a key that is not its operation's, an expired lease and a released one.
+// The TypeScript twin is effectHostConformance.
+func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority) EffectHost) error {
+	kit := newKitAuthority()
+	return exerciseEffectHost(ctx, create(kit), kit)
 }
 
-// CheckEffectHostConformance (#223 review) is the effect-host conformance. The kit owns the lease authority
-// it hands the factory and moves its clock. The host must admit a current fence once and refuse, without
-// performing, an identity it admitted before (also under a takeover's fence), another owner, a stale or
-// forged epoch, a fence for another run than the operation's, a key that is not its operation's, an expired
-// lease and a released one. The TypeScript twin is effectHostConformance.
-func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority) EffectHost) error {
+// kitAuthority is the conformance kit's lease authority: its own table, clock and failure switch.
+type kitAuthority struct {
+	mu      sync.Mutex
+	at      time.Time
+	failing bool
+	table   *LeaseTable
+}
+
+func newKitAuthority() *kitAuthority {
+	kit := &kitAuthority{at: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	kit.table = NewLeaseTable(func() time.Time { return kit.at })
+	return kit
+}
+func (k *kitAuthority) CheckFence(_ context.Context, fence LeaseFence) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.failing {
+		return errors.New("the lease authority is unavailable")
+	}
+	_, err := k.table.Check(fence)
+	return err
+}
+func (k *kitAuthority) do(run func()) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	run()
+}
+
+// exerciseEffectHost runs the checks on the exact host instance given, against the kit's authority.
+func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority) error {
 	fail := func(property string) error { return &StorageConformanceFailure{Property: property} }
-	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	table := NewLeaseTable(func() time.Time { return at })
-	var mu sync.Mutex
-	host := create(tableAuthority{table: table, mu: &mu})
 	if host == nil || host.EffectFencing() != EffectFencingEnforced {
 		return fail("host.declared")
 	}
@@ -597,17 +618,29 @@ func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority)
 		before := performed
 		var refused *LeaseRefused
 		err := host.Dispatch(ctx, held, perform)
+		if reason == "" {
+			return err != nil && performed == before
+		}
 		return errors.As(err, &refused) && refused.Reason == reason && performed == before
 	}
-	acquire := func(owner string) (LeaseFence, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		lease, err := table.Acquire(LeaseAcquire{Resource: "host-run", Owner: owner, DurationMs: 1000}, "")
-		return FenceOf(lease), err
+	acquire := func(owner string) (fence LeaseFence, err error) {
+		kit.do(func() {
+			var lease RunLease
+			lease, err = kit.table.Acquire(LeaseAcquire{Resource: "host-run", Owner: owner, DurationMs: 1000}, "")
+			fence = FenceOf(lease)
+		})
+		return fence, err
 	}
 	a, err := acquire("worker-a")
 	if err != nil {
 		return fail("host.operation")
+	}
+	// Unavailable ownership evidence closes dispatch: an authority that errors is never a pass.
+	kit.do(func() { kit.failing = true })
+	unavailable := refuses(admission(a, op("op-0", "host-run")), "")
+	kit.do(func() { kit.failing = false })
+	if !unavailable {
+		return fail("host.authority-unavailable")
 	}
 	if err := host.Dispatch(ctx, admission(a, op("op-1", "host-run")), perform); err != nil || performed != 1 {
 		return fail("host.admit.current")
@@ -633,7 +666,7 @@ func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority)
 	if !refuses(mismatched, "invalid") {
 		return fail("host.invalid")
 	}
-	at = at.Add(time.Second)
+	kit.do(func() { kit.at = kit.at.Add(time.Second) })
 	if !refuses(admission(a, op("op-7", "host-run")), "expired") {
 		return fail("host.expired")
 	}
@@ -647,9 +680,7 @@ func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority)
 	if !refuses(admission(b, op("op-1", "host-run")), "already-admitted") {
 		return fail("host.takeover.already-admitted")
 	}
-	mu.Lock()
-	_, err = table.Release(b)
-	mu.Unlock()
+	kit.do(func() { _, err = kit.table.Release(b) })
 	if err != nil || !refuses(admission(b, op("op-9", "host-run")), "released") {
 		return fail("host.released")
 	}
@@ -659,31 +690,85 @@ func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority)
 	return nil
 }
 
-type tableAuthority struct {
-	table *LeaseTable
-	mu    *sync.Mutex
+// boundAuthority answers from the kit until certification passes, then from the real authority for good.
+type boundAuthority struct {
+	live      atomic.Bool
+	kit       *kitAuthority
+	authority LeaseAuthority
 }
 
-func (a tableAuthority) CheckFence(_ context.Context, fence LeaseFence) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, err := a.table.Check(fence)
-	return err
-}
-
-// CertifyEffectHost certifies an effect host for unattended admission: the factory's hosts must pass the
-// conformance, and the host it then builds over the real authority is the one admitted.
-func CertifyEffectHost(ctx context.Context, create func(LeaseAuthority) EffectHost, authority LeaseAuthority) (EffectHost, error) {
-	if err := CheckEffectHostConformance(ctx, create); err != nil {
-		return nil, err
+func (b *boundAuthority) CheckFence(ctx context.Context, fence LeaseFence) error {
+	if b.live.Load() {
+		return b.authority.CheckFence(ctx, fence)
 	}
-	host := create(authority)
-	if host == nil || host.EffectFencing() != EffectFencingEnforced || !reflect.TypeOf(host).Comparable() {
+	return b.kit.CheckFence(ctx, fence)
+}
+
+// CertifiedEffectHost is the evidence unattended admission accepts for a host other than the reference
+// host: the exact instance the kit exercised and the authority it was certified for. Only CertifyEffectHost
+// makes one; it holds no registry entry, so a released host is collected like any other value.
+type CertifiedEffectHost struct {
+	self      *CertifiedEffectHost // identity: a copy of the value is not the evidence
+	host      EffectHost
+	authority LeaseAuthority
+}
+
+func (c *CertifiedEffectHost) EffectFencing() string { return EffectFencingEnforced }
+func (c *CertifiedEffectHost) Dispatch(ctx context.Context, admission EffectAdmission, perform func(context.Context) error) error {
+	if c == nil || c.self != c || c.host == nil {
+		return &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
+	}
+	return c.host.Dispatch(ctx, admission, perform)
+}
+
+// CertifyEffectHost (#253) certifies an effect host over authority (for unattended admission, the run's own
+// store). The factory is called once, over an authority the kit controls until the checks pass and that
+// then answers from authority for good; the exact instance the kit exercised is the one admitted.
+func CertifyEffectHost(ctx context.Context, create func(LeaseAuthority) EffectHost, authority LeaseAuthority) (*CertifiedEffectHost, error) {
+	if authority == nil {
 		return nil, &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
 	}
-	provenHosts.Store(host, true)
-	return host, nil
+	bound := &boundAuthority{kit: newKitAuthority(), authority: authority}
+	host := create(bound)
+	if err := exerciseEffectHost(ctx, host, bound.kit); err != nil {
+		return nil, err
+	}
+	bound.live.Store(true)
+	certified := &CertifiedEffectHost{host: host, authority: authority}
+	certified.self = certified
+	return certified, nil
 }
+
+// sameAuthority is identity: the same pointer, or the same comparable value of the same type.
+func sameAuthority(authority LeaseAuthority, store RunStore) bool {
+	if authority == nil || store == nil {
+		return false
+	}
+	a, s := reflect.ValueOf(authority), reflect.ValueOf(store)
+	if a.Type() != s.Type() {
+		return false
+	}
+	if a.Kind() == reflect.Pointer {
+		return a.Pointer() == s.Pointer()
+	}
+	return a.Type().Comparable() && any(authority) == any(store)
+}
+
+// provenAuthority is the authority a host is proven to enforce against, or nil.
+func provenAuthority(host EffectHost) LeaseAuthority {
+	switch h := host.(type) {
+	case *ReferenceEffectHost:
+		if h != nil && h.self == h && h.admitted != nil {
+			return h.authority
+		}
+	case *CertifiedEffectHost:
+		if h != nil && h.self == h && h.host != nil {
+			return h.authority
+		}
+	}
+	return nil
+}
+
 func (h *ReferenceEffectHost) EffectFencing() string { return EffectFencingEnforced }
 
 // Refusals is every refusal this host gave, as its versioned record, in order.
@@ -788,7 +873,8 @@ func FencedRunStore(store RunStore, fence LeaseFence, host EffectHost) (RunStore
 }
 
 // AdmitUnattended admits only a store whose leases outlive its process and an effect host proven to
-// enforce the fence (the reference host, or one certified by CertifyEffectHost). Anything else refuses by name before a dispatch; in particular the memory and
+// enforce the fence against that same store: a reference host built over it, or a host CertifyEffectHost
+// certified over it. Anything else refuses by name before a dispatch; in particular the memory and
 // callback kinds never qualify.
 func AdmitUnattended(store RunStore, host EffectHost) error {
 	lease, ok := store.(LeaseRunStore)
@@ -798,7 +884,8 @@ func AdmitUnattended(store RunStore, host EffectHost) error {
 	if lease.LeaseLifetime() != LeaseLifetimeDurable {
 		return &LeaseCapabilityRefused{Reason: "store-lifetime"}
 	}
-	if host == nil || host.EffectFencing() != EffectFencingEnforced || !provenHost(host) {
+	// #253: the host's evidence must be its own, and its authority the run's own store.
+	if host == nil || host.EffectFencing() != EffectFencingEnforced || !sameAuthority(provenAuthority(host), store) {
 		return &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
 	}
 	return nil

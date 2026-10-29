@@ -160,73 +160,119 @@ export interface LeaseAuthority {checkFence(fence:LeaseFence,signal?:AbortSignal
  * whatever the epoch: its outcome is unknown until its own host reconciles it, and a takeover never replays it. */
 export class ReferenceEffectHost implements EffectHost {
  readonly effectFencing='enforced' as const
- private readonly admitted=new Set<string>()
- private tail:Promise<unknown>=Promise.resolve()
+ // #253: true private fields; replacing a same-named property after admission changes nothing the host enforces.
+ readonly #authority:LeaseAuthority
+ readonly #admitted=new Set<string>()
+ #tail:Promise<unknown>=Promise.resolve()
  /** Every refusal this host gave, as its versioned record, in order. */
  readonly refusals:{version:1;reason:LeaseRefusalReason}[]=[]
- constructor(private readonly authority:LeaseAuthority){if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)proven.add(this)}
+ constructor(authority:LeaseAuthority){
+  this.#authority=authority
+  // #253: what admission relies on is sealed on the instance: its dispatch and declaration cannot be swapped afterwards.
+  Object.defineProperty(this,'dispatch',{value:ReferenceEffectHost.prototype.dispatch,writable:false,configurable:false,enumerable:false})
+  Object.defineProperty(this,'effectFencing',{value:'enforced',writable:false,configurable:false,enumerable:true})
+  if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)references.set(this,authority)
+ }
  dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
-  const admitted=this.tail.then(async()=>{
+  const admitted=this.#tail.then(async()=>{
    try{
     signal?.throwIfAborted()
     const held=readEffectAdmission(admission)
     if(held.fence.resource!==held.operation.run)throw new LeaseRefused('resource-mismatch')
-    await this.authority.checkFence(held.fence,signal)
-    if(this.admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')
-    this.admitted.add(held.idempotencyKey)
+    await this.#authority.checkFence(held.fence,signal)
+    if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')
+    this.#admitted.add(held.idempotencyKey)
    }catch(error){if(error instanceof LeaseRefused)this.refusals.push(error.record());throw error}
   })
-  this.tail=admitted.catch(()=>undefined)
+  this.#tail=admitted.catch(()=>undefined)
   return admitted.then(()=>perform(signal))
  }
 }
 
-/** Effect hosts unattended admission accepts: the package's own reference host, and hosts certified by the conformance
- * below. A declaration of effectFencing alone is not evidence. */
-const proven=new WeakSet<EffectHost>()
-const provenHost=(host:EffectHost)=>proven.has(host)&&(!(host instanceof ReferenceEffectHost)||host.dispatch===ReferenceEffectHost.prototype.dispatch)
-/** #223 review: the effect-host conformance. The kit owns the lease authority it hands the factory and moves its clock;
- * the host must admit a current fence once, and refuse, without performing, an identity it admitted before (also under a
- * takeover's fence), another owner, a stale or forged epoch, a fence for another run than the operation's, a key that is
- * not its operation's, an expired lease and a released one. */
-export async function effectHostConformance(create:(authority:LeaseAuthority)=>EffectHost|Promise<EffectHost>):Promise<void>{
+/** #253: the evidence unattended admission accepts, bound to exact instances. A reference host is admitted with the
+ * authority it was built over; a certified host is the package's sealed wrapper of the exact instance the kit exercised,
+ * with the dispatch the kit checked and the authority it was certified for. A declaration of effectFencing alone is not
+ * evidence, and evidence on one instance is not evidence on another or on a subclass. */
+const references=new WeakMap<ReferenceEffectHost,LeaseAuthority>()
+const certified=new WeakMap<EffectHost,{host:EffectHost;dispatch:EffectHost['dispatch'];authority:LeaseAuthority}>()
+function provenAuthority(host:EffectHost):LeaseAuthority|undefined{
+ if(host instanceof ReferenceEffectHost){const authority=references.get(host);return authority&&host.dispatch===ReferenceEffectHost.prototype.dispatch&&host.effectFencing==='enforced'?authority:undefined}
+ const record=certified.get(host)
+ return record&&record.host.dispatch===record.dispatch&&record.host.effectFencing==='enforced'?record.authority:undefined
+}
+interface KitAuthority extends LeaseAuthority {table:LeaseTable;failing:boolean;at:number}
+function kitAuthority():KitAuthority{
+ const kit:KitAuthority={at:Date.parse('2026-01-01T00:00:00.000Z'),failing:false,table:undefined as never,checkFence:async fence=>{if(kit.failing)throw new Error('The lease authority is unavailable.');kit.table.check(fence)}}
+ kit.table=new LeaseTable(()=>new Date(kit.at));return kit
+}
+/** The checks, on the exact host instance given, against the kit's authority. */
+async function exerciseEffectHost(host:EffectHost,kit:KitAuthority):Promise<void>{
  const fail=(property:string):never=>{throw new StorageConformanceFailure(property)}
  try{
-  let at=Date.parse('2026-01-01T00:00:00.000Z')
-  const table=new LeaseTable(()=>new Date(at)),host=await create({checkFence:async fence=>{table.check(fence)}})
   if(host.effectFencing!=='enforced')fail('host.declared')
   const op=(operation:string,run='host-run'):EffectOperation=>({run,operation,source:'host',tool:'effect',requestDigest:'sha256:'+'b'.repeat(64)})
   let performed=0
   const perform=async()=>{performed++;return 'performed'}
-  const refuses=async(property:string,admission:EffectAdmission,reason:LeaseRefusalReason)=>{
+  const refuses=async(property:string,admission:EffectAdmission,reason:LeaseRefusalReason|'any')=>{
    const before=performed
-   try{await host.dispatch(admission,perform)}catch(error){if(!(error instanceof LeaseRefused&&error.reason===reason)||performed!==before)fail(property);return}
+   try{await host.dispatch(admission,perform)}catch(error){if(reason!=='any'&&!(error instanceof LeaseRefused&&error.reason===reason)||performed!==before)fail(property);return}
    fail(property)
   }
-  const a=fenceOf(table.acquire({resource:'host-run',owner:'worker-a',expectedRevision:null,durationMs:1000},null))
+  const a=fenceOf(kit.table.acquire({resource:'host-run',owner:'worker-a',expectedRevision:null,durationMs:1000},null))
+  // Unavailable ownership evidence closes dispatch: an authority that errors is never a pass.
+  kit.failing=true
+  await refuses('host.authority-unavailable',effectAdmission(a,op('op-0')),'any')
+  kit.failing=false
   if(await host.dispatch(effectAdmission(a,op('op-1')),perform)!=='performed'||performed!==1)fail('host.admit.current')
   await refuses('host.already-admitted',effectAdmission(a,op('op-1')),'already-admitted')
   await refuses('host.other-owner',effectAdmission({...a,owner:'worker-x'},op('op-2')),'other-owner')
   await refuses('host.forged-epoch',effectAdmission({...a,epoch:'2'},op('op-3')),'stale-epoch')
   await refuses('host.resource-mismatch',effectAdmission(a,op('op-4','other-run')),'resource-mismatch')
   await refuses('host.invalid',{...effectAdmission(a,op('op-5')),idempotencyKey:effectAdmission(a,op('op-6')).idempotencyKey},'invalid')
-  at+=1000
+  kit.at+=1000
   await refuses('host.expired',effectAdmission(a,op('op-7')),'expired')
-  const b=fenceOf(table.acquire({resource:'host-run',owner:'worker-b',expectedRevision:null,durationMs:1000},null))
+  const b=fenceOf(kit.table.acquire({resource:'host-run',owner:'worker-b',expectedRevision:null,durationMs:1000},null))
   await refuses('host.stale-epoch',effectAdmission(a,op('op-8')),'stale-epoch')
   await refuses('host.takeover.already-admitted',effectAdmission(b,op('op-1')),'already-admitted')
-  table.release(b)
+  kit.table.release(b)
   await refuses('host.released',effectAdmission(b,op('op-9')),'released')
   if(performed!==1)fail('host.performed-once')
  }catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('host.operation')}
 }
-/** Certify an effect host for unattended admission: the factory's hosts must pass the conformance, and the host it then
- * builds over the real authority is the one admitted. */
-export async function certifyEffectHost<T extends EffectHost>(create:(authority:LeaseAuthority)=>T|Promise<T>,authority:LeaseAuthority):Promise<T>{
- await effectHostConformance(create)
- const host=await create(authority)
- if(host.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
- proven.add(host);return host
+/** #223 review, #253: the effect-host conformance. The kit owns the lease authority it hands the factory and moves its
+ * clock; the host must refuse, without performing, while the authority is unavailable; admit a current fence once; and
+ * refuse, without performing, an identity it admitted before (also under a takeover's fence), another owner, a stale or
+ * forged epoch, a fence for another run than the operation's, a key that is not its operation's, an expired lease and a
+ * released one. */
+export async function effectHostConformance(create:(authority:LeaseAuthority)=>EffectHost|Promise<EffectHost>):Promise<void>{
+ const kit=kitAuthority()
+ let host:EffectHost
+ try{host=await create(kit)}catch{throw new StorageConformanceFailure('host.operation')}
+ await exerciseEffectHost(host,kit)
+}
+/** Certify an effect host for unattended admission over `authority` (for unattended admission, the run's own store).
+ * The factory is called once, over an authority the kit controls until the checks pass and that then answers from
+ * `authority` for good; the exact instance the kit exercised is the one admitted, through a sealed wrapper that refuses
+ * once the instance's dispatch is not the one the kit checked. */
+export async function certifyEffectHost(create:(authority:LeaseAuthority)=>EffectHost|Promise<EffectHost>,authority:LeaseAuthority):Promise<EffectHost>{
+ const kit=kitAuthority()
+ let live=false
+ const bound:LeaseAuthority={checkFence:(fence,signal)=>live?authority.checkFence(fence,signal):kit.checkFence(fence,signal)}
+ let host:EffectHost
+ try{host=await create(bound)}catch{throw new StorageConformanceFailure('host.operation')}
+ // #253: the dispatch is read once; the kit runs through exactly that function, and only that function is admitted.
+ const dispatch=host.dispatch
+ if(typeof dispatch!=='function')throw new LeaseCapabilityRefused('effect-host-unfenced')
+ const captured:EffectHost={effectFencing:host.effectFencing,dispatch:<T,>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal)=>dispatch.call(host,admission,perform,signal) as Promise<T>}
+ await exerciseEffectHost(captured,kit)
+ if(host.dispatch!==dispatch||host.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
+ live=true
+ const wrapper:EffectHost=Object.freeze({effectFencing:'enforced' as const,dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
+  if(host.dispatch!==dispatch)return Promise.reject(new LeaseCapabilityRefused('effect-host-unfenced'))
+  return dispatch.call(host,admission,perform,signal) as Promise<T>
+ }})
+ certified.set(wrapper,{host,dispatch,authority})
+ return wrapper
 }
 const leased=new WeakMap<object,{fence:LeaseFence;effectHost?:EffectHost}>()
 const bind=(store:object,name:string)=>{const method=(store as Record<string,unknown>)[name];return typeof method==='function'?method.bind(store):undefined}
@@ -253,7 +299,7 @@ export function fencedChatStore(store:ChatStore,fence:LeaseFence):ChatStore{
  return Object.freeze({consistency:store.consistency,get:store.get.bind(store),list:store.list.bind(store),update:(id:string,patch:ChatPatch,expectedRevision:StorageRevision,signal?:AbortSignal)=>lease.updateFenced!(id,patch,expectedRevision,held,signal)}) as ChatStore
 }
 /** Unattended admission: only a store whose leases outlive its process and an effect host proven to enforce the fence
- * (the reference host, or one certified by certifyEffectHost).
+ * against that same store: a reference host built over it, or a host certifyEffectHost certified over it.
  * Anything else refuses by name before a dispatch; in particular the memory and callback kinds never qualify. */
 export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;chatStore?:ChatStore}):void{
  for(const store of [input.store,input.chatStore]){
@@ -262,7 +308,8 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
   if(lease.leaseVersion!==1||(store===input.store?typeof lease.commitFenced!=='function'||(store as RunStore).durability==='single-writer-callback':typeof lease.updateFenced!=='function'||(store as ChatStore).consistency==='single-writer-legacy'))throw new LeaseCapabilityRefused('store-unsupported')
   if(lease.leaseLifetime!=='durable')throw new LeaseCapabilityRefused('store-lifetime')
  }
- if(!input.effectHost||input.effectHost.effectFencing!=='enforced'||!provenHost(input.effectHost))throw new LeaseCapabilityRefused('effect-host-unfenced')
+ // #253: the host's evidence must be its own, and its authority the run's own store.
+ if(!input.effectHost||input.effectHost.effectFencing!=='enforced'||provenAuthority(input.effectHost)!==(input.store as object))throw new LeaseCapabilityRefused('effect-host-unfenced')
 }
 /** admitUnattended, then the fenced view the unattended run uses as its RunStore. */
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}

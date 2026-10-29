@@ -229,6 +229,18 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 	if _, err = store.RenewLease(ctx, forged, 1000); !refuses(err, "other-owner") {
 		return fail("lease.renew.other-owner")
 	}
+	history, withHistory := store.(LeaseHistoryRunStore)
+	if plain, ok := store.(HistoryRunStore); ok && plain.HistoryVersion() == 1 && !withHistory {
+		return fail("lease.history.declared")
+	}
+	withHistory = withHistory && history.HistoryVersion() == 1
+	historyCommit := func(commitID, expected string, fence LeaseFence, runID string) (RunHistoryReceipt, error) {
+		return history.CommitHistoryFenced(ctx, RunHistoryCommit{Run: RunCommit{RunID: runID, ExpectedRevision: expected, CommitID: commitID, Checkpoint: []byte(`{"commit":"` + commitID + `"}`)}, Observations: []HistoryObjectRef{}}, fence)
+	}
+	snapshot := func(fence LeaseFence) error {
+		_, err := history.CommitContextSnapshotFenced(ctx, ContextSnapshotUpdate{ChatID: "lease-chat", Manifest: HistoryObjectRef{Digest: "sha256:" + strings.Repeat("a", 64), Bytes: 2}}, "lease-snapshot", fence)
+		return err
+	}
 	at = time.Date(2026, 1, 1, 0, 0, 1, 500_000_000, time.UTC)
 	if err = store.CheckFence(ctx, a); !refuses(err, "expired") {
 		return fail("lease.expiry.equal-time")
@@ -238,6 +250,21 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 	}
 	if _, err = commit("lease-a-late", current.Revision, a); !refuses(err, "expired") {
 		return fail("lease.commit.expired")
+	}
+	// #253: the writer commits only through the history ports; each refuses an expired fence, at equal
+	// time and after.
+	if withHistory {
+		for _, when := range []string{"equal-time", "after"} {
+			if when == "after" {
+				at = at.Add(time.Millisecond)
+			}
+			if _, err = historyCommit("lease-a-late-history-"+when, current.Revision, a, run); !refuses(err, "expired") {
+				return fail("lease.history.expired." + when)
+			}
+			if err = snapshot(a); !refuses(err, "expired") {
+				return fail("lease.snapshot.expired." + when)
+			}
+		}
 	}
 	if head, _ := store.Load(ctx, run); head == nil || head.Revision != current.Revision {
 		return fail("lease.commit.expired-unapplied")
@@ -273,18 +300,6 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 		if _, err = store.ReleaseLease(ctx, c.fence); !refuses(err, c.reason) {
 			return fail("lease.release." + c.name)
 		}
-	}
-	history, withHistory := store.(LeaseHistoryRunStore)
-	if plain, ok := store.(HistoryRunStore); ok && plain.HistoryVersion() == 1 && !withHistory {
-		return fail("lease.history.declared")
-	}
-	withHistory = withHistory && history.HistoryVersion() == 1
-	historyCommit := func(commitID, expected string, fence LeaseFence, runID string) (RunHistoryReceipt, error) {
-		return history.CommitHistoryFenced(ctx, RunHistoryCommit{Run: RunCommit{RunID: runID, ExpectedRevision: expected, CommitID: commitID, Checkpoint: []byte(`{"commit":"` + commitID + `"}`)}, Observations: []HistoryObjectRef{}}, fence)
-	}
-	snapshot := func(fence LeaseFence) error {
-		_, err := history.CommitContextSnapshotFenced(ctx, ContextSnapshotUpdate{ChatID: "lease-chat", Manifest: HistoryObjectRef{Digest: "sha256:" + strings.Repeat("a", 64), Bytes: 2}}, "lease-snapshot", fence)
-		return err
 	}
 	if withHistory {
 		mismatched := b

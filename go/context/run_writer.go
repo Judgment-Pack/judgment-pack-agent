@@ -1833,7 +1833,11 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 // source is a read only when its effect class is read, and an owner-declared act or propose effect is
 // never a read. Every other call is an effect: its outcome is recorded before dependent work, an unknown
 // outcome is never repeated, and under a fenced store the effect host admits it.
-func durableReadingTool(tool *HostTool) bool {
+func durableReadingTool(tool *HostTool) bool { return DurableReadingTool(tool) }
+
+// DurableReadingTool is durableReadingTool for the adapters: whether a host tool's call is a read for
+// the durable record (#253), as distinct from ReadingTool, which frames its answer.
+func DurableReadingTool(tool *HostTool) bool {
 	if tool.Taxonomy != nil && (tool.Taxonomy.Effect == "act" || tool.Taxonomy.Effect == "propose") {
 		return false
 	}

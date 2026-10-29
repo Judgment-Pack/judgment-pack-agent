@@ -118,9 +118,18 @@ async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<Leas
  check('lease.renew.store-clock',renewed.epoch==='1'&&renewed.owner==='worker-a'&&renewed.expiry==='2026-01-01T00:00:01.500Z')
  await refusesLease('lease.renew.other-owner',()=>store.renewLease({...a,owner:'worker-b'},1000),'other-owner')
  at=Date.parse(renewed.expiry)
+ const history=store as Partial<HistoryRunStore>&LeaseRunStore
+ const historyCommit=(commitId:string,expectedRevision:string|null,fence:LeaseFence,runId=run)=>history.commitHistoryFenced!({run:{runId,expectedRevision,commitId,checkpoint:bytes(`{"commit":"${commitId}"}`),events:[]},observations:[]},fence)
+ const snapshot=(fence:LeaseFence)=>history.commitContextSnapshotFenced!({chatId:'lease-chat',expectedRevision:null,manifest:{digest:'sha256:'+'a'.repeat(64),bytes:2}},'lease-snapshot',fence)
  await refusesLease('lease.expiry.equal-time',()=>store.checkFence(a),'expired')
  await refusesLease('lease.renew.no-revival',()=>store.renewLease(a,1000),'expired')
  await refusesLease('lease.commit.expired',()=>commit('lease-a-late',current.revision,a),'expired')
+ // #253: the writer commits only through the history ports; each refuses an expired fence, at equal time and after.
+ if(history.historyVersion===1)for(const [when,step] of [['equal-time',0],['after',1]] as [string,number][]){
+  at+=step
+  await refusesLease(`lease.history.expired.${when}`,()=>historyCommit(`lease-a-late-history-${when}`,current.revision,a),'expired')
+  await refusesLease(`lease.snapshot.expired.${when}`,()=>snapshot(a),'expired')
+ }
  check('lease.commit.expired-unapplied',(await store.load(run))?.revision===current.revision)
  const second=await store.acquireLease({resource:run,owner:'worker-b',expectedRevision:current.revision,durationMs:1000})
  check('lease.takeover.greater-epoch',second.epoch==='2'&&second.owner==='worker-b')
@@ -134,9 +143,6 @@ async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<Leas
   await refusesLease(`lease.renew.${name}`,()=>store.renewLease(fence,1000),reason)
   await refusesLease(`lease.release.${name}`,()=>store.releaseLease(fence),reason)
  }
- const history=store as Partial<HistoryRunStore>&LeaseRunStore
- const historyCommit=(commitId:string,expectedRevision:string|null,fence:LeaseFence,runId=run)=>history.commitHistoryFenced!({run:{runId,expectedRevision,commitId,checkpoint:bytes(`{"commit":"${commitId}"}`),events:[]},observations:[]},fence)
- const snapshot=(fence:LeaseFence)=>history.commitContextSnapshotFenced!({chatId:'lease-chat',expectedRevision:null,manifest:{digest:'sha256:'+'a'.repeat(64),bytes:2}},'lease-snapshot',fence)
  if(history.historyVersion===1){
   check('lease.history.declared',typeof history.commitHistoryFenced==='function'&&typeof history.commitContextSnapshotFenced==='function')
   for(const [name,fence,reason] of [...stale.slice(0,2),['resource',{...b,resource:'lease-other'},'resource-mismatch']] as [string,LeaseFence,LeaseRefusalReason][]){
