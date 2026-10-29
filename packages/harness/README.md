@@ -836,7 +836,8 @@ lease with an owner, an expiry from the store's clock and an exact epoch string.
 `fencedRunStore(store, fence, effectHost)` is the run's `RunStore` under that lease: every
 checkpoint commit presents the fence, and every non-read host or runtime effect is admitted by
 `effectHost` with the fence and an epoch-free idempotency key. `admitUnattended` refuses the
-memory and callback kinds and an unfenced effect host by name. See `docs/design/storage.md`.
+memory and callback kinds and an effect host that is neither the reference host nor certified by
+`certifyEffectHost`, by name. A tool with a source is an effect unless its effect class is read. See `docs/design/storage.md`.
 
 ### Proposal edit refusal details
 

@@ -1032,8 +1032,8 @@ class VectorTests(unittest.TestCase):
         for name, member in (("lease/lease.json", "record"), ("lease/fence.json", "fence"), ("lease/admission.json", "admission")):
             check = validator(self.schemas, rows[name]["schema"])
             for refused in rows[name]["refused"]:
-                if refused["problem"] in ("the key of another operation",):
-                    continue  # a digest mismatch only the readers can see
+                if refused["problem"] in ("the key of another operation",) or refused["problem"].startswith("an impossible expiry"):
+                    continue  # a digest mismatch or an impossible date only the readers can see
                 with self.subTest(vector=name, problem=refused["problem"]):
                     self.assertNotEqual(problems(check, [refused[member]]), [])
         for name in ("lease/refusal.json", "lease/capability.json"):

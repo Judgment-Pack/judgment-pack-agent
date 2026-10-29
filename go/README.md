@@ -234,8 +234,9 @@ record store or deletion job.
 
 `context/run_lease.go` is the Go twin of the package's lease contract: `LeaseStore` on
 `MemoryRunStore`, `FencedRunStore` for every checkpoint commit, the `EffectHost` port with
-`NewReferenceEffectHost` at every non-read host or runtime admission, `AdmitUnattended`, and
-`CheckRunStoreLeaseConformance` for a host store kind. See `docs/design/storage.md`.
+`NewReferenceEffectHost` at every non-read host or runtime admission, `AdmitUnattended` (the
+reference host or one certified by `CertifyEffectHost`), and `CheckRunStoreLeaseConformance` and
+`CheckEffectHostConformance` for a host store kind and an effect host. See `docs/design/storage.md`.
 
 ### Proposal edit host binding
 

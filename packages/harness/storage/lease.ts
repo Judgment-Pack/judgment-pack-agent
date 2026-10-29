@@ -2,10 +2,11 @@ import {AIFailureError,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {storageId} from './common'
+import {StorageConformanceFailure} from './conformance'
 import type {StorageRevision} from './common'
 import type {RunCommit,RunReceipt,RunStore} from './run'
 import type {ChatEntry,ChatPatch,ChatStore} from './chat'
-import type {HistoryRunStore,RunHistoryCommit,RunHistoryReceipt} from './history'
+import type {ContextSnapshotHead,ContextSnapshotUpdate,HistoryRunStore,RunHistoryCommit,RunHistoryReceipt} from './history'
 /* Run leases and fencing (ADR-0025 decision 1, #223; contract/schemas/run-lease.json).
  * The vocabulary is the ADR's: a lease has an owner, an authoritative expiry decided by the store clock and an exact,
  * monotonically increasing epoch. The fence ({resource, owner, epoch}) is the evidence presented at every checkpoint
@@ -50,7 +51,7 @@ export function nextLeaseEpoch(previous?:LeaseEpoch):LeaseEpoch{
  return (BigInt(previous)+1n).toString()
 }
 export function compareLeaseEpochs(a:LeaseEpoch,b:LeaseEpoch):-1|0|1{if(!validLeaseEpoch(a)||!validLeaseEpoch(b))return invalid();const x=BigInt(a),y=BigInt(b);return x<y?-1:x>y?1:0}
-const validExpiry=(value:unknown):value is string=>typeof value==='string'&&EXPIRY.test(value)&&new Date(Date.parse(value)).toISOString()===value
+const validExpiry=(value:unknown):value is string=>{if(typeof value!=='string'||!EXPIRY.test(value))return false;const ms=Date.parse(value);return Number.isSafeInteger(ms)&&new Date(ms).toISOString()===value}
 function expiryAt(ms:number):string{const text=Number.isSafeInteger(ms)?new Date(ms).toISOString():'';return validExpiry(text)?text:invalid()}
 const requireDuration=(value:unknown):number=>Number.isSafeInteger(value)&&Number(value)>=1&&Number(value)<=LEASE_DURATION_MAX_MS?Number(value):invalid()
 export function readLeaseFence(value:unknown):LeaseFence{
@@ -92,6 +93,9 @@ export interface LeaseRunStore extends RunStore,LeaseStore {
  commitFenced(input:RunCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunReceipt>
  /** Required when the store also has the history capability. */
  commitHistoryFenced?(input:RunHistoryCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunHistoryReceipt>
+ /** Required with the history capability: a leased run's chat snapshot commits only under its current fence (the fence
+  * names the run; the snapshot names its chat). A driver that lost its lease cannot release the turn its takeover resumes. */
+ commitContextSnapshotFenced?(input:ContextSnapshotUpdate,commitId:string,fence:LeaseFence,signal?:AbortSignal):Promise<ContextSnapshotHead>
 }
 export interface LeaseChatStore extends ChatStore,LeaseStore {
  updateFenced(id:string,patch:ChatPatch,expectedRevision:StorageRevision,fence:LeaseFence,signal?:AbortSignal):Promise<ChatEntry>
@@ -160,7 +164,7 @@ export class ReferenceEffectHost implements EffectHost {
  private tail:Promise<unknown>=Promise.resolve()
  /** Every refusal this host gave, as its versioned record, in order. */
  readonly refusals:{version:1;reason:LeaseRefusalReason}[]=[]
- constructor(private readonly authority:LeaseAuthority){}
+ constructor(private readonly authority:LeaseAuthority){if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)proven.add(this)}
  dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
   const admitted=this.tail.then(async()=>{
    try{
@@ -177,6 +181,53 @@ export class ReferenceEffectHost implements EffectHost {
  }
 }
 
+/** Effect hosts unattended admission accepts: the package's own reference host, and hosts certified by the conformance
+ * below. A declaration of effectFencing alone is not evidence. */
+const proven=new WeakSet<EffectHost>()
+const provenHost=(host:EffectHost)=>proven.has(host)&&(!(host instanceof ReferenceEffectHost)||host.dispatch===ReferenceEffectHost.prototype.dispatch)
+/** #223 review: the effect-host conformance. The kit owns the lease authority it hands the factory and moves its clock;
+ * the host must admit a current fence once, and refuse, without performing, an identity it admitted before (also under a
+ * takeover's fence), another owner, a stale or forged epoch, a fence for another run than the operation's, a key that is
+ * not its operation's, an expired lease and a released one. */
+export async function effectHostConformance(create:(authority:LeaseAuthority)=>EffectHost|Promise<EffectHost>):Promise<void>{
+ const fail=(property:string):never=>{throw new StorageConformanceFailure(property)}
+ try{
+  let at=Date.parse('2026-01-01T00:00:00.000Z')
+  const table=new LeaseTable(()=>new Date(at)),host=await create({checkFence:async fence=>{table.check(fence)}})
+  if(host.effectFencing!=='enforced')fail('host.declared')
+  const op=(operation:string,run='host-run'):EffectOperation=>({run,operation,source:'host',tool:'effect',requestDigest:'sha256:'+'b'.repeat(64)})
+  let performed=0
+  const perform=async()=>{performed++;return 'performed'}
+  const refuses=async(property:string,admission:EffectAdmission,reason:LeaseRefusalReason)=>{
+   const before=performed
+   try{await host.dispatch(admission,perform)}catch(error){if(!(error instanceof LeaseRefused&&error.reason===reason)||performed!==before)fail(property);return}
+   fail(property)
+  }
+  const a=fenceOf(table.acquire({resource:'host-run',owner:'worker-a',expectedRevision:null,durationMs:1000},null))
+  if(await host.dispatch(effectAdmission(a,op('op-1')),perform)!=='performed'||performed!==1)fail('host.admit.current')
+  await refuses('host.already-admitted',effectAdmission(a,op('op-1')),'already-admitted')
+  await refuses('host.other-owner',effectAdmission({...a,owner:'worker-x'},op('op-2')),'other-owner')
+  await refuses('host.forged-epoch',effectAdmission({...a,epoch:'2'},op('op-3')),'stale-epoch')
+  await refuses('host.resource-mismatch',effectAdmission(a,op('op-4','other-run')),'resource-mismatch')
+  await refuses('host.invalid',{...effectAdmission(a,op('op-5')),idempotencyKey:effectAdmission(a,op('op-6')).idempotencyKey},'invalid')
+  at+=1000
+  await refuses('host.expired',effectAdmission(a,op('op-7')),'expired')
+  const b=fenceOf(table.acquire({resource:'host-run',owner:'worker-b',expectedRevision:null,durationMs:1000},null))
+  await refuses('host.stale-epoch',effectAdmission(a,op('op-8')),'stale-epoch')
+  await refuses('host.takeover.already-admitted',effectAdmission(b,op('op-1')),'already-admitted')
+  table.release(b)
+  await refuses('host.released',effectAdmission(b,op('op-9')),'released')
+  if(performed!==1)fail('host.performed-once')
+ }catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('host.operation')}
+}
+/** Certify an effect host for unattended admission: the factory's hosts must pass the conformance, and the host it then
+ * builds over the real authority is the one admitted. */
+export async function certifyEffectHost<T extends EffectHost>(create:(authority:LeaseAuthority)=>T|Promise<T>,authority:LeaseAuthority):Promise<T>{
+ await effectHostConformance(create)
+ const host=await create(authority)
+ if(host.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
+ proven.add(host);return host
+}
 const leased=new WeakMap<object,{fence:LeaseFence;effectHost?:EffectHost}>()
 const bind=(store:object,name:string)=>{const method=(store as Record<string,unknown>)[name];return typeof method==='function'?method.bind(store):undefined}
 const HISTORY_METHODS=['stageHistoryObjects','readHistoryHead','readHistoryPage','readHistoryObject','loadContextSnapshot','commitContextSnapshot','commitHistoryMetadata','readHistoryMetadataPage'] as const
@@ -186,11 +237,11 @@ const HISTORY_METHODS=['stageHistoryObjects','readHistoryHead','readHistoryPage'
  * of its stored chat scope). The store keeps its own durability; the view adds no lifetime it does not have. */
 export function fencedRunStore(store:RunStore,fence:LeaseFence,effectHost?:EffectHost):RunStore{
  const lease=store as Partial<LeaseRunStore>&Partial<HistoryRunStore>
- if(lease.leaseVersion!==1||typeof lease.commitFenced!=='function'||store.durability==='single-writer-callback'||lease.historyVersion===1&&typeof lease.commitHistoryFenced!=='function')throw new LeaseCapabilityRefused('store-unsupported')
+ if(lease.leaseVersion!==1||typeof lease.commitFenced!=='function'||store.durability==='single-writer-callback'||lease.historyVersion===1&&(typeof lease.commitHistoryFenced!=='function'||typeof lease.commitContextSnapshotFenced!=='function'))throw new LeaseCapabilityRefused('store-unsupported')
  if(effectHost!==undefined&&effectHost.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
  const held=readLeaseFence(fence)
  const view:Record<string,unknown>={durability:store.durability,load:bind(store,'load'),readEvents:bind(store,'readEvents'),commit:(input:RunCommit,signal?:AbortSignal)=>lease.commitFenced!(input,held,signal)}
- if(lease.historyVersion===1){view.historyVersion=1;for(const name of HISTORY_METHODS)view[name]=bind(store,name);view.commitHistory=(input:RunHistoryCommit,signal?:AbortSignal)=>lease.commitHistoryFenced!(input,held,signal)}
+ if(lease.historyVersion===1){view.historyVersion=1;for(const name of HISTORY_METHODS)view[name]=bind(store,name);view.commitHistory=(input:RunHistoryCommit,signal?:AbortSignal)=>lease.commitHistoryFenced!(input,held,signal);view.commitContextSnapshot=(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal)=>lease.commitContextSnapshotFenced!(input,commitId,held,signal)}
  Object.freeze(view);leased.set(view,{fence:held,...(effectHost?{effectHost}:{})})
  return view as unknown as RunStore
 }
@@ -201,7 +252,8 @@ export function fencedChatStore(store:ChatStore,fence:LeaseFence):ChatStore{
  const held=readLeaseFence(fence)
  return Object.freeze({consistency:store.consistency,get:store.get.bind(store),list:store.list.bind(store),update:(id:string,patch:ChatPatch,expectedRevision:StorageRevision,signal?:AbortSignal)=>lease.updateFenced!(id,patch,expectedRevision,held,signal)}) as ChatStore
 }
-/** Unattended admission: only a store whose leases outlive its process and an effect host that enforces the fence.
+/** Unattended admission: only a store whose leases outlive its process and an effect host proven to enforce the fence
+ * (the reference host, or one certified by certifyEffectHost).
  * Anything else refuses by name before a dispatch; in particular the memory and callback kinds never qualify. */
 export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;chatStore?:ChatStore}):void{
  for(const store of [input.store,input.chatStore]){
@@ -210,7 +262,7 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
   if(lease.leaseVersion!==1||(store===input.store?typeof lease.commitFenced!=='function'||(store as RunStore).durability==='single-writer-callback':typeof lease.updateFenced!=='function'||(store as ChatStore).consistency==='single-writer-legacy'))throw new LeaseCapabilityRefused('store-unsupported')
   if(lease.leaseLifetime!=='durable')throw new LeaseCapabilityRefused('store-lifetime')
  }
- if(!input.effectHost||input.effectHost.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
+ if(!input.effectHost||input.effectHost.effectFencing!=='enforced'||!provenHost(input.effectHost))throw new LeaseCapabilityRefused('effect-host-unfenced')
 }
 /** admitUnattended, then the fenced view the unattended run uses as its RunStore. */
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}

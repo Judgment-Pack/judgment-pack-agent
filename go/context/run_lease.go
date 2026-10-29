@@ -9,9 +9,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
+	"reflect"
 	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -338,6 +341,10 @@ type LeaseHistoryRunStore interface {
 	LeaseRunStore
 	HistoryRunStore
 	CommitHistoryFenced(context.Context, RunHistoryCommit, LeaseFence) (RunHistoryReceipt, error)
+	// CommitContextSnapshotFenced: a leased run's chat snapshot commits only under its current fence (the
+	// fence names the run; the snapshot names its chat), so a driver that lost its lease cannot release the
+	// turn its takeover resumes.
+	CommitContextSnapshotFenced(context.Context, ContextSnapshotUpdate, string, LeaseFence) (ContextSnapshotHead, error)
 }
 
 // LeaseTable holds the lease transitions in memory. MemoryRunStore calls it under its own lock; a host
@@ -546,7 +553,136 @@ type ReferenceEffectHost struct {
 }
 
 func NewReferenceEffectHost(authority LeaseAuthority) *ReferenceEffectHost {
-	return &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+	host := &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+	provenHosts.Store(host, true)
+	return host
+}
+
+// provenHosts are the effect hosts unattended admission accepts: the package's reference host and hosts
+// certified by CertifyEffectHost. A declaration of EffectFencing alone is not evidence.
+var provenHosts sync.Map
+
+func provenHost(host EffectHost) bool {
+	if host == nil || !reflect.TypeOf(host).Comparable() {
+		return false
+	}
+	_, ok := provenHosts.Load(host)
+	return ok
+}
+
+// CheckEffectHostConformance (#223 review) is the effect-host conformance. The kit owns the lease authority
+// it hands the factory and moves its clock. The host must admit a current fence once and refuse, without
+// performing, an identity it admitted before (also under a takeover's fence), another owner, a stale or
+// forged epoch, a fence for another run than the operation's, a key that is not its operation's, an expired
+// lease and a released one. The TypeScript twin is effectHostConformance.
+func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority) EffectHost) error {
+	fail := func(property string) error { return &StorageConformanceFailure{Property: property} }
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	table := NewLeaseTable(func() time.Time { return at })
+	var mu sync.Mutex
+	host := create(tableAuthority{table: table, mu: &mu})
+	if host == nil || host.EffectFencing() != EffectFencingEnforced {
+		return fail("host.declared")
+	}
+	op := func(operation, run string) EffectOperation {
+		return EffectOperation{Run: run, Operation: operation, Source: "host", Tool: "effect", RequestDigest: "sha256:" + strings.Repeat("b", 64)}
+	}
+	performed := 0
+	perform := func(context.Context) error { performed++; return nil }
+	admission := func(fence LeaseFence, operation EffectOperation) EffectAdmission {
+		held, _ := NewEffectAdmission(fence, operation)
+		return held
+	}
+	refuses := func(held EffectAdmission, reason string) bool {
+		before := performed
+		var refused *LeaseRefused
+		err := host.Dispatch(ctx, held, perform)
+		return errors.As(err, &refused) && refused.Reason == reason && performed == before
+	}
+	acquire := func(owner string) (LeaseFence, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		lease, err := table.Acquire(LeaseAcquire{Resource: "host-run", Owner: owner, DurationMs: 1000}, "")
+		return FenceOf(lease), err
+	}
+	a, err := acquire("worker-a")
+	if err != nil {
+		return fail("host.operation")
+	}
+	if err := host.Dispatch(ctx, admission(a, op("op-1", "host-run")), perform); err != nil || performed != 1 {
+		return fail("host.admit.current")
+	}
+	if !refuses(admission(a, op("op-1", "host-run")), "already-admitted") {
+		return fail("host.already-admitted")
+	}
+	other := a
+	other.Owner = "worker-x"
+	if !refuses(admission(other, op("op-2", "host-run")), "other-owner") {
+		return fail("host.other-owner")
+	}
+	forged := a
+	forged.Epoch = "2"
+	if !refuses(admission(forged, op("op-3", "host-run")), "stale-epoch") {
+		return fail("host.forged-epoch")
+	}
+	if !refuses(admission(a, op("op-4", "other-run")), "resource-mismatch") {
+		return fail("host.resource-mismatch")
+	}
+	mismatched := admission(a, op("op-5", "host-run"))
+	mismatched.IdempotencyKey = admission(a, op("op-6", "host-run")).IdempotencyKey
+	if !refuses(mismatched, "invalid") {
+		return fail("host.invalid")
+	}
+	at = at.Add(time.Second)
+	if !refuses(admission(a, op("op-7", "host-run")), "expired") {
+		return fail("host.expired")
+	}
+	b, err := acquire("worker-b")
+	if err != nil {
+		return fail("host.operation")
+	}
+	if !refuses(admission(a, op("op-8", "host-run")), "stale-epoch") {
+		return fail("host.stale-epoch")
+	}
+	if !refuses(admission(b, op("op-1", "host-run")), "already-admitted") {
+		return fail("host.takeover.already-admitted")
+	}
+	mu.Lock()
+	_, err = table.Release(b)
+	mu.Unlock()
+	if err != nil || !refuses(admission(b, op("op-9", "host-run")), "released") {
+		return fail("host.released")
+	}
+	if performed != 1 {
+		return fail("host.performed-once")
+	}
+	return nil
+}
+
+type tableAuthority struct {
+	table *LeaseTable
+	mu    *sync.Mutex
+}
+
+func (a tableAuthority) CheckFence(_ context.Context, fence LeaseFence) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_, err := a.table.Check(fence)
+	return err
+}
+
+// CertifyEffectHost certifies an effect host for unattended admission: the factory's hosts must pass the
+// conformance, and the host it then builds over the real authority is the one admitted.
+func CertifyEffectHost(ctx context.Context, create func(LeaseAuthority) EffectHost, authority LeaseAuthority) (EffectHost, error) {
+	if err := CheckEffectHostConformance(ctx, create); err != nil {
+		return nil, err
+	}
+	host := create(authority)
+	if host == nil || host.EffectFencing() != EffectFencingEnforced || !reflect.TypeOf(host).Comparable() {
+		return nil, &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
+	}
+	provenHosts.Store(host, true)
+	return host, nil
 }
 func (h *ReferenceEffectHost) EffectFencing() string { return EffectFencingEnforced }
 
@@ -620,6 +756,9 @@ func (f *fencedHistoryRunStore) Commit(ctx context.Context, input RunCommit) (Ru
 func (f *fencedHistoryRunStore) CommitHistory(ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error) {
 	return f.store.CommitHistoryFenced(ctx, input, f.fenced.fence)
 }
+func (f *fencedHistoryRunStore) CommitContextSnapshot(ctx context.Context, input ContextSnapshotUpdate, commitID string) (ContextSnapshotHead, error) {
+	return f.store.CommitContextSnapshotFenced(ctx, input, commitID, f.fenced.fence)
+}
 
 // FencedRunStore returns the view a durable run uses as its RunStore under a lease. The store keeps its
 // own durability; the view adds no lifetime it does not have. A store without the lease port, or with
@@ -648,8 +787,8 @@ func FencedRunStore(store RunStore, fence LeaseFence, host EffectHost) (RunStore
 	return view, nil
 }
 
-// AdmitUnattended admits only a store whose leases outlive its process and an effect host that
-// enforces the fence. Anything else refuses by name before a dispatch; in particular the memory and
+// AdmitUnattended admits only a store whose leases outlive its process and an effect host proven to
+// enforce the fence (the reference host, or one certified by CertifyEffectHost). Anything else refuses by name before a dispatch; in particular the memory and
 // callback kinds never qualify.
 func AdmitUnattended(store RunStore, host EffectHost) error {
 	lease, ok := store.(LeaseRunStore)
@@ -659,7 +798,7 @@ func AdmitUnattended(store RunStore, host EffectHost) error {
 	if lease.LeaseLifetime() != LeaseLifetimeDurable {
 		return &LeaseCapabilityRefused{Reason: "store-lifetime"}
 	}
-	if host == nil || host.EffectFencing() != EffectFencingEnforced {
+	if host == nil || host.EffectFencing() != EffectFencingEnforced || !provenHost(host) {
 		return &LeaseCapabilityRefused{Reason: "effect-host-unfenced"}
 	}
 	return nil

@@ -1813,7 +1813,7 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 	if held := receiptAdmissionOf(ctx); held != nil {
 		admit = held.admit
 	}
-	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, ReadingTool(&tool), func(raw []byte) (ToolResult, error) {
+	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
 			if err := c.session.Context.Authorize(ctx); err != nil {
 				return ToolResult{}, err
@@ -1826,6 +1826,21 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		}
 		return nil
 	})
+}
+
+// durableReadingTool (#223) is whether a host tool's call is a read for the writer, and so never reaches
+// the effect host. It is the call's effect, not the framing of its answer (ReadingTool): a tool with a
+// source is a read only when its effect class is read, and an owner-declared act or propose effect is
+// never a read. Every other call is an effect: its outcome is recorded before dependent work, an unknown
+// outcome is never repeated, and under a fenced store the effect host admits it.
+func durableReadingTool(tool *HostTool) bool {
+	if tool.Taxonomy != nil && (tool.Taxonomy.Effect == "act" || tool.Taxonomy.Effect == "propose") {
+		return false
+	}
+	if tool.Source != nil {
+		return tool.EffectClass == "read"
+	}
+	return ReadingTool(tool)
 }
 
 // Authorize rechecks current host authority immediately before an acknowledged provider dispatch.

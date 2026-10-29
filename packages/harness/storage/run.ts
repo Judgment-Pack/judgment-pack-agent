@@ -120,12 +120,14 @@ export class MemoryRunStore implements RunStore,LeaseRunStore {
  async readHistoryPage(runId:string,revision:string,after:number,limit:number,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.page(runId,revision,after,limit)}
  async readHistoryObject(resource:HistoryResource,revision:string,digest:string,offset:number,limit:number,signal?:AbortSignal):Promise<HistoryObjectPage>{signal?.throwIfAborted();return this.journal.object(resource,revision,digest,offset,limit)}
  async loadContextSnapshot(chatId:string,signal?:AbortSignal){signal?.throwIfAborted();return this.journal.contextHead(chatId)}
- async commitContextSnapshot(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal){
+ async commitContextSnapshot(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal,fence?:LeaseFence){
   if(!input)throw new StorageInputError()
   const frozen=freezeHistoryInput({observations:[],context:input}).context!
-  const result=this.tail.then(()=>{signal?.throwIfAborted();return this.journal.commitContext(frozen,commitId)})
+  // #223: a leased run's chat snapshot commits only under its current fence, checked in the same transaction.
+  const result=this.tail.then(()=>{signal?.throwIfAborted();if(fence)this.leases.check(readLeaseFence(fence));return this.journal.commitContext(frozen,commitId)})
   this.tail=result.catch(()=>undefined);return result
  }
+ commitContextSnapshotFenced(input:ContextSnapshotUpdate,commitId:string,fence:LeaseFence,signal?:AbortSignal){return this.commitContextSnapshot(input,commitId,signal,fence)}
  async commitHistoryMetadata(input:import('./history').HistoryMetadataCommit,signal?:AbortSignal){
   const frozen=structuredClone(input),result=this.tail.then(async()=>{signal?.throwIfAborted();const prepared=this.journal.prepareMetadata(frozen);if(prepared.replay)return prepared.publish();await this.options.beforeCommit?.();signal?.throwIfAborted();const result=prepared.publish();await this.options.afterCommit?.();return result});this.tail=result.catch(()=>undefined);return result
  }

@@ -1,6 +1,7 @@
 import {ChatNotFound,ChatRevisionConflict,StorageCommitMismatch,StorageConflict,StorageCursorInvalid} from './common'
 import type {RunStore,RunCommit} from './run'
 import type {ChatStore} from './chat'
+import type {HistoryRunStore} from './history'
 import {fenceOf,LeaseRefused,type LeaseFence,type LeaseRefusalReason,type LeaseRunStore} from './lease'
 export class StorageConformanceFailure extends Error {
  constructor(readonly property:string){super(`Storage conformance failed: ${property}`);this.name='StorageConformanceFailure'}
@@ -124,12 +125,42 @@ async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<Leas
  const second=await store.acquireLease({resource:run,owner:'worker-b',expectedRevision:current.revision,durationMs:1000})
  check('lease.takeover.greater-epoch',second.epoch==='2'&&second.owner==='worker-b')
  await refusesLease('lease.commit.stale-epoch',()=>commit('lease-a-stale',current.revision,a),'stale-epoch')
- const b=fenceOf(second),taken=await commit('lease-b-1',current.revision,b)
+ const b=fenceOf(second)
+ let taken=await commit('lease-b-1',current.revision,b)
+ // #223 review: every way a fence is not current, through every port the writer and the effect host rely on.
+ const stale:[string,LeaseFence,LeaseRefusalReason][]=[['stale-epoch',a,'stale-epoch'],['other-owner',{...b,owner:'worker-x'},'other-owner'],['resource',{...b,resource:'never-leased'},'no-lease']]
+ for(const [name,fence,reason] of stale){
+  await refusesLease(`lease.check.${name}`,()=>store.checkFence(fence),reason)
+  await refusesLease(`lease.renew.${name}`,()=>store.renewLease(fence,1000),reason)
+  await refusesLease(`lease.release.${name}`,()=>store.releaseLease(fence),reason)
+ }
+ const history=store as Partial<HistoryRunStore>&LeaseRunStore
+ const historyCommit=(commitId:string,expectedRevision:string|null,fence:LeaseFence,runId=run)=>history.commitHistoryFenced!({run:{runId,expectedRevision,commitId,checkpoint:bytes(`{"commit":"${commitId}"}`),events:[]},observations:[]},fence)
+ const snapshot=(fence:LeaseFence)=>history.commitContextSnapshotFenced!({chatId:'lease-chat',expectedRevision:null,manifest:{digest:'sha256:'+'a'.repeat(64),bytes:2}},'lease-snapshot',fence)
+ if(history.historyVersion===1){
+  check('lease.history.declared',typeof history.commitHistoryFenced==='function'&&typeof history.commitContextSnapshotFenced==='function')
+  for(const [name,fence,reason] of [...stale.slice(0,2),['resource',{...b,resource:'lease-other'},'resource-mismatch']] as [string,LeaseFence,LeaseRefusalReason][]){
+   await refusesLease(`lease.history.${name}`,()=>historyCommit(`lease-history-${name}`,taken.revision,fence),reason)
+   if(name!=='resource')await refusesLease(`lease.snapshot.${name}`,()=>snapshot(fence),reason)
+  }
+  await refusesLease('lease.history.resource',()=>historyCommit('lease-history-other',null,b,'lease-other'),'resource-mismatch')
+  check('lease.history.unapplied',(await store.load(run))?.revision===taken.revision)
+  taken=await historyCommit('lease-history-b',taken.revision,b)
+  check('lease.history.current',(await store.load(run))?.revision===taken.revision)
+ }
  const released=await store.releaseLease(b)
  check('lease.release.retains-epoch',released.state==='released'&&released.epoch==='2')
  await refusesLease('lease.release.fence-ends',()=>commit('lease-b-2',taken.revision,b),'released')
+ await refusesLease('lease.check.released',()=>store.checkFence(b),'released')
+ if(history.historyVersion===1){
+  await refusesLease('lease.history.released',()=>historyCommit('lease-history-released',taken.revision,b),'released')
+  await refusesLease('lease.snapshot.released',()=>snapshot(b),'released')
+ }
  const third=await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:taken.revision,durationMs:1000})
  check('lease.release.next-greater',third.epoch==='3'&&(await store.readLease(run))?.epoch==='3')
+ // The same owner's earlier epoch is stale too: no port may match a fence by owner alone.
+ for(const [name,attempt] of [['check',()=>store.checkFence(a)],['renew',()=>store.renewLease(a,1000)],['release',()=>store.releaseLease(a)],['commit',()=>commit('lease-a-old',taken.revision,a)]] as [string,()=>Promise<unknown>][])await refusesLease(`lease.same-owner.${name}`,attempt,'stale-epoch')
+ if(history.historyVersion===1)await refusesLease('lease.same-owner.history',()=>historyCommit('lease-a-old-history',taken.revision,a),'stale-epoch')
  check('lease.read.missing',await store.readLease('never-leased')===undefined)
  const contenders=await Promise.allSettled(['worker-x','worker-y'].map(owner=>store.acquireLease({resource:'lease-race',owner,expectedRevision:null,durationMs:1000})))
  check('lease.acquire.atomic',contenders.filter(r=>r.status==='fulfilled').length===1&&contenders.some(r=>r.status==='rejected'&&r.reason instanceof LeaseRefused&&r.reason.reason==='held'))

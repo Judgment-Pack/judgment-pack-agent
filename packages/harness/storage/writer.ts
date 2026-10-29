@@ -20,6 +20,7 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect} from './lease'
+import {readingTool} from '../framing'
 import {canonicalJSON} from '../context/chat'
 import {AIFailureError,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
@@ -850,6 +851,15 @@ export function childDurability<T extends EngineSession>(session:T,parent:Engine
 }
 export function scopeFor(binding:DurableBinding,role:string):DurableBinding{return {...binding,scope:{...binding.scope,role}}}
 export const hostSucceeded=(result:McpToolResult)=>result.isError!==true
+/** #223: whether a host tool's call is a read for the writer (and so never reaches the effect host). This is the call's
+ * effect, not the framing of its answer (`readingTool`): a tool with a source is a read only when its effect class is read,
+ * and an owner-declared act or propose effect is never a read. Every other call is an effect: its outcome is recorded
+ * before dependent work, an unknown outcome is never repeated, and under a fenced store the effect host admits it. */
+export function durableReadingTool(tool:Pick<HostTool,'effect'|'delegation'|'interaction'|'source'|'effectClass'|'taxonomy'>):boolean{
+ if(tool.taxonomy?.effect==='act'||tool.taxonomy?.effect==='propose')return false
+ if(tool.source!==undefined)return tool.effectClass==='read'
+ return readingTool(tool)
+}
 
 /** Decode a committed root-log envelope; the host still binds its resource scope. */
 export function readStoredRunEvent(bytes:Uint8Array):{version:1;scope:DurableScope;event:AssistantEvent}{

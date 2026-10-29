@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -253,6 +254,67 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 	if err != nil {
 		return fail("lease.commit.current")
 	}
+	// #223 review: every way a fence is not current, through every port the writer and the effect host rely on.
+	otherOwner, otherResource := b, b
+	otherOwner.Owner = "worker-x"
+	otherResource.Resource = "never-leased"
+	stale := []struct {
+		name   string
+		fence  LeaseFence
+		reason string
+	}{{"stale-epoch", a, "stale-epoch"}, {"other-owner", otherOwner, "other-owner"}, {"resource", otherResource, "no-lease"}}
+	for _, c := range stale {
+		if err = store.CheckFence(ctx, c.fence); !refuses(err, c.reason) {
+			return fail("lease.check." + c.name)
+		}
+		if _, err = store.RenewLease(ctx, c.fence, 1000); !refuses(err, c.reason) {
+			return fail("lease.renew." + c.name)
+		}
+		if _, err = store.ReleaseLease(ctx, c.fence); !refuses(err, c.reason) {
+			return fail("lease.release." + c.name)
+		}
+	}
+	history, withHistory := store.(LeaseHistoryRunStore)
+	if plain, ok := store.(HistoryRunStore); ok && plain.HistoryVersion() == 1 && !withHistory {
+		return fail("lease.history.declared")
+	}
+	withHistory = withHistory && history.HistoryVersion() == 1
+	historyCommit := func(commitID, expected string, fence LeaseFence, runID string) (RunHistoryReceipt, error) {
+		return history.CommitHistoryFenced(ctx, RunHistoryCommit{Run: RunCommit{RunID: runID, ExpectedRevision: expected, CommitID: commitID, Checkpoint: []byte(`{"commit":"` + commitID + `"}`)}, Observations: []HistoryObjectRef{}}, fence)
+	}
+	snapshot := func(fence LeaseFence) error {
+		_, err := history.CommitContextSnapshotFenced(ctx, ContextSnapshotUpdate{ChatID: "lease-chat", Manifest: HistoryObjectRef{Digest: "sha256:" + strings.Repeat("a", 64), Bytes: 2}}, "lease-snapshot", fence)
+		return err
+	}
+	if withHistory {
+		mismatched := b
+		mismatched.Resource = "lease-other"
+		for _, c := range []struct {
+			name   string
+			fence  LeaseFence
+			reason string
+		}{stale[0], stale[1], {"resource", mismatched, "resource-mismatch"}} {
+			if _, err = historyCommit("lease-history-"+c.name, taken.Revision, c.fence, run); !refuses(err, c.reason) {
+				return fail("lease.history." + c.name)
+			}
+			if c.name != "resource" {
+				if err = snapshot(c.fence); !refuses(err, c.reason) {
+					return fail("lease.snapshot." + c.name)
+				}
+			}
+		}
+		if _, err = historyCommit("lease-history-other", "", b, "lease-other"); !refuses(err, "resource-mismatch") {
+			return fail("lease.history.resource")
+		}
+		if head, _ := store.Load(ctx, run); head == nil || head.Revision != taken.Revision {
+			return fail("lease.history.unapplied")
+		}
+		receipt, err := historyCommit("lease-history-b", taken.Revision, b, run)
+		if head, _ := store.Load(ctx, run); err != nil || head == nil || head.Revision != receipt.Revision {
+			return fail("lease.history.current")
+		}
+		taken = receipt.RunReceipt
+	}
 	released, err := store.ReleaseLease(ctx, b)
 	if err != nil || released.State != "released" || released.Epoch != "2" {
 		return fail("lease.release.retains-epoch")
@@ -260,10 +322,39 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 	if _, err = commit("lease-b-2", taken.Revision, b); !refuses(err, "released") {
 		return fail("lease.release.fence-ends")
 	}
+	if err = store.CheckFence(ctx, b); !refuses(err, "released") {
+		return fail("lease.check.released")
+	}
+	if withHistory {
+		if _, err = historyCommit("lease-history-released", taken.Revision, b, run); !refuses(err, "released") {
+			return fail("lease.history.released")
+		}
+		if err = snapshot(b); !refuses(err, "released") {
+			return fail("lease.snapshot.released")
+		}
+	}
 	third, err := store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-a", ExpectedRevision: taken.Revision, DurationMs: 1000})
 	read, readErr := store.ReadLease(ctx, run)
 	if err != nil || readErr != nil || third.Epoch != "3" || read == nil || read.Epoch != "3" {
 		return fail("lease.release.next-greater")
+	}
+	// The same owner's earlier epoch is stale too: no port may match a fence by owner alone.
+	if err = store.CheckFence(ctx, a); !refuses(err, "stale-epoch") {
+		return fail("lease.same-owner.check")
+	}
+	if _, err = store.RenewLease(ctx, a, 1000); !refuses(err, "stale-epoch") {
+		return fail("lease.same-owner.renew")
+	}
+	if _, err = store.ReleaseLease(ctx, a); !refuses(err, "stale-epoch") {
+		return fail("lease.same-owner.release")
+	}
+	if _, err = commit("lease-a-old", taken.Revision, a); !refuses(err, "stale-epoch") {
+		return fail("lease.same-owner.commit")
+	}
+	if withHistory {
+		if _, err = historyCommit("lease-a-old-history", taken.Revision, a, run); !refuses(err, "stale-epoch") {
+			return fail("lease.same-owner.history")
+		}
 	}
 	if missing, err := store.ReadLease(ctx, "never-leased"); err != nil || missing != nil {
 		return fail("lease.read.missing")

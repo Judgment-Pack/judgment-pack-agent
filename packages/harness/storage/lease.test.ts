@@ -1,12 +1,15 @@
 import {describe,it,expect,vi} from 'vitest'
-import type {AssistantSession} from '../engine'
+import type {AssistantSession,HostTool} from '../engine'
+import {ChatContext} from '../context/chat'
+import {StoredChatScope,restoreStoredChatScope} from '../context/storedChat'
+import {toolListDigest} from '../toolSources'
 import {contextualSession} from '../context/session'
 import {canonicalJSON} from '../context/chat'
 import {MemoryRunStore,checkpointCallbackRunStore,type RunStore} from './run'
 import {MemoryChatStore} from './chat'
-import {HostOutcomeUnknown} from './writer'
+import {HostOutcomeUnknown,durableSession,durableOwner,type DurableBinding} from './writer'
 import {runStoreLeaseConformance,StorageConformanceFailure} from './conformance'
-import {LEASE_CAPABILITY_REASONS,LEASE_EPOCH_MAX,LEASE_REFUSAL_REASONS,LeaseCapabilityRefused,LeaseRefused,ReferenceEffectHost,admitUnattended,compareLeaseEpochs,effectAdmission,effectIdempotencyKey,fenceOf,fencedChatStore,fencedRunStore,nextLeaseEpoch,readEffectAdmission,readLeaseCapabilityRefusal,readLeaseFence,readLeaseRefusal,readRunLease,unattendedRunStore,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
+import {certifyEffectHost,effectHostConformance,type EffectAdmission,type LeaseRunStore,LEASE_CAPABILITY_REASONS,LEASE_EPOCH_MAX,LEASE_REFUSAL_REASONS,LeaseCapabilityRefused,LeaseRefused,ReferenceEffectHost,admitUnattended,compareLeaseEpochs,effectAdmission,effectIdempotencyKey,fenceOf,fencedChatStore,fencedRunStore,nextLeaseEpoch,readEffectAdmission,readLeaseCapabilityRefusal,readLeaseFence,readLeaseRefusal,readRunLease,unattendedRunStore,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
 import leaseVector from '../../../contract/vectors/lease/lease.json'
 import fenceVector from '../../../contract/vectors/lease/fence.json'
 import admissionVector from '../../../contract/vectors/lease/admission.json'
@@ -209,5 +212,139 @@ describe('truthful adapters and unattended admission (#223)',()=>{
   const plain=await record(false),fenced=await record(true)
   expect(fenced.checkpoint).toEqual(plain.checkpoint);expect(fenced.events).toEqual(plain.events);expect(fenced.version).toBe(plain.version)
   for(const word of ['epoch','fence','lease','worker-a'])expect(fenced.text).not.toContain(word)
+ })
+})
+
+// #223 review fix round: the effect of a call decides the writer's read, every port refuses a stale fence, and an effect
+// host is admitted for unattended runs only when proven.
+const SOURCE_ACT={name:'submit',description:'Submit one expense.',inputSchema:{type:'object'},taxonomy:{operation:'act',effect:'act'} as const}
+async function sourceTool(kind:'gateway'|'mcp'|'custom',execute:Execute,effectClass:'act'|'read'='act'):Promise<HostTool>{
+ const declared=effectClass==='act'?SOURCE_ACT:{...SOURCE_ACT,name:'lookup',taxonomy:{operation:'read',effect:'read'} as const}
+ return {...declared,effectClass,source:{kind,id:'expenses',trust:'connected',version:'4',toolListDigest:await toolListDigest([declared] as never),identity:{kind:'person',label:'Reviewer'}},approve:()=>'allow',execute} as HostTool
+}
+async function toolDriver(store:RunStore,id:string,tool:HostTool,resume=false,chat?:StoredChatScope){
+ const input=session(store,id,tool.execute,resume);input.hostTools=[tool]
+ if(chat){input.context={...input.context!,runStore:{...input.context!.runStore!,context:chat} as never,chat:chat as never}}
+ const ready=await contextualSession(input)
+ const name=tool.source?`${tool.source.id}__${tool.name}`:tool.name
+ return {close:()=>ready.context.close(),call:(value:number)=>ready.session.values.hostTools.find(t=>t.name===name)!.execute({value},new AbortController().signal,`wire-${value}`)}
+}
+class CountingHost implements EffectHost {readonly effectFencing='enforced' as const;admissions=0;constructor(readonly inner:ReferenceEffectHost){}dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal){this.admissions++;return this.inner.dispatch(admission,perform,signal)}}
+describe('a source act is an effect, not a read (#223 review 1)',()=>{
+ for(const kind of ['gateway','mcp','custom'] as const){
+  it(`${kind} act: admitted by the effect host, refused after expiry, never dispatched twice across a takeover`,async()=>{
+   let armed=false
+   const {clock,store}=clocked({afterCommit:()=>{if(armed){armed=false;clock.at+=2*MINUTE}}}),host=new CountingHost(new ReferenceEffectHost(store))
+   const once=saved(),a=await store.acquireLease({resource:`${kind}-act`,owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+   const first=await toolDriver(fencedRunStore(store,fenceOf(a),host),`${kind}-act`,await sourceTool(kind,once))
+   await first.call(1);expect(once).toHaveBeenCalledOnce();expect(host.admissions).toBe(1)
+   const claims=(await checkpoint(store,`${kind}-act`)).durable.dispatches.filter((row:{kind:string})=>row.kind==='host')
+   expect(claims.map((row:{read:boolean})=>row.read)).toEqual([false])
+   // The lease expires between the claim commit and the dispatch: the host refuses, the act does not run.
+   armed=true
+   await refused(first.call(2));expect(once).toHaveBeenCalledOnce();expect(host.inner.refusals).toEqual([{version:1,reason:'expired'}])
+   first.close()
+   // A takeover re-issues the call whose outcome is unknown: it stays unknown, one physical dispatch in all.
+   const b=await store.acquireLease({resource:`${kind}-act`,owner:'worker-b',expectedRevision:(await store.load(`${kind}-act`))!.revision,durationMs:MINUTE})
+   const again=saved(),second=await toolDriver(fencedRunStore(store,fenceOf(b),host),`${kind}-act`,await sourceTool(kind,again),true)
+   await expect(second.call(2)).rejects.toBeInstanceOf(HostOutcomeUnknown)
+   await second.call(1);expect(again).not.toHaveBeenCalled();second.close()
+  })
+  it(`${kind} act in flight: the takeover never dispatches it again`,async()=>{
+   const {clock,store}=clocked(),host=new ReferenceEffectHost(store)
+   let physical=0,started!:()=>void;const running=new Promise<void>(resolve=>started=resolve)
+   const hang=vi.fn(async()=>{physical++;started();return new Promise<never>(()=>{})}),again=vi.fn(async()=>{physical++;return {content:[]}})
+   const a=await store.acquireLease({resource:`${kind}-flight`,owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+   const first=await toolDriver(fencedRunStore(store,fenceOf(a),host),`${kind}-flight`,await sourceTool(kind,hang))
+   void first.call(1).catch(()=>undefined);await running
+   clock.at+=2*MINUTE
+   const b=await store.acquireLease({resource:`${kind}-flight`,owner:'worker-b',expectedRevision:(await store.load(`${kind}-flight`))!.revision,durationMs:MINUTE})
+   const second=await toolDriver(fencedRunStore(store,fenceOf(b),host),`${kind}-flight`,await sourceTool(kind,again),true)
+   await expect(second.call(1)).rejects.toBeInstanceOf(HostOutcomeUnknown)
+   expect(physical).toBe(1);second.close()
+  })
+ }
+ it('a source read stays a read: no effect-host admission, recorded read',async()=>{
+  const {store}=clocked(),host=new CountingHost(new ReferenceEffectHost(store)),read=saved()
+  const a=await store.acquireLease({resource:'source-read',owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+  const first=await toolDriver(fencedRunStore(store,fenceOf(a),host),'source-read',await sourceTool('custom',read,'read'))
+  await first.call(1);expect(read).toHaveBeenCalledOnce();expect(host.admissions).toBe(0)
+  expect((await checkpoint(store,'source-read')).durable.dispatches.filter((row:{kind:string})=>row.kind==='host').map((row:{read:boolean})=>row.read)).toEqual([true])
+  first.close()
+ })
+})
+
+describe('a stale driver cannot release the chat turn its takeover resumes (#223 review 2)',()=>{
+ it('the stale close refuses and the takeover restores and resumes',async()=>{
+  const {clock,store}=clocked(),host=new ReferenceEffectHost(store)
+  const a=await store.acquireLease({resource:'chat-run',owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+  const viewA=fencedRunStore(store,fenceOf(a),host) as never as import('./history').HistoryRunStore
+  const scopeA=new StoredChatScope(viewA,'chat-lease-scope',new ChatContext({scope:'shared'}))
+  const first=await toolDriver(viewA,'chat-run',{name:'save_object',taxonomy:{operation:'own-state',effect:'pure'},effect:'workflow',description:'Save',inputSchema:{},execute:saved()} as HostTool,false,scopeA)
+  await first.call(1)
+  const bound=(await store.readHistoryHead('chat-run'))!.context!
+  clock.at+=2*MINUTE
+  const b=await store.acquireLease({resource:'chat-run',owner:'worker-b',expectedRevision:(await store.load('chat-run'))!.revision,durationMs:MINUTE})
+  first.close()
+  expect(named(await refused(scopeA.close()))).toEqual(refusal('stale-epoch'))
+  expect((await store.loadContextSnapshot('chat-lease-scope'))!.revision).toBe(bound.revision)
+  const viewB=fencedRunStore(store,fenceOf(b),host) as never as import('./history').HistoryRunStore
+  const restored=await restoreStoredChatScope(viewB,(await store.readHistoryHead('chat-run'))!.context!)
+  const execute=saved(),second=await toolDriver(viewB,'chat-run',{name:'save_object',taxonomy:{operation:'own-state',effect:'pure'},effect:'workflow',description:'Save',inputSchema:{},execute} as HostTool,true,restored)
+  await second.call(2);expect(execute).toHaveBeenCalledOnce();second.close()
+ })
+})
+
+describe('the kits refuse what does not enforce the fence (#223 review 3)',()=>{
+ type Break=(store:MemoryRunStore)=>void
+ const breaks:Record<string,Break>={
+  'checkFence checks expiry only':store=>{const check=store.checkFence.bind(store);store.checkFence=async fence=>{const row=await store.readLease(fence.resource);return check(row?{...fence,epoch:row.epoch,owner:row.owner}:fence)}},
+  'commitHistoryFenced ignores the fence':store=>{store.commitHistoryFenced=(input,_fence,signal)=>store.commitHistory(input,signal)},
+  'commitContextSnapshotFenced ignores the fence':store=>{store.commitContextSnapshotFenced=(input,commitId,_fence,signal)=>store.commitContextSnapshot(input,commitId,signal)},
+  'renewLease ignores the epoch':store=>{const renew=store.renewLease.bind(store);store.renewLease=async(fence,ms)=>{const row=await store.readLease(fence.resource);return renew(row&&row.owner===fence.owner?{...fence,epoch:row.epoch}:fence,ms)}},
+  'releaseLease ignores the epoch and owner':store=>{const release=store.releaseLease.bind(store);store.releaseLease=async fence=>{const row=await store.readLease(fence.resource);return release(row?{...fence,epoch:row.epoch,owner:row.owner}:fence)}},
+ }
+ for(const [name,broken] of Object.entries(breaks))it(`the lease conformance fails a store whose ${name}`,async()=>{
+  await expect(runStoreLeaseConformance(now=>{const store=new MemoryRunStore({now});broken(store);return store as LeaseRunStore})).rejects.toBeInstanceOf(StorageConformanceFailure)
+ })
+ const hosts:Record<string,(authority:import('./lease').LeaseAuthority)=>EffectHost>={
+  'performs without checking':()=>({effectFencing:'enforced',dispatch:(_admission,perform)=>perform()}),
+  'skips the resource check':authority=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch({...admission,fence:{...admission.fence},operation:{...admission.operation,run:admission.fence.resource},idempotencyKey:effectIdempotencyKey({...admission.operation,run:admission.fence.resource})},perform,signal)}},
+  'forgets admitted identities':authority=>({effectFencing:'enforced',dispatch:async(admission,perform)=>{await authority.checkFence(admission.fence);return perform()}}),
+ }
+ for(const [name,create] of Object.entries(hosts))it(`the effect-host conformance fails a host that ${name}, and unattended admission refuses it`,async()=>{
+  await expect(effectHostConformance(create)).rejects.toBeInstanceOf(StorageConformanceFailure)
+  const store=new DurableLeaseStoreFixture()
+  expect(()=>admitUnattended({store,effectHost:create(store)})).toThrow(capability('effect-host-unfenced'))
+  await expect(certifyEffectHost(create,store)).rejects.toBeInstanceOf(StorageConformanceFailure)
+ })
+ it('the reference host passes; a certified host is admitted and a declared one is not',async()=>{
+  await effectHostConformance(authority=>new ReferenceEffectHost(authority))
+  const store=new DurableLeaseStoreFixture(),wrap=(authority:import('./lease').LeaseAuthority):EffectHost=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch(admission,perform,signal)}}
+  expect(()=>admitUnattended({store,effectHost:wrap(store)})).toThrow(capability('effect-host-unfenced'))
+  const certified=await certifyEffectHost(wrap,store)
+  expect(()=>admitUnattended({store,effectHost:certified})).not.toThrow()
+  expect(()=>admitUnattended({store,effectHost:new ReferenceEffectHost(store)})).not.toThrow()
+ })
+})
+class DurableLeaseStoreFixture extends MemoryRunStore {override readonly leaseLifetime:LeaseLifetime='durable'} // stands for a host store kind
+
+describe('pinned safeguards (#223 review 4)',()=>{
+ it('a runtime-kind effect under a fenced view is admitted by the effect host, which refuses an expired fence',async()=>{
+  let armed=false
+  const {clock,store}=clocked({afterCommit:()=>{if(armed){armed=false;clock.at+=2*MINUTE}}}),host=new ReferenceEffectHost(store),execute=vi.fn(async()=>({content:[]}))
+  const a=await store.acquireLease({resource:'runtime-act',owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+  const admitted=await durableSession(session(fencedRunStore(store,fenceOf(a),host),'runtime-act',saved()))
+  const ready=await contextualSession(admitted),binding=(admitted.context as Record<symbol,unknown>)[durableOwner as never] as DurableBinding
+  armed=true
+  await refused(binding.writer.invoke(binding,'runtime','runtime','act_on_runtime','{"value":1}',false,execute))
+  expect(execute).not.toHaveBeenCalled();expect(host.refusals).toEqual([{version:1,reason:'expired'}])
+  ready.context.close()
+ })
+ it('the effect host refuses a fence for another run than the operation\'s',async()=>{
+  const {store}=clocked(),host=new ReferenceEffectHost(store),perform=vi.fn(async()=>'performed')
+  const a=await store.acquireLease({resource:'run-x',owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
+  await expect(host.dispatch(effectAdmission(fenceOf(a),{run:'run-y',operation:'op',source:'host',tool:'t',requestDigest:'sha256:'+'c'.repeat(64)}),perform)).rejects.toEqual(refusal('resource-mismatch'))
+  expect(perform).not.toHaveBeenCalled();expect(host.refusals).toEqual([{version:1,reason:'resource-mismatch'}])
  })
 })
