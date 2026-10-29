@@ -3,7 +3,7 @@
  * verify is withheld, and nothing of its result is kept where a context reader, a later request or a
  * Plan step could reach it. Held to the hand-written
  * contract/vectors/tool-result/receipt-quarantine.json, as go/context/receipt_quarantine_test.go and
- * go/adapter/receipt_quarantine_test.go hold the Go: at the boundary, through the API engine
+ * go/adapter/eino/receipt_quarantine_test.go hold the Go: at the boundary, through the API engine
  * (vercel) and the native one (codex) with an in-process model peer (the issue's six requests), and
  * with two sources' calls in flight together and the checkpoint written meanwhile restored.
  */

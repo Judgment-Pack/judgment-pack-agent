@@ -1,11 +1,14 @@
-package adapter_test
+package eino_test
 
 // Receipt quarantine through the actual adapters (agent#242): the issue's six-request sequence, an
 // in-process model peer that calls a custom connected source whose receipt does not verify and then
-// tries every context reader on what it called, run through the API adapter (eino) and the native
-// one, for each case of contract/vectors/tool-result/receipt-quarantine.json. The peer learns a
-// reference only from what the readers answer; where none is listed it uses the id the result would
-// have been retained under. go/context/receipt_quarantine_test.go holds the boundary itself.
+// tries every context reader on what it called, run through the native adapter for each case of
+// contract/vectors/tool-result/receipt-quarantine.json and through the API adapter (eino) for the
+// issue's case and the deadline case. The API runs cost the most under the race detector; the other
+// cases reach the same check below the adapter, and go/context/receipt_quarantine_test.go holds the
+// boundary itself for every case. The peer learns a reference only from what the readers answer;
+// where none is listed it uses the id the result would have been retained under. It lives beside the
+// API adapter rather than in package adapter, whose race run is already near its package timeout.
 
 import (
 	"context"
@@ -89,6 +92,11 @@ func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMess
 	return tool
 }
 
+// quarantineFinal is one streamed completion that answers "Done." and stops.
+func quarantineFinal() *http.Response {
+	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"fixture\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))}
+}
+
 // quarantineToolCall is one streamed completion that calls name with args.
 func quarantineToolCall(id, name string, args any) *http.Response {
 	raw, _ := json.Marshal(args)
@@ -131,7 +139,7 @@ func quarantineProjection(t *testing.T, event *contract.ToolResult, scope string
 }
 
 func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
-	raw, err := os.ReadFile("../../contract/vectors/tool-result/receipt-quarantine.json")
+	raw, err := os.ReadFile("../../../contract/vectors/tool-result/receipt-quarantine.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,8 +148,12 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 		t.Fatal(err)
 	}
 	referenced := regexp.MustCompile(regexp.QuoteMeta(v.Fixture.Scope) + `:result-[A-Za-z0-9_]+-[0-9a-f]{64}:[0-9a-f]{16}`)
+	through := map[string]map[string]bool{"api": {"rejected-receipt": true, "expired-receipt": true}}
 	for _, engine := range []string{"api", "native"} {
 		for _, held := range v.Fixture.Cases {
+			if through[engine] != nil && !through[engine][held.Name] {
+				continue
+			}
 			t.Run(engine+"/"+held.Name, func(t *testing.T) {
 				ctx := context.Background()
 				var executions, verifications atomic.Int32
@@ -194,7 +206,8 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 								}
 								raw, _ := json.Marshal(args)
 								if named[name] == "" {
-									t.Fatalf("the native offer has no %s", name)
+									t.Errorf("the native offer has no %s", name)
+									return fmt.Errorf("no %s", name)
 								}
 								answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: fmt.Sprintf("call-%d", n), Name: named[name], Arguments: raw})
 								if err != nil {
@@ -210,7 +223,7 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 							requests = append(requests, string(request.Body))
 							name, args := peer(len(requests), string(request.Body))
 							if name == "" {
-								return enrollmentFinal(), nil
+								return quarantineFinal(), nil
 							}
 							return quarantineToolCall(fmt.Sprintf("call-%d", len(requests)), name, args), nil
 						}
@@ -233,7 +246,7 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 					}
 					if found := referenced.FindString(seen); found != "" {
 						if found != retained {
-							t.Fatalf("the listing names %s, not the id the result would be retained under", found)
+							t.Errorf("the listing names %s, not the id the result would be retained under", found)
 						}
 						learned = found
 					}
@@ -299,10 +312,13 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 				if rows != 1 {
 					t.Fatalf("the call is recorded %d times", rows)
 				}
-				// The chat's next run: its first request carries neither the result nor its reference.
-				next, _ := run("receipt-quarantine-next", func(int, string) (string, map[string]any) { return "", nil })
-				if len(next) != 1 || strings.Contains(next[0], v.Fixture.Sentinel) || strings.Contains(next[0], retained) {
-					t.Fatalf("the next run's request carries it: %d", len(next))
+				// The chat's next run, once per adapter (its index is the chat's, whatever the case): its
+				// first request carries neither the result nor its reference.
+				if held.Name == "rejected-receipt" {
+					next, _ := run("receipt-quarantine-next", func(int, string) (string, map[string]any) { return "", nil })
+					if len(next) != 1 || strings.Contains(next[0], v.Fixture.Sentinel) || strings.Contains(next[0], retained) {
+						t.Fatalf("the next run's request carries it: %d", len(next))
+					}
 				}
 				if executions.Load() != 1 {
 					t.Fatal("the source was called again")

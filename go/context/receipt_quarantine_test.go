@@ -5,7 +5,7 @@ package runcontext
 // a Plan step could reach it. Held to the hand-written
 // contract/vectors/tool-result/receipt-quarantine.json, as receiptQuarantine.test.ts holds the
 // TypeScript. The runs that drive the API and native adapters with an in-process model peer are
-// go/adapter/receipt_quarantine_test.go.
+// go/adapter/eino/receipt_quarantine_test.go.
 
 import (
 	"context"

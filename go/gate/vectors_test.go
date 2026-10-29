@@ -31,7 +31,7 @@ var notTheGates = map[string]string{
 	"tool-call/source-calls-current.json":         "current source decoration after host-tool admission, held against SourceGate.Decorate by go/context/sources_test.go",
 	"tool-result/loaded-schema-current.json":      "current load_tool result, held through SourceGate.LoadToolHost by go/context/sources_test.go",
 	"tool-result/source-results-current.json":     "current source result decoration, held through SourceGate.Decorate by go/context/sources_test.go",
-	"tool-result/receipt-quarantine.json":         "an external read whose receipt does not verify (agent#242), held through SourceGate.Call, the durable writer and the context readers by go/context/receipt_quarantine_test.go and through the API and native adapters by go/adapter/receipt_quarantine_test.go, not a Runtime wire decision",
+	"tool-result/receipt-quarantine.json":         "an external read whose receipt does not verify (agent#242), held through SourceGate.Call, the durable writer and the context readers by go/context/receipt_quarantine_test.go and through the API and native adapters by go/adapter/eino/receipt_quarantine_test.go, not a Runtime wire decision",
 	"approval/pause-current.json":                 "the source-boundary approval pause, held by go/certification/scenarios_approval.go scenario 8 rather than Runtime wire admission",
 	"approval/runtime-binding.json":               "a serialized Runtime admission binding, held by go/context/TestRuntimeActionCurrentBinding against the pause and request; structural reporting cannot supply the private connector grant",
 	"approval/runtime-pause.json":                 "a checkpoint3 Runtime pause, held by go/context/TestRuntimeActionCurrentRecords through ReadExecution and frozen-version refusal",
