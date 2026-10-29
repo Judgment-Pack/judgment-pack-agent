@@ -3,7 +3,8 @@
 Status: accepted for v0.11.0. Issue #206, including its job, goal and question
 additions. This is a design decision and implementation split; it does not claim
 these facilities exist in v0.11.0. It builds on ADR-0008, ADR-0018, ADR-0019 and
-ADR-0024.
+ADR-0024. Decision 1 (one driver and fencing) is built in v0.12.0 (#223, #253; see
+its amendment); decisions 2–8 (#224–#230) are not built and are assigned to v0.13.0.
 
 ## Boundary and compatibility
 
@@ -61,6 +62,8 @@ A new epoch cannot turn the same uncertain operation into a new action. Gateway
 idempotency key. Storage commit identity also remains distinct.
 
 ### Amendment (#223): the lease contract as built
+
+Status: accepted for v0.12.0 (#223, #253).
 
 The names this decision left open are fixed here and in `contract/schemas/run-lease.json`
 (version 1), and are used unchanged by the store kinds that implement them (desk #609) and the

@@ -73,11 +73,11 @@ rule.
    The parity step needs a checkout of the Desk at the commit `scripts/parity.sh` names (`desk_pin`),
    which it reads from `JPDEV_DESK`. The runner is the devkit's, vendored (see the README).
 
-   The `go-race` step sets a 20-minute timeout for each package test binary. The race suite can
-   exhaust Go's default 10-minute aggregate package timeout while an individual test is still
-   making progress. This changes a stuck package's limit from 10 to 20 minutes; the selected
-   packages, assertions and race instrumentation remain the same. The whole step retains its
-   3,000-second limit.
+   The `go-race` step sets a 40-minute timeout for each package test binary (#255). The race
+   suite can exhaust Go's default 10-minute aggregate package timeout while an individual test is
+   still making progress, and the adapter package needs about twice its usual time on slower
+   hosted runners. The selected packages, assertions and race instrumentation remain the same.
+   The whole step retains its 3,000-second limit.
 3. Include the latest `dependency-audit` run for the release candidate in release review, following
    the [dependency advisory policy](security/dependency-policy.md). Record the candidate commit,
    query time, coverage, result and every finding's disposition. Run the live check for that commit
