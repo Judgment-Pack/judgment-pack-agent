@@ -560,10 +560,15 @@ func TestLeaseUnattendedAdmissionRefusesByName(t *testing.T) {
 			t.Fatalf("%s: %v", c.name, c.err)
 		}
 	}
-	if err := AdmitUnattended(durableLeaseFixture{memory}, host); err != nil {
+	durable := durableLeaseFixture{memory}
+	own := NewReferenceEffectHost(durable)
+	if err := AdmitUnattended(durable, own); err != nil {
 		t.Fatal(err)
 	}
-	if view, err := UnattendedRunStore(durableLeaseFixture{memory}, fence, host); err != nil || view.Durability() != RunStoreMemory {
+	if err := AdmitUnattended(durable, host); leaseReason(err) != "effect-host-unfenced" {
+		t.Fatalf("a reference host over another authority was admitted: %v", err)
+	}
+	if view, err := UnattendedRunStore(durable, fence, own); err != nil || view.Durability() != RunStoreMemory {
 		t.Fatalf("unattended view: %v", err)
 	}
 	if _, err := UnattendedRunStore(memory, fence, host); leaseReason(err) != "store-lifetime" {
