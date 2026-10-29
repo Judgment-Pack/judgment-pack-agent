@@ -58,6 +58,8 @@ act. Conservative MCP idempotency hints never authorize retry.
 
 ## Amendment: the rehearse check (2026-10-29)
 
+Status: accepted for v0.12.0. Issue #241.
+
 Issue #241 chose a check subkind over a new Runtime route. The seventh check subkind,
 `rehearse`, is a non-binding dry evaluation of a declared artifact whose result carries no
 authority and whose execution writes no audit, resource or run state. `check/rehearse`

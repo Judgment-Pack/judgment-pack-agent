@@ -119,6 +119,10 @@ images match. Configurations without the exception retain exact legacy matching
 and output. Removing or changing this policy requires a reviewed source change;
 there is no generic ignore-image flag, environment override or local-evidence path.
 
+The exception was not extended to v0.12.0 ([maintainer decision](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6506875748)).
+`.github/ci-evidence.json` no longer configures it, so verification uses exact runner and
+tool matching. The approval record stays as the history of v0.11.0.
+
 A new validated main commit and independent review are required. Prior artifacts
 at a different source do not qualify. Latest-attempt, age, complete coverage,
 archive/API integrity and every tag/publication/advisory gate remain in force.
