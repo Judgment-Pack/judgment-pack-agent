@@ -33,6 +33,8 @@ pin. The executor obtains `gatewayExecutionContext(signal)` / `GatewayInvocation
 its receiptSession to Gateway's existing tools/call `_meta["io.judgment-pack/session"]`, separately
 from arguments. It returns the actual complete MCP envelope. Agent authenticates and unwraps
 the signed artifact before publication. No custom verifier runs after Gateway verification fails.
+The envelope's unsigned salts may carry only `args` and `statement`; any other member refuses it,
+since a verified envelope is what the run retains (agent#242).
 The raw tool key comes from approved owner metadata; a frontend bridge calls the explicit
 approved platform plus "." plus that key. No source identity is guessed from model text.
 

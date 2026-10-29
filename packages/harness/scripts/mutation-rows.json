@@ -7617,6 +7617,30 @@
   "status": "caught",
   "origin": "agent#242",
   "note": "Without it a result the chain refused is answered as whatever the run said: for an expired receipt the deadline's timeout, losing the no-retry distinction. Caught at receiptQuarantine.test.ts expired-receipt in all three runs (the source's answer, the API events, the native answers). Go twin (by hand, consulting the outcome only where err == nil in SourceGate.Call): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach/expired-receipt, the source's answer."
+},
+{
+  "name": "receipt quarantine Q6 the gate answers the checked result",
+  "file": "toolSources.ts",
+  "find": "shown = checked;receipt = given",
+  "replace": "shown = result;receipt = given",
+  "tests": [
+    "gatewayReceipt.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Answers the raw run result instead of the checked one: for a Gateway source the model would be answered the whole envelope (session, receipt, salts) instead of the signed artifact (the #247 review's F2). Caught at gatewayReceipt.test.ts > answers the signed artifact, never the envelope, at the gate and through the session: the gate's answer is the envelope. Go twin (by hand, `result = checked` replaced by `_ = checked` in SourceGate.Call): caught at TestTheGateAnswersTheSignedArtifactNotTheEnvelope, the gate answered the envelope."
+},
+{
+  "name": "gateway receipt refuses an unsigned salts member",
+  "file": "gatewayReceipt.ts",
+  "find": "||Object.keys(salts).some(k=>k!=='args'&&k!=='statement')",
+  "replace": "",
+  "tests": [
+    "gatewayReceipt.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Restores the acceptance of any unsigned salts member besides args and statement (the #247 review's F1, present since v0.11.0): a verified envelope is retained whole, so the member's bytes became ordinary retained context. Caught at gatewayReceipt.test.ts: refuses unsigned-salts-member (the shared contract/testdata/taxonomy/gateway-receipt-v3.json case) and withholds a Gateway envelope that carries an unsigned salts member (the source's answer is the artifact, not the withheld refusal). Go twin (by hand, dropping the descriptorMembers(salts, ...) clause in VerifyGatewayResult): caught at TestGatewayReceiptSharedRefusals/unsigned-salts-member (receipt safeguard admitted) and TestAGatewayEnvelopeWithAnUnsignedSaltsMemberIsWithheld (the source's answer)."
 }
  ]
 }

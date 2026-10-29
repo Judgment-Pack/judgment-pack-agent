@@ -434,3 +434,115 @@ func TestTheReadWrapperRetainsNothingItsCheckRefuses(t *testing.T) {
 		t.Fatalf("a refused result was served again: %d runs", ran)
 	}
 }
+
+// quarantineGateway is the shared Gateway v3 vector's source (contract/testdata/taxonomy/
+// gateway-receipt-v3.json) as a host tool whose executor answers a synthetic envelope signed for the
+// call's own receipt session, carrying extra as an unsigned salts member where it is given.
+func quarantineGateway(t *testing.T, extra string, executions *atomic.Int32, last *ToolResult) HostTool {
+	t.Helper()
+	v := receiptVectors(t)
+	endpoint := "https://example.invalid/mcp"
+	snapshot := receiptSnapshot(&endpoint)
+	approval := receiptApproval(&endpoint)
+	_, trust, _ := syntheticReceipt(t, v, &endpoint)
+	digest, err := DescriptorSnapshotDigest(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool := HostTool{Name: v.Tool, Taxonomy: approval.ToolTaxonomies[v.Tool], Description: "approved", InputSchema: json.RawMessage(`{"type":"object"}`),
+		Source: &ToolSource{Kind: "mcp", ID: "tickets", Trust: "connected", ToolListDigest: digest, DescriptorSnapshot: snapshot, DescriptorApproval: approval, GatewayReceipt: trust,
+			CurrentDescriptorSnapshot: func(context.Context) ([]byte, error) { return snapshot, nil }}}
+	var mu sync.Mutex
+	tool.Execute = func(ctx context.Context, _ json.RawMessage) (ToolResult, error) {
+		executions.Add(1)
+		invocation, ok := GatewayInvocation(ctx)
+		if !ok {
+			return ToolResult{}, errors.New("no receipt session")
+		}
+		held := v
+		held.Session = invocation.ReceiptSession
+		envelope, _, _ := syntheticReceipt(t, held, &endpoint)
+		if extra != "" {
+			envelope["salts"].(map[string]string)["note"] = extra
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		*last = receiptOuter(t, envelope)
+		return *last, nil
+	}
+	return tool
+}
+
+// A Gateway envelope that verifies but carries a salts member its commitments do not open is
+// withheld like any unverified result (the #247 review's F1): the envelope is what the wrappers
+// keep, so its unsigned bytes would otherwise be ordinary retained context.
+func TestAGatewayEnvelopeWithAnUnsignedSaltsMemberIsWithheld(t *testing.T) {
+	vector := readJSON(t, quarantineVectorFile)
+	fixture, items := vector.Get("fixture"), vector.Get("items").Items()
+	sentinel := fixture.Get("sentinel").Str()
+	ctx := context.Background()
+	chat := NewChatContext(fixture.Get("scope").Str())
+	store := NewMemoryRunStore(MemoryRunStoreOptions{})
+	var executions atomic.Int32
+	var last ToolResult
+	session := quarantineSession(chat, store, nil, 0)
+	session.HostTools = []HostTool{quarantineGateway(t, sentinel, &executions, &last)}
+	run := openRun(t, session)
+	defer run.Context.Close()
+	wire := WireName("tickets", "query")
+	result, err := hostTool(t, run, wire).Execute(WithCallID(ctx, "call-gateway"), json.RawMessage(`{"id":7}`))
+	refusal := items[0].Clone()
+	refusal.Set("name", String(wire))
+	sameEvent(t, "the source's answer", quarantineEvent(wire, result, err), refusal)
+	if !strings.Contains(string(last.JSON()), sentinel) {
+		t.Fatal("the envelope did not carry the unsigned member")
+	}
+	retained := retainedAs(chat.Scope(), wire, last.Value())
+	for at, reader := range fixture.Get("readers").Items() {
+		name := reader.Get("tool").Str()
+		result, err := hostTool(t, run, name).Execute(ctx, readerArguments(reader, retained))
+		sameEvent(t, name+"'s answer", quarantineEvent(name, result, err), items[at+1])
+	}
+	if executions.Load() != 1 || len(chat.EntryIDs()) != 0 || strings.Contains(run.Context.Execution.RequestState(), sentinel) {
+		t.Fatalf("executions %d, entries %v", executions.Load(), chat.EntryIDs())
+	}
+	withheldRow(t, run, wire, items[0])
+	if strings.Contains(storedBytes(t, store), sentinel) {
+		t.Fatal("a stored checkpoint or event carries the unsigned member")
+	}
+}
+
+// The gate answers the checked result, for a Gateway source the signed artifact, never the
+// envelope the run returned (the #247 review's F2): at the gate alone, where the gate checks it
+// itself, and through the session's wrappers, where the durable writer has checked it.
+func TestTheGateAnswersTheSignedArtifactNotTheEnvelope(t *testing.T) {
+	v := receiptVectors(t)
+	raw, _ := json.Marshal(v.Artifact)
+	artifact := CanonicalJSON(MustParseJSON(string(raw)))
+	var executions atomic.Int32
+	var last ToolResult
+	tool := quarantineGateway(t, "", &executions, &last)
+	declared, err := DeclareSources([]HostTool{tool}, nil)
+	if err != nil || len(declared.HostTools) != 1 {
+		t.Fatalf("Gateway source refused: %v", err)
+	}
+	rows := []contract.ProvenanceSourceFigures{}
+	policy := Defaults
+	gate := NewSourceGate(declared, &policy, "marker", "json-schema", func() *[]contract.ProvenanceSourceFigures { return &rows }, nil)
+	offered := declared.HostTools[0]
+	answered, err := gate.Call(context.Background(), offered.Name, json.RawMessage(`{"id":7}`), offered.Execute)
+	if err != nil || CanonicalJSON(answered.Value()) != artifact || CanonicalJSON(last.Value()) == artifact {
+		t.Fatalf("the gate answered %v %s", err, answered.JSON())
+	}
+	session := quarantineSession(NewChatContext("receipt-quarantine"), NewMemoryRunStore(MemoryRunStoreOptions{}), nil, 0)
+	session.HostTools = []HostTool{tool}
+	run := openRun(t, session)
+	defer run.Context.Close()
+	answered, err = hostTool(t, run, WireName("tickets", "query")).Execute(WithCallID(context.Background(), "call-gateway"), json.RawMessage(`{"id":7}`))
+	if err != nil || CanonicalJSON(answered.Value()) != artifact || strings.Contains(string(answered.JSON()), "salts") {
+		t.Fatalf("the session answered %v %s", err, answered.JSON())
+	}
+	if executions.Load() != 2 {
+		t.Fatalf("executions %d", executions.Load())
+	}
+}
