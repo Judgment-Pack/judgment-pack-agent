@@ -36,6 +36,18 @@ const (
 	DialectShownSampleBytes = 160
 	DialectRememberedReads  = 32
 	DialectMilliseconds     = 10000
+	// The original declaration inventory travels by digest (#243). Its index holds, per original
+	// revision, each ordered field's name and the SHA-256 of its exact declaration bytes, plus one
+	// digest over all of it. The index's canonical JSON is at most DialectIndexBytes, half the
+	// snapshot bound: a field entry costs 95 bytes plus its name (255 at the 160-byte name limit),
+	// so the index holds about 8,200 declarations at the longest names and about 16,700 at 30-byte
+	// names, each declaration itself up to DialectSampleBytes. Declarations arrive through the read
+	// port in pages of at most DialectPageDeclarations entries and DialectPageBytes canonical bytes;
+	// canonical escaping at most doubles a declaration, so a page always fits 31 of the largest.
+	DialectIndexBytes       = 2097152
+	DialectPageBytes        = 1048576
+	DialectPageDeclarations = 1000
+	dialectCursorMax        = 1000000
 )
 
 // Published Spec RC2 companion at draft maturity; this tuple does not select general Core support.
@@ -79,6 +91,52 @@ type DialectReadRequest struct {
 	ID      string `json:"id"`
 	PackKey string `json:"packKey"`
 }
+
+// DialectIndexField names one original field declaration by the SHA-256 of its exact bytes.
+type DialectIndexField struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+// Fields nil explicitly represents an unavailable original declaration list.
+type DialectIndexRevision struct {
+	Revision string              `json:"revision"`
+	Fields   []DialectIndexField `json:"fields"`
+}
+
+// DialectResearchIndex is the complete original inventory by digest: every original revision and
+// field in order, and Digest, the SHA-256 of the canonical JSON of Revisions.
+type DialectResearchIndex struct {
+	Digest    string                 `json:"digest"`
+	Revisions []DialectIndexRevision `json:"revisions"`
+}
+
+// DialectDeclarationPageRequest asks for indexed declarations from Cursor, a position in the
+// index's flattened order (revisions in order, then their fields in order), bound to the read's
+// exact collection revision and inventory digest.
+type DialectDeclarationPageRequest struct {
+	ID              string `json:"id"`
+	PackKey         string `json:"packKey"`
+	Revision        string `json:"revision"`
+	InventoryDigest string `json:"inventoryDigest"`
+	Cursor          int    `json:"cursor"`
+	Limit           int    `json:"limit"`
+}
+
+// DialectDeclaration is one exact original field declaration; Revision is its original revision.
+type DialectDeclaration struct {
+	Revision  string `json:"revision"`
+	Name      string `json:"name"`
+	FieldJSON string `json:"fieldJson"`
+}
+type DialectDeclarationPage struct {
+	ID              string               `json:"id"`
+	PackKey         string               `json:"packKey"`
+	Revision        string               `json:"revision"`
+	InventoryDigest string               `json:"inventoryDigest"`
+	Cursor          int                  `json:"cursor"`
+	Declarations    []DialectDeclaration `json:"declarations"`
+}
 type DialectIdentity struct {
 	ID            string  `json:"id"`
 	Revision      string  `json:"revision"`
@@ -115,8 +173,9 @@ type DialectColumn struct {
 }
 type DialectSnapshot struct {
 	RetainedRead *DialectRetainedRead `json:"retainedRead,omitempty"`
-	// Complete original inventory; nil is unavailable, empty is a known empty inventory.
-	ResearchDeclarations []DialectResearchRevision    `json:"researchDeclarations"`
+	// Complete original inventory by digest; nil is unavailable, no revisions is known empty.
+	// Declarations themselves are read through Ports.ReadDeclarations in pages.
+	ResearchIndex        *DialectResearchIndex        `json:"researchIndex"`
 	ID                   string                       `json:"id"`
 	Revision             string                       `json:"revision"`
 	PackKey              string                       `json:"packKey"`
@@ -140,8 +199,11 @@ type DialectPreview struct {
 	Issues            []DialectPreviewIssue `json:"issues"`
 }
 type DialectCandidate struct {
-	RetainedRead         *DialectRetainedRead      `json:"retainedRead"`
-	ResearchDeclarations []DialectResearchRevision `json:"researchDeclarations"`
+	RetainedRead *DialectRetainedRead `json:"retainedRead"`
+	// Version-2 records: the complete original inventory by digest; nil is unavailable.
+	ResearchIndex *DialectResearchIndex `json:"researchIndex"`
+	// Version-1 (v0.11.0) records only, kept so they still read; this factory never writes it.
+	ResearchDeclarations []DialectResearchRevision `json:"researchDeclarations,omitempty"`
 	ConversionContract   DialectConversionContract `json:"conversionContract"`
 	DialectIdentity
 	DocumentJSON string                       `json:"documentJson"`
@@ -220,12 +282,25 @@ type DialectAuthoringPorts struct {
 	// Explicit trusted opt-in to the exact package-supported companion, never a model argument.
 	ConversionContract *DialectConversionContract
 	Read               func(context.Context, DialectReadRequest) (DialectSnapshot, error)
+	// ReadDeclarations is the read port's paged form: indexed original declarations of the bound
+	// collection revision. It is required when the index names any declaration.
+	ReadDeclarations func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error)
 	// Runtime is the actual installed Runtime transport; only discovery, validate and check are used.
 	Runtime     func(context.Context, string, map[string]string) (ToolResult, error)
 	Preview     func(context.Context, DialectCandidate, string) (DialectPreview, error)
 	RetainDraft func(context.Context, DialectDraftCheckpoint) (DialectDraftRetention, error)
 	Retain      func(context.Context, DialectReviewProposal) (DialectRetention, error)
 }
+type dialectReadArgs struct {
+	ID      string          `json:"id"`
+	PackKey string          `json:"packKey"`
+	Cursor  json.RawMessage `json:"cursor"`
+}
+type dialectBound struct {
+	DialectIdentity
+	inventory *string
+}
+type dialectIndexed struct{ revision, name, digest string }
 type dialectProposalArgs struct {
 	DialectIdentity
 	Facts    []DialectFactBinding     `json:"facts"`
@@ -235,7 +310,7 @@ type dialectProposalArgs struct {
 type dialectToolsState struct {
 	mu            sync.Mutex
 	ports         DialectAuthoringPorts
-	reads         map[string]DialectIdentity
+	reads         map[string]dialectBound
 	order         []string
 	attempts      map[string]*DialectRetention
 	drafts        map[string]*dialectDraftState
@@ -402,25 +477,176 @@ func dialectDeclaration(name, raw string) bool {
 	var actual, kind string
 	return json.Unmarshal(field["name"], &actual) == nil && actual == name && json.Unmarshal(field["type"], &kind) == nil && string(field["type"]) != "null"
 }
-func dialectResearchInventory(revisions []DialectResearchRevision) bool {
-	if len(revisions) > DialectColumns {
-		return false
+func dialectInventoryDigest(revisions []DialectIndexRevision) (string, error) {
+	canonical, err := dialectCanonical(revisions)
+	if err != nil {
+		return "", err
 	}
-	seen := map[string]bool{}
+	return dialectHash(canonical), nil
+}
+func dialectIndexDigest(index *DialectResearchIndex) *string {
+	if index == nil {
+		return nil
+	}
+	return dialectStringPointer(index.Digest)
+}
+func dialectSameInventory(a, b *string) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+// DialectResearchIndexOf computes the index a host supplies for its complete original inventory;
+// nil stays unavailable.
+func DialectResearchIndexOf(revisions []DialectResearchRevision) (*DialectResearchIndex, error) {
+	if revisions == nil {
+		return nil, nil
+	}
+	index := &DialectResearchIndex{Revisions: make([]DialectIndexRevision, 0, len(revisions))}
 	for _, r := range revisions {
+		row := DialectIndexRevision{Revision: r.Revision}
+		if r.Fields != nil {
+			row.Fields = make([]DialectIndexField, 0, len(r.Fields))
+			for _, f := range r.Fields {
+				row.Fields = append(row.Fields, DialectIndexField{Name: f.Name, Digest: dialectHash(f.FieldJSON)})
+			}
+		}
+		index.Revisions = append(index.Revisions, row)
+	}
+	digest, err := dialectInventoryDigest(index.Revisions)
+	if err != nil {
+		return nil, err
+	}
+	index.Digest = digest
+	return index, nil
+}
+
+// dialectIndex checks the bounded index and returns its flattened declaration order.
+func dialectIndex(index *DialectResearchIndex) ([]dialectIndexed, error) {
+	if index == nil {
+		return nil, nil
+	}
+	canonical, err := dialectCanonical(index)
+	if err != nil || len(canonical) > DialectIndexBytes {
+		return nil, dialectFail("the original inventory index exceeds its byte limit.")
+	}
+	malformed := dialectFail("the original inventory index is malformed.")
+	if index.Revisions == nil || len(index.Revisions) > DialectColumns || !dialectDigest(index.Digest) {
+		return nil, malformed
+	}
+	order := []dialectIndexed{}
+	seen := map[string]bool{}
+	for _, r := range index.Revisions {
 		if !dialectText(r.Revision, 160) || !utf8.ValidString(r.Revision) || seen[r.Revision] || len(r.Fields) > DialectColumns {
-			return false
+			return nil, malformed
 		}
 		seen[r.Revision] = true
 		names := map[string]bool{}
 		for _, f := range r.Fields {
-			if !dialectColumn(f.Name) || len(f.Name) > 160 || names[f.Name] || !dialectDeclaration(f.Name, f.FieldJSON) {
-				return false
+			if !dialectColumn(f.Name) || len(f.Name) > 160 || names[f.Name] || !dialectDigest(f.Digest) {
+				return nil, malformed
 			}
 			names[f.Name] = true
+			order = append(order, dialectIndexed{r.Revision, f.Name, f.Digest})
 		}
 	}
-	return true
+	if digest, err := dialectInventoryDigest(index.Revisions); err != nil || digest != index.Digest {
+		return nil, dialectFail("the original inventory index digest does not match its entries.")
+	}
+	return order, nil
+}
+
+// dialectPage reads one bounded page from cursor and checks every declaration against the index.
+func dialectPage(ctx context.Context, readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), base DialectDeclarationPageRequest, order []dialectIndexed, cursor int) ([]DialectDeclaration, error) {
+	if readPage == nil {
+		return nil, dialectFail("an indexed original inventory requires the paged declaration read port.")
+	}
+	request := base
+	request.Cursor = cursor
+	request.Limit = min(DialectPageDeclarations, len(order)-cursor)
+	var page DialectDeclarationPage
+	err := dialectBounded(ctx, func(b context.Context) error { var e error; page, e = readPage(b, request); return e })
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := dialectCanonical(page)
+	if err != nil || len(canonical) > DialectPageBytes {
+		return nil, dialectFail("a declaration page exceeds its byte limit.")
+	}
+	if page.ID != request.ID || page.PackKey != request.PackKey || page.Revision != request.Revision || page.InventoryDigest != request.InventoryDigest || page.Cursor != cursor {
+		return nil, dialectFail("a declaration page is bound to another collection revision or inventory.")
+	}
+	if len(page.Declarations) == 0 {
+		return nil, dialectFail("a declaration page omitted an indexed declaration.")
+	}
+	if len(page.Declarations) > request.Limit {
+		return nil, dialectFail("a declaration page exceeds its declaration bound.")
+	}
+	for i, d := range page.Declarations {
+		want := order[cursor+i]
+		if d.Revision != want.revision || d.Name != want.name {
+			return nil, dialectFail("a declaration page omitted an indexed declaration or broke its order.")
+		}
+		if dialectHash(d.FieldJSON) != want.digest {
+			return nil, dialectFail("a declaration does not match its indexed digest.")
+		}
+		if !dialectDeclaration(d.Name, d.FieldJSON) {
+			return nil, dialectFail("research-value requires the actual original field declaration.")
+		}
+	}
+	return page.Declarations, nil
+}
+func dialectPageBase(s DialectSnapshot) DialectDeclarationPageRequest {
+	base := DialectDeclarationPageRequest{ID: s.ID, PackKey: s.PackKey, Revision: s.Revision}
+	if s.ResearchIndex != nil {
+		base.InventoryDigest = s.ResearchIndex.Digest
+	}
+	return base
+}
+
+// ReadDialectDeclarations reads a complete original inventory through the paged read port and
+// checks every declaration against index. Host consumers such as preview and review read
+// declarations this way instead of from an inline inventory.
+func ReadDialectDeclarations(ctx context.Context, readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), id, packKey, revision string, index *DialectResearchIndex) ([]DialectResearchRevision, error) {
+	order, err := dialectIndex(index)
+	if err != nil || index == nil {
+		return nil, err
+	}
+	out := make([]DialectResearchRevision, 0, len(index.Revisions))
+	position := map[string]int{}
+	for i, r := range index.Revisions {
+		row := DialectResearchRevision{Revision: r.Revision}
+		if r.Fields != nil {
+			row.Fields = make([]DialectResearchField, 0, len(r.Fields))
+		}
+		out = append(out, row)
+		position[r.Revision] = i
+	}
+	base := DialectDeclarationPageRequest{ID: id, PackKey: packKey, Revision: revision, InventoryDigest: index.Digest}
+	for cursor := 0; cursor < len(order); {
+		page, err := dialectPage(ctx, readPage, base, order, cursor)
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range page {
+			at := position[d.Revision]
+			out[at].Fields = append(out[at].Fields, DialectResearchField{Name: d.Name, FieldJSON: d.FieldJSON})
+		}
+		cursor += len(page)
+	}
+	return out, nil
+}
+func (g *dialectToolsState) verifyInventory(ctx context.Context, s DialectSnapshot) error {
+	order, err := dialectIndex(s.ResearchIndex)
+	if err != nil {
+		return err
+	}
+	for cursor := 0; cursor < len(order); {
+		page, err := dialectPage(ctx, g.ports.ReadDeclarations, dialectPageBase(s), order, cursor)
+		if err != nil {
+			return err
+		}
+		cursor += len(page)
+	}
+	return nil
 }
 func dialectSafeTemplateJSON(raw string) bool {
 	if !dialectStrictJSON([]byte(raw)) || !dialectScalarJSON(raw) {
@@ -540,8 +766,11 @@ func (g *dialectToolsState) read(ctx context.Context, r DialectReadRequest) (Dia
 	if err != nil || len(raw) > DialectSnapshotBytes {
 		return s, dialectFail("the read snapshot exceeds its byte limit.")
 	}
-	if s.ID != r.ID || s.PackKey != r.PackKey || !dialectText(s.Revision, 128) || !dialectText(s.Name, 1024) || s.RecordCount < 0 || s.RecordCount > 9007199254740991 || !dialectRaw(s.PackJSON, DialectPackBytes) || (s.DialectJSON != nil && !dialectRaw(*s.DialectJSON, DialectDocumentBytes)) || !dialectResearchInventory(s.ResearchDeclarations) || !dialectRetainedRead(s.RetainedRead) || s.Columns == nil || s.FactTargets == nil || s.EvidenceRequirements == nil || s.Conversions == nil || len(s.Columns) > DialectColumns || len(s.FactTargets) > DialectBindings || len(s.EvidenceRequirements) > DialectBindings || len(s.Conversions) > DialectBindings {
+	if s.ID != r.ID || s.PackKey != r.PackKey || !dialectText(s.Revision, 128) || !dialectText(s.Name, 1024) || s.RecordCount < 0 || s.RecordCount > 9007199254740991 || !dialectRaw(s.PackJSON, DialectPackBytes) || (s.DialectJSON != nil && !dialectRaw(*s.DialectJSON, DialectDocumentBytes)) || !dialectRetainedRead(s.RetainedRead) || s.Columns == nil || s.FactTargets == nil || s.EvidenceRequirements == nil || s.Conversions == nil || len(s.Columns) > DialectColumns || len(s.FactTargets) > DialectBindings || len(s.EvidenceRequirements) > DialectBindings || len(s.Conversions) > DialectBindings {
 		return s, dialectFail("the read snapshot is malformed or has a different identity.")
+	}
+	if _, err = dialectIndex(s.ResearchIndex); err != nil {
+		return s, err
 	}
 	targets := map[string]bool{}
 	for _, v := range s.FactTargets {
@@ -621,7 +850,7 @@ func (g *dialectToolsState) checkpoint(ctx context.Context, state *dialectDraftS
 	if stage == "checked" {
 		previous = dialectStringPointer(state.Candidate.Receipt)
 	}
-	content := map[string]any{"version": 1, "attemptId": attemptID, "fingerprint": fingerprint, "stage": stage, "previousReceipt": previous, "candidate": candidate}
+	content := map[string]any{"version": 2, "attemptId": attemptID, "fingerprint": fingerprint, "stage": stage, "previousReceipt": previous, "candidate": candidate}
 	if check != nil {
 		content["check"] = check
 	}
@@ -637,7 +866,7 @@ func (g *dialectToolsState) checkpoint(ctx context.Context, state *dialectDraftS
 		return DialectDraftRetention{}, err
 	}
 	digest := dialectHash(canonical)
-	value := DialectDraftCheckpoint{Version: 1, AttemptID: attemptID, Fingerprint: fingerprint, Stage: stage, Digest: digest, PreviousReceipt: previous, Candidate: candidate, Check: check}
+	value := DialectDraftCheckpoint{Version: 2, AttemptID: attemptID, Fingerprint: fingerprint, Stage: stage, Digest: digest, PreviousReceipt: previous, Candidate: candidate, Check: check}
 	raw, err = json.Marshal(value)
 	if err != nil || len(raw) > DialectDraftBytes {
 		return DialectDraftRetention{}, dialectFail("draft checkpoint exceeds its byte limit.")
@@ -816,18 +1045,42 @@ func dialectBindings(a dialectProposalArgs, s DialectSnapshot) error {
 	return nil
 }
 func (g *dialectToolsState) readTool(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
-	var request DialectReadRequest
-	if err := dialectDecode(raw, &request); err != nil {
+	var args dialectReadArgs
+	if err := dialectDecode(raw, &args); err != nil {
 		return ToolResult{}, err
 	}
+	request := DialectReadRequest{ID: args.ID, PackKey: args.PackKey}
 	if !dialectText(request.ID, 512) || !dialectText(request.PackKey, 512) {
 		return ToolResult{}, dialectFail("use bounded opaque resource and declared pack identifiers.")
+	}
+	if args.Cursor != nil {
+		var cursor int
+		if string(args.Cursor) == "null" || json.Unmarshal(args.Cursor, &cursor) != nil {
+			return ToolResult{}, dialectFail("the cursor is outside the original declaration inventory.")
+		}
+		return g.pageTool(ctx, request, cursor)
 	}
 	s, err := g.read(ctx, request)
 	if err != nil {
 		return ToolResult{}, err
 	}
+	if err = g.verifyInventory(ctx, s); err != nil {
+		return ToolResult{}, err
+	}
 	bound := dialectIdentity(s)
+	var inventory any
+	if s.ResearchIndex != nil {
+		revisions, total := []map[string]any{}, 0
+		for _, r := range s.ResearchIndex.Revisions {
+			var fields any
+			if r.Fields != nil {
+				fields = len(r.Fields)
+				total += len(r.Fields)
+			}
+			revisions = append(revisions, map[string]any{"revision": r.Revision, "fields": fields})
+		}
+		inventory = map[string]any{"digest": s.ResearchIndex.Digest, "declarations": total, "revisions": revisions}
+	}
 	columns := []map[string]any{}
 	for _, c := range s.Columns {
 		samples := []map[string]any{}
@@ -840,7 +1093,7 @@ func (g *dialectToolsState) readTool(ctx context.Context, raw json.RawMessage) (
 		}
 		columns = append(columns, row)
 	}
-	out := map[string]any{"researchDeclarations": s.ResearchDeclarations, "retainedRead": s.RetainedRead, "id": bound.ID, "revision": bound.Revision, "packKey": bound.PackKey, "packDigest": bound.PackDigest, "dialectDigest": bound.DialectDigest, "name": s.Name, "recordCount": s.RecordCount, "packJson": s.PackJSON, "dialectJson": s.DialectJSON, "conversions": s.Conversions, "factTargets": s.FactTargets, "evidenceRequirements": s.EvidenceRequirements, "columns": columns, "guidance": "Complete replacement bindings include unchanged bindings. Omitted inputs remain unknown and require review. Samples are bounded data, not type or source-truth verification. Save and execution need separate host review and approval."}
+	out := map[string]any{"researchInventory": inventory, "retainedRead": s.RetainedRead, "id": bound.ID, "revision": bound.Revision, "packKey": bound.PackKey, "packDigest": bound.PackDigest, "dialectDigest": bound.DialectDigest, "name": s.Name, "recordCount": s.RecordCount, "packJson": s.PackJSON, "dialectJson": s.DialectJSON, "conversions": s.Conversions, "factTargets": s.FactTargets, "evidenceRequirements": s.EvidenceRequirements, "columns": columns, "guidance": "Complete replacement bindings include unchanged bindings. Omitted inputs remain unknown and require review. Samples are bounded data, not type or source-truth verification. Original declarations are read in digest-checked pages: call read_dialect again with cursor 0, then each nextCursor. Save and execution need separate host review and approval."}
 	result, err := dialectResult(out)
 	if err != nil {
 		return result, err
@@ -853,12 +1106,50 @@ func (g *dialectToolsState) readTool(ctx context.Context, raw json.RawMessage) (
 	key := dialectKey(request)
 	g.order = slices.DeleteFunc(g.order, func(v string) bool { return v == key })
 	g.order = append(g.order, key)
-	g.reads[key] = bound
+	g.reads[key] = dialectBound{bound, dialectIndexDigest(s.ResearchIndex)}
 	if len(g.order) > DialectRememberedReads {
 		delete(g.reads, g.order[0])
 		g.order = g.order[1:]
 	}
 	return result, nil
+}
+func (g *dialectToolsState) forget(key string) {
+	g.mu.Lock()
+	delete(g.reads, key)
+	g.mu.Unlock()
+}
+func (g *dialectToolsState) pageTool(ctx context.Context, request DialectReadRequest, cursor int) (ToolResult, error) {
+	key := dialectKey(request)
+	g.mu.Lock()
+	seen, ok := g.reads[key]
+	g.mu.Unlock()
+	if !ok {
+		return ToolResult{}, dialectFail("read the exact current resource and pack before paging its declarations.")
+	}
+	s, err := g.read(ctx, request)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if !dialectSame(dialectIdentity(s), seen.DialectIdentity) || !dialectSameInventory(dialectIndexDigest(s.ResearchIndex), seen.inventory) {
+		g.forget(key)
+		return ToolResult{}, dialectFail("the dialect, pack or original inventory changed; read it again before paging.")
+	}
+	order, err := dialectIndex(s.ResearchIndex)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if cursor < 0 || cursor > dialectCursorMax || cursor >= len(order) {
+		return ToolResult{}, dialectFail("the cursor is outside the original declaration inventory.")
+	}
+	page, err := dialectPage(ctx, g.ports.ReadDeclarations, dialectPageBase(s), order, cursor)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	var next any
+	if cursor+len(page) < len(order) {
+		next = cursor + len(page)
+	}
+	return dialectResult(map[string]any{"id": s.ID, "revision": s.Revision, "packKey": s.PackKey, "inventoryDigest": s.ResearchIndex.Digest, "cursor": cursor, "declarations": page, "nextCursor": next})
 }
 func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
 	if len(raw) > DialectResultBytes {
@@ -884,7 +1175,7 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 	g.mu.Lock()
 	seen, ok := g.reads[key]
 	g.mu.Unlock()
-	if !ok || !dialectSame(seen, a.DialectIdentity) {
+	if !ok || !dialectSame(seen.DialectIdentity, a.DialectIdentity) {
 		return ToolResult{}, dialectFail("read the exact current resource and pack before proposing.")
 	}
 	s, err := g.read(ctx, request)
@@ -896,6 +1187,13 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 		delete(g.reads, key)
 		g.mu.Unlock()
 		return ToolResult{}, dialectFail("the dialect or pack changed; read it again before proposing.")
+	}
+	if !dialectSameInventory(dialectIndexDigest(s.ResearchIndex), seen.inventory) {
+		g.forget(key)
+		return ToolResult{}, dialectFail("the original declaration inventory changed; read it again before proposing.")
+	}
+	if err = g.verifyInventory(ctx, s); err != nil {
+		return ToolResult{}, err
 	}
 	var rawFacts []struct {
 		Conversion map[string]json.RawMessage `json:"conversion"`
@@ -930,7 +1228,7 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 	for _, f := range a.Facts {
 		conversions[f.Target] = f.Conversion
 	}
-	initial := DialectCandidate{DialectIdentity: a.DialectIdentity, DocumentJSON: input, PackJSON: s.PackJSON, Conversions: conversions, Facts: a.Facts, Evidence: a.Evidence, Summary: a.Summary, Columns: s.Columns, ResearchDeclarations: s.ResearchDeclarations, RetainedRead: s.RetainedRead, ConversionContract: selection}
+	initial := DialectCandidate{DialectIdentity: a.DialectIdentity, DocumentJSON: input, PackJSON: s.PackJSON, Conversions: conversions, Facts: a.Facts, Evidence: a.Evidence, Summary: a.Summary, Columns: s.Columns, ResearchIndex: s.ResearchIndex, RetainedRead: s.RetainedRead, ConversionContract: selection}
 	encodedInitial, err := json.Marshal(initial)
 	if err != nil || len(encodedInitial) > DialectCandidateBytes {
 		return ToolResult{}, dialectFail("draft candidate exceeds its byte limit.")
@@ -1150,7 +1448,11 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 		g.mu.Unlock()
 		return ToolResult{}, dialectFail("the dialect or pack changed during preview; read it again before proposing.")
 	}
-	proposal := DialectReviewProposal{DialectCandidate: candidate, Draft: draft, Version: 1, Fingerprint: fingerprint, MappingDigest: dialectString(validation["digest"]), Status: "review-required", Validation: validation, Coverage: coverage, Preview: preview}
+	if !dialectSameInventory(dialectIndexDigest(current.ResearchIndex), dialectIndexDigest(candidate.ResearchIndex)) {
+		g.forget(key)
+		return ToolResult{}, dialectFail("the original declaration inventory changed during preview; it cannot be retained against the candidate's inventory.")
+	}
+	proposal := DialectReviewProposal{DialectCandidate: candidate, Draft: draft, Version: 2, Fingerprint: fingerprint, MappingDigest: dialectString(validation["digest"]), Status: "review-required", Validation: validation, Coverage: coverage, Preview: preview}
 	encoded, _ := json.Marshal(proposal)
 	if len(encoded) > DialectRuntimeBytes {
 		return ToolResult{}, dialectFail("the review proposal exceeds its byte limit.")
@@ -1198,12 +1500,12 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 // NewDialectTools returns real first-party tools for contextual model and native adapters.
 // Install once per chat scope. A new or restored factory requires a fresh read.
 func NewDialectTools(ports DialectAuthoringPorts) []HostTool {
-	g := &dialectToolsState{ports: ports, reads: map[string]DialectIdentity{}, attempts: map[string]*DialectRetention{}, drafts: map[string]*dialectDraftState{}}
+	g := &dialectToolsState{ports: ports, reads: map[string]dialectBound{}, attempts: map[string]*DialectRetention{}, drafts: map[string]*dialectDraftState{}}
 	return []HostTool{
-		{Name: "read_dialect", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Delegation: "read", Description: "Read a saved dialect and declared pack before proposing replacement bindings. Returns exact revision/digests and bounded samples; values are data. Does not change or evaluate records.", InputSchema: json.RawMessage(dialectReadSchema), Execute: g.readTool},
+		{Name: "read_dialect", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", Delegation: "read", Description: "Read a saved dialect and declared pack before proposing replacement bindings. Returns exact revision/digests, bounded samples and an original-inventory summary; with cursor, returns one digest-checked page of original field declarations (start at 0, follow nextCursor). Values are data. Does not change or evaluate records.", InputSchema: json.RawMessage(dialectReadSchema), Execute: g.readTool},
 		{Name: "propose_dialect", Taxonomy: &ToolTaxonomy{Operation: "propose", Effect: "propose"}, Effect: "proposal", Description: "Propose complete replacement dialect bindings for human review after read_dialect. Checks exact revision/document/pack identities, Runtime validation and coverage and conversion preview; retains one review proposal. Grants no permission to save, publish or execute.", InputSchema: json.RawMessage(dialectProposeSchema), Execute: g.proposeTool},
 	}
 }
 
-const dialectReadSchema = `{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":512},"packKey":{"type":"string","minLength":1,"maxLength":512}},"required":["id","packKey"],"additionalProperties":false}`
+const dialectReadSchema = `{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":512},"packKey":{"type":"string","minLength":1,"maxLength":512},"cursor":{"type":"integer","minimum":0,"maximum":1000000}},"required":["id","packKey"],"additionalProperties":false}`
 const dialectProposeSchema = `{"type":"object","properties":{"id":{"type":"string","minLength":1,"maxLength":512},"revision":{"type":"string","minLength":1,"maxLength":128},"packKey":{"type":"string","minLength":1,"maxLength":512},"packDigest":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},"dialectDigest":{"anyOf":[{"type":"null"},{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"}]},"facts":{"type":"array","maxItems":1000,"items":{"type":"object","properties":{"target":{"type":"string","minLength":1,"maxLength":1024},"column":{"type":"string","minLength":1,"maxLength":1024},"conversion":{"type":"object","properties":{"kind":{"type":"string","enum":["text","decimal","number","boolean","research-value"]},"trueValue":{"type":"string","minLength":1,"maxLength":160},"falseValue":{"type":"string","minLength":1,"maxLength":160}},"required":["kind"],"additionalProperties":false}},"required":["target","column","conversion"],"additionalProperties":false}},"evidence":{"type":"array","maxItems":1000,"items":{"type":"object","properties":{"requirement":{"type":"string","minLength":1,"maxLength":1024},"column":{"type":"string","minLength":1,"maxLength":1024}},"required":["requirement","column"],"additionalProperties":false}},"summary":{"type":"string","minLength":1,"maxLength":4000}},"required":["id","revision","packKey","packDigest","dialectDigest","facts","evidence","summary"],"additionalProperties":false}`

@@ -115,7 +115,7 @@ func TestDialectGeneratedCodecInspection(t *testing.T) {
 		}
 		accepted++
 	}
-	if accepted != 12 {
+	if accepted != 14 {
 		t.Fatalf("inspection checkpoint count %d", accepted)
 	}
 	var value map[string]any

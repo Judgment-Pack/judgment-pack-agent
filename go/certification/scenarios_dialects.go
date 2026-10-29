@@ -51,6 +51,25 @@ func dialectAuthoringFindings(ctx context.Context, server *Server, inner Adapter
 	if err = json.Unmarshal(raw, &file); err != nil {
 		return nil, err
 	}
+	// The host's complete original inventory, served as an index and digest-checked pages.
+	var inventory struct {
+		Snapshot struct {
+			ResearchDeclarations []runcontext.DialectResearchRevision `json:"researchDeclarations"`
+		} `json:"snapshot"`
+	}
+	if err = json.Unmarshal(raw, &inventory); err != nil {
+		return nil, err
+	}
+	served := []runcontext.DialectDeclaration{}
+	for _, r := range inventory.Snapshot.ResearchDeclarations {
+		for _, field := range r.Fields {
+			served = append(served, runcontext.DialectDeclaration{Revision: r.Revision, Name: field.Name, FieldJSON: field.FieldJSON})
+		}
+	}
+	index, err := runcontext.DialectResearchIndexOf(inventory.Snapshot.ResearchDeclarations)
+	if err != nil {
+		return nil, err
+	}
 	for _, mode := range []string{"complete", "plan", "child", "changed-preview", "lost-ack", "repeat-complete", "failed-validation", "transport-failed", "preview-failed", "draft-candidate-lost", "draft-checked-drift", "final-lineage-drift", "empty", "oversized"} {
 		var snapshot runcontext.DialectSnapshot
 		encoded, _ := json.Marshal(file.Snapshot)
@@ -67,7 +86,12 @@ func dialectAuthoringFindings(ctx context.Context, server *Server, inner Adapter
 				encoded, _ := json.Marshal(snapshot)
 				var detached runcontext.DialectSnapshot
 				_ = json.Unmarshal(encoded, &detached)
+				detached.ResearchIndex = index
 				return detached, nil
+			},
+			ReadDeclarations: func(_ context.Context, request runcontext.DialectDeclarationPageRequest) (runcontext.DialectDeclarationPage, error) {
+				end := min(len(served), request.Cursor+request.Limit)
+				return runcontext.DialectDeclarationPage{ID: request.ID, PackKey: request.PackKey, Revision: request.Revision, InventoryDigest: request.InventoryDigest, Cursor: request.Cursor, Declarations: served[min(request.Cursor, end):end]}, nil
 			},
 			Runtime: func(_ context.Context, name string, args map[string]string) (runcontext.ToolResult, error) {
 				semanticCalls++

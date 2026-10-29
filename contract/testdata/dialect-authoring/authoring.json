@@ -102,7 +102,7 @@
     ],
     "summary": "Map structured amount and explicit evidence availability."
   },
-  "expectedFingerprint": "sha256:742bf232b81d407107f749e5ca71c9ada909e5ba428c7cb4a5c603243983bf8e",
+  "expectedFingerprint": "sha256:93d69bd81057f54b38ce282c3212c5c895778c27782e83db0e160855cd9c5ba9",
   "expectedMappingDigest": "sha256:ceb61c4b35b5c6895c13d0b723cc096dc39d723014677f3e8237ea4e31c8e203",
   "expectedDocument": "{\"case\":{\"evidence\":[{\"availability\":{\"column\":\"availability\",\"contractVersion\":\"1\"},\"requirement\":\"receipt\",\"source\":\"/retained\"}],\"facts\":[{\"conversion\":{\"column\":\"amount/raw~value\",\"contractVersion\":\"1\",\"kind\":\"decimal\"},\"source\":\"/retained\",\"target\":\"/amount\"}]},\"evidence\":null,\"facts\":null,\"provider\":\"\",\"unmapped\":[],\"unmappedEvidence\":[],\"version\":2}",
   "conversions": [
