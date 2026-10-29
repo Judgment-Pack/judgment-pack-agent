@@ -1406,6 +1406,20 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		attempt.mu.Unlock()
 		w.mu.Unlock()
 	}
+	if (kind == "host" || kind == "runtime") && !read && leaseViewOf(w.Store) != nil {
+		// #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with
+		// the fence; its idempotency identity is the acknowledged claim's, never the epoch.
+		inner, operation := execute, EffectOperation{Run: w.ID, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest}
+		execute = func(raw []byte) (T, error) {
+			var out T
+			err := fencedEffect(ctx, w.Store, operation, func(context.Context) error {
+				var runErr error
+				out, runErr = inner(raw)
+				return runErr
+			})
+			return out, err
+		}
+	}
 	value, runErr := execute(request)
 	if runErr == nil && admit != nil && ctx.Err() == nil {
 		// The execution ended within its deadline. The check has the rest of the source's deadline,
@@ -1799,7 +1813,7 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 	if held := receiptAdmissionOf(ctx); held != nil {
 		admit = held.admit
 	}
-	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, ReadingTool(&tool), func(raw []byte) (ToolResult, error) {
+	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
 			if err := c.session.Context.Authorize(ctx); err != nil {
 				return ToolResult{}, err
@@ -1812,6 +1826,21 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		}
 		return nil
 	})
+}
+
+// durableReadingTool (#223) is whether a host tool's call is a read for the writer, and so never reaches
+// the effect host. It is the call's effect, not the framing of its answer (ReadingTool): a tool with a
+// source is a read only when its effect class is read, and an owner-declared act or propose effect is
+// never a read. Every other call is an effect: its outcome is recorded before dependent work, an unknown
+// outcome is never repeated, and under a fenced store the effect host admits it.
+func durableReadingTool(tool *HostTool) bool {
+	if tool.Taxonomy != nil && (tool.Taxonomy.Effect == "act" || tool.Taxonomy.Effect == "propose") {
+		return false
+	}
+	if tool.Source != nil {
+		return tool.EffectClass == "read"
+	}
+	return ReadingTool(tool)
 }
 
 // Authorize rechecks current host authority immediately before an acknowledged provider dispatch.

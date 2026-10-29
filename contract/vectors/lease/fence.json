@@ -1,0 +1,241 @@
+{
+  "description": "Handwritten fences and the exact bounded epoch encoding: a canonical base-10 string from 1 to 999999999999999999 (18 digits). The largest epoch is accepted; the next acquisition after it refuses as epoch-exhausted; every overflowed, non-integer, signed, zero, padded or numeric epoch is refused before a check.",
+  "schema": "run-lease.json#/$defs/fence",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/lease.ts (readLeaseFence, nextLeaseEpoch)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-alpha",
+      "owner": "worker-a",
+      "epoch": "1"
+    },
+    {
+      "version": 1,
+      "resource": "run-alpha",
+      "owner": "worker-b",
+      "epoch": "2"
+    },
+    {
+      "version": 1,
+      "resource": "chat-alpha",
+      "owner": "worker-c",
+      "epoch": "999999999999999999"
+    }
+  ],
+  "epochs": {
+    "first": "1",
+    "largest": "999999999999999999",
+    "next": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "9",
+        "10"
+      ],
+      [
+        "99",
+        "100"
+      ],
+      [
+        "9007199254740991",
+        "9007199254740992"
+      ],
+      [
+        "9007199254740992",
+        "9007199254740993"
+      ],
+      [
+        "999999999999999998",
+        "999999999999999999"
+      ]
+    ],
+    "exhausted": "999999999999999999",
+    "order": [
+      [
+        "9",
+        "10",
+        -1
+      ],
+      [
+        "10",
+        "9",
+        1
+      ],
+      [
+        "9007199254740993",
+        "9007199254740992",
+        1
+      ],
+      [
+        "999999999999999999",
+        "999999999999999999",
+        0
+      ]
+    ]
+  },
+  "refused": [
+    {
+      "problem": "epoch overflow: 19 digits",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1000000000000000000"
+      }
+    },
+    {
+      "problem": "epoch overflow: the signed 64-bit maximum is not an epoch",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "9223372036854775807"
+      }
+    },
+    {
+      "problem": "epoch as a JSON number",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": 1
+      }
+    },
+    {
+      "problem": "non-integer epoch: a fraction",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1.0"
+      }
+    },
+    {
+      "problem": "non-integer epoch: an exponent",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1e3"
+      }
+    },
+    {
+      "problem": "non-integer epoch: hexadecimal",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "0x10"
+      }
+    },
+    {
+      "problem": "signed epoch",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "-1"
+      }
+    },
+    {
+      "problem": "explicit plus sign",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "+1"
+      }
+    },
+    {
+      "problem": "zero is not an epoch",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "0"
+      }
+    },
+    {
+      "problem": "leading zero",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "01"
+      }
+    },
+    {
+      "problem": "leading space",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": " 1"
+      }
+    },
+    {
+      "problem": "empty epoch",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": ""
+      }
+    },
+    {
+      "problem": "no epoch",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a"
+      }
+    },
+    {
+      "problem": "empty owner",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "",
+        "epoch": "1"
+      }
+    },
+    {
+      "problem": "oversized owner",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "ooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo",
+        "epoch": "1"
+      }
+    },
+    {
+      "problem": "version 2",
+      "fence": {
+        "version": 2,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1"
+      }
+    },
+    {
+      "problem": "an unknown member",
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z"
+      }
+    }
+  ]
+}

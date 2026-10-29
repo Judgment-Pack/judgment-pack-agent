@@ -1,0 +1,73 @@
+{
+  "description": "Handwritten named refusals, one per reason. Every reason both languages can give is here and nothing else.",
+  "schema": "run-lease.json#/$defs/refusal",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/lease.ts (LeaseRefused)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "reason": "invalid"
+    },
+    {
+      "version": 1,
+      "reason": "no-lease"
+    },
+    {
+      "version": 1,
+      "reason": "held"
+    },
+    {
+      "version": 1,
+      "reason": "revision-changed"
+    },
+    {
+      "version": 1,
+      "reason": "stale-epoch"
+    },
+    {
+      "version": 1,
+      "reason": "other-owner"
+    },
+    {
+      "version": 1,
+      "reason": "expired"
+    },
+    {
+      "version": 1,
+      "reason": "released"
+    },
+    {
+      "version": 1,
+      "reason": "epoch-exhausted"
+    },
+    {
+      "version": 1,
+      "reason": "resource-mismatch"
+    },
+    {
+      "version": 1,
+      "reason": "already-admitted"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "lost"
+    },
+    {
+      "version": 1
+    },
+    {
+      "version": 1,
+      "reason": "expired",
+      "detail": "free text"
+    }
+  ]
+}

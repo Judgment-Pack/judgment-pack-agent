@@ -480,7 +480,7 @@ func (m *MemoryRunStore) CommitHistory(ctx context.Context, input RunHistoryComm
 	if err != nil {
 		return RunHistoryReceipt{}, err
 	}
-	_, receipt, err := m.commitTransaction(ctx, input.Run, &extra)
+	_, receipt, err := m.commitTransaction(ctx, input.Run, &extra, nil)
 	return receipt, err
 }
 func (m *MemoryRunStore) ReadHistoryHead(ctx context.Context, id string) (*RunHistoryHead, error) {
@@ -575,6 +575,15 @@ func (m *MemoryRunStore) LoadContextSnapshot(ctx context.Context, id string) (*C
 	return nil, nil
 }
 func (m *MemoryRunStore) CommitContextSnapshot(ctx context.Context, input ContextSnapshotUpdate, commitID string) (ContextSnapshotHead, error) {
+	return m.commitContextSnapshot(ctx, input, commitID, nil)
+}
+
+// CommitContextSnapshotFenced (#223): a leased run's chat snapshot commits only under its current fence,
+// checked in the same locked transaction. The fence names the run; the snapshot names its chat.
+func (m *MemoryRunStore) CommitContextSnapshotFenced(ctx context.Context, input ContextSnapshotUpdate, commitID string, fence LeaseFence) (ContextSnapshotHead, error) {
+	return m.commitContextSnapshot(ctx, input, commitID, &fence)
+}
+func (m *MemoryRunStore) commitContextSnapshot(ctx context.Context, input ContextSnapshotUpdate, commitID string, fence *LeaseFence) (ContextSnapshotHead, error) {
 	extra, err := freezeHistoryExtra(RunHistoryCommit{Context: &input})
 	if err != nil {
 		return ContextSnapshotHead{}, err
@@ -589,6 +598,11 @@ func (m *MemoryRunStore) CommitContextSnapshot(ctx context.Context, input Contex
 	defer m.mu.Unlock()
 	if err = ctx.Err(); err != nil {
 		return ContextSnapshotHead{}, err
+	}
+	if fence != nil {
+		if _, err = m.leases.Check(*fence); err != nil {
+			return ContextSnapshotHead{}, err
+		}
 	}
 	key := historyInputText([]string{input.ChatID, commitID})
 	text := historyInputText(extra.Context)

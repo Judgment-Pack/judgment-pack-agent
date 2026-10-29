@@ -19,6 +19,8 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
+import {fencedEffect} from './lease'
+import {readingTool} from '../framing'
 import {canonicalJSON} from '../context/chat'
 import {AIFailureError,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
@@ -758,7 +760,10 @@ export class RunWriter {
   let live=signal
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
-   try{value=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
+   // #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with the fence; its
+   // idempotency identity is the acknowledged claim's, never the epoch.
+   const perform=()=>execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)
+   try{value=await ((kind==='host'||kind==='runtime')&&!read?fencedEffect(this.store,{run:this.id,operation:claim.id,source,tool,requestDigest:claim.requestDigest},perform,signal):perform())}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
    if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
    if(kind==='model'){
     if(!value||typeof value!=='object'||!(value as unknown as PendingModel)[modelClaim]||this.models.has(value))throw new AIFailureError(failure('invalid-response','model','unknown'))
@@ -846,6 +851,15 @@ export function childDurability<T extends EngineSession>(session:T,parent:Engine
 }
 export function scopeFor(binding:DurableBinding,role:string):DurableBinding{return {...binding,scope:{...binding.scope,role}}}
 export const hostSucceeded=(result:McpToolResult)=>result.isError!==true
+/** #223: whether a host tool's call is a read for the writer (and so never reaches the effect host). This is the call's
+ * effect, not the framing of its answer (`readingTool`): a tool with a source is a read only when its effect class is read,
+ * and an owner-declared act or propose effect is never a read. Every other call is an effect: its outcome is recorded
+ * before dependent work, an unknown outcome is never repeated, and under a fenced store the effect host admits it. */
+export function durableReadingTool(tool:Pick<HostTool,'effect'|'delegation'|'interaction'|'source'|'effectClass'|'taxonomy'>):boolean{
+ if(tool.taxonomy?.effect==='act'||tool.taxonomy?.effect==='propose')return false
+ if(tool.source!==undefined)return tool.effectClass==='read'
+ return readingTool(tool)
+}
 
 /** Decode a committed root-log envelope; the host still binds its resource scope. */
 export function readStoredRunEvent(bytes:Uint8Array):{version:1;scope:DurableScope;event:AssistantEvent}{

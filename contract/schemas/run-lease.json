@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-lease.json",
+  "title": "Run lease",
+  "description": "Version 1 lease of one store resource (ADR-0025 decision 1, #223): its owner, its authoritative expiry decided by the store clock, and its exact monotonically increasing epoch. The fence is the evidence a writer presents at every checkpoint commit and an effect host checks at every admission. A lease grants neither tool permission nor approval. A released or expired lease is never revived; the next acquisition takes a strictly greater epoch.",
+  "type": "object",
+  "required": [
+    "version",
+    "resource",
+    "owner",
+    "epoch",
+    "expiry",
+    "state"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "resource": {
+      "$ref": "#/$defs/identifier"
+    },
+    "owner": {
+      "$ref": "#/$defs/identifier"
+    },
+    "epoch": {
+      "$ref": "#/$defs/epoch"
+    },
+    "expiry": {
+      "$ref": "#/$defs/expiry"
+    },
+    "state": {
+      "description": "held: the owner holds it until its expiry. released: the owner gave it up; the epoch is retained so the next acquisition is greater. Expired is not stored: the store clock decides it at every check, and an expiry equal to the store's time is expired.",
+      "enum": [
+        "held",
+        "released"
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "description": "An opaque storage identifier: 1 to 256 UTF-8 bytes, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "epoch": {
+      "description": "The exact epoch: a canonical base-10 integer string from 1 to 999999999999999999 (at most 18 digits, no sign, no leading zero, no fraction or exponent). It fits a signed 64-bit integer exactly and is never carried as a JSON number, so no reader rounds it. Acquiring past the largest epoch refuses as epoch-exhausted.",
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,17}$"
+    },
+    "expiry": {
+      "description": "The authoritative expiry, decided by the store clock: UTC with exactly millisecond precision.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "fence": {
+      "description": "The fence: the evidence a writer presents at a checkpoint commit and an effect host checks at an admission. It is current when the store holds a lease of the resource with this owner and exactly this epoch, not released and not expired by the store clock.",
+      "type": "object",
+      "required": [
+        "version",
+        "resource",
+        "owner",
+        "epoch"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "owner": {
+          "$ref": "#/$defs/identifier"
+        },
+        "epoch": {
+          "$ref": "#/$defs/epoch"
+        }
+      },
+      "additionalProperties": false
+    },
+    "operation": {
+      "description": "The stable idempotency identity of one effect: the run, the operation's claim identity, its target (source and tool) and the request digest. It carries no epoch, so a takeover cannot turn the same uncertain operation into a new action.",
+      "type": "object",
+      "required": [
+        "run",
+        "operation",
+        "source",
+        "tool",
+        "requestDigest"
+      ],
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/identifier"
+        },
+        "operation": {
+          "$ref": "#/$defs/identifier"
+        },
+        "source": {
+          "$ref": "#/$defs/identifier"
+        },
+        "tool": {
+          "$ref": "#/$defs/identifier"
+        },
+        "requestDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "effectAdmission": {
+      "description": "What an effect host receives before it performs an effect: the fence and the operation. idempotencyKey is the SHA-256 of the canonical JSON of the operation alone.",
+      "type": "object",
+      "required": [
+        "version",
+        "fence",
+        "operation",
+        "idempotencyKey"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "fence": {
+          "$ref": "#/$defs/fence"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "idempotencyKey": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "description": "A named lease or fence refusal. Nothing was admitted or committed. already-admitted is an effect host's answer to an idempotency identity it admitted before: that outcome stays unknown and is never performed again.",
+      "type": "object",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "invalid",
+            "no-lease",
+            "held",
+            "revision-changed",
+            "stale-epoch",
+            "other-owner",
+            "expired",
+            "released",
+            "epoch-exhausted",
+            "resource-mismatch",
+            "already-admitted"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityRefusal": {
+      "description": "A store or effect host that cannot give the lease and fence guarantee refuses unattended admission by name, before any dispatch. store-unsupported: the store has no lease port. store-lifetime: its leases end with its process. effect-host-unfenced: no effect host, or one that does not enforce the fence.",
+      "type": "object",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "store-unsupported",
+            "store-lifetime",
+            "effect-host-unfenced"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

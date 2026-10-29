@@ -1,0 +1,133 @@
+{
+  "description": "Handwritten effect admissions. The idempotency key is the SHA-256 of the canonical JSON of the operation alone (run, operation, source, tool, requestDigest), so the admission under the first epoch and the takeover's under the second carry the same key. A key that does not match its operation is refused.",
+  "schema": "run-lease.json#/$defs/effectAdmission",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/lease.ts (effectIdempotencyKey, readEffectAdmission)"
+    ]
+  },
+  "canonical": "{\"operation\":\"claim-0001\",\"requestDigest\":\"sha256:abababababababababababababababababababababababababababababababab\",\"run\":\"run-alpha\",\"source\":\"host\",\"tool\":\"send_report\"}",
+  "items": [
+    {
+      "version": 1,
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1"
+      },
+      "operation": {
+        "run": "run-alpha",
+        "operation": "claim-0001",
+        "source": "host",
+        "tool": "send_report",
+        "requestDigest": "sha256:abababababababababababababababababababababababababababababababab"
+      },
+      "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+    },
+    {
+      "version": 1,
+      "fence": {
+        "version": 1,
+        "resource": "run-alpha",
+        "owner": "worker-b",
+        "epoch": "2"
+      },
+      "operation": {
+        "run": "run-alpha",
+        "operation": "claim-0001",
+        "source": "host",
+        "tool": "send_report",
+        "requestDigest": "sha256:abababababababababababababababababababababababababababababababab"
+      },
+      "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+    }
+  ],
+  "refused": [
+    {
+      "problem": "the key of another operation",
+      "admission": {
+        "version": 1,
+        "fence": {
+          "version": 1,
+          "resource": "run-alpha",
+          "owner": "worker-a",
+          "epoch": "1"
+        },
+        "operation": {
+          "run": "run-alpha",
+          "operation": "claim-0001",
+          "source": "host",
+          "tool": "send_report",
+          "requestDigest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        },
+        "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+      }
+    },
+    {
+      "problem": "an operation carrying the epoch",
+      "admission": {
+        "version": 1,
+        "fence": {
+          "version": 1,
+          "resource": "run-alpha",
+          "owner": "worker-a",
+          "epoch": "1"
+        },
+        "operation": {
+          "run": "run-alpha",
+          "operation": "claim-0001",
+          "source": "host",
+          "tool": "send_report",
+          "requestDigest": "sha256:abababababababababababababababababababababababababababababababab",
+          "epoch": "1"
+        },
+        "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+      }
+    },
+    {
+      "problem": "a request digest that is not SHA-256",
+      "admission": {
+        "version": 1,
+        "fence": {
+          "version": 1,
+          "resource": "run-alpha",
+          "owner": "worker-a",
+          "epoch": "1"
+        },
+        "operation": {
+          "run": "run-alpha",
+          "operation": "claim-0001",
+          "source": "host",
+          "tool": "send_report",
+          "requestDigest": "md5:00"
+        },
+        "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+      }
+    },
+    {
+      "problem": "a fence with an overflowed epoch",
+      "admission": {
+        "version": 1,
+        "fence": {
+          "version": 1,
+          "resource": "run-alpha",
+          "owner": "worker-a",
+          "epoch": "1000000000000000000"
+        },
+        "operation": {
+          "run": "run-alpha",
+          "operation": "claim-0001",
+          "source": "host",
+          "tool": "send_report",
+          "requestDigest": "sha256:abababababababababababababababababababababababababababababababab"
+        },
+        "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+      }
+    }
+  ]
+}
