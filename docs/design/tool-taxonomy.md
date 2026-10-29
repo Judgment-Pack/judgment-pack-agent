@@ -8,6 +8,20 @@ The verifier is asked before anything of the result is kept: an unverified resul
 for the context readers, recorded as a durable result or offered as Plan evidence, and the call
 stays inspectable only as a failed operation (ADR-0027's amendment, agent#242).
 
+Check subkinds for hosts: `validate`, `check`, `verify`, `test`, `analyze`, `advise` and, since the
+ADR-0027 amendment of 2026-10-29 (#241), `rehearse`: a non-binding dry evaluation of an artifact
+the host declares (a saved graph or pack identity), whose result carries no authority and whose
+execution writes no audit, resource or run state. A rehearse tool declares
+`{operation:'check',effect:'read'|'pure',checkKind:'rehearse'}`; read-external, act or any other
+operation is refused. Host admission (`declareSources`/`DeclareSources`) refuses it unless its own
+description begins with the words "Rehearsal, non-binding", followed by the end, a space, tab or
+line break, or one of `.,;:!?)`. Every TypeScript engine start runs that admission; the Go
+gate's `Open`, `SetOffer` and `EnrollContext` and eino's `Observe` do not re-check it, so hand
+them admitted declarations only. The executor resolves and re-checks the declared artifact, always passes the Runtime's
+rehearsal flag and requires the rehearsal marker on the answer; the package cannot see those steps,
+and the label grants no evaluation authority. It derives readOnly and idempotent hints and approval
+none like any read check. The Desk's `graph_rehearse` is the first declarer.
+
 A host approving a skill computes its pin with `skillDigest` / `SkillDigest` and the admitted tool taxonomy map. Pass that same run's map to skill admission. Unknown dependencies never receive a default profile. Optional kind/tags affect the pin; a computed profile is never accepted from an author or model. Preset helpers always retain a valid pure ask, preserving `ask_user`. Routing #172 must consume these helpers and still apply all existing phase, approval and name gates.
 
 

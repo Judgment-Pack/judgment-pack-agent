@@ -4,9 +4,9 @@ Status: accepted for the v0.11.0 foundation. Selected upstream producer alphas a
 
 Every owner declares an operation and an effect. Host declarations carry `taxonomy: {operation,effect,checkKind?,experimental?}`. This deliberately avoids reinterpreting the existing internal `HostTool.effect` (`read`, `proposal`, `workflow`, `memory`, `plan`). Runtime MCP tools publish the same four canonical keys directly in `_meta`; Agent maps the served metadata to its internal taxonomy. The selected [Runtime v0.39.0-alpha.1](https://github.com/Judgment-Pack/judgment-pack-runtime/releases/tag/v0.39.0-alpha.1) publishes the companion metadata from #329; final Agent artifact pairing remains required. Existing names, including `ask_user` and experimental Runtime names, are preserved. New names use `verb_noun`; experimental status is metadata.
 
-Operation families are discover, read, answer, check, transform, evaluate, propose, act, run, own-state and ask. Effects are pure, read, read-external, propose and act, in that strength order. Check requires one fixed subkind: validate, check, verify, test, analyze or advise; other operations forbid checkKind. Experimental is an optional boolean.
+Operation families are discover, read, answer, check, transform, evaluate, propose, act, run, own-state and ask. Effects are pure, read, read-external, propose and act, in that strength order. Check requires one fixed subkind: validate, check, verify, test, analyze, advise or rehearse (the last added by the 2026-10-29 amendment below); other operations forbid checkKind. Experimental is an optional boolean.
 
-Compatibility: discover and answer accept pure/read/read-external; read accepts read/read-external; check accepts pure/read/read-external. Transform and ask require pure. Evaluate permits pure/read/act, declaring its actual strongest effect; current Runtime evaluation reads project state and can append audit, so it requires act. Propose requires propose; act requires act. Run permits read/read-external/propose/act. A dispatcher that can only hold proposals uses run/propose; any reachable acting child requires run/act. Its summary preserves the strongest effect and complete child-family profile; the selected leaf retains its own approval gate. Own-state permits pure/read for in-run bookkeeping or reading working state; changing an external resource requires act. Pure means no external I/O; ask's question transport and run-owned bookkeeping grant no resource access. Answer means generated text, never a stored fact; check findings are non-binding. Only the actual served Runtime path may declare evaluate, and only its existing gated evaluation name; first-party trust on a host tool confers no such authority.
+Compatibility: discover and answer accept pure/read/read-external; read accepts read/read-external; check accepts pure/read/read-external, except that check/rehearse accepts pure/read only. Transform and ask require pure. Evaluate permits pure/read/act, declaring its actual strongest effect; current Runtime evaluation reads project state and can append audit, so it requires act. Propose requires propose; act requires act. Run permits read/read-external/propose/act. A dispatcher that can only hold proposals uses run/propose; any reachable acting child requires run/act. Its summary preserves the strongest effect and complete child-family profile; the selected leaf retains its own approval gate. Own-state permits pure/read for in-run bookkeeping or reading working state; changing an external resource requires act. Pure means no external I/O; ask's question transport and run-owned bookkeeping grant no resource access. Answer means generated text, never a stored fact; check findings are non-binding. Only the actual served Runtime path may declare evaluate, and only its existing gated evaluation name; first-party trust on a host tool confers no such authority.
 
 Missing or malformed declarations and contradictory compatibility projections are configuration refusals before provider work. `effectClass` remains only a checked legacy execution projection: pure/read/read-external map to read, propose to propose, act to act. No field or tool name supplies a fallback. Gateway and MCP sources cannot declare local pure/read effects; acquired external data requires read-external. Trust labels remain descriptive and validated against their existing closed vocabulary; they never authorize an operation. Host limits withhold tools outside a subset of declared operations/effects and cannot relabel them. An act cannot lower its default required approval to none.
 
@@ -55,6 +55,57 @@ resources/configuration. Token refresh requires evidence that identity/scope are
 opaque scope metadata alone does not prove this. SQL writes, arbitrary MCP mutations, new
 identities/scopes, binding/revocation/configuration changes and other resource mutations remain
 act. Conservative MCP idempotency hints never authorize retry.
+
+## Amendment: the rehearse check (2026-10-29)
+
+Issue #241 chose a check subkind over a new Runtime route. The seventh check subkind,
+`rehearse`, is a non-binding dry evaluation of a declared artifact whose result carries no
+authority and whose execution writes no audit, resource or run state. `check/rehearse`
+accepts the effects pure or read only: it reads declared local project state, never
+read-external and never act. The Desk's `graph_rehearse` host tool is the first declarer: its
+executor resolves an explicitly declared saved graph and launches the Runtime's graph
+evaluation in rehearsal mode (`experimental graph evaluate <path> --inputs - --rehearsal`),
+which evaluates every node, marks the result as a rehearsal and writes no audit or composite
+record.
+
+The restriction: the artifact is declared by the host (a saved graph or pack identity), never
+chosen from the model's text; the rehearsal flag is mandatory; the host's declared
+description begins with the words "Rehearsal, non-binding"; inputs and output are bounded by the
+budget table as any check's are; and nothing about the label, the tool name, a trust label or
+the model's text grants evaluation authority. The package enforces what a declaration shows. Both validators
+(`toolTaxonomy.ts`, `go/adapter/wire/tooltaxonomy.go`) refuse `rehearse` under any operation
+other than check (the existing checkKind rule, "tool taxonomy checkKind contradicts its
+operation") and refuse `check/rehearse` with read-external or act ("tool taxonomy rehearse
+admits only a pure or read effect"). The package refuses a rehearse declaration at host
+admission (`declareSources`, `DeclareSources`) unless its description begins with the words
+"Rehearsal, non-binding", followed by the end of the description, a space, tab or line
+break, or one of `.,;:!?)`; tools that reach the gate by other entry points carry whatever admission they
+passed. In TypeScript every engine start runs host admission; in Go the gate's `Open`,
+`SetOffer` and `EnrollContext` and eino's `Observe` take host tools directly and check taxonomy
+only. The words lead the host's declared description, not necessarily the offer: a tool with a
+source is offered framed, with its retrieved-data line and `runs as:` line first. Each refusal is
+the existing configuration failure before provider work. The host owns the rest:
+resolving and re-checking the declared artifact's identity, path and freshness, passing the
+rehearsal flag, and requiring the Runtime's rehearsal marker on the answer. Runtime rehearsal
+skips reviewed-set consultation, so declaration and freshness custody is proved at the host's
+integration boundary and is never inferred from the flag.
+
+Unchanged: `evaluate` stays reserved for the gated Runtime path and its existing evaluation
+name. A host `evaluate` declaration, `evaluate/read` included, is still refused, and the
+Runtime's `experimental_evaluate` still cannot declare check. Runtime-served metadata keeps its
+existing rules (the six names, their local computation bound, evaluate only on the gated name);
+the description rule binds host declarations. The six-tool Runtime ceiling, approvals, derived
+hints, preset families and the phase and delegation rules are unchanged: a rehearse tool is a
+check whose legacy projection is read, so it derives readOnly and idempotent hints and approval
+none, is offered under review and work as any check is, and meets the same phase and child rules
+as any read. This creates no second evaluation route. No checkpoint, event or record format
+changes; the tool-taxonomy schema's checkKind enum gains the value and one condition bounding
+its effect. The paired handwritten vectors are `contract/vectors/taxonomy/declarations.json`
+(two rehearse records and four refused declarations with their reasons) and the `rehearsal`
+rows of `contract/testdata/taxonomy/tools.json` (two admitted declarations with their hints and
+approval, and five refused for their description: without the words, with the words not first,
+in lower case, run into another word, and with no description). `TestTaxonomyRehearseAdmissionOnly`
+and the TypeScript engine-start case hold the admission-only statement above.
 
 ## Amendment: an external result is not context until its receipt verifies (agent#242)
 
