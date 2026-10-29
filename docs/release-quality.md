@@ -43,6 +43,27 @@ safeguard-removal, required CI, independent review and artifact-verification gat
 In particular, #207's actual capture/export correctness remains required. This decision
 does not waive requirements for future Agent releases or change Desk's release gates.
 
+## v0.12.0 scope decision
+
+For Agent v0.12.0 only, the maintainer [deferred the live comparison on 2026-10-30](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6506875748),
+as for v0.10.0 and v0.11.0. Issue #169 remains open without a milestone as an outstanding
+follow-up, not a blocking Agent v0.12.0 release gate.
+
+The reason: v0.12.0 changes boundaries and contracts, not prompts, routing or model
+selection (receipt quarantine #242; run leases and effect-host fencing #223 and #253;
+dialect inventory paging #243 and #252; the rehearse check sub-kind #241). The Desk's
+application-level comparison for its v0.14.0 release, tracked by
+[Desk #599](https://github.com/Judgment-Pack/judgment-pack-desk/issues/599), remains the
+route.
+
+Release review and notes must disclose the deferral: no live comparison has passed, and
+no answer-quality, token-saving or monetary-cost result is claimed. Routing remains off
+by default.
+
+All other implementation, privacy/security, regression, cross-language parity,
+safeguard-removal, required CI, independent review and artifact-verification gates
+remain. This decision does not waive the live comparison for later Agent releases.
+
 ## API runner and general release requirement
 
 Issue #169 adds a release-review tool separate from ADR-0022's deterministic offline

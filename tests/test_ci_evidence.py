@@ -626,13 +626,10 @@ class ScopedRunnerImages(unittest.TestCase):
                 self.assertEqual(captured['runtime'], self.verifier)
                 self.assertNotIn('runner_image_exception', captured)
 
-    def test_repository_config_binds_approval_record_bytes(self):
+    def test_repository_config_carries_no_image_exception_after_v011(self):
+        # The v0.11.0 scope refuses every other tag; it is not extended (agent#169, 2026-10-30).
         config = json.loads((ROOT / '.github/ci-evidence.json').read_text())
-        scope = config['runner_image_exception']
-        self.assertIn(scope['approval_record'], config['inputs'])
-        record = (ROOT / scope['approval_record']).read_bytes()
-        self.assertLess(len(record), 16384)
-        self.assertEqual(scope['approval_sha256'], hashlib.sha256(record).hexdigest())
+        self.assertNotIn('runner_image_exception', config)
 
     def test_unconfigured_legacy_matching_and_output_remain_exact(self):
         del self.config['runner_image_exception']

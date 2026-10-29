@@ -133,23 +133,5 @@
         "rows of the files this pull request changes, and a sample"
       ]
     }
-  },
-  "runner_image_exception": {
-    "repository": "Judgment-Pack/judgment-pack-agent",
-    "repository_id": 1424951648,
-    "tag": "v0.11.0",
-    "expires_at": "2026-11-07T00:00:00Z",
-    "image_versions": [
-      "20261023.163.3",
-      "20261026.180.1"
-    ],
-    "runner": {
-      "ImageOS": "ubuntu26",
-      "RUNNER_OS": "Linux",
-      "RUNNER_ARCH": "X64",
-      "os_release": "cf72627ff81aef345d0a9f3807eb80f1035e0f80fe2932d12d94efc02fd68104"
-    },
-    "approval_record": "docs/security/v011-runner-image-exception.md",
-    "approval_sha256": "89772f4ada25d8d14ef3e0501f14491539a268e6c73c03ecae71be365842f7df"
   }
 }
