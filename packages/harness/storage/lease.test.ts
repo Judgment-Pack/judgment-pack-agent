@@ -180,13 +180,14 @@ describe('truthful adapters and unattended admission (#223)',()=>{
   expect(()=>admitUnattended({store:memory,effectHost:host})).toThrow(capability('store-lifetime'))
   expect(()=>admitUnattended({store:callback,effectHost:host})).toThrow(capability('store-unsupported'))
   expect(()=>admitUnattended({store:plain,effectHost:host})).toThrow(capability('store-unsupported'))
-  const durable=new DurableLeaseFixture()
+  const durable=new DurableLeaseFixture(),own=new ReferenceEffectHost(durable)
   expect(()=>admitUnattended({store:durable})).toThrow(capability('effect-host-unfenced'))
   expect(()=>admitUnattended({store:durable,effectHost:unfenced})).toThrow(capability('effect-host-unfenced'))
-  expect(()=>admitUnattended({store:durable,effectHost:host,chatStore:new MemoryChatStore()})).toThrow(capability('store-lifetime'))
-  expect(()=>admitUnattended({store:durable,effectHost:host})).not.toThrow()
+  expect(()=>admitUnattended({store:durable,effectHost:own,chatStore:new MemoryChatStore()})).toThrow(capability('store-lifetime'))
+  expect(()=>admitUnattended({store:durable,effectHost:own})).not.toThrow()
+  expect(()=>admitUnattended({store:durable,effectHost:host})).toThrow(capability('effect-host-unfenced'))
   const fence:LeaseFence={version:1,resource:'r',owner:'o',epoch:'1'}
-  expect(unattendedRunStore({store:durable,fence,effectHost:host}).durability).toBe('memory')
+  expect(unattendedRunStore({store:durable,fence,effectHost:own}).durability).toBe('memory')
   expect(()=>unattendedRunStore({store:memory,fence,effectHost:host})).toThrow(capability('store-lifetime'))
   expect(()=>fencedRunStore(callback,fence)).toThrow(capability('store-unsupported'))
   expect(()=>fencedRunStore(memory,fence,unfenced)).toThrow(capability('effect-host-unfenced'))
@@ -346,5 +347,63 @@ describe('pinned safeguards (#223 review 4)',()=>{
   const a=await store.acquireLease({resource:'run-x',owner:'worker-a',expectedRevision:null,durationMs:MINUTE})
   await expect(host.dispatch(effectAdmission(fenceOf(a),{run:'run-y',operation:'op',source:'host',tool:'t',requestDigest:'sha256:'+'c'.repeat(64)}),perform)).rejects.toEqual(refusal('resource-mismatch'))
   expect(perform).not.toHaveBeenCalled();expect(host.refusals).toEqual([{version:1,reason:'resource-mismatch'}])
+ })
+})
+
+describe('the kits test expiry on every fenced commit path (#253 R1)',()=>{
+ const skipsExpiry=(store:MemoryRunStore,fence:LeaseFence)=>store.readLease(fence.resource).then(row=>!!row&&row.state==='held'&&row.epoch===fence.epoch&&row.owner===fence.owner)
+ const breaks:Record<string,(store:MemoryRunStore)=>void>={
+  'commitHistoryFenced skips the expiry check':store=>{const fenced=store.commitHistoryFenced.bind(store);store.commitHistoryFenced=async(input,fence,signal)=>await skipsExpiry(store,fence)?store.commitHistory(input,signal):fenced(input,fence,signal)},
+  'commitContextSnapshotFenced skips the expiry check':store=>{const fenced=store.commitContextSnapshotFenced.bind(store);store.commitContextSnapshotFenced=async(input,commitId,fence,signal)=>await skipsExpiry(store,fence)?store.commitContextSnapshot(input,commitId,signal):fenced(input,commitId,fence,signal)},
+ }
+ for(const [name,broken] of Object.entries(breaks))it(`the lease conformance fails a store whose ${name}`,async()=>{
+  await expect(runStoreLeaseConformance(now=>{const store=new MemoryRunStore({now});broken(store);return store as LeaseRunStore})).rejects.toMatchObject({property:expect.stringMatching(/^lease\.(history|snapshot)\.expired\.equal-time$/)})
+ })
+})
+
+describe('certification is bound to the instance it checked (#253 R2)',()=>{
+ const performs=(authority:import('./lease').LeaseAuthority):EffectHost=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch(admission,perform,signal)}}
+ it('a host that performs while the authority is unavailable fails the kit and certification',async()=>{
+  const failOpen=(authority:import('./lease').LeaseAuthority):EffectHost=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{try{return await inner.dispatch(admission,perform,signal)}catch(error){if(error instanceof LeaseRefused)throw error;return perform(signal)}}}}
+  await expect(effectHostConformance(failOpen)).rejects.toMatchObject({property:'host.authority-unavailable'})
+  await expect(certifyEffectHost(failOpen,new DurableLeaseStoreFixture())).rejects.toMatchObject({property:'host.authority-unavailable'})
+ })
+ it('the factory is called once: the instance the kit exercised is the one admitted',async()=>{
+  const store=new DurableLeaseStoreFixture(),products:EffectHost[]=[]
+  const create=(authority:import('./lease').LeaseAuthority):EffectHost=>{const host=products.length?{effectFencing:'enforced' as const,dispatch:<T,>(_admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>)=>perform()}:performs(authority);products.push(host);return host}
+  const certified=await certifyEffectHost(create,store)
+  expect(products).toHaveLength(1)
+  expect(()=>admitUnattended({store,effectHost:certified})).not.toThrow()
+  expect(()=>admitUnattended({store,effectHost:products[0]!})).toThrow(capability('effect-host-unfenced'))
+  // The certified host now answers from the real store: a fence the store never issued is refused, nothing performed.
+  const perform=vi.fn(async()=>'performed')
+  await expect(certified.dispatch(effectAdmission({version:1,resource:'r',owner:'o',epoch:'1'},{run:'r',operation:'op',source:'host',tool:'t',requestDigest:'sha256:'+'d'.repeat(64)}),perform)).rejects.toEqual(refusal('no-lease'))
+  expect(perform).not.toHaveBeenCalled()
+ })
+ it('a dispatch swapped after certification is refused',async()=>{
+  const store=new DurableLeaseStoreFixture(),inner:EffectHost[]=[]
+  const certified=await certifyEffectHost(authority=>{const host=performs(authority);inner.push(host);return host},store)
+  ;(inner[0] as {dispatch:EffectHost['dispatch']}).dispatch=(_admission,perform)=>perform()
+  expect(()=>admitUnattended({store,effectHost:certified})).toThrow(capability('effect-host-unfenced'))
+  const perform=vi.fn(async()=>'performed')
+  await expect(certified.dispatch(effectAdmission({version:1,resource:'r',owner:'o',epoch:'1'},{run:'r',operation:'op',source:'host',tool:'t',requestDigest:'sha256:'+'d'.repeat(64)}),perform)).rejects.toEqual(capability('effect-host-unfenced'))
+  expect(perform).not.toHaveBeenCalled()
+  expect(()=>{(certified as {dispatch:unknown}).dispatch=()=>undefined}).toThrow(TypeError)
+  const reference=new ReferenceEffectHost(store)
+  expect(()=>{(reference as {dispatch:unknown}).dispatch=()=>undefined}).toThrow(TypeError)
+  expect(()=>Object.defineProperty(reference,'dispatch',{value:()=>undefined})).toThrow(TypeError)
+  expect(()=>{(reference as {effectFencing:unknown}).effectFencing='enforced'}).toThrow(TypeError)
+  expect(()=>admitUnattended({store,effectHost:reference})).not.toThrow()
+ })
+ it('a host over a no-op or another store\'s authority is refused, and evidence does not pass to another instance or a subclass',async()=>{
+  const store=new DurableLeaseStoreFixture(),other=new DurableLeaseStoreFixture()
+  expect(()=>admitUnattended({store,effectHost:new ReferenceEffectHost({checkFence:async()=>{}})})).toThrow(capability('effect-host-unfenced'))
+  expect(()=>admitUnattended({store,effectHost:new ReferenceEffectHost(other)})).toThrow(capability('effect-host-unfenced'))
+  const foreign=await certifyEffectHost(performs,other)
+  expect(()=>admitUnattended({store,effectHost:foreign})).toThrow(capability('effect-host-unfenced'))
+  class Sub extends ReferenceEffectHost {}
+  expect(()=>admitUnattended({store,effectHost:new Sub(store)})).toThrow(capability('effect-host-unfenced'))
+  const certified=await certifyEffectHost(performs,store)
+  expect(()=>admitUnattended({store,effectHost:{effectFencing:'enforced',dispatch:certified.dispatch}})).toThrow(capability('effect-host-unfenced'))
  })
 })

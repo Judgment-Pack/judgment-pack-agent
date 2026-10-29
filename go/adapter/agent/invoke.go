@@ -790,8 +790,8 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 		r.held.Unlock()
 		return textResult(turn.ProposalReceived, false), false, nil
 	}
-	if !runcontext.ReadingTool(host) {
-		// A side effect: the checkpoint is acknowledged before it, or it is not made and the run
+	if !runcontext.DurableReadingTool(host) {
+		// A side effect (by its effect, not its answer's framing; #253): the checkpoint is acknowledged before it, or it is not made and the run
 		// ends with the storage failure.
 		if err := r.save(ctx); err != nil {
 			if !failure.IsCancelled(err) {

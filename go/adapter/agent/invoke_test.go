@@ -226,3 +226,29 @@ func TestPlanDriftStopsProviderInvocation(t *testing.T) {
 		t.Fatalf("approvals %d paused %v callback %v effects %d", approvals, paused, afterPause, effects.Load())
 	}
 }
+
+// #253 (N2): a source act is a side effect by its effect class, whatever the framing of its answer: the
+// run's checkpoint is acknowledged before the act runs, as for any other effect.
+func TestASourceActIsSavedBeforeItRuns(t *testing.T) {
+	var saves, before, atExecute atomic.Int32
+	note := runcontext.HostTool{Name: "write_note", Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, EffectClass: "act", Approval: "required", Source: writeNoteSource(),
+		Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Description: "Writes a note.", InputSchema: json.RawMessage(`{"type":"object"}`),
+		Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+			atExecute.Store(saves.Load())
+			return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("written")}, nil), nil
+		}}
+	run, _ := oneTool(t, note, func(ctx context.Context, request adapter.AgentRequest, callbacks adapter.AgentCallbacks) error {
+		before.Store(saves.Load())
+		if _, err := callbacks.Tool(ctx, adapter.AgentToolCall{ID: "c1", Name: aliasOf(request, "notes__write_note"), Arguments: json.RawMessage(`{}`)}); err != nil {
+			return err
+		}
+		return callbacks.Event(ctx, adapter.AgentEvent{Type: "message", ID: "m", Text: "Done.", Phase: "final"})
+	})
+	run.Context.Checkpoint = func(context.Context, contract.Checkpoint) error { saves.Add(1); return nil }
+	if err := agent.New().Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	if atExecute.Load() <= before.Load() {
+		t.Fatalf("the act ran before its checkpoint was acknowledged: %d saves before the call, %d when it ran", before.Load(), atExecute.Load())
+	}
+}

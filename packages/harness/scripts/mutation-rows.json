@@ -8030,14 +8030,14 @@
 {
   "name": "lease fence L17 unattended admission trusts a host's declaration",
   "file": "storage/lease.ts",
-  "find": "||!provenHost(input.effectHost))throw",
+  "find": "||provenAuthority(input.effectHost)!==(input.store as object))throw",
   "replace": ")throw",
   "tests": [
     "storage/lease.test.ts"
   ],
   "status": "caught",
   "origin": "agent#223",
-  "note": "The review's finding 3: a host that declares enforced and performs without checking is admitted. Caught at lease.test.ts > the kits refuse what does not enforce the fence (every non-enforcing host, and the uncertified wrapper). Go twin (by hand, dropping provenHost from AdmitUnattended): caught at TestLeaseKitsRefuseWhatDoesNotEnforceTheFence."
+  "note": "The review's finding 3: a host that declares enforced and performs without checking is admitted. Caught at lease.test.ts > the kits refuse what does not enforce the fence (every non-enforcing host, and the uncertified wrapper). Go twin (by hand, dropping provenHost from AdmitUnattended): caught at TestLeaseKitsRefuseWhatDoesNotEnforceTheFence. Needle re-anchored for #253: the evidence check is now provenAuthority against the run's store."
 },
 {
   "name": "lease fence L18 an impossible expiry throws an untyped error",
@@ -8050,6 +8050,114 @@
   "status": "caught",
   "origin": "agent#223",
   "note": "The review's finding 5: month 13 or second 60 throws RangeError instead of LeaseRefused invalid. Caught at lease.test.ts > both readers accept every lease… (the impossible-expiry vectors). No Go twin: Go's reader refuses them by parsing."
+},
+{
+  "name": "lease batch B1 the kit does not test expiry on the fenced history commit",
+  "file": "storage/conformance.ts",
+  "find": "  await refusesLease(`lease.history.expired.${when}`,()=>historyCommit(`lease-a-late-history-${when}`,current.revision,a),'expired')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R1. A store whose commitHistoryFenced checks owner, epoch and release but not expiry passes the kit. Caught at lease.test.ts > the lease conformance fails a store whose commitHistoryFenced skips the expiry check. Go twin (by hand, dropping the lease.history.expired check of CheckRunStoreLeaseConformance): caught at TestLeaseKitsTestExpiryOnEveryFencedCommitPath."
+},
+{
+  "name": "lease batch B2 the kit does not test expiry on the fenced snapshot commit",
+  "file": "storage/conformance.ts",
+  "find": "  await refusesLease(`lease.snapshot.expired.${when}`,()=>snapshot(a),'expired')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R1. Caught at lease.test.ts > the lease conformance fails a store whose commitContextSnapshotFenced skips the expiry check. Go twin (by hand, dropping the lease.snapshot.expired check): caught at TestLeaseKitsTestExpiryOnEveryFencedCommitPath."
+},
+{
+  "name": "lease batch B3 the host kit never makes the authority fail",
+  "file": "storage/lease.ts",
+  "find": "  await refuses('host.authority-unavailable',effectAdmission(a,op('op-0')),'any')\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(a). A host that performs while its authority errors would be certified. Caught at lease.test.ts > a host that performs while the authority is unavailable fails the kit and certification. Go twin (by hand, dropping the host.authority-unavailable check of exerciseEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-unavailable."
+},
+{
+  "name": "lease batch B4 certification checks one product and admits another",
+  "file": "storage/lease.ts",
+  "find": "await exerciseEffectHost(host,kit)\n if(host.dispatch!==dispatch",
+  "replace": "await effectHostConformance(create)\n if(host.dispatch!==dispatch",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(b). Caught at lease.test.ts > the factory is called once: the instance the kit exercised is the one admitted. Go twin (by hand, CertifyEffectHost running the kit on a second product of the factory): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/factory-called-once."
+},
+{
+  "name": "lease batch B5 admission does not see a dispatch swapped after certification",
+  "file": "storage/lease.ts",
+  "find": "return record&&record.host.dispatch===record.dispatch&&record.host.effectFencing==='enforced'?record.authority:undefined",
+  "replace": "return record?record.authority:undefined",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(c), TypeScript only (a Go method cannot be replaced). Caught at lease.test.ts > a dispatch swapped after certification is refused."
+},
+{
+  "name": "lease batch B6 the certified wrapper calls a swapped dispatch",
+  "file": "storage/lease.ts",
+  "find": "  if(host.dispatch!==dispatch)return Promise.reject(new LeaseCapabilityRefused('effect-host-unfenced'))\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(c), TypeScript only. Caught at lease.test.ts > a dispatch swapped after certification is refused (the wrapper's dispatch must refuse, performing nothing)."
+},
+{
+  "name": "lease batch B7 the reference host's dispatch is not sealed",
+  "file": "storage/lease.ts",
+  "find": "  Object.defineProperty(this,'dispatch',{value:ReferenceEffectHost.prototype.dispatch,writable:false,configurable:false,enumerable:false})\n",
+  "replace": "",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(c), TypeScript only. Caught at lease.test.ts > a dispatch swapped after certification is refused (the reference host's dispatch can be reassigned)."
+},
+{
+  "name": "lease batch B8 admission does not tie the host's authority to the run's store",
+  "file": "storage/lease.ts",
+  "find": "provenAuthority(input.effectHost)!==(input.store as object))throw",
+  "replace": "provenAuthority(input.effectHost)===undefined)throw",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2(e). A reference host over a no-op authority or another store, or a host certified over another store, would be admitted. Caught at lease.test.ts > a host over a no-op or another store's authority is refused. Go twin (by hand, provenAuthority(host) == nil in place of sameAuthority in AdmitUnattended): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-is-the-store and TestLeaseUnattendedAdmissionRefusesByName."
+},
+{
+  "name": "lease batch B9 a subclass of the reference host carries its evidence",
+  "file": "storage/lease.ts",
+  "find": "if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)references.set(this,authority)",
+  "replace": "references.set(this,authority)",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#253 R2. Caught at lease.test.ts > … evidence does not pass to another instance or a subclass. Go twin (by hand, accepting any type that embeds *ReferenceEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-is-the-store."
 }
  ]
 }

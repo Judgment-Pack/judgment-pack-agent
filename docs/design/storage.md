@@ -340,13 +340,21 @@ replays it; its own host reconciles it. Fencing is not an exactly-once claim acr
 systems.
 
 **Certifying an effect host.** `effectHostConformance(authority => host)` (Go
-`CheckEffectHostConformance`) hands the factory a lease authority the kit controls and requires the
-host to admit a current fence once and to refuse, without performing, an identity it admitted
-before (also under a takeover's fence), another owner, a stale or forged epoch, a fence for another
-run than the operation's, a key that is not its operation's, an expired lease and a released one.
-`certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) runs it and returns the host built
-over the real authority. Unattended admission accepts only that host or the package's
-`ReferenceEffectHost`: a declared `effectFencing: 'enforced'` is not evidence.
+`CheckEffectHostConformance`) hands the factory a lease authority the kit controls. The host must
+refuse, without performing, while that authority is unavailable (unavailable ownership evidence
+closes dispatch); admit a current fence once; and refuse, without performing, an identity it
+admitted before (also under a takeover's fence), another owner, a stale or forged epoch, a fence
+for another run than the operation's, a key that is not its operation's, an expired lease and a
+released one. `certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) calls the factory
+once, over an authority that answers from the kit until the checks pass and from `authority` for
+good after, and admits that exact instance: TypeScript returns a frozen wrapper that refuses once the
+instance's `dispatch` is not the one the kit checked; Go returns a `*CertifiedEffectHost` whose
+identity, not its value, is the evidence. A `ReferenceEffectHost` is evidence when the package made
+it (its `dispatch` is sealed on the instance; a subclass or a type embedding it is not). Unattended
+admission accepts only these, and only when the authority they enforce against is the run's own
+store: a host over a no-op authority, over another store, or certified over another store is
+refused. A declared `effectFencing: 'enforced'` is never evidence. Nothing keeps an admitted host
+alive: there is no registry of hosts.
 
 **Truthful kinds and unattended admission.** `leaseLifetime` is `durable` only when rows survive
 the store's process. `MemoryRunStore` and `MemoryChatStore` implement the transitions within their
@@ -364,5 +372,6 @@ renewal from the store clock, equal-time expiry, no revival, a strictly greater 
 and after release, and atomic competing acquisitions. Every port the writer and the effect host
 rely on (`checkFence`, `renewLease`, `releaseLease`, `commitFenced` and, with history,
 `commitHistoryFenced` and `commitContextSnapshotFenced`) must refuse a stale epoch (including the
-same owner's earlier epoch), another owner, a released lease and a mismatched resource. It certifies the port; the store's
+same owner's earlier epoch), another owner, a released lease and a mismatched resource; the history
+ports also refuse an expired fence, at equal time and after. It certifies the port; the store's
 durability across its own restarts and backups is the host's to prove.
