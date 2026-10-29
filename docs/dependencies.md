@@ -195,7 +195,7 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 | node_modules/@esbuild/win32-ia32 | 0.28.2 | development, optional | transitive | {"cpu":["ia32"],"os":["win32"]} | MIT | unknown: versioned package metadata does not declare publishing owner | unknown: versioned package.json unavailable |
 | node_modules/@esbuild/win32-x64 | 0.28.2 | development, optional | transitive | {"cpu":["x64"],"os":["win32"]} | MIT | unknown: versioned package metadata does not declare publishing owner | unknown: versioned package.json unavailable |
 | node_modules/@exodus/bytes | 1.15.1 | development | transitive | {"peerDependencies":{"@noble/hashes":"^1.8.0 &#124;&#124; ^2.0.0"},"peerDependenciesMeta":{"@noble/hashes":{"optional":true}}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/ExodusOSS/bytes.git |
-| node_modules/@hono/node-server | 2.1.1 | runtime graph | transitive | {"peerDependencies":{"hono":"^4"}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/node-server.git |
+| node_modules/@hono/node-server | 2.1.5 | runtime graph | transitive | {"peerDependencies":{"hono":"^4 &#124;&#124; ^5.0.0-0"}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/node-server.git |
 | node_modules/@jridgewell/resolve-uri | 3.1.2 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | https://github.com/jridgewell/resolve-uri |
 | node_modules/@jridgewell/sourcemap-codec | 1.6.0 | development | devDependencies | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/jridgewell/sourcemaps.git |
 | node_modules/@jridgewell/trace-mapping | 0.3.31 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/jridgewell/sourcemaps.git |
@@ -450,8 +450,8 @@ Metadata records bind exact module/version/sum or npm location/version/integrity
 
 - `go/go.mod`: `a5e7847150e3d021ba92d575887e3fac069ca012d940bb0a207ddfb8241dff99`
 - `go/go.sum`: `90154d6afad1d1c9111dfc54d4ce606142976ef83bb43d3866e587777a2c902d`
-- `package-lock.json`: `c4440cf4db5fdcc86b2a803449954dcbd940629ed262193cfbb9f713ea44d944`
+- `package-lock.json`: `745aa703a1ee8a9dd8467145efadc1a43018054c8fba5bc35a25c479cf1eb6af`
 - `scripts/dependencies-config.json`: `02fbaac28ac926d8abe15484f60c9f8c2833a188bf8c375d149568dddcb56a9b`
-- `scripts/dependencies-metadata.json`: `3ea9e16a6740ebaf6b7c30233ff659835f845249e33530f25606afd7f2331fb7`
+- `scripts/dependencies-metadata.json`: `0eaf54e569147df4c2a7fc2939133c14eae8015f15531e4c035075ff3d756bf1`
 
 Selected third-party modules: 77. npm installation entries: 296.
