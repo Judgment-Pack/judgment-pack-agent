@@ -9,8 +9,11 @@ ADR-0027 amendment of 2026-10-29 (#241), `rehearse`: a non-binding dry evaluatio
 the host declares (a saved graph or pack identity), whose result carries no authority and whose
 execution writes no audit, resource or run state. A rehearse tool declares
 `{operation:'check',effect:'read'|'pure',checkKind:'rehearse'}`; read-external, act or any other
-operation is refused. Its description begins "Rehearsal, non-binding", or host admission refuses
-it. The executor resolves and re-checks the declared artifact, always passes the Runtime's
+operation is refused. Host admission (`declareSources`/`DeclareSources`) refuses it unless its own
+description begins with the words "Rehearsal, non-binding", followed by the end, a space, tab or
+line break, or one of `.,;:!?)`. Every TypeScript engine start runs that admission; the Go
+gate's `Open`, `SetOffer` and `EnrollContext` and eino's `Observe` do not re-check it, so hand
+them admitted declarations only. The executor resolves and re-checks the declared artifact, always passes the Runtime's
 rehearsal flag and requires the rehearsal marker on the answer; the package cannot see those steps,
 and the label grants no evaluation authority. It derives readOnly and idempotent hints and approval
 none like any read check. The Desk's `graph_rehearse` is the first declarer.

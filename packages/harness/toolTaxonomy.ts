@@ -11,8 +11,18 @@ export interface TaxonomyLimit { operations?: readonly OperationFamily[]; effect
 export type PermissionPreset = 'review' | 'work'
 /** ADR-0027 amendment (#241): a rehearsal reads declared local state at most; never read-external or act. */
 export const REHEARSE_EFFECTS: readonly TaxonomyEffect[] = ['pure', 'read']
-/** A host's rehearse declaration opens its offered description with these words, so the model reads the result as non-binding. */
+/** Host admission requires a rehearse declaration's own description to begin with these words. */
 export const REHEARSAL_DESCRIPTION = 'Rehearsal, non-binding'
+/** What may follow the words: the end, whitespace or this punctuation (ASCII, so both languages agree). */
+const REHEARSAL_BOUNDARY = ' \t\n\r.,;:!?)'
+/** Whether a declared description begins with the words as words of their own. */
+export function rehearsalDescribed(description: unknown): boolean {
+  if (typeof description !== 'string') return false
+  const at = description.indexOf(REHEARSAL_DESCRIPTION)
+  if (at !== 0) return false
+  const next = description.charAt(at + REHEARSAL_DESCRIPTION.length)
+  return next === '' || REHEARSAL_BOUNDARY.includes(next)
+}
 const compatible: Record<OperationFamily, readonly TaxonomyEffect[]> = {
   discover: ['pure','read','read-external'], read: ['read','read-external'], answer: ['pure','read','read-external'],
   check: ['pure','read','read-external'], transform: ['pure'], evaluate: ['pure','read','act'], propose: ['propose'], act: ['act'],

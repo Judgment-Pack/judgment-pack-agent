@@ -12,7 +12,9 @@ import {readRunEvent} from './recordReader'
 import type {EngineSession} from './engine'
 import {GateViolation} from './toolGate'
 import type {SourceFigures} from './execution/state'
-import type {HostTool} from './engine'
+import type {HostTool,AssistantEvent,AssistantSession} from './engine'
+import {vercel} from './engines/vercel'
+import {normalize} from './thinking'
 
 const taxonomyMap=new Map(Object.entries(profiles.tools) as [string,ToolTaxonomy][])
 const skill=(tools:string[]=[],kind?:SkillDeclaration['kind']):SkillDeclaration=>({id:'notes',name:'notes',description:'Review notes',instructions:'Read carefully.',source:{kind:'custom',id:'library',trust:'person',version:'1'},tools,kind,pinnedDigest:'sha256:'+'0'.repeat(64)})
@@ -115,7 +117,27 @@ describe('ADR0027 taxonomy foundation',()=>{
    expect(taxonomyFits(admitted.taxonomy!,presetLimit('review'))).toBe(row.review)
    expect(taxonomyFits(admitted.taxonomy!,presetLimit('work'))).toBe(row.work)
   }
-  expect(vectors.rehearsal.refused).toHaveLength(4)
+  expect(vectors.rehearsal.admitted).toHaveLength(2)
+  expect(vectors.rehearsal.refused).toHaveLength(5)
   for(const row of vectors.rehearsal.refused)await refusal({...row.declaration,execute:async()=>({content:[]})} as HostTool,row.problem)
+ })
+ it('holds the description rule at host admission only, which every engine start runs (#241)',async()=>{
+  // ADR-0027 amendment: the package refuses a rehearse declaration at host admission unless its
+  // description begins with the words; past admission nothing re-reads the description.
+  const row=vectors.rehearsal.refused[0]!
+  const tool={...row.declaration,execute:async()=>({content:[]})} as HostTool
+  await expect(declareSources([tool],[])).rejects.toMatchObject({failure:{code:'configuration'}})
+  const calls:string[]=[]
+  const session:AssistantSession={prompt:'p',testPrompt:'t',tools:[],callTool:async()=>({content:[]}),hostTools:[tool],
+   model:{family:'openai-compatible',model:'a-model',call:async suffix=>{calls.push(suffix);throw Error('no provider work expected')}},
+   thinking:normalize('off','openai-compatible'),signal:new AbortController().signal,policy:{outputGuard:'off'}}
+  const events:AssistantEvent[]=[]
+  for await(const event of vercel.start(session))events.push(event)
+  const error=events.find(event=>event.type==='error')
+  expect(error).toMatchObject({failure:{code:'configuration',detail:`Tool taxonomy refused: ${row.problem}. Nothing was sent.`}})
+  expect(calls).toEqual([])
+  // The shared validator and the offer filters see taxonomy only, never the description.
+  expect(taxonomyProblem(tool.taxonomy,true)).toBe('')
+  expect(taxonomyFits(tool.taxonomy!,presetLimit('review'))).toBe(true)
  })
 })

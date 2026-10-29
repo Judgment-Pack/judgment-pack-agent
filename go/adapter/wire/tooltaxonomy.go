@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"strings"
 )
 
 // ToolTaxonomy is owner-declared; legacy HostTool.Effect remains execution bookkeeping.
@@ -22,9 +23,23 @@ var CheckKinds = []string{"validate", "check", "verify", "test", "analyze", "adv
 // local state at most; never read-external or act.
 var RehearseEffects = []string{"pure", "read"}
 
-// RehearsalDescription opens a host's rehearse declaration's offered description, so the model
-// reads the result as non-binding.
+// RehearsalDescription begins a rehearse declaration's own description; host admission requires it.
 const RehearsalDescription = "Rehearsal, non-binding"
+
+// rehearsalBoundary is what may follow the words: the end, whitespace or this punctuation (ASCII,
+// so both languages agree byte for byte).
+const rehearsalBoundary = " \t\n\r.,;:!?)"
+
+// RehearsalDescribed is rehearsalDescribed: whether a declared description begins with the words
+// as words of their own.
+func RehearsalDescribed(description string) bool {
+	at := strings.Index(description, RehearsalDescription)
+	if at != 0 {
+		return false
+	}
+	rest := description[at+len(RehearsalDescription):]
+	return rest == "" || strings.IndexByte(rehearsalBoundary, rest[0]) >= 0
+}
 
 var taxonomyCompatibility = map[string][]string{
 	"discover": {"pure", "read", "read-external"}, "read": {"read", "read-external"}, "answer": {"pure", "read", "read-external"},

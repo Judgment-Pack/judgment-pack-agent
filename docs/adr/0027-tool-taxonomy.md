@@ -69,17 +69,22 @@ which evaluates every node, marks the result as a rehearsal and writes no audit 
 record.
 
 The restriction: the artifact is declared by the host (a saved graph or pack identity), never
-chosen from the model's text; the rehearsal flag is mandatory; the offer's description says
-"Rehearsal, non-binding"; inputs and output are bounded by the budget table as any check's
-are; and nothing about the label, the tool name, a trust label or the model's text grants
-evaluation authority. The package enforces what a declaration shows. Both validators
+chosen from the model's text; the rehearsal flag is mandatory; the host's declared
+description begins with the words "Rehearsal, non-binding"; inputs and output are bounded by the
+budget table as any check's are; and nothing about the label, the tool name, a trust label or
+the model's text grants evaluation authority. The package enforces what a declaration shows. Both validators
 (`toolTaxonomy.ts`, `go/adapter/wire/tooltaxonomy.go`) refuse `rehearse` under any operation
 other than check (the existing checkKind rule, "tool taxonomy checkKind contradicts its
 operation") and refuse `check/rehearse` with read-external or act ("tool taxonomy rehearse
-admits only a pure or read effect"). Host admission (`hostTaxonomyProblem`,
-`HostTaxonomyProblem`) refuses a rehearse declaration whose description does not begin
-"Rehearsal, non-binding", so the words lead the offered description and any catalogue line. Each
-refusal is the existing configuration failure before provider work. The host owns the rest:
+admits only a pure or read effect"). The package refuses a rehearse declaration at host
+admission (`declareSources`, `DeclareSources`) unless its description begins with the words
+"Rehearsal, non-binding", followed by the end of the description, a space, tab or line
+break, or one of `.,;:!?)`; tools that reach the gate by other entry points carry whatever admission they
+passed. In TypeScript every engine start runs host admission; in Go the gate's `Open`,
+`SetOffer` and `EnrollContext` and eino's `Observe` take host tools directly and check taxonomy
+only. The words lead the host's declared description, not necessarily the offer: a tool with a
+source is offered framed, with its retrieved-data line and `runs as:` line first. Each refusal is
+the existing configuration failure before provider work. The host owns the rest:
 resolving and re-checking the declared artifact's identity, path and freshness, passing the
 rehearsal flag, and requiring the Runtime's rehearsal marker on the answer. Runtime rehearsal
 skips reviewed-set consultation, so declaration and freshness custody is proved at the host's
@@ -97,6 +102,7 @@ as any read. This creates no second evaluation route. No checkpoint, event or re
 changes; the tool-taxonomy schema's checkKind enum gains the value and one condition bounding
 its effect. The paired handwritten vectors are `contract/vectors/taxonomy/declarations.json`
 (two rehearse records and four refused declarations with their reasons) and the `rehearsal`
-rows of `contract/testdata/taxonomy/tools.json` (an admitted declaration with its hints and
-approval, and four declarations refused for their description: without the words, with the
-words not first, with the words in lower case, and with no description).
+rows of `contract/testdata/taxonomy/tools.json` (two admitted declarations with their hints and
+approval, and five refused for their description: without the words, with the words not first,
+in lower case, run into another word, and with no description). `TestTaxonomyRehearseAdmissionOnly`
+and the TypeScript engine-start case hold the admission-only statement above.

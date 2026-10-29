@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
-	"strings"
 	"time"
 )
 
@@ -122,7 +121,7 @@ func HostTaxonomyProblem(t HostTool) string {
 	if p := wire.TaxonomyProblem(t.Taxonomy, false); p != "" {
 		return p
 	}
-	if t.Taxonomy.CheckKind == "rehearse" && !strings.HasPrefix(t.Description, wire.RehearsalDescription) {
+	if t.Taxonomy.CheckKind == "rehearse" && !wire.RehearsalDescribed(t.Description) {
 		return "a rehearse check's description must begin \"" + wire.RehearsalDescription + "\""
 	}
 	if t.EffectClass != "" && t.EffectClass != LegacyClass(t.Taxonomy) {

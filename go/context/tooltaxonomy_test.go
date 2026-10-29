@@ -7,6 +7,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"os"
 	"reflect"
 	"strings"
@@ -421,12 +422,45 @@ func TestTaxonomyRehearse(t *testing.T) {
 			t.Fatal("rehearse preset family")
 		}
 	}
-	if len(v.Rehearsal.Refused) != 4 {
-		t.Fatalf("rehearsal refusals %d", len(v.Rehearsal.Refused))
+	if len(v.Rehearsal.Admitted) != 2 || len(v.Rehearsal.Refused) != 5 {
+		t.Fatalf("rehearsal admissions %d, refusals %d", len(v.Rehearsal.Admitted), len(v.Rehearsal.Refused))
 	}
 	for _, row := range v.Rehearsal.Refused {
 		tool := row.Declaration
 		tool.Execute = execute
 		refusal(tool, row.Problem)
+	}
+}
+
+// TestTaxonomyRehearseAdmissionOnly holds the ADR-0027 amendment's statement of where the
+// description rule lives: the package refuses a rehearse declaration at host admission
+// (DeclareSources) unless its description begins with the words; tools that reach the gate by
+// other entry points (here SetOffer and EnrollContext) carry whatever admission they passed.
+func TestTaxonomyRehearseAdmissionOnly(t *testing.T) {
+	var v struct {
+		Rehearsal struct {
+			Refused []struct {
+				Declaration HostTool
+				Problem     string
+			}
+		}
+	}
+	taxonomyVector(t, "tools", &v)
+	tool := v.Rehearsal.Refused[0].Declaration
+	tool.Execute = func(context.Context, json.RawMessage) (ToolResult, error) { return ResultOf([]Content{}, nil), nil }
+	if strings.Contains(tool.Description, wire.RehearsalDescription) {
+		t.Fatal("the first refused declaration must lack the words")
+	}
+	if _, err := DeclareSources([]HostTool{tool}, nil); err == nil || !strings.Contains(err.Error(), v.Rehearsal.Refused[0].Problem) {
+		t.Fatalf("host admission must refuse the rehearse declaration: %v", err)
+	}
+	declared := tool.Declaration()
+	g := gate.New(gate.Options{})
+	g.SetOffer(contract.ToolOffer{HostTools: []contract.ToolOfferHostTool{declared}})
+	if offered := g.Offer().HostTools; len(offered) != 1 || offered[0].Description != tool.Description {
+		t.Fatalf("the gate's SetOffer re-checked the description: %+v", offered)
+	}
+	if err := g.EnrollContext("rehearse", []contract.ToolOfferHostTool{declared}); err != nil {
+		t.Fatalf("the gate's EnrollContext re-checked the description: %v", err)
 	}
 }

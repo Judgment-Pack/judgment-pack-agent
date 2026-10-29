@@ -7524,27 +7524,39 @@
 },
 {
   "name": "taxonomy rehearse description words",
-  "file": "toolSources.ts",
-  "find": "!tool.description.startsWith(REHEARSAL_DESCRIPTION)",
-  "replace": "!tool.description.includes(REHEARSAL_DESCRIPTION)",
+  "file": "toolTaxonomy.ts",
+  "find": "if (at !== 0) return false",
+  "replace": "if (at < 0) return false",
   "tests": [
     "toolTaxonomy.test.ts"
   ],
   "status": "caught",
   "origin": "agent#241",
-  "note": "The tools.json rehearsal refused row whose description ends with the words is admitted. Go twin: go/context/tooltaxonomy.go HostTaxonomyProblem; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
+  "note": "The tools.json rehearsal refused row whose description ends with the words is admitted. Go twin: go/adapter/wire/tooltaxonomy.go RehearsalDescribed; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
 },
 {
   "name": "taxonomy rehearse description required",
   "file": "toolSources.ts",
-  "find": "if (t.checkKind === 'rehearse' && (typeof tool.description",
-  "replace": "if (false && t.checkKind === 'rehearse' && (typeof tool.description",
+  "find": "if (t.checkKind === 'rehearse' && !rehearsalDescribed(tool.description))",
+  "replace": "if (false && t.checkKind === 'rehearse' && !rehearsalDescribed(tool.description))",
   "tests": [
     "toolTaxonomy.test.ts"
   ],
   "status": "caught",
   "origin": "agent#241",
   "note": "Every tools.json rehearsal refused row is admitted. Go twin: go/context/tooltaxonomy.go HostTaxonomyProblem; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
+},
+{
+  "name": "taxonomy rehearse description boundary",
+  "file": "toolTaxonomy.ts",
+  "find": "return next === '' || REHEARSAL_BOUNDARY.includes(next)",
+  "replace": "return true",
+  "tests": [
+    "toolTaxonomy.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#241",
+  "note": "The tools.json rehearsal refused row whose words run into another word (non-bindingly) is admitted. Go twin: go/adapter/wire/tooltaxonomy.go RehearsalDescribed; TestTaxonomyRehearse fails at the tools.json rehearsal refused row by hand."
 }
  ]
 }
