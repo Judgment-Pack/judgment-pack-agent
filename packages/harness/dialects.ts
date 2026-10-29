@@ -176,11 +176,13 @@ async function researchIndex(value:unknown):Promise<Indexed[]>{
  return order
 }
 type PageReader=DialectAuthoringPorts['readDeclarations']
+const copyPage=(value:unknown)=>{try{return copy(value)}catch{return fail('a declaration page is malformed.')}}
 /** Read one bounded page from cursor and check every declaration against the index. */
 async function declarationPage(readPage:PageReader,base:Omit<DialectDeclarationPageRequest,'cursor'|'limit'>,order:Indexed[],cursor:number,signal:AbortSignal):Promise<DialectDeclaration[]>{
  if(!readPage)fail('an indexed original inventory requires the paged declaration read port.')
  const request:DialectDeclarationPageRequest={...base,cursor,limit:Math.min(L.pageDeclarations,order.length-cursor)}
- const page:unknown=await bounded(signal,s=>readPage(copy(request),s))
+ // Copy first, then check and use only the copy: a host accessor cannot change bytes after the checks.
+ const page:unknown=copyPage(await bounded(signal,s=>readPage(copy(request),s)))
  let raw:string
  try{raw=canonicalJSON(page)}catch{return fail('a declaration page is malformed.')}
  if(utf8Bytes(raw)>L.pageBytes)fail('a declaration page exceeds its byte limit.')

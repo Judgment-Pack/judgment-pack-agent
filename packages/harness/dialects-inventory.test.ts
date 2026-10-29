@@ -90,7 +90,7 @@ describe('the paged read tool',()=>{
 })
 
 describe('host refusals',()=>{
- for(const [name,message] of [['missing page port','requires the paged declaration read port'],['index digest differs from its entries','index digest does not match'],['malformed index entry','index is malformed'],['page over its byte bound','page exceeds its byte limit'],['page over its declaration limit','exceeds its declaration bound'],['page from another inventory','another collection revision or inventory'],['page out of index order','broke its order'],['malformed declaration on a page','actual original field declaration'],['inline v0.11.0 inventory','inline researchDeclarations']] as const)it(name,async()=>{
+ for(const [name,message] of [['missing page port','requires the paged declaration read port'],['index digest differs from its entries','index digest does not match'],['malformed index entry','index is malformed'],['page over its byte bound','page exceeds its byte limit'],['page over its declaration limit','exceeds its declaration bound'],['page from another inventory','another collection revision or inventory'],['page out of index order','broke its order'],['page echoing another cursor','another collection revision or inventory'],['page echoing another id','another collection revision or inventory'],['page echoing another packKey','another collection revision or inventory'],['malformed declaration on a page','actual original field declaration'],['inline v0.11.0 inventory','inline researchDeclarations']] as const)it(name,async()=>{
   const x=dialectFixture();x.state.declarations=structuredClone(retained.researchDeclarations)
   if(name==='malformed declaration on a page')x.state.declarations=[{revision:'original',fields:[{name:'typed',fieldJson:'{"name":"other","type":"text"}'}]}]
   const read=x.ports.read,pages=x.ports.readDeclarations!
@@ -103,6 +103,9 @@ describe('host refusals',()=>{
    if(name==='page over its byte bound')p.declarations[0]!.fieldJson+=' '.repeat(L.pageBytes)
    if(name==='page over its declaration limit')p.declarations.push(p.declarations[0]!)
    if(name==='page from another inventory')p.inventoryDigest='sha256:'+await contextDigest('another inventory')
+   if(name==='page echoing another cursor')p.cursor+=1
+   if(name==='page echoing another id')p.id='collection:opaque/other'
+   if(name==='page echoing another packKey')p.packKey='declared:other'
    if(name==='page out of index order')[p.declarations[0],p.declarations[1]]=[p.declarations[1]!,p.declarations[0]!]
    return p}
   if(name==='missing page port')delete x.ports.readDeclarations
@@ -119,4 +122,17 @@ it('refuses a proposal when the inventory changed since its read',async()=>{
  const read=await x.read();x.state.declarations=x.state.declarations!.slice(0,1)
  await expect(x.propose(read)).rejects.toThrow('original declaration inventory changed; read it again before proposing')
  expect(x.state.drafts).toHaveLength(0);expect(x.state.retained).toHaveLength(0)
+})
+it('answers only the checked bytes when a host accessor changes a declaration after its first reads',async()=>{
+ const x=dialectFixture();x.state.declarations=structuredClone(retained.researchDeclarations)
+ const pages=x.ports.readDeclarations!
+ x.ports.readDeclarations=async(r,s)=>{const p=await pages(r,s),real=p.declarations[0]!.fieldJson;let reads=0
+  Object.defineProperty(p.declarations[0]!,'fieldJson',{enumerable:true,get:()=>++reads>4?'{"name":"UNCHECKED","type":"text"}':real})
+  return p}
+ const tools=dialectTools(x.ports)
+ await tools[0]!.execute(fixture.request,signal())
+ const out=body(await tools[0]!.execute({...fixture.request,cursor:0},signal()))
+ const first=(out.declarations as {fieldJson:string}[])[0]!
+ expect(first.fieldJson).toBe(retained.researchDeclarations.flatMap(r=>r.fields??[])[0]!.fieldJson)
+ expect(JSON.stringify(out)).not.toContain('UNCHECKED')
 })

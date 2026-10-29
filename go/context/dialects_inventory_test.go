@@ -291,6 +291,9 @@ func TestDialectInventoryHostRefusals(t *testing.T) {
 		{"page over its declaration limit", "exceeds its declaration bound"},
 		{"page from another inventory", "another collection revision or inventory"},
 		{"page out of index order", "broke its order"},
+		{"page echoing another cursor", "another collection revision or inventory"},
+		{"page echoing another id", "another collection revision or inventory"},
+		{"page echoing another packKey", "another collection revision or inventory"},
 		{"malformed declaration on a page", "actual original field declaration"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -316,6 +319,12 @@ func TestDialectInventoryHostRefusals(t *testing.T) {
 					p.Declarations = append(p.Declarations, p.Declarations[0])
 				case "page from another inventory":
 					p.InventoryDigest = dialectHash("another inventory")
+				case "page echoing another cursor":
+					p.Cursor++
+				case "page echoing another id":
+					p.ID = "collection:opaque/other"
+				case "page echoing another packKey":
+					p.PackKey = "declared:other"
 				case "page out of index order":
 					p.Declarations[0], p.Declarations[1] = p.Declarations[1], p.Declarations[0]
 				case "malformed declaration on a page":

@@ -7686,6 +7686,70 @@
   "status": "caught",
   "origin": "agent#243",
   "note": "Go twin: replace the dialectSameInventory check on s and seen.inventory with false in proposeTool; ^TestDialectInventoryChangedBeforePropose$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory page echoes its cursor",
+  "file": "dialects.ts",
+  "find": "page.cursor!==cursor",
+  "replace": "false",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove || page.Cursor != cursor in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_cursor$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory page echoes its id",
+  "file": "dialects.ts",
+  "find": "page.id!==request.id||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove page.ID != request.ID || in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_id$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory page echoes its packKey",
+  "file": "dialects.ts",
+  "find": "page.packKey!==request.packKey||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "Go twin: remove page.PackKey != request.PackKey || in dialectPage; ^TestDialectInventoryHostRefusals/page_echoing_another_packKey$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory checks a copy of the page, not the host object",
+  "file": "dialects.ts",
+  "find": "copyPage(await bounded(signal,s=>readPage(copy(request),s)))",
+  "replace": "await bounded(signal,s=>readPage(copy(request),s))",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#243",
+  "note": "TypeScript only (Go pages are values with immutable strings): restoring check-then-copy lets a host accessor change fieldJson after the checks; the accessor test fails at its checked-bytes assertion. Review of record F4."
 }
  ]
 }
