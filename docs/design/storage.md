@@ -86,8 +86,11 @@ context ends. The serialized record inventory is unchanged, including historical
 The coordinator takes root snapshot ownership after the parent invocation has returned and its
 active root is acknowledged. Child transactions retain that latest acknowledged root, rather
 than asking the finished parent controller for its stale lifecycle. The next admitted root
-continuation binds its own live snapshot again. Child checkpoints, scoped claims, observations,
-provider release proof and continuation bytes continue through the same root revision owner.
+continuation binds its own live snapshot again. The transfer follows every returned invocation,
+on the model capability as on the agent capability, so the coordinator's final `end` records the
+retained chat's scope rather than the released session's (agent#248). Child checkpoints, scoped
+claims, observations, provider release proof and continuation bytes continue through the same
+root revision owner.
 
 Non-read calls reuse only a recorded result in that same trusted scope and admitted
 source/tool/argument fingerprint. An unresolved claim refuses as `HostOutcomeUnknown` even
