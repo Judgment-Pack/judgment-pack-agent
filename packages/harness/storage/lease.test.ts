@@ -407,3 +407,48 @@ describe('certification is bound to the instance it checked (#253 R2)',()=>{
   expect(()=>admitUnattended({store,effectHost:{effectFencing:'enforced',dispatch:certified.dispatch}})).toThrow(capability('effect-host-unfenced'))
  })
 })
+
+describe('certification admits exactly the function it ran, and the reference host keeps its own state (#253 re-check)',()=>{
+ const stale=effectAdmission({version:1,resource:'r',owner:'o',epoch:'1'},{run:'r',operation:'op',source:'host',tool:'t',requestDigest:'sha256:'+'e'.repeat(64)})
+ const performsAll:EffectHost['dispatch']=(_admission,perform)=>perform()
+ // The first read of dispatch sees a host that performs anything; the next reads (the kit's, if it reads afresh) see an
+ // enforcing one, until the kit's last admission; every later read sees the first again.
+ const shifting=(enforcing:EffectHost)=>{
+  let reads=0,after=false
+  const good:EffectHost['dispatch']=(admission,perform,signal)=>{if(admission.operation.operation==='op-9')after=true;return enforcing.dispatch(admission,perform,signal)}
+  return ()=>{reads++;return reads===1||after?performsAll:good}
+ }
+ async function outcome(create:(authority:import('./lease').LeaseAuthority)=>EffectHost,store:DurableLeaseStoreFixture){
+  const perform=vi.fn(async()=>'performed')
+  let certified:EffectHost
+  try{certified=await certifyEffectHost(create,store)}catch{return {certified:false,performed:false}}
+  let admitted=true;try{admitUnattended({store,effectHost:certified})}catch{admitted=false}
+  await certified.dispatch(stale,perform).catch(()=>undefined)
+  return {certified:true,admitted,performed:perform.mock.calls.length>0}
+ }
+ it('a dispatch getter that changes between the kit and admission never performs a fence the store did not issue',async()=>{
+  const store=new DurableLeaseStoreFixture()
+  const result=await outcome(authority=>{const read=shifting(new ReferenceEffectHost(authority));return Object.defineProperty({effectFencing:'enforced'},'dispatch',{get:read}) as EffectHost},store)
+  expect(result.performed).toBe(false)
+  expect(result.certified&&result.admitted).toBe(false)
+ })
+ it('a Proxy whose get trap changes dispatch never performs a fence the store did not issue',async()=>{
+  const store=new DurableLeaseStoreFixture()
+  const result=await outcome(authority=>{const inner=new ReferenceEffectHost(authority),read=shifting(inner);return new Proxy({effectFencing:'enforced' as const,dispatch:performsAll},{get:(target,key)=>key==='dispatch'?read():Reflect.get(target,key)})},store)
+  expect(result.performed).toBe(false)
+  expect(result.certified&&result.admitted).toBe(false)
+ })
+ it('replacing the reference host\'s authority or admitted set after admission changes nothing it enforces',async()=>{
+  const store=new DurableLeaseStoreFixture(),host=new ReferenceEffectHost(store)
+  expect(()=>admitUnattended({store,effectHost:host})).not.toThrow()
+  const a=await store.acquireLease({resource:'kept',owner:'worker-a',expectedRevision:null,durationMs:MINUTE}),perform=vi.fn(async()=>'performed')
+  const once=effectAdmission(fenceOf(a),{run:'kept',operation:'op-1',source:'host',tool:'t',requestDigest:'sha256:'+'f'.repeat(64)})
+  await host.dispatch(once,perform);expect(perform).toHaveBeenCalledOnce()
+  const fields=host as unknown as Record<string,unknown>
+  fields.authority={checkFence:async()=>{}};fields.admitted=new Set<string>()
+  expect(()=>admitUnattended({store,effectHost:host})).not.toThrow()
+  await expect(host.dispatch(once,perform)).rejects.toEqual(refusal('already-admitted'))
+  await expect(host.dispatch(stale,perform)).rejects.toEqual(refusal('no-lease'))
+  expect(perform).toHaveBeenCalledOnce()
+ })
+})

@@ -3,6 +3,7 @@ package runcontext
 import (
 	"context"
 	"errors"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -188,5 +189,41 @@ func TestLeaseAdmittedHostsAreCollectable(t *testing.T) {
 	}
 	if collected.Load() != 100 {
 		t.Fatalf("admitted hosts were kept alive: %d of 100 collected", collected.Load())
+	}
+}
+
+// #257 re-check: only the pointer NewReferenceEffectHost made is evidence. A shallow copy shares the
+// original's admitted-key map without its lock; it is refused before any dispatch could race.
+func TestLeaseACopiedReferenceHostIsNotEvidence(t *testing.T) {
+	ctx := context.Background()
+	durable := durableLeaseFixture{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	original := NewReferenceEffectHost(durable)
+	copied := new(ReferenceEffectHost)
+	reflect.ValueOf(copied).Elem().Set(reflect.ValueOf(original).Elem()) // a shallow copy, as a host could make one
+	if err := AdmitUnattended(durable, copied); leaseReason(err) != "effect-host-unfenced" {
+		t.Fatalf("a copy of the reference host was admitted: %v", err)
+	}
+	if err := AdmitUnattended(durable, original); err != nil {
+		t.Fatal(err)
+	}
+	// The original keeps dispatching alone, concurrently, without a race.
+	lease, err := durable.AcquireLease(ctx, LeaseAcquire{Resource: "copied", Owner: "worker-a", DurationMs: leaseMinute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var performed atomic.Int32
+	done := make(chan struct{})
+	for i := range 4 {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			admission, _ := NewEffectAdmission(FenceOf(lease), EffectOperation{Run: "copied", Operation: "op-" + strings.Repeat("x", i+1), Source: "host", Tool: "t", RequestDigest: "sha256:" + strings.Repeat("a", 64)})
+			_ = original.Dispatch(ctx, admission, func(context.Context) error { performed.Add(1); return nil })
+		}()
+	}
+	for range 4 {
+		<-done
+	}
+	if performed.Load() != 4 {
+		t.Fatalf("performed %d of 4 distinct operations", performed.Load())
 	}
 }

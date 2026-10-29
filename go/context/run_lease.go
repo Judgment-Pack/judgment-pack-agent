@@ -547,6 +547,7 @@ type LeaseAuthority interface {
 // refused as already-admitted whatever the epoch: its outcome is unknown until its own host reconciles
 // it, and a takeover never replays it.
 type ReferenceEffectHost struct {
+	self      *ReferenceEffectHost // identity: a copy shares the key map without the lock, and is not evidence
 	mu        sync.Mutex
 	authority LeaseAuthority
 	admitted  map[string]bool
@@ -554,7 +555,9 @@ type ReferenceEffectHost struct {
 }
 
 func NewReferenceEffectHost(authority LeaseAuthority) *ReferenceEffectHost {
-	return &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+	host := &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+	host.self = host
+	return host
 }
 
 // CheckEffectHostConformance (#223 review, #253) is the effect-host conformance. The kit owns the lease
@@ -755,7 +758,7 @@ func sameAuthority(authority LeaseAuthority, store RunStore) bool {
 func provenAuthority(host EffectHost) LeaseAuthority {
 	switch h := host.(type) {
 	case *ReferenceEffectHost:
-		if h != nil && h.admitted != nil {
+		if h != nil && h.self == h && h.admitted != nil {
 			return h.authority
 		}
 	case *CertifiedEffectHost:

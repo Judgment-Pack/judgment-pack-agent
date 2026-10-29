@@ -7874,7 +7874,7 @@
 {
   "name": "lease fence L4 the effect host admits without checking the fence",
   "file": "storage/lease.ts",
-  "find": "    await this.authority.checkFence(held.fence,signal)\n",
+  "find": "    await this.#authority.checkFence(held.fence,signal)\n",
   "replace": "",
   "tests": [
     "storage/lease.test.ts"
@@ -7934,7 +7934,7 @@
 {
   "name": "lease fence L9 the effect host admits an identity it admitted before",
   "file": "storage/lease.ts",
-  "find": "    if(this.admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')\n",
+  "find": "    if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')\n",
   "replace": "",
   "tests": [
     "storage/lease.test.ts"
@@ -8090,7 +8090,7 @@
 {
   "name": "lease batch B4 certification checks one product and admits another",
   "file": "storage/lease.ts",
-  "find": "await exerciseEffectHost(host,kit)\n if(host.dispatch!==dispatch",
+  "find": "await exerciseEffectHost(captured,kit)\n if(host.dispatch!==dispatch",
   "replace": "await effectHostConformance(create)\n if(host.dispatch!==dispatch",
   "tests": [
     "storage/lease.test.ts"
@@ -8158,6 +8158,42 @@
   "status": "caught",
   "origin": "agent#253",
   "note": "#253 R2. Caught at lease.test.ts > … evidence does not pass to another instance or a subclass. Go twin (by hand, accepting any type that embeds *ReferenceEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-is-the-store."
+},
+{
+  "name": "lease batch C1 certification runs the kit through fresh reads of dispatch",
+  "file": "storage/lease.ts",
+  "find": "await exerciseEffectHost(captured,kit)",
+  "replace": "await exerciseEffectHost(host,kit)",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#257 re-check finding 1(a). A getter or Proxy trap shows the kit an enforcing dispatch and the capture a non-enforcing one, which is then certified, admitted and performs a fence the store never issued. Caught at lease.test.ts > a dispatch getter that changes between the kit and admission…, and a Proxy whose get trap changes dispatch…. TypeScript only."
+},
+{
+  "name": "lease batch C2 the reference host reads a replaceable authority",
+  "file": "storage/lease.ts",
+  "find": "    await this.#authority.checkFence(held.fence,signal)",
+  "replace": "    await ((this as unknown as Record<string,LeaseAuthority|undefined>).authority??this.#authority).checkFence(held.fence,signal)",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#257 re-check finding 1(b). Caught at lease.test.ts > replacing the reference host's authority or admitted set after admission changes nothing it enforces (the no-op authority admits a fence the store never issued). TypeScript only: Go fields are unexported."
+},
+{
+  "name": "lease batch C3 the reference host reads a replaceable admitted set",
+  "file": "storage/lease.ts",
+  "find": "    if(this.#admitted.has(held.idempotencyKey))throw",
+  "replace": "    if(((this as unknown as Record<string,Set<string>|undefined>).admitted??this.#admitted).has(held.idempotencyKey))throw",
+  "tests": [
+    "storage/lease.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#253",
+  "note": "#257 re-check finding 1(b). Caught at lease.test.ts > replacing the reference host's authority or admitted set… (an empty set admits an identity again). TypeScript only."
 }
  ]
 }

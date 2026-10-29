@@ -160,28 +160,31 @@ export interface LeaseAuthority {checkFence(fence:LeaseFence,signal?:AbortSignal
  * whatever the epoch: its outcome is unknown until its own host reconciles it, and a takeover never replays it. */
 export class ReferenceEffectHost implements EffectHost {
  readonly effectFencing='enforced' as const
- private readonly admitted=new Set<string>()
- private tail:Promise<unknown>=Promise.resolve()
+ // #253: true private fields; replacing a same-named property after admission changes nothing the host enforces.
+ readonly #authority:LeaseAuthority
+ readonly #admitted=new Set<string>()
+ #tail:Promise<unknown>=Promise.resolve()
  /** Every refusal this host gave, as its versioned record, in order. */
  readonly refusals:{version:1;reason:LeaseRefusalReason}[]=[]
- constructor(private readonly authority:LeaseAuthority){
+ constructor(authority:LeaseAuthority){
+  this.#authority=authority
   // #253: what admission relies on is sealed on the instance: its dispatch and declaration cannot be swapped afterwards.
   Object.defineProperty(this,'dispatch',{value:ReferenceEffectHost.prototype.dispatch,writable:false,configurable:false,enumerable:false})
   Object.defineProperty(this,'effectFencing',{value:'enforced',writable:false,configurable:false,enumerable:true})
   if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)references.set(this,authority)
  }
  dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
-  const admitted=this.tail.then(async()=>{
+  const admitted=this.#tail.then(async()=>{
    try{
     signal?.throwIfAborted()
     const held=readEffectAdmission(admission)
     if(held.fence.resource!==held.operation.run)throw new LeaseRefused('resource-mismatch')
-    await this.authority.checkFence(held.fence,signal)
-    if(this.admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')
-    this.admitted.add(held.idempotencyKey)
+    await this.#authority.checkFence(held.fence,signal)
+    if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')
+    this.#admitted.add(held.idempotencyKey)
    }catch(error){if(error instanceof LeaseRefused)this.refusals.push(error.record());throw error}
   })
-  this.tail=admitted.catch(()=>undefined)
+  this.#tail=admitted.catch(()=>undefined)
   return admitted.then(()=>perform(signal))
  }
 }
@@ -257,8 +260,11 @@ export async function certifyEffectHost(create:(authority:LeaseAuthority)=>Effec
  const bound:LeaseAuthority={checkFence:(fence,signal)=>live?authority.checkFence(fence,signal):kit.checkFence(fence,signal)}
  let host:EffectHost
  try{host=await create(bound)}catch{throw new StorageConformanceFailure('host.operation')}
+ // #253: the dispatch is read once; the kit runs through exactly that function, and only that function is admitted.
  const dispatch=host.dispatch
- await exerciseEffectHost(host,kit)
+ if(typeof dispatch!=='function')throw new LeaseCapabilityRefused('effect-host-unfenced')
+ const captured:EffectHost={effectFencing:host.effectFencing,dispatch:<T,>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal)=>dispatch.call(host,admission,perform,signal) as Promise<T>}
+ await exerciseEffectHost(captured,kit)
  if(host.dispatch!==dispatch||host.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
  live=true
  const wrapper:EffectHost=Object.freeze({effectFencing:'enforced' as const,dispatch<T>(admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{

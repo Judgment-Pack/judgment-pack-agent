@@ -347,10 +347,13 @@ admitted before (also under a takeover's fence), another owner, a stale or forge
 for another run than the operation's, a key that is not its operation's, an expired lease and a
 released one. `certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) calls the factory
 once, over an authority that answers from the kit until the checks pass and from `authority` for
-good after, and admits that exact instance: TypeScript returns a frozen wrapper that refuses once the
-instance's `dispatch` is not the one the kit checked; Go returns a `*CertifiedEffectHost` whose
+good after, and admits that exact instance. TypeScript reads its `dispatch` once, runs the kit
+through exactly that function and admits only that function, through a frozen wrapper that also
+refuses once the instance's `dispatch` is not it; Go returns a `*CertifiedEffectHost` whose
 identity, not its value, is the evidence. A `ReferenceEffectHost` is evidence when the package made
-it (its `dispatch` is sealed on the instance; a subclass or a type embedding it is not). Unattended
+it: in TypeScript its `dispatch` is sealed on the instance and its authority and admitted
+identities are private fields; in Go only the pointer `NewReferenceEffectHost` returned qualifies,
+not a copy of it. A subclass, or a type embedding it, is not evidence. Unattended
 admission accepts only these, and only when the authority they enforce against is the run's own
 store: a host over a no-op authority, over another store, or certified over another store is
 refused. A declared `effectFencing: 'enforced'` is never evidence. Nothing keeps an admitted host
