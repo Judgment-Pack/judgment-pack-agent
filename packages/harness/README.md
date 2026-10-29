@@ -377,6 +377,17 @@ chat's. Nothing is global: a run reaches only the chat context it was handed, an
 gets a view of its parent's that shows it its references and what it reads itself (see Delegation).
 `wire-contract.md` has the rules; `tool-result.json` the index and the cache key.
 
+An external read's answer (a tool whose taxonomy is `read-external`) is kept only once its receipt
+verifies (ADR-0027's amendment, agent#242). Until then nothing of it is retained in the ledger or
+the read cache, recorded as a durable result or observation, listed or returned by `list_context`,
+`read_context`, `read_window` or `search`, shown in a later run's index, or offered or accepted as
+Plan evidence. A rejected, missing or expired receipt leaves the call inspectable as a failed
+operation, never as data: its `tool_result` refusal (`tool-failed`, outcome `unknown`, not retried),
+its durable row (`unknown`, that failure, no result) and, where the run lists its operations (the API
+engines), its operation record (`<tool> · failed`). A
+checkpoint written while the check runs holds none of the result, and a call checked alongside
+another keeps only its own outcome.
+
 ### Tool sources (ADR-0006)
 
 A tool from a gateway connection, a public MCP server or the person is a host tool whose declaration

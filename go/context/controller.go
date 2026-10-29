@@ -1237,7 +1237,8 @@ type KeptRead struct {
 // the Runtime the host names in Input.Runtime; without that it is cached for the run only, as
 // before. The cache serves only a name the run's session offers (kept.Offered, said false for a
 // name it does not): the call then reaches the offer check and the gate as any other, and no
-// cached entry is added to the run's view.
+// cached entry is added to the run's view. An external read's answer is retained or cached only
+// once its receipt verifies (#242: the source gate's check, carried on ctx).
 func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Context, args json.RawMessage) (ToolResult, error),
 	policy *ToolContextPolicy, readOnly bool, kept *KeptRead) func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
 	// A mistaken hint on a write can never suppress or replay that operation.
@@ -1281,6 +1282,13 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		result, err := execute(ctx, raw)
 		if err != nil {
 			return result, err
+		}
+		// #242: an external read's result is retained only once its receipt verifies; one that does
+		// not is answered as the source gate's refusal and kept nowhere a reader could reach.
+		if held := receiptAdmissionOf(ctx); held != nil {
+			if err := held.admit(result); err != nil {
+				return ToolResult{}, err
+			}
 		}
 		if !result.Err() && chat != nil {
 			if err := chat.Keep(c.ledger, name, args, result, chatKey, hasChatKey); err != nil {

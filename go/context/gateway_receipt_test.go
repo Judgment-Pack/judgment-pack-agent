@@ -180,6 +180,8 @@ func TestGatewayReceiptSharedRefusals(t *testing.T) {
 				envelope["result"] = map[string]any{"n": json.Number("9007199254740992")}
 			case "oversize":
 				limit = 10
+			case "salts":
+				envelope["salts"].(map[string]string)["note"] = "unsigned"
 			}
 			raw := receiptOuter(t, envelope)
 			if row.Change == "twins" {

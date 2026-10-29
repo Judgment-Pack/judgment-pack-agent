@@ -42,7 +42,7 @@ import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type Contex
 import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
-import {declareSources,offerSources,SourceGate,LOAD_TOOL,type Declared} from '../toolSources'
+import {declareSources,offerSources,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
 import {declareSubagents,catalogueSubagents,subagentOffer,subagentRecord,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import {selectAskingWell,requireAskingWell} from '../askingWell'
@@ -992,13 +992,14 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
- const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{
+ // #242: an external read's result is recorded only once its receipt verifies (`admission`, the source gate's check).
+ const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string,admission?:ReceiptAdmission)=>{
   const binding=session.context?.[durableOwner]
   const source=declared.entries.get(tool.name)?.record
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
-  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),readingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal)
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),readingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined)
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})
@@ -1025,7 +1026,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   else{await session.context?.checkpoint?.(state);context.memoryNotice(event)}
  }
  await context.execution.publishPlanDecision()
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined)(given);return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>{const admission=receiptAdmission(bounded);return context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId,admission),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined,admission)(given)};return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  const routePolicy=routingPolicyFromMembers(context.resolvedPolicy)
  if(routePolicy&&!session.childDefinition&&!session.context?.objective)context.turnRoute=new TurnRouteOwner(context,session,routePolicy,hostTools)
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.

@@ -720,7 +720,7 @@ export class RunWriter {
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt,admit?:(value:T)=>Promise<void>):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
@@ -751,6 +751,11 @@ export class RunWriter {
   const nativeWitness=this.budget&&kind==='agent'&&ticket?openNativeWitness(binding,ticket):undefined
   const nativeClaim=kind==='agent'&&this.latest?.turnRoute&&!this.latest.turnRoute.widened?Object.freeze({}):undefined
   if(nativeClaim)this.nativeClaims.set(nativeClaim,{scope:structuredClone(scope),id:claim.id,requestDigest:claim.requestDigest,request,source,tool,route:this.latest!.turnRoute!.bindingDigest,live:true,released:false,consumed:false})
+  // #242: `admit` is the source gate's receipt check. It runs after the execution and before anything of the result is
+  // recorded; a result it refuses is recorded as the call's uncertain outcome with the refusal as its failure, never as a
+  // result. Where the execution ended within its deadline, the check's own time is not the call's: what follows is
+  // decided without the call's signal (`live`).
+  let live=signal
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
    try{value=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
@@ -760,15 +765,16 @@ export class RunWriter {
     this.models.set(value,{binding:{...binding,scope:{...binding.scope}},claim});return value
    }
    finishRecovery()
+   if(admit&&!signal?.aborted){live=undefined;await admit(value)}
   }catch(error){
    if(kind!=='model')finishRecovery()
    const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
-   try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,signal)}else await this.publish(binding,undefined,undefined,undefined,signal)})}catch{throw new StorageOutcomeUnknown()}
+   try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
    if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
    if(kind==='model')this.dispatchClosed=true
    throw error
   }
-  if(signal?.aborted||this.dispatchClosed){this.dispatchClosed=true;if(!this.stopped)claim.state='unknown';throw signal?.reason??new DOMException('The operation was aborted','AbortError')}
+  if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;if(!this.stopped)claim.state='unknown';throw live?.reason??new DOMException('The operation was aborted','AbortError')}
   // Provider responses/transports/private reasoning are not stored. Exact tool results are guarded.
   try{await this.enqueue(async()=>{
    claim.state='result'
@@ -779,7 +785,7 @@ export class RunWriter {
    const current=this.repeatTools?.executions.find(row=>row.execution===binding.scope.execution)
    let repeat:RepeatDetected|undefined
    if(current&&(kind==='host'||kind==='runtime')){const next=observeRepeat(current,claim);this.repeatTools!.executions[this.repeatTools!.executions.indexOf(current)]=next.state;repeat=next.event}
-   await this.publish(binding,undefined,undefined,successful(value)&&['host','runtime'].includes(kind)?{dispatch:claim,artifacts:observed}:undefined,signal,repeat?[writeRunEvent(repeat)]:[])
+   await this.publish(binding,undefined,undefined,successful(value)&&['host','runtime'].includes(kind)?{dispatch:claim,artifacts:observed}:undefined,live,repeat?[writeRunEvent(repeat)]:[])
    if(kind==='agent')this.capture?.acknowledge(claim)
    if(current){const source=this.repeatScopes.get(binding.scope.execution);source?.accept(this.repeatState(binding)!);if(repeat){const output=writeRunEvent(repeat);this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)});source?.event(output)}}
   })}catch{throw new StorageOutcomeUnknown()}
