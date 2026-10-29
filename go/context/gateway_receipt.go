@@ -128,7 +128,9 @@ func VerifyGatewayResult(ctx context.Context, raw ToolResult, trust *GatewayRece
 	receipt, rok := envelope["receipt"].(map[string]any)
 	salts, sok := envelope["salts"].(map[string]any)
 	artifact, aok := envelope["result"].(map[string]any)
-	if !rok || !sok || !aok {
+	// The salts are unsigned: only the two the commitments open are admitted (#242: a verified
+	// envelope is retained whole, so any other member would be unverified bytes kept as context).
+	if !rok || !sok || !aok || !descriptorMembers(salts, nil, []string{"args", "statement"}) {
 		return fail()
 	}
 	if _, present := artifact["receipt"]; present {

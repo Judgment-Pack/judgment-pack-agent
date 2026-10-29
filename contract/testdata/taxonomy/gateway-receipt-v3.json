@@ -24,6 +24,7 @@
     {"name": "action-is-not-acquisition", "change": "action"},
     {"name": "unsafe-integer", "change": "number"},
     {"name": "duplicate-member", "change": "duplicate"},
-    {"name": "oversized-envelope", "change": "oversize"}
+    {"name": "oversized-envelope", "change": "oversize"},
+    {"name": "unsigned-salts-member", "change": "salts"}
   ]
 }

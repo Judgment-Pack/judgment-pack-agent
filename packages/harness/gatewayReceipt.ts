@@ -57,7 +57,8 @@ export async function verifyGatewayResult(raw:McpToolResult,trust:GatewayReceipt
  const envelope=readDescriptorJSON(part.text,true)
  if(!object(envelope)||Object.keys(envelope).some(k=>!['session','result','receipt','salts'].includes(k))||Object.keys(envelope).length!==4||canonical(envelope)!==canonical(twin))throw Error('Gateway envelope representations differ')
  const receipt=envelope.receipt,salts=envelope.salts,artifact=envelope.result
- if(!object(receipt)||!object(salts)||!object(artifact)||Object.hasOwn(artifact,'receipt'))throw Error('missing signed Gateway evidence')
+ // The salts are unsigned: only the two the commitments open are admitted (#242: a verified envelope is retained whole, so any other member would be unverified bytes kept as context).
+ if(!object(receipt)||!object(salts)||!object(artifact)||Object.hasOwn(artifact,'receipt')||Object.keys(salts).some(k=>k!=='args'&&k!=='statement'))throw Error('missing signed Gateway evidence')
  if(envelope.session!==invocation.receiptSession||receipt.sessionId!==invocation.receiptSession||receipt.callIndex!==0||receipt.prevSignature!==null)throw Error('receipt is not this invocation')
  if(receipt.receiptVersion!=='3'||receipt.kind!=='acquisition'||Object.hasOwn(receipt,'action')||receipt.authority!==trust.authority||receipt.source!==approval.platform+'/'+approval.operation)throw Error('wrong Gateway receipt source')
  const key=unhex(trust.publicKey,32),signature=unhex(receipt.signature,64)

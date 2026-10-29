@@ -1,0 +1,294 @@
+{
+  "description": "An external read whose receipt does not verify is withheld, and nothing of its result is kept where a context reader, a later request or a Plan step could reach it (agent#242; the amendment to ADR-0027). Written by hand. Each case makes one call of a custom connected source's read-external tool, records__read_record with the arguments {\"id\":\"e0\"}, whose executor answers the sentinel text; then the five reads a model could make: list_context; read_context, read_window and search scoped to the id the result would have been retained under ($retained: each language computes it by its own retention rule, since nothing shows it); and a search of every retained item for the sentinel. items are the six tool_result events every case gives, in that order, their callId and source record left out (source-results-current.json holds the decoration): the gate's refusal, an empty listing, three refusals of the unknown id and a search with no match. Through an API adapter the listing also names the call's own operation record (kind history, label records__read_record · failed, its result the gate's refusal), which is how the failed call stays inspectable there; the engine-level tests take it out of the listing and pin it, and at the boundary and through a native adapter, whose one invocation lists no operations, there is none. The verifier is called as verifierCalls says: a missing receipt, and one over 128 UTF-16 code units, is refused before any verifier is asked, and an expired one is a receipt whose check outlasts the source's deadline (sourceCallMilliseconds), the verifier then answering true too late. overlap runs two sources' calls in flight together: the rejected call's receipt check holds until the other source's two calls (calls, receipts) have finished and been recorded; the checkpoint written then is restored into a fresh ledger. There, and in the run, the verified result is the one entry and is read whole, its event is overlap.event, and every reader still answers the rejected call with items 1 to 5. The rejected call is recorded once, as an uncertain outcome whose failure is the gate's refusal, with no result; it is never offered or accepted as Plan evidence; no byte of any checkpoint or event the run stores carries the sentinel.",
+  "schema": "tool-result.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (SourceGate.call, ReceiptAdmission, receiptAdmission)",
+      "packages/harness/storage/writer.ts (RunWriter.invoke, admit)",
+      "packages/harness/execution/controller.ts (ExecutionController.wrapRead, admission)",
+      "packages/harness/receiptQuarantine.test.ts (the cases each item is checked against)"
+    ]
+  },
+  "fixture": {
+    "scope": "receipt-quarantine",
+    "sentinel": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2",
+    "sourceCallMilliseconds": 400,
+    "declaration": {
+      "name": "read_record",
+      "description": "Read one record from the connected records source.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "taxonomy": {
+        "operation": "read",
+        "effect": "read-external"
+      },
+      "source": {
+        "kind": "custom",
+        "id": "records",
+        "trust": "connected",
+        "version": "1"
+      }
+    },
+    "wireName": "records__read_record",
+    "arguments": {
+      "id": "e0"
+    },
+    "cases": [
+      {
+        "name": "rejected-receipt",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2"
+            }
+          ]
+        },
+        "receipt": "rcpt-e0",
+        "verifier": "rejects",
+        "verifierCalls": 1
+      },
+      {
+        "name": "missing-receipt",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2"
+            }
+          ]
+        },
+        "verifier": "rejects",
+        "verifierCalls": 0
+      },
+      {
+        "name": "oversized-receipt",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2"
+            }
+          ]
+        },
+        "receipt": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+        "verifier": "rejects",
+        "verifierCalls": 0
+      },
+      {
+        "name": "expired-receipt",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2"
+            }
+          ]
+        },
+        "receipt": "rcpt-e0",
+        "verifier": "answers true after the deadline",
+        "verifierCalls": 1
+      },
+      {
+        "name": "error-result",
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "UNVERIFIED_E0_PAYLOAD_DO_NOT_ACCEPT_9f2"
+            }
+          ],
+          "isError": true
+        },
+        "receipt": "rcpt-e0",
+        "verifier": "rejects",
+        "verifierCalls": 1
+      }
+    ],
+    "readers": [
+      {
+        "tool": "list_context",
+        "arguments": {}
+      },
+      {
+        "tool": "read_context",
+        "arguments": {
+          "id": "$retained"
+        }
+      },
+      {
+        "tool": "read_window",
+        "arguments": {
+          "id": "$retained"
+        }
+      },
+      {
+        "tool": "search",
+        "arguments": {
+          "pattern": "UNVERIFIED_E0",
+          "id": "$retained"
+        }
+      },
+      {
+        "tool": "search",
+        "arguments": {
+          "pattern": "UNVERIFIED_E0",
+          "scope": "all"
+        }
+      }
+    ],
+    "overlap": {
+      "declaration": {
+        "name": "read_entry",
+        "description": "Read one entry from the connected registry.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "taxonomy": {
+          "operation": "read",
+          "effect": "read-external"
+        },
+        "source": {
+          "kind": "custom",
+          "id": "registry",
+          "trust": "connected",
+          "version": "1"
+        }
+      },
+      "wireName": "registry__read_entry",
+      "calls": [
+        {
+          "id": "b1"
+        },
+        {
+          "id": "b2"
+        }
+      ],
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "VERIFIED_B1_PAYLOAD"
+          }
+        ]
+      },
+      "receipt": "rcpt-b1",
+      "verifier": "accepts its receipt for its result",
+      "event": {
+        "type": "tool_result",
+        "name": "registry__read_entry",
+        "isError": false,
+        "text": "VERIFIED_B1_PAYLOAD"
+      }
+    }
+  },
+  "items": [
+    {
+      "type": "tool_result",
+      "name": "records__read_record",
+      "isError": true,
+      "text": "External read receipt verification failed; its result was withheld. The call ran; do not retry automatically.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "tool-failed",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "External read receipt verification failed; its result was withheld. The call ran; do not retry automatically."
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "list_context",
+      "isError": false,
+      "text": "{\"items\":[],\"nextOffset\":null}",
+      "structured": {
+        "items": [],
+        "nextOffset": null
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "read_context",
+      "isError": true,
+      "text": "This context reference is unavailable in the current execution. Read the current object or history again.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "invalid-tool-input",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "This context reference is unavailable in the current execution. Read the current object or history again."
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "read_window",
+      "isError": true,
+      "text": "This context reference is unavailable in the current execution. Read the current object or history again.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "invalid-tool-input",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "This context reference is unavailable in the current execution. Read the current object or history again."
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "search",
+      "isError": true,
+      "text": "This context reference is unavailable in the current execution. Read the current object or history again.",
+      "structured": {
+        "failure": {
+          "version": 1,
+          "code": "invalid-tool-input",
+          "source": "tool",
+          "outcome": "unknown",
+          "detail": "This context reference is unavailable in the current execution. Read the current object or history again."
+        }
+      }
+    },
+    {
+      "type": "tool_result",
+      "name": "search",
+      "isError": false,
+      "text": "{\"type\":\"search\",\"pattern\":\"UNVERIFIED_E0\",\"ignoreCase\":false,\"scope\":\"all\",\"matches\":[],\"more\":null}",
+      "structured": {
+        "type": "search",
+        "pattern": "UNVERIFIED_E0",
+        "ignoreCase": false,
+        "scope": "all",
+        "matches": [],
+        "more": null
+      }
+    }
+  ]
+}

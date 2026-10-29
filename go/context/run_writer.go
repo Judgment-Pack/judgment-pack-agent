@@ -1224,6 +1224,15 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 // callback rechecks host authority after claim acknowledgement. Generic recovered action results
 // are isolated by logical execution/role/task/source/tool/args, never shared by siblings.
 func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source, tool string, request []byte, read bool, execute func([]byte) (T, error), successful func(T) bool, artifacts func(T) []ArtifactObservation) (T, error) {
+	return invokeDurable(ctx, binding, kind, source, tool, request, read, execute, nil, successful, artifacts)
+}
+
+// invokeDurable is InvokeDurable with the source gate's receipt check (#242), where admit is given:
+// it runs after the physical execution and before anything of the result is recorded. A result it
+// refuses is recorded as the call's uncertain outcome with the refusal as its failure, never as a
+// result, so no observation, repeat or Plan step is made of it; the call stays recorded once. With
+// no binding nothing is recorded, and the read wrapper holds the result back (WrapRead).
+func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source, tool string, request []byte, read bool, execute func([]byte) (T, error), admit func(T) error, successful func(T) bool, artifacts func(T) []ArtifactObservation) (T, error) {
 	var zero T
 	if binding == nil {
 		return execute(request)
@@ -1398,6 +1407,12 @@ func InvokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		w.mu.Unlock()
 	}
 	value, runErr := execute(request)
+	if runErr == nil && admit != nil && ctx.Err() == nil {
+		// The execution ended within its deadline. The check has the rest of the source's deadline,
+		// and its outcome is this dispatch's whenever it ends: the time it takes is not the call's.
+		ctx = context.WithoutCancel(ctx)
+		runErr = admit(value)
+	}
 	var admitted bool
 	if usageTicketHeld != nil {
 		usagewitness.Close(usageTicketHeld.nativeWitness)
@@ -1779,14 +1794,19 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		raw, _ := canonicalRaw(tool.Source.Record(tool.SourceTool))
 		source = durableDigest(raw)
 	}
-	return InvokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, ReadingTool(&tool), func(raw []byte) (ToolResult, error) {
+	// #242: an external read's result is recorded only once its receipt verifies.
+	var admit func(ToolResult) error
+	if held := receiptAdmissionOf(ctx); held != nil {
+		admit = held.admit
+	}
+	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, ReadingTool(&tool), func(raw []byte) (ToolResult, error) {
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
 			if err := c.session.Context.Authorize(ctx); err != nil {
 				return ToolResult{}, err
 			}
 		}
-		return execute(ctx, raw)
-	}, func(result ToolResult) bool { return !result.Err() }, func(result ToolResult) []ArtifactObservation {
+		return execute(withoutReceiptAdmission(ctx), raw)
+	}, admit, func(result ToolResult) bool { return !result.Err() }, func(result ToolResult) []ArtifactObservation {
 		if tool.Artifacts != nil {
 			return tool.Artifacts(result, args)
 		}

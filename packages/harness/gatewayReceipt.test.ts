@@ -12,6 +12,13 @@ import {GateViolation} from './toolGate'
 import type {DescriptorApproval} from './descriptorSnapshot'
 import type {HostTool,McpToolResult} from './engine'
 import type {SourceFigures} from './execution/state'
+import quarantine from '../../contract/vectors/tool-result/receipt-quarantine.json'
+import {contextualSession} from './context/session'
+import {ChatContext} from './context/chat'
+import {contextDigest} from './context/ledger'
+import {MemoryRunStore} from './storage/run'
+import {toolFailureResult} from './failures'
+import type {AssistantSession} from './engine'
 
 // Independent test canonicalization; the handwritten fixture keys are ASCII.
 const canon=(v:unknown):string=>Array.isArray(v)?'['+v.map(canon).join(',')+']':typeof v==='object'&&v!==null?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canon((v as Record<string,unknown>)[k])).join(',')+'}':JSON.stringify(v)
@@ -24,12 +31,12 @@ const bytes=(s:string)=>Uint8Array.from(Buffer.from(s))
 const owners=()=>({query:{operation:'read',effect:'read-external'},sibling:{operation:'read',effect:'read-external'}} as DescriptorApproval['toolTaxonomies'])
 const approval=(remote=true):DescriptorApproval=>({platform:'tickets',binding:'tickets@sha256:'+'a'.repeat(64),operation:'live',...(remote?{endpoint:'https://example.invalid/mcp'}:{}),toolTaxonomies:owners()})
 const snapshot=(remote=true)=>bytes(canon({snapshotVersion:'2',operation:'live',platform:'tickets',binding:approval().binding,capturedAt:'2026-10-25T00:00:00Z',policy:1,server:{name:'fixture',version:'1'},...(remote?{endpoint:approval().endpoint}:{}),tools:Object.fromEntries(Object.entries(owners()).map(([name,taxonomy])=>[name,{taxonomy}]))}))
-function synthetic(remote=true){
+function synthetic(remote=true,session=vector.session){
  const call={tool:vector.tool,arguments:vector.args}
  const acquisition:Record<string,unknown>={shape:'mcp',statement:commit('statement:',canon(call)),adapter:vector.adapter,endpoint:null,snapshot:null,peerIdentity:null,schema:null,upstreamToken:null,observedAt:'2026-10-25T00:00:00Z',...(remote?{endpoint:approval().endpoint,transport:'http',server:{name:'fixture',version:'1'}}:{})}
- const receipt:Record<string,unknown>={receiptVersion:'3',sessionId:vector.session,callIndex:0,prevSignature:null,kind:'acquisition',authority:vector.authority,keyId:digest(publicKey).slice(7,39),source:'tickets/live',argumentsCommitment:commit('args:',call),resultDigest:digest(canon(vector.artifact)),acquisition}
+ const receipt:Record<string,unknown>={receiptVersion:'3',sessionId:session,callIndex:0,prevSignature:null,kind:'acquisition',authority:vector.authority,keyId:digest(publicKey).slice(7,39),source:'tickets/live',argumentsCommitment:commit('args:',call),resultDigest:digest(canon(vector.artifact)),acquisition}
  signReceipt(receipt)
- return {envelope:{session:vector.session,result:structuredClone(vector.artifact),receipt,salts:{args:'0'.repeat(64),statement:'0'.repeat(64)}},trust:{publicKey:publicKey.toString('hex'),authority:vector.authority,adapter:structuredClone(vector.adapter)} as GatewayReceiptTrust}
+ return {envelope:{session,result:structuredClone(vector.artifact),receipt,salts:{args:'0'.repeat(64),statement:'0'.repeat(64)}},trust:{publicKey:publicKey.toString('hex'),authority:vector.authority,adapter:structuredClone(vector.adapter)} as GatewayReceiptTrust}
 }
 const outer=(envelope:unknown):McpToolResult=>({content:[{type:'text',text:canon(envelope)}],structuredContent:structuredClone(envelope) as McpToolResult['structuredContent']})
 const signal=()=>new AbortController().signal
@@ -60,6 +67,7 @@ describe('Gateway v3 signed acquisition consumer',()=>{
    case 'action':r.kind='action';signReceipt(r);break
    case 'number':envelope.result.structuredContent.id=9007199254740992;break
    case 'oversize':limit=10;break
+   case 'salts':(envelope.salts as Record<string,string>).note='unsigned';break
   }
   const raw=outer(envelope)
   if(row.change==='twins')raw.structuredContent={different:true}
@@ -133,4 +141,46 @@ it('holds full approved snapshot beyond selected subset and refuses restored acq
  const restoredGate=new SourceGate(restored.entries,restored.sources,CONTEXT_DEFAULTS,'marker',(name,detail)=>new GateViolation(name,detail),()=>rows)
  await expect(restoredGate.call(restored.hostTools[0]!,{},signal(),offered.execute)).rejects.toThrow('requires read-external');expect(calls).toBe(0)
  expect(await restoredGate.approved({name:offered.name,source:entry.record,callId:'restored',tool:'query',args:{},state:'approved'},signal(),offered.execute)).toMatchObject({ran:false});expect(calls).toBe(0)
+})
+
+// The shared Gateway vector's source as a host tool whose executor answers a synthetic envelope signed for the call's own
+// receipt session, with extra as an unsigned salts member where it is given (agent#242; the #247 review's F1 and F2).
+function gatewayTool(extra:string|undefined,seen:{executions:number;last?:McpToolResult}):HostTool{
+ const {trust}=synthetic()
+ return {name:'query',taxonomy:{operation:'read',effect:'read-external'},description:'approved',inputSchema:{type:'object'},source:{kind:'mcp',id:'tickets',trust:'connected',toolListDigest:digest(snapshot()),descriptorSnapshot:snapshot(),descriptorApproval:approval(),currentDescriptorSnapshot:()=>snapshot(),gatewayReceipt:trust},
+  execute:async(_args,bounded)=>{seen.executions++;const invocation=gatewayExecutionContext(bounded!);if(invocation===undefined)throw Error('no receipt session');const {envelope}=synthetic(true,invocation.receiptSession);if(extra!==undefined)(envelope.salts as Record<string,string>).note=extra;seen.last=outer(envelope);return seen.last}}
+}
+const gatewaySession=(chat:ChatContext,store:MemoryRunStore,tool:HostTool):AssistantSession=>({prompt:'Read record 7.',testPrompt:'',tools:[],hostTools:[tool],callTool:async()=>{throw Error('No Runtime tool was offered')},model:{family:'openai-compatible',model:'fixture',call:async()=>{throw Error('unused')}},signal:signal(),allowConversation:true,interactive:true,critic:'off',context:{currentRequest:{message:'Read record 7.',input:'7'},chat,runStore:{store,id:'receipt-quarantine'}}} as AssistantSession)
+const settled=async(work:Promise<McpToolResult>)=>{try{return await work}catch(error){return toolFailureResult(error) as McpToolResult}}
+const shown=(name:string,result:McpToolResult)=>({type:'tool_result',name,isError:result.isError===true,text:(result.content??[]).filter(p=>p.type==='text').map(p=>(p as {text:string}).text).join('\n'),...(result.structuredContent===undefined?{}:{structured:result.structuredContent})})
+
+it('withholds a Gateway envelope that carries an unsigned salts member, and no reader returns its bytes (#242)',async()=>{
+ const fixture=quarantine.fixture,items=quarantine.items as Record<string,unknown>[],seen={executions:0} as {executions:number;last?:McpToolResult}
+ const chat=new ChatContext({scope:fixture.scope}),store=new MemoryRunStore()
+ const ready=await contextualSession(gatewaySession(chat,store,gatewayTool(fixture.sentinel,seen)))
+ const find=(name:string)=>ready.session.values.hostTools.find(t=>t.name===name)!
+ expect(shown('tickets__query',await settled(find('tickets__query').execute({id:7},ready.session.signal,'call-gateway')))).toEqual({...items[0],name:'tickets__query'})
+ expect(JSON.stringify(seen.last)).toContain(fixture.sentinel)
+ const value=await contextDigest(JSON.stringify(seen.last)),retained=fixture.scope+':result-tickets__query-'+value+':'+value.slice(0,16)
+ for(const [at,reader] of fixture.readers.entries())expect(shown(reader.tool,await settled(find(reader.tool).execute(Object.fromEntries(Object.entries(reader.arguments).map(([k,v])=>[k,v==='$retained'?retained:v])),ready.session.signal)))).toEqual(items[at+1])
+ expect(seen.executions).toBe(1)
+ expect(new TextDecoder().decode(chat.snapshot())).not.toContain(fixture.sentinel)
+ expect(ready.context.execution.requestState()).not.toContain(fixture.sentinel)
+ const head=new TextDecoder().decode((await store.load('receipt-quarantine'))!.checkpoint!)
+ expect(head).not.toContain(fixture.sentinel)
+ const row=(JSON.parse(head) as {durable:{dispatches:{tool:string;state:string;result?:unknown}[]}}).durable.dispatches.filter(d=>d.tool==='tickets__query')
+ expect(row.map(d=>[d.state,d.result])).toEqual([['unknown',undefined]])
+ ready.context.close()
+})
+
+it('answers the signed artifact, never the envelope, at the gate and through the session (#242)',async()=>{
+ const seen={executions:0} as {executions:number;last?:McpToolResult},tool=gatewayTool(undefined,seen)
+ const admitted=await declareSources([tool],[]),rows:SourceFigures[]=[],gate=new SourceGate(admitted.entries,admitted.sources,CONTEXT_DEFAULTS,'marker',(name,detail)=>new GateViolation(name,detail),()=>rows),offered=admitted.hostTools[0]!
+ const atGate=await gate.call(offered,{id:7},signal(),offered.execute)
+ expect(atGate).toEqual(vector.artifact);expect(seen.last).not.toEqual(vector.artifact)
+ const ready=await contextualSession(gatewaySession(new ChatContext(),new MemoryRunStore(),tool))
+ const throughSession=await ready.session.values.hostTools.find(t=>t.name==='tickets__query')!.execute({id:7},ready.session.signal,'call-gateway')
+ expect(throughSession).toEqual(vector.artifact);expect(JSON.stringify(throughSession)).not.toContain('salts')
+ expect(seen.executions).toBe(2)
+ ready.context.close()
 })

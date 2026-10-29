@@ -1771,6 +1771,46 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	argsValue, _ := ParseJSON(args)
 	argsEvidence := CanonicalJSON(argsValue)
 	var invocation GatewayExecutionContext
+	// #242: an external read's receipt is checked before anything of its result is kept. The check
+	// goes down the call with its context: the durable writer runs it after the host's execute and
+	// before it records the result, and the read wrapper before it retains one; the gate runs it here
+	// only where nothing below did (a result served without a call, or a run outside the wrappers).
+	var admission *receiptAdmission
+	if entry.Declared.Taxonomy != nil && entry.Declared.Taxonomy.Effect == "read-external" {
+		admission = &receiptAdmission{check: func(result ToolResult) (ToolResult, bool) {
+			gatewayVerified := false
+			if entry.Declared.Source.GatewayReceipt != nil {
+				source := entry.Declared.Source
+				remaining := limit - time.Since(started)
+				if remaining > 0 {
+					verified, verificationErr := withSourceDeadline(ctx, remaining, func(bounded context.Context) (ToolResult, error) {
+						held, _, err := VerifyGatewayResult(bounded, result, source.GatewayReceipt, source.DescriptorApproval, source.DescriptorSnapshot, *entry.Record.Tool, args, invocation, GatewayReceiptEnvelopeBytes)
+						return held, err
+					})
+					if verificationErr == nil {
+						result = verified
+						gatewayVerified = true
+					}
+				}
+			}
+			receipt := result.Receipt
+			result = result.Clone()
+			result.Receipt = receipt
+			if entry.Declared.Source.GatewayReceipt != nil {
+				return result, gatewayVerified
+			}
+			shown := result
+			shown.Receipt = ""
+			sourceJSON, _ := json.Marshal(entry.Record)
+			sourceValue, _ := ParseJSON(sourceJSON)
+			resultValue, _ := ParseJSON(shown.JSON())
+			remaining := limit - time.Since(started)
+			if remaining <= 0 {
+				remaining = time.Millisecond
+			}
+			return result, result.Receipt != "" && U16Length(result.Receipt) <= 128 && verifyReceipt(ctx, remaining, entry.Declared.Source.VerifyReceipt, ReceiptEvidence{Source: CanonicalJSON(sourceValue), Tool: *entry.Record.Tool, Args: argsEvidence, Result: CanonicalJSON(resultValue), Receipt: result.Receipt})
+		}}
+	}
 	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) {
 		if entry.Declared.Source.GatewayReceipt != nil {
 			var err error
@@ -1779,52 +1819,33 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 				return ToolResult{}, err
 			}
 		}
+		if admission != nil {
+			bounded = context.WithValue(bounded, receiptAdmissionKey{}, admission)
+		}
 		return run(bounded, args)
 	})
-	gatewayVerified := false
-	if err == nil && entry.Declared.Source.GatewayReceipt != nil {
-		source := entry.Declared.Source
-		remaining := limit - time.Since(started)
-		if remaining > 0 {
-			verified, verificationErr := withSourceDeadline(ctx, remaining, func(bounded context.Context) (ToolResult, error) {
-				held, _, err := VerifyGatewayResult(bounded, result, source.GatewayReceipt, source.DescriptorApproval, source.DescriptorSnapshot, *entry.Record.Tool, args, invocation, GatewayReceiptEnvelopeBytes)
-				return held, err
-			})
-			if verificationErr == nil {
-				result = verified
-				gatewayVerified = true
+	receiptOK := true
+	if admission != nil {
+		if err == nil {
+			_ = admission.admit(result)
+		}
+		if checked, verified, ran := admission.outcome(); ran {
+			receiptOK = verified
+			if err == nil {
+				result = checked
 			}
 		}
-	}
-	if err == nil {
+	} else if err == nil {
 		receipt := result.Receipt
 		result = result.Clone()
 		result.Receipt = receipt
-	}
-	receiptOK := true
-	if err == nil && entry.Declared.Taxonomy.Effect == "read-external" {
-		shown := result
-		shown.Receipt = ""
-		sourceJSON, _ := json.Marshal(entry.Record)
-		sourceValue, _ := ParseJSON(sourceJSON)
-		resultValue, _ := ParseJSON(shown.JSON())
-		remaining := limit - time.Since(started)
-		if remaining <= 0 {
-			remaining = time.Millisecond
-		}
-		if entry.Declared.Source.GatewayReceipt != nil {
-			receiptOK = gatewayVerified
-		} else {
-			receiptOK = result.Receipt != "" && U16Length(result.Receipt) <= 128 && verifyReceipt(ctx, remaining, entry.Declared.Source.VerifyReceipt, ReceiptEvidence{Source: CanonicalJSON(sourceValue), Tool: *entry.Record.Tool, Args: argsEvidence, Result: CanonicalJSON(resultValue), Receipt: result.Receipt})
-		}
 	}
 	g.mu.Lock()
 	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	g.row(id).Milliseconds += time.Since(started).Milliseconds()
 	if !receiptOK {
-		detail := "External read receipt verification failed; its result was withheld. The call ran; do not retry automatically."
-		g.refuse(name, detail)
-		return ToolResult{}, g.refused(entry, callID, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "unknown", Detail: &detail}))
+		g.refuse(name, receiptWithheldDetail)
+		return ToolResult{}, g.refused(entry, callID, receiptWithheld())
 	}
 	if err != nil {
 		g.mark(name, callID, mark{})
@@ -1838,6 +1859,65 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 	}
 	g.mark(name, callID, mark{receipt: receipt})
 	return result, nil
+}
+
+// receiptWithheldDetail is what the model and the host are told of an external read whose receipt did
+// not verify (ADR-0027): the call ran, its result was withheld, and it is not retried.
+const receiptWithheldDetail = "External read receipt verification failed; its result was withheld. The call ran; do not retry automatically."
+
+func receiptWithheld() error {
+	detail := receiptWithheldDetail
+	return failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "unknown", Detail: &detail})
+}
+
+// receiptAdmission is one external read's receipt check (ADR-0027, #242), made by the source gate
+// before the call runs and carried down the call's context. Until it has verified, nothing of the
+// result is kept: the durable writer records a refused result as the call's uncertain outcome, never
+// as a result, and the read wrapper retains nothing of it, so no context reader, later request or
+// Plan step is given it. It runs once; a later caller is given the first outcome.
+type receiptAdmission struct {
+	mu       sync.Mutex
+	ran      bool
+	verified bool
+	result   ToolResult
+	check    func(ToolResult) (ToolResult, bool)
+}
+
+type receiptAdmissionKey struct{}
+
+// receiptAdmissionOf is the receipt check of the call ctx belongs to, or nil.
+func receiptAdmissionOf(ctx context.Context) *receiptAdmission {
+	held, _ := ctx.Value(receiptAdmissionKey{}).(*receiptAdmission)
+	return held
+}
+
+// withoutReceiptAdmission is ctx for the host's own execute: a call it makes is not this one.
+func withoutReceiptAdmission(ctx context.Context) context.Context {
+	if receiptAdmissionOf(ctx) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, receiptAdmissionKey{}, (*receiptAdmission)(nil))
+}
+
+// admit checks result where nothing has yet, and answers the gate's refusal where it did not verify.
+func (a *receiptAdmission) admit(result ToolResult) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.ran {
+		a.ran = true
+		a.result, a.verified = a.check(result)
+	}
+	if !a.verified {
+		return receiptWithheld()
+	}
+	return nil
+}
+
+// outcome is the checked result and whether it verified, once the check has run.
+func (a *receiptAdmission) outcome() (ToolResult, bool, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.result, a.verified, a.ran
 }
 
 // withSourceDeadline is WithDeadline (adapter/turn) for the source's deadline: past it the call is

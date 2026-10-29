@@ -327,8 +327,12 @@ export class ExecutionController {
   * that it is cached for the run only, as before. The cache serves only a name the run's session
   * offers (`kept.offered`, said false for a name it does not): the call then reaches the offer
   * check and the gate as any other, and no cached entry is added to the run's view.
+  *
+  * `admission` (#242): an external read's receipt check, from the source gate (`receiptAdmission`).
+  * Its answer is retained or cached only once the receipt verifies; one that does not is answered as
+  * the gate's refusal and kept nowhere a reader could reach.
   */
- wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false,kept?:{runtime:boolean;offered?:boolean}){
+ wrapRead(name:string,execute:(args:Record<string,unknown>)=>Promise<McpToolResult>,policy:ContextToolPolicy={},readOnly=false,kept?:{runtime:boolean;offered?:boolean},admission?:{admit(result:McpToolResult):Promise<void>}){
   // A mistaken hint on a write can never suppress or replay that operation.
   const immutable=policy.immutable===true&&readOnly
   return async(args:Record<string,unknown>)=>{
@@ -340,6 +344,7 @@ export class ExecutionController {
    const key=name+':'+JSON.stringify(args)
    if(chatKey===undefined&&immutable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
    const result=await execute(args)
+   await admission?.admit(result)
    if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)
    if(chatKey===undefined&&immutable&&!result.isError)this.cache.set(key,structuredClone(result))
    return result

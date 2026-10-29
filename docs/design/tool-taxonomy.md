@@ -4,6 +4,10 @@
 
 Runtime must publish `{operation,effect,checkKind?,experimental?}` directly inside MCP `_meta`. Gateway snapshot-backed registrations require current V2 owner taxonomy and independent full approval context; historical V1 remains readable but cannot authorize current admission. An external read's host verifier must authenticate the receipt and bind its source, descriptor pin, tool, canonical arguments and canonical result. Returning true merely because a receipt string exists violates the host contract.
 
+The verifier is asked before anything of the result is kept: an unverified result is never retained
+for the context readers, recorded as a durable result or offered as Plan evidence, and the call
+stays inspectable only as a failed operation (ADR-0027's amendment, agent#242).
+
 Check subkinds for hosts: `validate`, `check`, `verify`, `test`, `analyze`, `advise` and, since the
 ADR-0027 amendment of 2026-10-29 (#241), `rehearse`: a non-binding dry evaluation of an artifact
 the host declares (a saved graph or pack identity), whose result carries no authority and whose
@@ -29,6 +33,8 @@ pin. The executor obtains `gatewayExecutionContext(signal)` / `GatewayInvocation
 its receiptSession to Gateway's existing tools/call `_meta["io.judgment-pack/session"]`, separately
 from arguments. It returns the actual complete MCP envelope. Agent authenticates and unwraps
 the signed artifact before publication. No custom verifier runs after Gateway verification fails.
+The envelope's unsigned salts may carry only `args` and `statement`; any other member refuses it,
+since a verified envelope is what the run retains (agent#242).
 The raw tool key comes from approved owner metadata; a frontend bridge calls the explicit
 approved platform plus "." plus that key. No source identity is guessed from model text.
 
