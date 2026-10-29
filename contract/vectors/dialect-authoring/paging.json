@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten #243 and #252 paging witnesses. The complete original inventory travels as a bounded top index (per original revision: its field count and the SHA-256 and canonical byte length of its revision field index, plus the SHA-256 of the canonical JSON of revisions); each revision field index (ordered names and declaration digests) and the declarations arrive in read-port pages bound to the collection revision and inventory digest. items are the declaration pages the cases serve by cursor; fieldIndexes are the revision field index pages they serve by entry (fieldIndexPages, default [0,1]); fieldIndexRequests are the exact requests of the successful case; inventory, index, changedInventory and changedIndex are the host collection before and after a change during preview. bounds are the #252 bound proof: an inventory generator gives revision r (from 0) the label issue-252 'prep_'+32 'c'+':recipe:'+(r+1) or max 156 'r' + r as 4 digits (160 bytes), field f the name issue-252 'f'+61 'a'+f as 2 digits (64 bytes) or wide 157 'w'+f as 3 digits (160 bytes), and fieldJson {\"name\":<name>,\"description\":\"r\"+(r+1) as at least 3 digits,\"type\":\"text\"}; a top generator gives entry r the label 157 U+0001 followed by three characters from the 27 control characters other than U+0008, U+0009, U+000A, U+000C and U+000D (index r in base 27, most significant first), the stated fields and bytes, and digest 'sha256:'+'ab' x 32. indexBytes, fieldIndexBytes and oneLevelIndexBytes (the #250 one-level index) are canonical byte lengths. Digests and lengths were computed outside the package. Go and TypeScript drive both factories through every case.",
+  "description": "Handwritten #243 and #252 paging witnesses. The complete original inventory travels as a bounded top index (per original revision: its field count and the SHA-256 and canonical byte length of its revision field index, plus the SHA-256 of the canonical JSON of revisions); each revision field index (ordered names and declaration digests) and the declarations arrive in read-port pages bound to the collection revision and inventory digest. items are the declaration pages the cases serve by cursor; fieldIndexes are the revision field index pages they serve by entry (fieldIndexPages, default [0,1]); a case with its own index serves every page under that index's digest; fieldIndexRequests are the exact requests of the successful case; inventory, index, changedInventory and changedIndex are the host collection before and after a change during preview. bounds are the #252 bound proof: an inventory generator gives revision r (from 0) the label issue-252 'prep_'+32 'c'+':recipe:'+(r+1) or max 156 'r' + r as 4 digits (160 bytes), field f the name issue-252 'f'+61 'a'+f as 2 digits (64 bytes) or wide 157 'w'+f as 3 digits (160 bytes), and fieldJson {\"name\":<name>,\"description\":\"r\"+(r+1) as at least 3 digits,\"type\":\"text\"}; a top generator gives entry r the label 157 U+0001 followed by three characters from the 27 control characters other than U+0008, U+0009, U+000A, U+000C and U+000D (index r in base 27, most significant first), the stated fields and bytes (label, when given, replaces the generated label of every entry), and digest 'sha256:'+'ab' x 32. indexBytes, fieldIndexBytes and oneLevelIndexBytes (the #250 one-level index) are canonical byte lengths. Digests and lengths were computed outside the package. Go and TypeScript drive both factories through every case.",
   "schema": "dialect-authoring.json#/$defs/page",
   "source": {
     "harness": {
@@ -285,6 +285,39 @@
       "message": "a revision field index does not match its indexed digest"
     },
     {
+      "name": "revision field index length disagrees with its top entry",
+      "pages": [
+        0,
+        1,
+        2
+      ],
+      "index": {
+        "digest": "sha256:d9d9f500ff6ffd7097ae216d1e0aa98d52f73124d683fce81d51d04a7cce3e8a",
+        "revisions": [
+          {
+            "revision": "original-recipe:one",
+            "fields": 2,
+            "digest": "sha256:ff1665e2b85bee3d350e4026ace9010d7116e4a1c120f18ac9d908d2626350b8",
+            "bytes": 246
+          },
+          {
+            "revision": "original-recipe:two",
+            "fields": 3,
+            "digest": "sha256:d669c2390c1d230597252804b1ce656f38783b2d2f5a1509b87d3ba1787c0ff7",
+            "bytes": 345
+          },
+          {
+            "revision": "original-recipe:retired",
+            "fields": null,
+            "digest": null,
+            "bytes": null
+          }
+        ]
+      },
+      "expect": "refused",
+      "message": "a revision field index does not match its indexed digest"
+    },
+    {
       "name": "declaration does not match its digest",
       "pages": [
         0,
@@ -481,6 +514,52 @@
       "expect": "refused",
       "message": "a revision field index exceeds its byte limit",
       "indexBytes": 1187
+    },
+    {
+      "name": "top index over the revision limit inside its cap: 1,001 revisions",
+      "top": {
+        "revisions": 1001,
+        "fields": 1000,
+        "bytes": 1048576
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 1090187
+    },
+    {
+      "name": "a revision label of only U+0085 is blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": ""
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 229
+    },
+    {
+      "name": "a revision label of only U+FEFF is blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": "﻿"
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 230
+    },
+    {
+      "name": "a revision label with U+0085 and U+FEFF beside a letter is not blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": "a﻿"
+      },
+      "expect": "top-accepted",
+      "indexBytes": 233
     }
   ]
 }

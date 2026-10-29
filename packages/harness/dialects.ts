@@ -122,14 +122,19 @@ const L=DIALECT_AUTHORING_LIMITS
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 function fail(detail:string):never{throw toolInputFailure(`Dialect authoring: ${detail}`)}
 const keys=(v:Record<string,unknown>,required:string[],optional:string[]=[])=>required.every(k=>Object.hasOwn(v,k))&&Object.keys(v).every(k=>required.includes(k)||optional.includes(k))
-const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.trim().length>0&&utf8Bytes(v)<=max
+/**
+ * Blank text is made only of these code points, the same explicit set as Go's dialectBlankRune: the
+ * union of String.prototype.trim and strings.TrimSpace (#252 review F2), so U+0085 and U+FEFF agree.
+ */
+const blank=(v:string)=>/^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*$/.test(v)
+const text=(v:unknown,max:number):v is string=>typeof v==='string'&&!blank(v)&&utf8Bytes(v)<=max
 const digest=(v:unknown):v is string=>typeof v==='string'&&/^sha256:[0-9a-f]{64}$/.test(v)
 const count=(v:unknown)=>Number.isSafeInteger(v)&&Number(v)>=0
 const pointer=(v:unknown):v is string=>text(v,1024)&&v.startsWith('/')&&!/~(?![01])/.test(v)&&!v.split('/').some(s=>['__proto__','prototype','constructor'].includes(s.replace(/~1/g,'/').replace(/~0/g,'~')))
 const column=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&utf8Bytes(v)<=1024&&scalar(v)&&!['__proto__','prototype','constructor'].includes(v)
 const hash=async(value:string)=>`sha256:${await contextDigest(value)}`
 const copy=<T>(v:T):T=>structuredClone(v)
-const spelling=(v:unknown):v is string=>typeof v==='string'&&utf8Bytes(v)<=160&&scalar(v)&&!/^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/.test(v)
+const spelling=(v:unknown):v is string=>typeof v==='string'&&utf8Bytes(v)<=160&&scalar(v)&&!blank(v)
 function conversion(v:unknown):v is DialectConversion {
  if(!object(v)||!keys(v,['kind'],['trueValue','falseValue']))return false
  return v.kind==='boolean'?spelling(v.trueValue)&&spelling(v.falseValue)&&v.trueValue!==v.falseValue:['text','decimal','number','research-value'].includes(String(v.kind))&&v.trueValue===undefined&&v.falseValue===undefined

@@ -155,9 +155,17 @@ from the `bounds` rows of `paging.json` and drive these cases:
 - the largest unescaped field index;
 - the largest admitted top index;
 - a top index over its cap;
-- a field index over the page bound.
+- a field index over the page bound;
+- 1,001 revisions inside the byte cap, refused by the 1,000-revision limit the proof rests on;
+- revision labels made only of U+0085 or only of U+FEFF, refused as blank in both languages.
 
-The first three are read, proposed and retained with every page and envelope measured.
+The first three are read, proposed and retained with every page and envelope measured. A
+label with U+0085 and U+FEFF beside a letter is accepted.
+
+A field index whose canonical length differs from its entry's `bytes`, with the right digest,
+is refused (a paging case). Blank text is one explicit code point set in both languages: the
+union of `String.prototype.trim` and Go's `strings.TrimSpace`, so U+0085 and U+FEFF are blank
+in both.
 
 ### Versioning
 

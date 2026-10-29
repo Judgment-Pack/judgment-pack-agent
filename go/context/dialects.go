@@ -370,7 +370,20 @@ func dialectHash(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
-func dialectText(v string, max int) bool { return strings.TrimSpace(v) != "" && len(v) <= max }
+func dialectText(v string, max int) bool {
+	return strings.TrimFunc(v, dialectBlankRune) != "" && len(v) <= max
+}
+
+// dialectBlankRune is the explicit code point set of blank text, the same as TypeScript's blank: the
+// union of strings.TrimSpace and String.prototype.trim (#252 review F2), so U+0085 and U+FEFF agree.
+func dialectBlankRune(r rune) bool {
+	switch {
+	case r >= 0x09 && r <= 0x0d, r == 0x20, r == 0x85, r == 0xa0, r == 0x1680, r >= 0x2000 && r <= 0x200a,
+		r == 0x2028, r == 0x2029, r == 0x202f, r == 0x205f, r == 0x3000, r == 0xfeff:
+		return true
+	}
+	return false
+}
 func dialectDigest(v string) bool {
 	if len(v) != 71 || !strings.HasPrefix(v, "sha256:") {
 		return false

@@ -15,17 +15,19 @@ const signal=()=>new AbortController().signal
 const body=(r:McpToolResult)=>JSON.parse(r.content![0]!.text!) as Record<string,unknown>
 const items=paging.items as DialectDeclarationPage[]
 const fieldIndexes=paging.fieldIndexes as DialectFieldIndexPage[]
-interface PagingCase {name:string; pages?:number[]; fieldIndexPages?:number[]; expect:string; message?:string; requests?:DialectDeclarationPageRequest[]; changeDuringPreview?:boolean}
+interface PagingCase {name:string; index?:DialectResearchIndex; pages?:number[]; fieldIndexPages?:number[]; expect:string; message?:string; requests?:DialectDeclarationPageRequest[]; changeDuringPreview?:boolean}
 const cases=paging.cases as PagingCase[]
 
 describe('paging vectors through the exported tools',()=>{
  it('the package index equals the handwritten digests',async()=>{expect(await dialectResearchIndex(paging.inventory as DialectResearchRevision[])).toEqual(paging.index)})
  for(const row of cases)it(row.name,async()=>{
   const x=dialectFixture()
-  let current=paging.index as DialectResearchIndex
-  x.ports.readFieldIndex=async request=>{x.state.calls.push('field-index');x.state.fieldIndexes.push(structuredClone(request));const at=(row.fieldIndexPages??[0,1]).find(i=>fieldIndexes[i]!.entry===request.entry);if(at===undefined)throw Error('no vector field index at entry '+request.entry);return structuredClone(fieldIndexes[at]!)}
+  let current=row.index??paging.index as DialectResearchIndex
+  // A case with its own index serves every page under that index's digest.
+  const under=<T extends {inventoryDigest:string}>(page:T):T=>row.index?{...page,inventoryDigest:row.index.digest}:page
+  x.ports.readFieldIndex=async request=>{x.state.calls.push('field-index');x.state.fieldIndexes.push(structuredClone(request));const at=(row.fieldIndexPages??[0,1]).find(i=>fieldIndexes[i]!.entry===request.entry);if(at===undefined)throw Error('no vector field index at entry '+request.entry);return under(structuredClone(fieldIndexes[at]!))}
   x.ports.read=async()=>{x.state.calls.push('read');return {...structuredClone(x.state.snapshot),researchIndex:structuredClone(current)}}
-  x.ports.readDeclarations=async request=>{x.state.calls.push('page');x.state.pages.push(structuredClone(request));if(x.state.pages.length>50)throw Error('page call bound exceeded');const at=(row.pages??[]).find(i=>items[i]!.cursor===request.cursor);if(at===undefined)throw Error('no vector page at cursor '+request.cursor);return structuredClone(items[at]!)}
+  x.ports.readDeclarations=async request=>{x.state.calls.push('page');x.state.pages.push(structuredClone(request));if(x.state.pages.length>50)throw Error('page call bound exceeded');const at=(row.pages??[]).find(i=>items[i]!.cursor===request.cursor);if(at===undefined)throw Error('no vector page at cursor '+request.cursor);return under(structuredClone(items[at]!))}
   const preview=x.ports.preview
   x.ports.preview=async(...args)=>{if(row.changeDuringPreview)current=paging.changedIndex as DialectResearchIndex;return preview(...args)}
   const tools=dialectTools(x.ports)
@@ -48,17 +50,17 @@ describe('paging vectors through the exported tools',()=>{
 })
 
 // #252 bound proof. The generators follow the vector's rules; the sizes were computed outside the package.
-interface BoundCase {name:string; inventory?:{revisions:number; fields:number; label:string; name:string}; top?:{revisions:number; fields:number; bytes:number}; indexBytes:number; fieldIndexBytes?:number; oneLevelIndexBytes?:number; expect:string; message?:string}
+interface BoundCase {name:string; inventory?:{revisions:number; fields:number; label:string; name:string}; top?:{revisions:number; fields:number; bytes:number; label?:string}; indexBytes:number; fieldIndexBytes?:number; oneLevelIndexBytes?:number; expect:string; message?:string}
 const escapedDigits=Array.from({length:32},(_,c)=>c).filter(c=>![8,9,10,12,13].includes(c)).map(c=>String.fromCharCode(c))
 const boundLabel=(kind:string,r:number)=>kind==='issue-252'?'prep_'+'c'.repeat(32)+':recipe:'+(r+1):kind==='max'?'r'.repeat(156)+String(r).padStart(4,'0'):'\u0001'.repeat(157)+escapedDigits[Math.floor(r/729)]!+escapedDigits[Math.floor(r/27)%27]!+escapedDigits[r%27]!
 const boundName=(kind:string,f:number)=>kind==='wide'?'w'.repeat(157)+String(f).padStart(3,'0'):'f'+'a'.repeat(61)+String(f).padStart(2,'0')
 const boundInventory=(g:NonNullable<BoundCase['inventory']>):DialectResearchRevision[]=>Array.from({length:g.revisions},(_,r)=>({revision:boundLabel(g.label,r),fields:Array.from({length:g.fields},(_,f)=>{const name=boundName(g.name,f);return {name,fieldJson:`{"name":"${name}","description":"r${String(r+1).padStart(3,'0')}","type":"text"}`}})}))
 const boundTop=async(g:NonNullable<BoundCase['top']>):Promise<DialectResearchIndex>=>{
- const revisions:DialectIndexRevision[]=Array.from({length:g.revisions},(_,r)=>({revision:boundLabel('escaped',r),fields:g.fields,digest:'sha256:'+'ab'.repeat(32),bytes:g.bytes}))
+ const revisions:DialectIndexRevision[]=Array.from({length:g.revisions},(_,r)=>({revision:g.label??boundLabel('escaped',r),fields:g.fields,digest:'sha256:'+'ab'.repeat(32),bytes:g.bytes}))
  return {digest:'sha256:'+await contextDigest(canonicalJSON(revisions)),revisions}
 }
 describe('the #252 bound proof: every accepted collection fits, by the arithmetic in ADR-0028',()=>{
- it('carries every bound row',()=>{expect(paging.bounds).toHaveLength(6)})
+ it('carries every bound row',()=>{expect(paging.bounds).toHaveLength(10)})
  for(const row of paging.bounds as BoundCase[])it(row.name,async()=>{
   const x=dialectFixture()
   if(row.top){

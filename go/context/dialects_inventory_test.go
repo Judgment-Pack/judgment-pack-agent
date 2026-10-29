@@ -24,6 +24,7 @@ type dialectPagingVector struct {
 	ChangedIndex       *DialectResearchIndex      `json:"changedIndex"`
 	Cases              []struct {
 		Name                string                          `json:"name"`
+		Index               *DialectResearchIndex           `json:"index"`
 		Pages               []int                           `json:"pages"`
 		FieldIndexPages     []int                           `json:"fieldIndexPages"`
 		Expect              string                          `json:"expect"`
@@ -45,9 +46,10 @@ type dialectBoundCase struct {
 		Name      string `json:"name"`
 	} `json:"inventory"`
 	Top *struct {
-		Revisions int `json:"revisions"`
-		Fields    int `json:"fields"`
-		Bytes     int `json:"bytes"`
+		Revisions int    `json:"revisions"`
+		Fields    int    `json:"fields"`
+		Bytes     int    `json:"bytes"`
+		Label     string `json:"label"`
 	} `json:"top"`
 	IndexBytes         int    `json:"indexBytes"`
 	FieldIndexBytes    int    `json:"fieldIndexBytes"`
@@ -108,8 +110,11 @@ func dialectBoundTop(t *testing.T, c dialectBoundCase) *DialectResearchIndex {
 	t.Helper()
 	index := &DialectResearchIndex{Revisions: make([]DialectIndexRevision, 0, c.Top.Revisions)}
 	for r := 0; r < c.Top.Revisions; r++ {
-		fields, size := c.Top.Fields, c.Top.Bytes
-		index.Revisions = append(index.Revisions, DialectIndexRevision{Revision: dialectBoundLabel("escaped", r), Fields: &fields, Digest: dialectStringPointer("sha256:" + strings.Repeat("ab", 32)), Bytes: &size})
+		fields, size, label := c.Top.Fields, c.Top.Bytes, c.Top.Label
+		if label == "" {
+			label = dialectBoundLabel("escaped", r)
+		}
+		index.Revisions = append(index.Revisions, DialectIndexRevision{Revision: label, Fields: &fields, Digest: dialectStringPointer("sha256:" + strings.Repeat("ab", 32)), Bytes: &size})
 	}
 	digest, err := dialectInventoryDigest(index.Revisions)
 	if err != nil {
@@ -126,7 +131,7 @@ func dialectBoundTop(t *testing.T, c dialectBoundCase) *DialectResearchIndex {
 // whose #250 one-level index exceeded the cap, is read the same way.
 func TestDialectInventoryBounds(t *testing.T) {
 	v := dialectPagingVectorFile(t)
-	if len(v.Bounds) != 6 {
+	if len(v.Bounds) != 10 {
 		t.Fatal("bound rows missing", len(v.Bounds))
 	}
 	for _, c := range v.Bounds {
@@ -249,6 +254,10 @@ func TestDialectInventoryPagingVectors(t *testing.T) {
 		t.Run(row.Name, func(t *testing.T) {
 			w := newDialectWorld(t)
 			current := v.Index
+			// A case with its own index serves every page under that index's digest.
+			if row.Index != nil {
+				current = row.Index
+			}
 			served := row.FieldIndexPages
 			if served == nil {
 				served = []int{0, 1}
@@ -258,7 +267,11 @@ func TestDialectInventoryPagingVectors(t *testing.T) {
 				w.fieldIndexes = append(w.fieldIndexes, request)
 				for _, at := range served {
 					if v.FieldIndexes[at].Entry == request.Entry {
-						return dialectClone(v.FieldIndexes[at])
+						page, err := dialectClone(v.FieldIndexes[at])
+						if row.Index != nil {
+							page.InventoryDigest = row.Index.Digest
+						}
+						return page, err
 					}
 				}
 				return DialectFieldIndexPage{}, fmt.Errorf("no vector field index at entry %d", request.Entry)
@@ -277,7 +290,11 @@ func TestDialectInventoryPagingVectors(t *testing.T) {
 				}
 				for _, at := range row.Pages {
 					if v.Items[at].Cursor == request.Cursor {
-						return dialectClone(v.Items[at])
+						page, err := dialectClone(v.Items[at])
+						if row.Index != nil {
+							page.InventoryDigest = row.Index.Digest
+						}
+						return page, err
 					}
 				}
 				return DialectDeclarationPage{}, fmt.Errorf("no vector page at cursor %d", request.Cursor)

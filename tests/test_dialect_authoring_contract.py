@@ -177,9 +177,12 @@ class DialectAuthoringContract(unittest.TestCase):
         issue = 98 + 4842 * 450 + sum(len(str(n)) for n in range(1, 451))
         self.assertEqual(issue, 2180240)
         rows = {row['name']: row for row in json.loads((ROOT / 'contract/vectors/dialect-authoring/paging.json').read_text())['bounds']}
-        self.assertEqual([row['indexBytes'] for row in rows.values()], [77390, 284098, 386, 1089098, 2178098, 1187])
+        self.assertEqual([row['indexBytes'] for row in rows.values()], [77390, 284098, 386, 1089098, 2178098, 1187, 1090187, 229, 230, 233])
         self.assertEqual(rows['issue #252 family: 450 revisions x 30 fields with 64-byte names']['oneLevelIndexBytes'], issue)
         self.assertEqual(rows['largest accepted Desk collection: 1,000 revisions x 30 fields, 160-byte labels, 64-byte names']['fieldIndexBytes'], 4956)
         self.assertEqual(rows['largest unescaped revision field index the shape admits: 1,000 fields with 160-byte names']['fieldIndexBytes'], 255186)
         self.assertEqual(top(2000, entry(960, 1000, page_bytes)), 2178098)
         self.assertEqual(top(1, entry(960, 1000, page_bytes + 1)), 1187)
+        # 1,001 revisions stay inside the cap, so the revision limit, not the byte cap, refuses them.
+        self.assertEqual(top(1001, entry(960, 1000, page_bytes)), 1090187)
+        self.assertLessEqual(1090187, index_bytes)

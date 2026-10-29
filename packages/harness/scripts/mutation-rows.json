@@ -8194,6 +8194,38 @@
   "status": "caught",
   "origin": "agent#252",
   "note": "Go twin: replace r.Digest != nil || r.Bytes != nil with false in dialectIndex; ^TestDialectInventoryHostRefusals/unavailable_entry_with_a_digest$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory field index length matches its top entry",
+  "file": "dialects.ts",
+  "find": "utf8Bytes(raw)!==entry.bytes||",
+  "replace": "",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove len(canonical) != *entry.Bytes || in dialectFieldIndex; ^TestDialectInventoryPagingVectors/revision_field_index_length_disagrees_with_its_top_entry$ fails its expected refusal. Review of record F1."
+},
+{
+  "name": "dialect inventory top index revision limit",
+  "file": "dialects.ts",
+  "find": "||value.revisions.length>L.columns)malformed()",
+  "replace": ")malformed()",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove || len(index.Revisions) > DialectColumns in dialectIndex; ^TestDialectInventoryBounds/top_index_over_the_revision_limit_inside_its_cap:_1,001_revisions$ fails its expected refusal. Review of record F1."
 }
  ]
 }
