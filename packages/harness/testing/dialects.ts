@@ -1,5 +1,5 @@
 import fixture from '../../../contract/testdata/dialect-authoring/authoring.json'
-import {DIALECT_AUTHORING_LIMITS,DIALECT_RETAINED_COLUMN_DRAFT,dialectResearchIndex,dialectTools,type DialectAuthoringPorts,type DialectSnapshot,type DialectReviewProposal,type DialectCandidate,type DialectDraftCheckpoint,type DialectDeclarationPageRequest,type DialectResearchRevision} from '../dialects'
+import {DIALECT_AUTHORING_LIMITS,DIALECT_RETAINED_COLUMN_DRAFT,dialectFieldIndex,dialectResearchIndex,dialectTools,type DialectAuthoringPorts,type DialectSnapshot,type DialectReviewProposal,type DialectCandidate,type DialectDraftCheckpoint,type DialectDeclarationPageRequest,type DialectFieldIndexPage,type DialectFieldIndexRequest,type DialectResearchRevision} from '../dialects'
 import {contextDigest} from '../context/ledger'
 import {canonicalJSON} from '../context/chat'
 import {utf8Bytes} from '../context/policy'
@@ -20,13 +20,21 @@ export function servePage(inventory:readonly DialectResearchRevision[]|null|unde
  }
  return page
 }
+/** The test host's revision field index page: the field index of the top entry the request names. */
+export async function serveFieldIndex(inventory:readonly DialectResearchRevision[]|null|undefined,request:DialectFieldIndexRequest):Promise<DialectFieldIndexPage>{
+ const revision=(inventory??[])[request.entry]
+ const fieldIndex=revision&&await dialectFieldIndex(revision)
+ if(!fieldIndex)throw Error('no revision field index at entry '+request.entry)
+ return {id:request.id,packKey:request.packKey,revision:request.revision,inventoryDigest:request.inventoryDigest,entry:request.entry,fieldIndex}
+}
 export function dialectFixture(){
  const {researchDeclarations,...snapshot}=structuredClone(fixture.snapshot)
  /** declarations is the host collection's complete original inventory (null: unavailable; absent: not stated). */
- const state={snapshot:snapshot as DialectSnapshot,declarations:researchDeclarations as DialectResearchRevision[]|null|undefined,pageSize:DIALECT_AUTHORING_LIMITS.pageDeclarations as number,pages:[] as DialectDeclarationPageRequest[],drafts:[] as DialectDraftCheckpoint[],retained:[] as DialectReviewProposal[],calls:[] as string[],mode:'',previewCandidate:undefined as DialectCandidate|undefined}
+ const state={snapshot:snapshot as DialectSnapshot,declarations:researchDeclarations as DialectResearchRevision[]|null|undefined,pageSize:DIALECT_AUTHORING_LIMITS.pageDeclarations as number,pages:[] as DialectDeclarationPageRequest[],fieldIndexes:[] as DialectFieldIndexRequest[],drafts:[] as DialectDraftCheckpoint[],retained:[] as DialectReviewProposal[],calls:[] as string[],mode:'',previewCandidate:undefined as DialectCandidate|undefined}
  const ports:DialectAuthoringPorts={
   conversionContract:DIALECT_RETAINED_COLUMN_DRAFT,
   read:async()=>{state.calls.push('read');return {...structuredClone(state.snapshot),...(state.declarations===undefined?{}:{researchIndex:await dialectResearchIndex(state.declarations)})}},
+  readFieldIndex:async(request)=>{state.calls.push('field-index');state.fieldIndexes.push(structuredClone(request));return serveFieldIndex(state.declarations,request)},
   readDeclarations:async(request)=>{state.calls.push('page');state.pages.push(structuredClone(request));return servePage(state.declarations,request,state.pageSize)},
   runtime:async(name,args)=>{
    state.calls.push(name)

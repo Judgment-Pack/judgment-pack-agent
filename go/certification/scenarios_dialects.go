@@ -51,7 +51,8 @@ func dialectAuthoringFindings(ctx context.Context, server *Server, inner Adapter
 	if err = json.Unmarshal(raw, &file); err != nil {
 		return nil, err
 	}
-	// The host's complete original inventory, served as an index and digest-checked pages.
+	// The host's complete original inventory, served as a top index, revision field indexes and
+	// digest-checked pages.
 	var inventory struct {
 		Snapshot struct {
 			ResearchDeclarations []runcontext.DialectResearchRevision `json:"researchDeclarations"`
@@ -88,6 +89,15 @@ func dialectAuthoringFindings(ctx context.Context, server *Server, inner Adapter
 				_ = json.Unmarshal(encoded, &detached)
 				detached.ResearchIndex = index
 				return detached, nil
+			},
+			ReadFieldIndex: func(_ context.Context, request runcontext.DialectFieldIndexRequest) (runcontext.DialectFieldIndexPage, error) {
+				page := runcontext.DialectFieldIndexPage{ID: request.ID, PackKey: request.PackKey, Revision: request.Revision, InventoryDigest: request.InventoryDigest, Entry: request.Entry}
+				if request.Entry >= 0 && request.Entry < len(inventory.Snapshot.ResearchDeclarations) {
+					if fields := runcontext.DialectFieldIndexOf(inventory.Snapshot.ResearchDeclarations[request.Entry]); fields != nil {
+						page.FieldIndex = *fields
+					}
+				}
+				return page, nil
 			},
 			ReadDeclarations: func(_ context.Context, request runcontext.DialectDeclarationPageRequest) (runcontext.DialectDeclarationPage, error) {
 				end := min(len(served), request.Cursor+request.Limit)

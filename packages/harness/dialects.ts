@@ -8,14 +8,16 @@ import {toolTimeout, withDeadline} from './engines/contract'
 
 /** Package-owned draft/review tools. Ports cannot save a recipe, publish or execute it. */
 /**
- * The original declaration inventory travels by digest (#243). Its index holds, per original revision,
- * each ordered field's name and the SHA-256 of its exact declaration bytes, plus one digest over all of
- * it; its canonical JSON is at most indexBytes, half the snapshot bound. A field entry costs 95 bytes
- * plus its name (255 at the 160-byte name limit), so the index holds about 8,200 declarations at the
- * longest names and about 16,700 at 30-byte names, each declaration itself up to sampleBytes.
- * Declarations arrive through the read port in pages of at most pageDeclarations entries and
- * pageBytes canonical bytes; canonical escaping at most doubles a declaration, so a page always fits
- * 31 of the largest.
+ * The original declaration inventory travels by digest in two levels (#243, #252). The top index holds,
+ * per original revision, its field count and the SHA-256 and canonical byte length of its revision field
+ * index, plus one digest over all of it; its canonical JSON is at most indexBytes. At most columns
+ * (1,000) revisions with 160-byte labels, each escaped at most sixfold, give at most 1,089,098 bytes, so
+ * every top index the shape admits fits. Each revision field index (ordered field names and declaration
+ * digests) is read through the read port as one page of at most pageBytes: 1,000 fields with 160-byte
+ * names that need no escaping take at most 255,186 bytes, and a Desk recipe (30 fields, 64-byte names)
+ * at most 4,956. Declarations arrive in pages of at most pageDeclarations entries and pageBytes
+ * canonical bytes; canonical escaping at most doubles a declaration, so a page always fits 31 of the
+ * largest. ADR-0028 carries the arithmetic.
  */
 export const DIALECT_AUTHORING_LIMITS = Object.freeze({documentBytes:1048576, packBytes:1048576, snapshotBytes:4194304, resultBytes:2097152, runtimeBytes:4194304, candidateBytes:4194304, draftBytes:8388608, runtimeResults:2, columns:1000, bindings:1000, samples:3, sampleBytes:16384, shownSampleBytes:160, rememberedReads:32, milliseconds:10000, indexBytes:2097152, pageBytes:1048576, pageDeclarations:1000})
 /** Published Spec RC2 companion at draft maturity; the compatibility helper name does not select Core. */
@@ -26,11 +28,19 @@ export const DIALECT_RETAINED_COLUMN_DRAFT = Object.freeze({
 export interface DialectConversionContract {contract:string; profile:string; spec:{version:string; revision:string; schemaSha256:string; corpusSha256:string}}
 export interface DialectRetainedRead {documentJson:string; occurrence:{kind:'case'}|{kind:'source';name:string}; framePointer:string}
 export interface DialectResearchRevision {revision:string; fields:{name:string; fieldJson:string}[]|null}
-/** One original revision's ordered fields by the SHA-256 of their exact declaration bytes; null fields is unavailable. */
-export interface DialectIndexRevision {revision:string; fields:{name:string; digest:string}[]|null}
-/** The complete original inventory by digest; digest is the SHA-256 of the canonical JSON of revisions. */
+/**
+ * One original revision in the top index: its field count, and the SHA-256 (`sha256:<hex>`) and canonical
+ * byte length of its revision field index. All three are null when its declarations are unavailable.
+ */
+export interface DialectIndexRevision {revision:string; fields:number|null; digest:string|null; bytes:number|null}
+/** The complete original inventory's bounded top index; digest is the SHA-256 of the canonical JSON of revisions. */
 export interface DialectResearchIndex {digest:string; revisions:DialectIndexRevision[]}
-/** Indexed declarations from cursor (revisions in order, then their fields), bound to the read's exact collection revision and inventory. */
+/** One original revision's ordered fields by the SHA-256 of their exact declaration bytes, read through the read port. */
+export interface DialectFieldIndex {revision:string; fields:{name:string; digest:string}[]}
+/** The revision field index of top-index entry `entry` (its position), bound to the read's exact collection revision and inventory. */
+export interface DialectFieldIndexRequest {id:string; packKey:string; revision:string; inventoryDigest:string; entry:number}
+export interface DialectFieldIndexPage {id:string; packKey:string; revision:string; inventoryDigest:string; entry:number; fieldIndex:DialectFieldIndex}
+/** Indexed declarations from cursor (revisions in order, then their fields, as the revision field indexes list them), bound to the read's exact collection revision and inventory. */
 export interface DialectDeclarationPageRequest {id:string; packKey:string; revision:string; inventoryDigest:string; cursor:number; limit:number}
 /** One exact original field declaration; revision is its original revision. */
 export interface DialectDeclaration {revision:string; name:string; fieldJson:string}
@@ -96,6 +106,8 @@ export interface DialectAuthoringPorts {
  /** Trusted host opt-in to the package's exact published companion; never a model argument. */
  conversionContract?:DialectConversionContract
  read:(request:Readonly<DialectReadRequest>,signal:AbortSignal)=>Promise<DialectSnapshot>
+ /** The read port's revision field index member: one original revision's field index. Required when the top index names any field. */
+ readFieldIndex?:(request:Readonly<DialectFieldIndexRequest>,signal:AbortSignal)=>Promise<DialectFieldIndexPage>
  /** The read port's paged form: indexed original declarations of the bound collection revision. Required when the index names any declaration. */
  readDeclarations?:(request:Readonly<DialectDeclarationPageRequest>,signal:AbortSignal)=>Promise<DialectDeclarationPage>
  /** Actual installed Runtime transport. The package calls only discovery, validate and check. */
@@ -147,40 +159,92 @@ function declaration(name:string,raw:unknown):boolean {
  return object(field)&&field.name===name&&typeof field.type==='string'
 }
 interface Indexed {revision:string; name:string; digest:string}
+/** A checked top index: its entries, the flattened position of each entry's first declaration, and the declaration total. */
+interface Inventory {entries:DialectIndexRevision[]; starts:number[]; total:number}
+type InventoryPorts=Pick<DialectAuthoringPorts,'readFieldIndex'|'readDeclarations'>
+type PageBase=Omit<DialectDeclarationPageRequest,'cursor'|'limit'>
 const indexDigest=(index:DialectResearchIndex|null|undefined)=>index?index.digest:null
-/** The index a host supplies for its complete original inventory; null/undefined stays unavailable. */
+/** The revision field index a host serves for one original revision; null fields stays unavailable. */
+export async function dialectFieldIndex(revision:Readonly<DialectResearchRevision>):Promise<DialectFieldIndex|null>{
+ if(revision.fields===null)return null
+ return {revision:revision.revision,fields:await Promise.all(revision.fields.map(async f=>({name:f.name,digest:await hash(f.fieldJson)})))}
+}
+/** The top index a host supplies for its complete original inventory; null/undefined stays unavailable. */
 export async function dialectResearchIndex(revisions:readonly DialectResearchRevision[]|null|undefined):Promise<DialectResearchIndex|null>{
  if(revisions===null||revisions===undefined)return null
  const rows:DialectIndexRevision[]=[]
- for(const r of revisions)rows.push({revision:r.revision,fields:r.fields===null?null:await Promise.all(r.fields.map(async f=>({name:f.name,digest:await hash(f.fieldJson)})))})
+ for(const r of revisions){
+  const fields=await dialectFieldIndex(r)
+  if(!fields){rows.push({revision:r.revision,fields:null,digest:null,bytes:null});continue}
+  const raw=canonicalJSON(fields)
+  rows.push({revision:r.revision,fields:fields.fields.length,digest:await hash(raw),bytes:utf8Bytes(raw)})
+ }
  return {digest:await hash(canonicalJSON(rows)),revisions:rows}
 }
-/** Check the bounded index and return its flattened declaration order. */
-async function researchIndex(value:unknown):Promise<Indexed[]>{
- if(value===null||value===undefined)return []
+/** Check the bounded top index and return its entries with their flattened positions. */
+async function researchIndex(value:unknown):Promise<Inventory>{
+ const inventory:Inventory={entries:[],starts:[],total:0}
+ if(value===null||value===undefined)return inventory
  if(utf8Bytes(canonicalJSON(value))>L.indexBytes)fail('the original inventory index exceeds its byte limit.')
  const malformed=()=>fail('the original inventory index is malformed.')
  if(!object(value)||!keys(value,['digest','revisions'])||!digest(value.digest)||!Array.isArray(value.revisions)||value.revisions.length>L.columns)malformed()
- const order:Indexed[]=[],revisions=new Set<string>()
- for(const revision of (value as {revisions:unknown[]}).revisions){
-  if(!object(revision)||!keys(revision,['revision','fields'])||!text(revision.revision,160)||!scalar(revision.revision)||revisions.has(revision.revision))malformed()
-  const r=revision as {revision:string; fields:unknown}
-  revisions.add(r.revision)
-  if(r.fields===null)continue
-  if(!Array.isArray(r.fields)||r.fields.length>L.columns)malformed()
-  const names=new Set<string>()
-  for(const f of r.fields as unknown[]){if(!object(f)||!keys(f,['name','digest'])||!column(f.name)||utf8Bytes(f.name)>160||names.has(f.name)||!digest(f.digest))malformed();const field=f as {name:string; digest:string};names.add(field.name);order.push({revision:r.revision,name:field.name,digest:field.digest})}
+ const revisions=new Set<string>()
+ for(const entry of (value as {revisions:unknown[]}).revisions){
+  if(!object(entry)||!keys(entry,['revision','fields','digest','bytes'])||!text(entry.revision,160)||!scalar(entry.revision)||revisions.has(entry.revision))malformed()
+  const r=entry as unknown as DialectIndexRevision
+  if(r.fields===null?r.digest!==null||r.bytes!==null:!count(r.fields)||r.fields>L.columns||!digest(r.digest)||!count(r.bytes))malformed()
+  if(r.bytes!==null&&r.bytes>L.pageBytes)fail('a revision field index exceeds its byte limit.')
+  revisions.add(r.revision);inventory.entries.push(r);inventory.starts.push(inventory.total);inventory.total+=r.fields??0
  }
  const index=value as unknown as DialectResearchIndex
  if(await hash(canonicalJSON(index.revisions))!==index.digest)fail('the original inventory index digest does not match its entries.')
- return order
+ // An empty revision needs no read, but its field index digest is still checked.
+ for(const r of inventory.entries)if(r.fields===0)await fieldIndex({revision:r.revision,fields:[]},r)
+ return inventory
 }
-type PageReader=DialectAuthoringPorts['readDeclarations']
-const copyPage=(value:unknown)=>{try{return copy(value)}catch{return fail('a declaration page is malformed.')}}
-/** Read one bounded page from cursor and check every declaration against the index. */
-async function declarationPage(readPage:PageReader,base:Omit<DialectDeclarationPageRequest,'cursor'|'limit'>,order:Indexed[],cursor:number,signal:AbortSignal):Promise<DialectDeclaration[]>{
+/** Check one revision field index against its top entry: exact canonical length and digest, then its shape. */
+async function fieldIndex(value:unknown,entry:DialectIndexRevision):Promise<Indexed[]>{
+ let raw:string
+ try{raw=canonicalJSON(value)}catch{return fail('a revision field index is malformed.')}
+ if(utf8Bytes(raw)!==entry.bytes||await hash(raw)!==entry.digest)fail('a revision field index does not match its indexed digest.')
+ const malformed=()=>fail('a revision field index is malformed.')
+ if(!object(value)||!keys(value,['revision','fields'])||value.revision!==entry.revision||!Array.isArray(value.fields)||value.fields.length!==entry.fields)malformed()
+ const names=new Set<string>(),out:Indexed[]=[]
+ for(const f of (value as {fields:unknown[]}).fields){
+  if(!object(f)||!keys(f,['name','digest'])||!column(f.name)||utf8Bytes(f.name)>160||names.has(f.name)||!digest(f.digest))malformed()
+  const field=f as {name:string; digest:string}
+  names.add(field.name);out.push({revision:entry.revision,name:field.name,digest:field.digest})
+ }
+ return out
+}
+const copyPage=(value:unknown,malformed='a declaration page is malformed.')=>{try{return copy(value)}catch{return fail(malformed)}}
+/** Read the revision field index of one top entry through the read port and check it against that entry. */
+async function fieldIndexPage(readIndex:InventoryPorts['readFieldIndex'],base:PageBase,inventory:Inventory,at:number,signal:AbortSignal):Promise<Indexed[]>{
+ if(!readIndex)fail('an indexed original inventory requires the revision field index read port.')
+ const request:DialectFieldIndexRequest={...base,entry:at}
+ // Copy first, then check and use only the copy, as for declaration pages.
+ const page:unknown=copyPage(await bounded(signal,s=>readIndex(copy(request),s)),'a revision field index page is malformed.')
+ let raw:string
+ try{raw=canonicalJSON(page)}catch{return fail('a revision field index page is malformed.')}
+ if(utf8Bytes(raw)>L.pageBytes)fail('a revision field index page exceeds its byte limit.')
+ if(!object(page)||!keys(page,['id','packKey','revision','inventoryDigest','entry','fieldIndex']))fail('a revision field index page is malformed.')
+ if((['id','packKey','revision','inventoryDigest'] as const).some(k=>page[k]!==request[k])||page.entry!==at)fail('a revision field index page is bound to another collection revision or inventory.')
+ return fieldIndex(page.fieldIndex,inventory.entries[at]!)
+}
+/** The indexed declarations at flattened positions [from,to), from the field indexes of the revisions they fall in. */
+async function indexedRange(readIndex:InventoryPorts['readFieldIndex'],base:PageBase,inventory:Inventory,from:number,to:number,signal:AbortSignal):Promise<Indexed[]>{
+ const out:Indexed[]=[]
+ for(let at=0;at<inventory.entries.length&&inventory.starts[at]!<to;at++){
+  const fields=inventory.entries[at]!.fields,start=inventory.starts[at]!
+  if(!fields||start+fields<=from)continue
+  out.push(...(await fieldIndexPage(readIndex,base,inventory,at,signal)).slice(Math.max(0,from-start),to-start))
+ }
+ return out
+}
+/** Read one bounded page from cursor and check every declaration against the indexed declarations it must hold. */
+async function declarationPage(readPage:InventoryPorts['readDeclarations'],base:PageBase,wanted:Indexed[],cursor:number,signal:AbortSignal):Promise<DialectDeclaration[]>{
  if(!readPage)fail('an indexed original inventory requires the paged declaration read port.')
- const request:DialectDeclarationPageRequest={...base,cursor,limit:Math.min(L.pageDeclarations,order.length-cursor)}
+ const request:DialectDeclarationPageRequest={...base,cursor,limit:wanted.length}
  // Copy first, then check and use only the copy: a host accessor cannot change bytes after the checks.
  const page:unknown=copyPage(await bounded(signal,s=>readPage(copy(request),s)))
  let raw:string
@@ -192,24 +256,31 @@ async function declarationPage(readPage:PageReader,base:Omit<DialectDeclarationP
  if(declarations.length===0)fail('a declaration page omitted an indexed declaration.')
  if(declarations.length>request.limit)fail('a declaration page exceeds its declaration bound.')
  for(const [i,d] of declarations.entries()){
-  const want=order[cursor+i]!
+  const want=wanted[i]!
   if(!object(d)||!keys(d,['revision','name','fieldJson'])||d.revision!==want.revision||d.name!==want.name||typeof d.fieldJson!=='string')fail('a declaration page omitted an indexed declaration or broke its order.')
   if(await hash(d.fieldJson as string)!==want.digest)fail('a declaration does not match its indexed digest.')
   if(!declaration(want.name,d.fieldJson))fail('research-value requires the actual original field declaration.')
  }
  return copy(declarations as DialectDeclaration[])
 }
+/** One checked page of declarations from cursor: the revision field indexes it spans, then the page. */
+async function inventoryPage(ports:InventoryPorts,base:PageBase,inventory:Inventory,cursor:number,signal:AbortSignal):Promise<DialectDeclaration[]>{
+ const wanted=await indexedRange(ports.readFieldIndex,base,inventory,cursor,Math.min(inventory.total,cursor+L.pageDeclarations),signal)
+ return declarationPage(ports.readDeclarations,base,wanted,cursor,signal)
+}
 /**
- * Read a complete original inventory through the paged read port, checking every declaration against
- * the index. Host consumers such as preview and review read declarations this way instead of inline.
+ * Read a complete original inventory through the read port, checking every revision field index against
+ * the top index and every declaration against its field digest. Host consumers such as preview and review
+ * read declarations this way instead of inline.
  */
-export async function readDialectDeclarations(readPage:NonNullable<PageReader>,binding:{id:string; packKey:string; revision:string},index:DialectResearchIndex|null,signal:AbortSignal):Promise<DialectResearchRevision[]|null>{
- const order=await researchIndex(index)
+export async function readDialectDeclarations(ports:Readonly<InventoryPorts>,binding:{id:string; packKey:string; revision:string},index:DialectResearchIndex|null,signal:AbortSignal):Promise<DialectResearchRevision[]|null>{
+ const inventory=await researchIndex(index)
  if(!index)return null
  const out:DialectResearchRevision[]=index.revisions.map(r=>({revision:r.revision,fields:r.fields===null?null:[]}))
  const at=new Map(out.map((r,i)=>[r.revision,i]))
- for(let cursor=0;cursor<order.length;){
-  const page=await declarationPage(readPage,{...binding,inventoryDigest:index.digest},order,cursor,signal)
+ const base:PageBase={id:binding.id,packKey:binding.packKey,revision:binding.revision,inventoryDigest:index.digest}
+ for(let cursor=0;cursor<inventory.total;){
+  const page=await inventoryPage(ports,base,inventory,cursor,signal)
   for(const d of page)out[at.get(d.revision)!]!.fields!.push({name:d.name,fieldJson:d.fieldJson})
   cursor+=page.length
  }
@@ -336,18 +407,19 @@ export function dialectTools(ports:DialectAuthoringPorts):HostTool[]{
  const read=async(request:DialectReadRequest,signal:AbortSignal)=>validateSnapshot(await bounded(signal,s=>ports.read(copy(request),s)),request)
  const base=(s:DialectSnapshot)=>({id:s.id,packKey:s.packKey,revision:s.revision,inventoryDigest:s.researchIndex?.digest??''})
  const verifyInventory=async(s:DialectSnapshot,signal:AbortSignal)=>{
-  const order=await researchIndex(s.researchIndex)
-  for(let cursor=0;cursor<order.length;)cursor+=(await declarationPage(ports.readDeclarations,base(s),order,cursor,signal)).length
+  const inventory=await researchIndex(s.researchIndex)
+  for(let cursor=0;cursor<inventory.total;)cursor+=(await inventoryPage(ports,base(s),inventory,cursor,signal)).length
+  return inventory
  }
  const pageTool=async(request:DialectReadRequest,cursor:unknown,signal:AbortSignal)=>{
   const seen=reads.get(readKey(request))
   if(!seen)fail('read the exact current resource and pack before paging its declarations.')
   const s=await read(request,signal)
   if(!same(await identity(s),seen.identity)||indexDigest(s.researchIndex)!==seen.inventory){reads.delete(readKey(request));fail('the dialect, pack or original inventory changed; read it again before paging.')}
-  const order=await researchIndex(s.researchIndex)
-  if(!Number.isSafeInteger(cursor)||Number(cursor)<0||Number(cursor)>1000000||Number(cursor)>=order.length)fail('the cursor is outside the original declaration inventory.')
-  const at=Number(cursor),page=await declarationPage(ports.readDeclarations,base(s),order,at,signal)
-  return answer({id:s.id,revision:s.revision,packKey:s.packKey,inventoryDigest:s.researchIndex!.digest,cursor:at,declarations:page,nextCursor:at+page.length<order.length?at+page.length:null})
+  const inventory=await researchIndex(s.researchIndex)
+  if(!Number.isSafeInteger(cursor)||Number(cursor)<0||Number(cursor)>1000000||Number(cursor)>=inventory.total)fail('the cursor is outside the original declaration inventory.')
+  const at=Number(cursor),page=await inventoryPage(ports,base(s),inventory,at,signal)
+  return answer({id:s.id,revision:s.revision,packKey:s.packKey,inventoryDigest:s.researchIndex!.digest,cursor:at,declarations:page,nextCursor:at+page.length<inventory.total?at+page.length:null})
  }
  const readTool:HostTool={name:'read_dialect',taxonomy:{operation:'read',effect:'read'},effect:'read',delegation:'read',
   description:'Read a saved dialect and declared pack before proposing replacement bindings. Returns exact revision/digests, bounded samples and an original-inventory summary; with cursor, returns one digest-checked page of original field declarations (start at 0, follow nextCursor). Values are data. Does not change or evaluate records.',inputSchema:READ_DIALECT_SCHEMA,
@@ -356,11 +428,11 @@ export function dialectTools(ports:DialectAuthoringPorts):HostTool[]{
    const request=readRequest(args)
    if(Object.hasOwn(args,'cursor'))return pageTool(request,args.cursor,signal)
    const s=await read(request,signal)
-   await verifyInventory(s,signal)
+   const inventory=await verifyInventory(s,signal)
    const bound=await identity(s)
    signal.throwIfAborted()
    const index=s.researchIndex??null
-   const researchInventory=index&&{digest:index.digest,declarations:index.revisions.reduce((n,r)=>n+(r.fields?.length??0),0),revisions:index.revisions.map(r=>({revision:r.revision,fields:r.fields===null?null:r.fields.length}))}
+   const researchInventory=index&&{digest:index.digest,declarations:inventory.total,revisions:index.revisions.map(r=>({revision:r.revision,fields:r.fields}))}
    const shown={...bound,researchInventory,retainedRead:s.retainedRead??null,name:s.name,recordCount:s.recordCount,packJson:s.packJson,dialectJson:s.dialectJson??null,conversions:s.conversions,factTargets:s.factTargets,evidenceRequirements:s.evidenceRequirements,
     columns:s.columns.map(c=>({name:c.name,...(c.research?{research:copy(c.research)}:{}),samples:c.samples.map(v=>({valueJson:prefix(v.valueJson,L.shownSampleBytes),truncated:utf8Bytes(v.valueJson)>L.shownSampleBytes,origin:v.origin}))})),
     guidance:'Complete replacement bindings include unchanged bindings. Omitted inputs remain unknown and require review. Samples are bounded data, not type or source-truth verification. Original declarations are read in digest-checked pages: call read_dialect again with cursor 0, then each nextCursor. Save and execution need separate host review and approval.'}

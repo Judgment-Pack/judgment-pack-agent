@@ -25,9 +25,10 @@ digest. Sample `valueJson` remains exact privately; a displayed prefix carries
 `truncated`. A prefix is not complete JSON or a typed answer. Absence, null,
 false, zero, empty strings, integer precision and decimal spellings remain
 distinct. `researchIndex` carries the complete original revision inventory by digest
-as `{digest,revisions:[{revision,fields:[{name,digest}]}]}`; the declarations themselves
-are read through the read port in pages (see "Paging original declarations" below). A null
-index or null fields means unavailable, while no revisions means known empty. Exact fieldJson bytes retain all
+as a bounded top index, `{digest,revisions:[{revision,fields,digest,bytes}]}`; each
+revision's field index and the declarations themselves are read through the read port in
+pages (see "Paging original declarations" below). A null index or null fields means
+unavailable, while no revisions means known empty. Exact fieldJson bytes retain all
 eight historical types (text, integer, decimal, boolean, text-list, range, string,
 number), opaque original members and numeric spellings. Unknown types stay inspectable
 and become per-record preview issues. Column `research` remains optional legacy editor
@@ -197,61 +198,122 @@ is never represented as upstream semantic validation or Desk acceptance. Full
 integrated checks, exact-head CI, independent review and release review remain
 batch gates.
 
-## Paging original declarations (#243)
+## Paging original declarations (#243, #252)
 
-The complete original inventory no longer travels inline. A host's read returns
-`researchIndex`: every original revision in order, each with its ordered fields as
-`{name,digest}`, where `digest` is `sha256:` and the lowercase hex SHA-256 of the exact
-`fieldJson` bytes, and `digest` over the whole index, the SHA-256 of the canonical JSON
-of `revisions`. `dialectResearchIndex(revisions)` in TypeScript and
-`DialectResearchIndexOf(revisions)` in Go compute it from a complete inventory. A
-TypeScript snapshot that still carries inline `researchDeclarations` is refused with that
+The complete original inventory no longer travels inline. It travels as a two-level index
+by digest, and nothing in it is dropped, clipped or reordered.
+
+**The top index.** A host's read returns `researchIndex`, the top index. It lists every
+original revision in order as `{revision,fields,digest,bytes}`:
+
+- `fields` is the revision's field count;
+- `digest` and `bytes` are the SHA-256 (`sha256:` and lowercase hex) and canonical byte
+  length of that revision's field index;
+- all three are null when the revision's declarations are unavailable.
+
+The top index's own `digest` is the SHA-256 of the canonical JSON of `revisions`.
+
+**Revision field indexes.** A revision field index is `{revision,fields:[{name,digest}]}`:
+the ordered field names, each with the SHA-256 of the exact `fieldJson` bytes.
+
+**Host helpers.** In TypeScript, `dialectResearchIndex(revisions)` computes the top index from
+a complete inventory, and `dialectFieldIndex(revision)` computes one revision's field index.
+The Go helpers are `DialectResearchIndexOf(revisions)` and `DialectFieldIndexOf(revision)`.
+A TypeScript snapshot that still carries inline `researchDeclarations` is refused with that
 reason; Go's snapshot no longer has the member.
 
-The declarations are served by the read port's paged member, `readDeclarations(request,
-signal)` in TypeScript and `ReadDeclarations(ctx, request)` in Go. A request names the
-read's `id`, `packKey`, the bound collection `revision`, the `inventoryDigest`, a `cursor`
-(a position in the index's flattened order: revisions in order, then their fields in
-order, skipping unavailable revisions) and a `limit` of at most 1,000 declarations. The
-page echoes all five binding members and returns `declarations`, each
-`{revision,name,fieldJson}` with `revision` the original revision. A host returns at least
-one declaration and at most `limit`, and keeps the page's canonical JSON within 1 MiB; it
-may return fewer than `limit` to stay within the byte bound.
+The read port serves the rest in pages.
+
+**Revision field index pages.** In TypeScript the member is `readFieldIndex(request,
+signal)`; in Go it is `ReadFieldIndex(ctx, request)`. A request names:
+
+- the read's `id`, `packKey` and bound collection `revision`;
+- the `inventoryDigest`;
+- `entry`, the top entry's position.
+
+The page echoes all five and carries `fieldIndex`. The factory reads a field index only for
+a revision with at least one field. An empty revision's field index, `{"fields":[],
+"revision":…}`, is checked against its entry without a read.
+
+**Declaration pages.** In TypeScript the member is `readDeclarations(request, signal)`; in Go
+it is `ReadDeclarations(ctx, request)`. A request names:
+
+- the read's `id`, `packKey` and bound collection `revision`;
+- the `inventoryDigest`;
+- a `cursor`, a position in the flattened order: revisions in order, then their fields in
+  the order their field indexes list them, skipping unavailable revisions;
+- a `limit` of at most 1,000 declarations.
+
+The page echoes all five binding members and returns `declarations`, each
+`{revision,name,fieldJson}`, where `revision` is the original revision.
+
+**Host page rules.** A host returns at least one declaration and at most `limit`. It keeps
+each page's canonical JSON within 1 MiB, and may return fewer than `limit` to stay within the
+byte bound.
+
+**Port calls.** A declaration page reads only the field indexes of the revisions it spans, so
+no step holds more than one page of index and declarations. A revision that spans two pages
+has its field index read twice.
 
 The factory checks every page before using it, and refuses, as tool input failures:
 
-- a page bound to another collection revision, pack, id, inventory digest or cursor;
-- an empty page while declarations remain, or a declaration out of index order (a
-  missing declaration);
+- a top index whose digest differs from its entries, a malformed top index, or one over its
+  bound;
+- a top entry whose field index is over the page bound;
+- a field index page bound to another collection revision, pack, id, inventory digest or
+  entry, or over 1 MiB of canonical JSON;
+- a field index whose canonical length or SHA-256 differs from its top entry's;
+- a field index that names another revision, holds another field count, or has a malformed
+  field;
+- a declaration page bound to another collection revision, pack, id, inventory digest or
+  cursor;
+- an empty declaration page while declarations remain, or a declaration out of index order
+  (a missing declaration);
 - a declaration whose SHA-256 differs from its indexed digest;
-- a page over 1 MiB of canonical JSON or over its `limit`;
+- a declaration page over 1 MiB of canonical JSON or over its `limit`;
 - a declaration that is not the named field's original declaration.
 
-An index whose digest differs from its entries, a malformed index, or one over its bound
-is refused at the read. A non-empty index without the paged port is refused.
+The factory also refuses a top index that names a field without the field index member, or
+a declaration without the declaration page member.
 
-`read_dialect` pages the inventory once and shows the model a summary
-(`researchInventory`: digest, declaration count, and per revision its field count or
-null). With `cursor` it returns one checked page and `nextCursor` (null at the end); a
-cursor read requires a prior read of the same identity and inventory and refuses after
-either changed. `propose_dialect` pages and checks the complete inventory again before
-its first draft. The candidate, both draft checkpoints, the preview and the final
-proposal carry the index, so their fingerprints and digests bind the inventory digest.
-After preview the currentness read must still show the candidate's inventory digest;
-otherwise the proposal is refused before `retain`.
+**The model surface.** `read_dialect` pages the inventory once and shows the model a summary,
+`researchInventory`: the digest, the declaration count, and per revision its field count or
+null. With `cursor` it returns one checked page and `nextCursor`, which is null at the end.
+A cursor read requires a prior read of the same identity and inventory, and refuses once
+either has changed. `propose_dialect` pages and checks the complete inventory again before
+its first draft.
 
-Host consumers that need declarations, such as a preview implementation or review,
-read them with `readDialectDeclarations(readDeclarations, {id,packKey,revision}, index,
-signal)` in TypeScript or `ReadDialectDeclarations(ctx, readDeclarations, id, packKey,
-revision, index)` in Go, which apply the same checks and return the complete inventory.
+**Binding.** The candidate, both draft checkpoints, the preview and the final proposal carry
+the top index, so their fingerprints and digests bind the inventory digest. After preview,
+the currentness read must still show the candidate's inventory digest; otherwise the
+proposal is refused before `retain`.
 
-Bounds: the index's canonical JSON is at most 2 MiB (`indexBytes`,
-`DialectIndexBytes`), half the unchanged 4 MiB snapshot bound. A field entry costs 95
-bytes plus its name, 255 bytes at the 160-byte name limit, so the index holds about 8,200
-declarations at the longest names and about 16,700 at 30-byte names; each declaration
-is itself up to 16 KiB. The issue's 150 revisions of 30 fields fit in 1,175,648 bytes
-at the longest names. Pages are at most 1,000 declarations (`pageDeclarations`,
-`DialectPageDeclarations`) and 1 MiB (`pageBytes`, `DialectPageBytes`); canonical
-escaping at most doubles a declaration, so a page always holds 31 of the largest. The
-snapshot, candidate (4 MiB), draft (8 MiB), result (2 MiB) and proposal bounds keep their
-values. ADR-0028 records the decision.
+**Host consumers.** Consumers that need declarations, such as a preview implementation or
+review, read them with one of:
+
+- `readDialectDeclarations({readFieldIndex,readDeclarations}, {id,packKey,revision}, index,
+  signal)` in TypeScript;
+- `ReadDialectDeclarations(ctx, readFieldIndex, readDeclarations, id, packKey, revision,
+  index)` in Go.
+
+Both apply the same checks and return the complete inventory.
+
+**Bounds** (ADR-0028 carries the arithmetic):
+
+- The top index is at most 2 MiB of canonical JSON (`indexBytes`, `DialectIndexBytes`).
+  - Every top index the shape admits fits. That is 1,000 revisions with 160-byte labels,
+    each escaped sixfold, which take at most 1,089,098 bytes.
+  - A Desk collection holds at most 1,000 records, so at most 1,000 original revisions. Its
+    top index takes at most 284,098 bytes.
+  - The issue's 450 revisions of 30 fields take 77,390 bytes. Their one-level index took
+    2,180,240.
+- A revision field index and its page are at most 1 MiB (`pageBytes`, `DialectPageBytes`).
+  - A Desk recipe (30 fields, 64-byte names) takes at most 4,956 bytes.
+  - 1,000 fields with 160-byte names that need no escaping take 255,186.
+- Declaration pages are at most 1,000 declarations (`pageDeclarations`,
+  `DialectPageDeclarations`) and 1 MiB. Canonical escaping at most doubles a declaration, so
+  a page always holds 31 of the largest.
+- The snapshot, candidate (4 MiB), draft (8 MiB), result (2 MiB) and proposal bounds keep
+  their values. Their inventory share fell from up to 2 MiB to the top index.
+
+ADR-0028 records the decision and its #252 amendment.

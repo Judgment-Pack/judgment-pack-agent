@@ -7662,8 +7662,8 @@
 {
   "name": "dialect inventory refuses a page from another collection revision",
   "file": "dialects.ts",
-  "find": "page.revision!==request.revision||",
-  "replace": "false||",
+  "find": "page.revision!==request.revision||page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
+  "replace": "page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
   "tests": [
     "dialects-inventory.test.ts",
     "dialects-retained.test.ts",
@@ -7694,8 +7694,8 @@
 {
   "name": "dialect inventory page byte bound",
   "file": "dialects.ts",
-  "find": "if(utf8Bytes(raw)>L.pageBytes)",
-  "replace": "if(false)",
+  "find": "if(utf8Bytes(raw)>L.pageBytes)fail('a declaration page exceeds",
+  "replace": "if(false)fail('a declaration page exceeds",
   "tests": [
     "dialects-inventory.test.ts",
     "dialects-retained.test.ts",
@@ -7721,7 +7721,7 @@
   ],
   "status": "caught",
   "origin": "agent#243",
-  "note": "Go twin: replace len(canonical) > DialectIndexBytes with false in dialectIndex; ^TestDialectInventoryPagingVectors/index_over_its_bound$ fails its expected refusal."
+  "note": "Go twin: replace len(canonical) > DialectIndexBytes with false in dialectIndex; ^TestDialectInventoryBounds/top_index_over_its_cap$ fails its expected refusal (malformed instead). Since #252 the bound holds the top index; the #243 case it named moved to the bound rows."
 },
 {
   "name": "dialect inventory index digest covers its entries",
@@ -7790,8 +7790,8 @@
 {
   "name": "dialect inventory page echoes its id",
   "file": "dialects.ts",
-  "find": "page.id!==request.id||",
-  "replace": "false||",
+  "find": "page.id!==request.id||page.packKey!==request.packKey||page.revision!==request.revision||page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
+  "replace": "page.packKey!==request.packKey||page.revision!==request.revision||page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
   "tests": [
     "dialects-inventory.test.ts",
     "dialects-retained.test.ts",
@@ -7806,8 +7806,8 @@
 {
   "name": "dialect inventory page echoes its packKey",
   "file": "dialects.ts",
-  "find": "page.packKey!==request.packKey||",
-  "replace": "false||",
+  "find": "page.packKey!==request.packKey||page.revision!==request.revision||page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
+  "replace": "page.revision!==request.revision||page.inventoryDigest!==request.inventoryDigest||page.cursor!==cursor",
   "tests": [
     "dialects-inventory.test.ts",
     "dialects-retained.test.ts",
@@ -7834,6 +7834,150 @@
   "status": "caught",
   "origin": "agent#243",
   "note": "TypeScript only (Go pages are values with immutable strings): restoring check-then-copy lets a host accessor change fieldJson after the checks; the accessor test fails at its checked-bytes assertion. Review of record F4."
+},
+{
+  "name": "dialect inventory field index matches its top entry's digest and length",
+  "file": "dialects.ts",
+  "find": "if(utf8Bytes(raw)!==entry.bytes||await hash(raw)!==entry.digest)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: replace len(canonical) != *entry.Bytes || dialectHash(canonical) != *entry.Digest with false in dialectFieldIndex; ^TestDialectInventoryPagingVectors/revision_field_index_does_not_match_its_top_entry$ and ^TestDialectInventoryHostRefusals/field_index_differs_from_its_top_entry$ fail their expected refusal."
+},
+{
+  "name": "dialect inventory field index belongs to its top entry's revision",
+  "file": "dialects.ts",
+  "find": "value.revision!==entry.revision||",
+  "replace": "false||",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove index.Revision != entry.Revision || in dialectFieldIndex; ^TestDialectInventoryHostRefusals/field_index_for_another_revision$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory field index holds its top entry's field count",
+  "file": "dialects.ts",
+  "find": "||value.fields.length!==entry.fields)",
+  "replace": ")",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove || len(index.Fields) != *entry.Fields in dialectFieldIndex; ^TestDialectInventoryHostRefusals/field_index_with_another_field_count$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory top entry names a field index within the page bound",
+  "file": "dialects.ts",
+  "find": "if(r.bytes!==null&&r.bytes>L.pageBytes)",
+  "replace": "if(false)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: replace r.Bytes != nil && *r.Bytes > DialectPageBytes with false in dialectIndex; ^TestDialectInventoryBounds/revision_field_index_over_its_page_bound$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory field index page byte bound",
+  "file": "dialects.ts",
+  "find": "if(utf8Bytes(raw)>L.pageBytes)fail('a revision field index page",
+  "replace": "if(false)fail('a revision field index page",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: replace len(canonical) > DialectPageBytes with false in dialectFieldIndexPage; ^TestDialectInventoryHostRefusals/field_index_page_over_its_byte_bound$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory field index page is bound to the read's revision and inventory",
+  "file": "dialects.ts",
+  "find": "(['id','packKey','revision','inventoryDigest'] as const).some(",
+  "replace": "([] as const).some(",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove the ID, PackKey, Revision and InventoryDigest comparisons in dialectFieldIndexPage; ^TestDialectInventoryHostRefusals/field_index_page_from_another_inventory$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory field index page echoes its entry",
+  "file": "dialects.ts",
+  "find": "||page.entry!==at)",
+  "replace": ")",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: remove || page.Entry != at in dialectFieldIndexPage; ^TestDialectInventoryHostRefusals/field_index_page_echoing_another_entry$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory checks an empty revision's field index digest",
+  "file": "dialects.ts",
+  "find": "for(const r of inventory.entries)if(r.fields===0)",
+  "replace": "for(const r of [] as DialectIndexRevision[])if(r.fields===0)",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: skip the empty-revision loop at the end of dialectIndex; ^TestDialectInventoryHostRefusals/empty_revision_with_another_field_index_digest$ fails its expected refusal."
+},
+{
+  "name": "dialect inventory unavailable top entry carries no field index",
+  "file": "dialects.ts",
+  "find": "r.fields===null?r.digest!==null||r.bytes!==null:",
+  "replace": "r.fields===null?false:",
+  "tests": [
+    "dialects-inventory.test.ts",
+    "dialects-retained.test.ts",
+    "dialects.test.ts",
+    "dialects-compatibility.test.ts",
+    "certification/dialects.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#252",
+  "note": "Go twin: replace r.Digest != nil || r.Bytes != nil with false in dialectIndex; ^TestDialectInventoryHostRefusals/unavailable_entry_with_a_digest$ fails its expected refusal."
 }
  ]
 }

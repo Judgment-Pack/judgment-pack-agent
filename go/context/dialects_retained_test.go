@@ -67,7 +67,7 @@ func TestDialectRetainedPolicy(t *testing.T) {
 					t.Fatal("checkpoint lost original declarations")
 				}
 			}
-			read, err := ReadDialectDeclarations(context.Background(), w.ports.ReadDeclarations, candidate.ID, candidate.PackKey, candidate.Revision, candidate.ResearchIndex)
+			read, err := ReadDialectDeclarations(context.Background(), w.ports.ReadFieldIndex, w.ports.ReadDeclarations, candidate.ID, candidate.PackKey, candidate.Revision, candidate.ResearchIndex)
 			if err != nil || !reflect.DeepEqual(read, w.declarations) {
 				t.Fatal("the index does not recover the exact original declarations", err)
 			}

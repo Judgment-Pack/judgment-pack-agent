@@ -1194,41 +1194,25 @@
           }
         },
         "researchIndex": {
-          "digest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "digest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
           "revisions": [
             {
               "revision": "original-recipe:one",
-              "fields": [
-                {
-                  "name": "typed",
-                  "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
-                },
-                {
-                  "name": "amount",
-                  "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
-                }
-              ]
+              "fields": 2,
+              "digest": "sha256:ff1665e2b85bee3d350e4026ace9010d7116e4a1c120f18ac9d908d2626350b8",
+              "bytes": 246
             },
             {
               "revision": "original-recipe:two",
-              "fields": [
-                {
-                  "name": "typed",
-                  "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
-                },
-                {
-                  "name": "note",
-                  "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
-                },
-                {
-                  "name": "count",
-                  "digest": "sha256:9f1980155fc5db29e4d23988791f98190e133afdeac45e77faf7e06b050c3735"
-                }
-              ]
+              "fields": 3,
+              "digest": "sha256:d669c2390c1d230597252804b1ce656f38783b2d2f5a1509b87d3ba1787c0ff7",
+              "bytes": 344
             },
             {
               "revision": "original-recipe:retired",
-              "fields": null
+              "fields": null,
+              "digest": null,
+              "bytes": null
             }
           ]
         }

@@ -138,6 +138,10 @@ var Registry = map[string]func() any{
 	"dialect-authoring.json#/$defs/pageRequest":                 func() any { return new(DialectAuthoringPageRequest) },
 	"dialect-authoring.json#/$defs/declaration":                 func() any { return new(DialectAuthoringDeclaration) },
 	"dialect-authoring.json#/$defs/page":                        func() any { return new(DialectAuthoringPage) },
+	"dialect-authoring.json#/$defs/indexField":                  func() any { return new(DialectAuthoringIndexField) },
+	"dialect-authoring.json#/$defs/fieldIndex":                  func() any { return new(DialectAuthoringFieldIndex) },
+	"dialect-authoring.json#/$defs/fieldIndexRequest":           func() any { return new(DialectAuthoringFieldIndexRequest) },
+	"dialect-authoring.json#/$defs/fieldIndexPage":              func() any { return new(DialectAuthoringFieldIndexPage) },
 	"dialect-draft.json":                                        func() any { return new(DialectDraft) },
 	"dialect-draft.json#/$defs/conversion":                      func() any { return new(DialectDraftConversion) },
 	"dialect-draft.json#/$defs/fact":                            func() any { return new(DialectDraftFact) },
@@ -156,7 +160,6 @@ var Registry = map[string]func() any{
 	"dialect-draft.json#/$defs/originalRevision":                func() any { return new(DialectDraftOriginalRevision) },
 	"dialect-draft.json#/$defs/conversionContract":              func() any { return new(DialectDraftConversionContract) },
 	"dialect-draft.json#/$defs/retainedRead":                    func() any { return new(DialectDraftRetainedRead) },
-	"dialect-draft.json#/$defs/indexField":                      func() any { return new(DialectDraftIndexField) },
 	"dialect-draft.json#/$defs/indexRevision":                   func() any { return new(DialectDraftIndexRevision) },
 	"dialect-draft.json#/$defs/researchIndex":                   func() any { return new(DialectDraftResearchIndex) },
 	"export.json":                                   func() any { return new(Export) },
@@ -11807,14 +11810,18 @@ func (v DelegatedTaskTaskRequest) MarshalJSON() ([]byte, error) {
 // one page of original field declarations. The read port's paged exchange (pageRequest, page)
 // carries original declarations by position in the inventory index, bound to the exact collection
 // revision and inventory digest; the factory checks every declaration against its indexed SHA-256
-// digest (#243).
+// digest (#243). The read port's revision field index exchange (fieldIndexRequest, fieldIndexPage)
+// carries one original revision's field index by its position in the top index, bound the same
+// way; the factory checks it against the top entry's digest and byte length (#252).
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectAuthoring struct {
-	Read        *DialectAuthoringRead
-	Propose     *DialectAuthoringPropose
-	PageRequest *DialectAuthoringPageRequest
-	Page        *DialectAuthoringPage
+	Read              *DialectAuthoringRead
+	Propose           *DialectAuthoringPropose
+	PageRequest       *DialectAuthoringPageRequest
+	Page              *DialectAuthoringPage
+	FieldIndexRequest *DialectAuthoringFieldIndexRequest
+	FieldIndexPage    *DialectAuthoringFieldIndexPage
 	// Raw is the value where more than one member decodes it; no member is set then.
 	Raw json.RawMessage
 }
@@ -11881,6 +11888,34 @@ func (v *DialectAuthoring) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	if kind == "object" && hasMembers(data, "entry", "id", "inventoryDigest", "packKey", "revision") {
+		var candidate DialectAuthoringFieldIndexRequest
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.FieldIndexRequest = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "entry", "fieldIndex", "id", "inventoryDigest", "packKey", "revision") {
+		var candidate DialectAuthoringFieldIndexPage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.FieldIndexPage = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
 	switch {
 	case decoded == 0:
 		return errorf("DialectAuthoring: the value is none of the union's members")
@@ -11909,6 +11944,12 @@ func (v DialectAuthoring) MarshalJSON() ([]byte, error) {
 	}
 	if v.Page != nil {
 		set = append(set, v.Page)
+	}
+	if v.FieldIndexRequest != nil {
+		set = append(set, v.FieldIndexRequest)
+	}
+	if v.FieldIndexPage != nil {
+		set = append(set, v.FieldIndexPage)
 	}
 	if len(set) == 0 && v.Raw != nil {
 		return v.Raw, nil
@@ -12027,6 +12068,122 @@ func (v *DialectAuthoringFact) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a DialectAuthoringFact object.
 func (v DialectAuthoringFact) MarshalJSON() ([]byte, error) {
 	type plain DialectAuthoringFact
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/fieldIndex. One original revision's revision field index: its
+// ordered field names and the SHA-256 of each exact declaration (#252).
+type DialectAuthoringFieldIndex struct {
+	Revision string                       `json:"revision"`
+	Fields   []DialectAuthoringIndexField `json:"fields"`
+}
+
+var dialectAuthoringFieldIndexMembers = []string{"revision", "fields"}
+
+// UnmarshalJSON decodes a DialectAuthoringFieldIndex object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringFieldIndex) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringFieldIndex
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringFieldIndexMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringFieldIndex: %w", err)
+	}
+	*v = DialectAuthoringFieldIndex(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringFieldIndex object.
+func (v DialectAuthoringFieldIndex) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringFieldIndex
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/fieldIndexPage.
+type DialectAuthoringFieldIndexPage struct {
+	ID              string                     `json:"id"`
+	PackKey         string                     `json:"packKey"`
+	Revision        string                     `json:"revision"`
+	InventoryDigest string                     `json:"inventoryDigest"`
+	Entry           int64                      `json:"entry"`
+	FieldIndex      DialectAuthoringFieldIndex `json:"fieldIndex"`
+}
+
+var dialectAuthoringFieldIndexPageMembers = []string{"id", "packKey", "revision", "inventoryDigest", "entry", "fieldIndex"}
+
+// UnmarshalJSON decodes a DialectAuthoringFieldIndexPage object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringFieldIndexPage) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringFieldIndexPage
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringFieldIndexPageMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringFieldIndexPage: %w", err)
+	}
+	*v = DialectAuthoringFieldIndexPage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringFieldIndexPage object.
+func (v DialectAuthoringFieldIndexPage) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringFieldIndexPage
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/fieldIndexRequest.
+type DialectAuthoringFieldIndexRequest struct {
+	ID              string `json:"id"`
+	PackKey         string `json:"packKey"`
+	Revision        string `json:"revision"`
+	InventoryDigest string `json:"inventoryDigest"`
+	Entry           int64  `json:"entry"`
+}
+
+var dialectAuthoringFieldIndexRequestMembers = []string{"id", "packKey", "revision", "inventoryDigest", "entry"}
+
+// UnmarshalJSON decodes a DialectAuthoringFieldIndexRequest object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringFieldIndexRequest) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringFieldIndexRequest
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringFieldIndexRequestMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringFieldIndexRequest: %w", err)
+	}
+	*v = DialectAuthoringFieldIndexRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringFieldIndexRequest object.
+func (v DialectAuthoringFieldIndexRequest) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringFieldIndexRequest
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/indexField.
+type DialectAuthoringIndexField struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+var dialectAuthoringIndexFieldMembers = []string{"name", "digest"}
+
+// UnmarshalJSON decodes a DialectAuthoringIndexField object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringIndexField) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringIndexField
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringIndexFieldMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringIndexField: %w", err)
+	}
+	*v = DialectAuthoringIndexField(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringIndexField object.
+func (v DialectAuthoringIndexField) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringIndexField
 	return encodeObject(plain(v), nil)
 }
 
@@ -12225,9 +12382,10 @@ func (v DialectAuthoringRead) MarshalJSON() ([]byte, error) {
 // content/digest/receipt chains, stage order and authority limits are additionally enforced by the
 // tool factory. A draft permits inspection and editing, never saving or execution. Version-2
 // checkpoints (#243) carry the complete original inventory by digest as researchIndex (null means
-// unavailable) and never researchDeclarations; version-1 checkpoints written by v0.11.0 keep their
-// inline researchDeclarations, never carry researchIndex, remain inspectable and grant no new
-// contract support.
+// unavailable), a bounded top index of per-revision field index digests (#252), and never
+// researchDeclarations; version-1 checkpoints written by v0.11.0 keep their inline
+// researchDeclarations, never carry researchIndex, remain inspectable and grant no new contract
+// support.
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectDraft struct {
@@ -13004,40 +13162,17 @@ func (v DialectDraftFailure) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From dialect-draft.json#/$defs/indexField.
-type DialectDraftIndexField struct {
-	Name   string `json:"name"`
-	Digest string `json:"digest"`
-}
-
-var dialectDraftIndexFieldMembers = []string{"name", "digest"}
-
-// UnmarshalJSON decodes a DialectDraftIndexField object and refuses a member the closed schema does not name.
-func (v *DialectDraftIndexField) UnmarshalJSON(data []byte) error {
-	type plain DialectDraftIndexField
-	var p plain
-	extra, err := decodeObject(data, &p, dialectDraftIndexFieldMembers, true)
-	if err != nil {
-		return errorf("DialectDraftIndexField: %w", err)
-	}
-	*v = DialectDraftIndexField(p)
-	_ = extra
-	return nil
-}
-
-// MarshalJSON encodes a DialectDraftIndexField object.
-func (v DialectDraftIndexField) MarshalJSON() ([]byte, error) {
-	type plain DialectDraftIndexField
-	return encodeObject(plain(v), nil)
-}
-
-// From dialect-draft.json#/$defs/indexRevision.
+// From dialect-draft.json#/$defs/indexRevision. One original revision in the top index (#252): its
+// field count, and the SHA-256 and canonical byte length of its revision field index, which the
+// read port serves. All three are null when the revision's declarations are unavailable.
 type DialectDraftIndexRevision struct {
 	Revision string                          `json:"revision"`
 	Fields   DialectDraftIndexRevisionFields `json:"fields"`
+	Digest   DialectDraftIndexRevisionDigest `json:"digest"`
+	Bytes    DialectDraftIndexRevisionBytes  `json:"bytes"`
 }
 
-var dialectDraftIndexRevisionMembers = []string{"revision", "fields"}
+var dialectDraftIndexRevisionMembers = []string{"revision", "fields", "digest", "bytes"}
 
 // UnmarshalJSON decodes a DialectDraftIndexRevision object and refuses a member the closed schema does not name.
 func (v *DialectDraftIndexRevision) UnmarshalJSON(data []byte) error {
@@ -13058,12 +13193,148 @@ func (v DialectDraftIndexRevision) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From dialect-draft.json#/$defs/indexRevision/properties/bytes.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftIndexRevisionBytes struct {
+	Option1 *json.RawMessage
+	Int64   *int64
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftIndexRevisionBytes) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftIndexRevisionBytes{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "number" {
+		var candidate int64
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Int64 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftIndexRevisionBytes: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftIndexRevisionBytes{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftIndexRevisionBytes) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Int64 != nil {
+		set = append(set, v.Int64)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftIndexRevisionBytes: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/indexRevision/properties/digest.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftIndexRevisionDigest struct {
+	Option1 *json.RawMessage
+	String  *string
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftIndexRevisionDigest) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftIndexRevisionDigest{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftIndexRevisionDigest: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftIndexRevisionDigest{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftIndexRevisionDigest) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftIndexRevisionDigest: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
 // From dialect-draft.json#/$defs/indexRevision/properties/fields.
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectDraftIndexRevisionFields struct {
 	Option1 *json.RawMessage
-	Option2 *[]DialectDraftIndexField
+	Int64   *int64
 	// Raw is the value where more than one member decodes it; no member is set then.
 	Raw json.RawMessage
 }
@@ -13084,10 +13355,10 @@ func (v *DialectDraftIndexRevisionFields) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	if kind == "array" {
-		var candidate []DialectDraftIndexField
+	if kind == "number" {
+		var candidate int64
 		if err := json.Unmarshal(data, &candidate); err == nil {
-			set := func() { v.Option2 = &candidate }
+			set := func() { v.Int64 = &candidate }
 			decoded++
 			if first == nil {
 				first = set
@@ -13114,8 +13385,8 @@ func (v DialectDraftIndexRevisionFields) MarshalJSON() ([]byte, error) {
 	if v.Option1 != nil {
 		set = append(set, v.Option1)
 	}
-	if v.Option2 != nil {
-		set = append(set, v.Option2)
+	if v.Int64 != nil {
+		set = append(set, v.Int64)
 	}
 	if len(set) == 0 && v.Raw != nil {
 		return v.Raw, nil
@@ -13305,7 +13576,9 @@ func (v DialectDraftResearch) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From dialect-draft.json#/$defs/researchIndex.
+// From dialect-draft.json#/$defs/researchIndex. The complete original inventory's bounded top
+// index (#243, #252): one entry per original revision in order, and digest, the SHA-256 of the
+// canonical JSON of revisions.
 type DialectDraftResearchIndex struct {
 	Digest    string                      `json:"digest"`
 	Revisions []DialectDraftIndexRevision `json:"revisions"`

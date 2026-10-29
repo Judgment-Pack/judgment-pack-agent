@@ -36,14 +36,17 @@ const (
 	DialectShownSampleBytes = 160
 	DialectRememberedReads  = 32
 	DialectMilliseconds     = 10000
-	// The original declaration inventory travels by digest (#243). Its index holds, per original
-	// revision, each ordered field's name and the SHA-256 of its exact declaration bytes, plus one
-	// digest over all of it. The index's canonical JSON is at most DialectIndexBytes, half the
-	// snapshot bound: a field entry costs 95 bytes plus its name (255 at the 160-byte name limit),
-	// so the index holds about 8,200 declarations at the longest names and about 16,700 at 30-byte
-	// names, each declaration itself up to DialectSampleBytes. Declarations arrive through the read
-	// port in pages of at most DialectPageDeclarations entries and DialectPageBytes canonical bytes;
-	// canonical escaping at most doubles a declaration, so a page always fits 31 of the largest.
+	// The original declaration inventory travels by digest in two levels (#243, #252). The top
+	// index holds, per original revision, its field count and the SHA-256 and canonical byte length
+	// of its revision field index, plus one digest over all of it; its canonical JSON is at most
+	// DialectIndexBytes. At most DialectColumns (1,000) revisions with 160-byte labels, each escaped
+	// at most sixfold, give at most 1,089,098 bytes, so every top index the shape admits fits. Each
+	// revision field index (ordered field names and declaration digests) is read through the read
+	// port as one page of at most DialectPageBytes: 1,000 fields with 160-byte names that need no
+	// escaping take at most 255,186 bytes, and a Desk recipe (30 fields, 64-byte names) at most
+	// 4,956. Declarations arrive in pages of at most DialectPageDeclarations entries and
+	// DialectPageBytes canonical bytes; canonical escaping at most doubles a declaration, so a page
+	// always fits 31 of the largest. ADR-0028 carries the arithmetic.
 	DialectIndexBytes       = 2097152
 	DialectPageBytes        = 1048576
 	DialectPageDeclarations = 1000
@@ -98,22 +101,51 @@ type DialectIndexField struct {
 	Digest string `json:"digest"`
 }
 
-// Fields nil explicitly represents an unavailable original declaration list.
+// DialectIndexRevision is one original revision in the top index (#252): Fields is its field
+// count, and Digest and Bytes the SHA-256 and canonical byte length of its revision field index.
+// All three are nil when the revision's declarations are unavailable.
 type DialectIndexRevision struct {
-	Revision string              `json:"revision"`
-	Fields   []DialectIndexField `json:"fields"`
+	Revision string  `json:"revision"`
+	Fields   *int    `json:"fields"`
+	Digest   *string `json:"digest"`
+	Bytes    *int    `json:"bytes"`
 }
 
-// DialectResearchIndex is the complete original inventory by digest: every original revision and
-// field in order, and Digest, the SHA-256 of the canonical JSON of Revisions.
+// DialectResearchIndex is the complete original inventory's bounded top index: every original
+// revision in order, and Digest, the SHA-256 of the canonical JSON of Revisions.
 type DialectResearchIndex struct {
 	Digest    string                 `json:"digest"`
 	Revisions []DialectIndexRevision `json:"revisions"`
 }
 
+// DialectFieldIndex is one original revision's revision field index: its ordered fields by the
+// SHA-256 of their exact declaration bytes. The read port serves it.
+type DialectFieldIndex struct {
+	Revision string              `json:"revision"`
+	Fields   []DialectIndexField `json:"fields"`
+}
+
+// DialectFieldIndexRequest asks for the revision field index of top-index entry Entry (its
+// position), bound to the read's exact collection revision and inventory digest.
+type DialectFieldIndexRequest struct {
+	ID              string `json:"id"`
+	PackKey         string `json:"packKey"`
+	Revision        string `json:"revision"`
+	InventoryDigest string `json:"inventoryDigest"`
+	Entry           int    `json:"entry"`
+}
+type DialectFieldIndexPage struct {
+	ID              string            `json:"id"`
+	PackKey         string            `json:"packKey"`
+	Revision        string            `json:"revision"`
+	InventoryDigest string            `json:"inventoryDigest"`
+	Entry           int               `json:"entry"`
+	FieldIndex      DialectFieldIndex `json:"fieldIndex"`
+}
+
 // DialectDeclarationPageRequest asks for indexed declarations from Cursor, a position in the
-// index's flattened order (revisions in order, then their fields in order), bound to the read's
-// exact collection revision and inventory digest.
+// index's flattened order (revisions in order, then their fields in the order their revision field
+// indexes list them), bound to the read's exact collection revision and inventory digest.
 type DialectDeclarationPageRequest struct {
 	ID              string `json:"id"`
 	PackKey         string `json:"packKey"`
@@ -173,8 +205,9 @@ type DialectColumn struct {
 }
 type DialectSnapshot struct {
 	RetainedRead *DialectRetainedRead `json:"retainedRead,omitempty"`
-	// Complete original inventory by digest; nil is unavailable, no revisions is known empty.
-	// Declarations themselves are read through Ports.ReadDeclarations in pages.
+	// Complete original inventory by digest (the top index); nil is unavailable, no revisions is
+	// known empty. Revision field indexes are read through Ports.ReadFieldIndex and declarations
+	// through Ports.ReadDeclarations, in pages.
 	ResearchIndex        *DialectResearchIndex        `json:"researchIndex"`
 	ID                   string                       `json:"id"`
 	Revision             string                       `json:"revision"`
@@ -282,6 +315,9 @@ type DialectAuthoringPorts struct {
 	// Explicit trusted opt-in to the exact package-supported companion, never a model argument.
 	ConversionContract *DialectConversionContract
 	Read               func(context.Context, DialectReadRequest) (DialectSnapshot, error)
+	// ReadFieldIndex is the read port's revision field index member: one original revision's field
+	// index. It is required when the top index names any field.
+	ReadFieldIndex func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error)
 	// ReadDeclarations is the read port's paged form: indexed original declarations of the bound
 	// collection revision. It is required when the index names any declaration.
 	ReadDeclarations func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error)
@@ -301,6 +337,14 @@ type dialectBound struct {
 	inventory *string
 }
 type dialectIndexed struct{ revision, name, digest string }
+
+// dialectInventory is a checked top index: its entries, the flattened position of each entry's
+// first declaration, and the declaration total.
+type dialectInventory struct {
+	entries []DialectIndexRevision
+	starts  []int
+	total   int
+}
 type dialectProposalArgs struct {
 	DialectIdentity
 	Facts    []DialectFactBinding     `json:"facts"`
@@ -494,8 +538,21 @@ func dialectSameInventory(a, b *string) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
 }
 
-// DialectResearchIndexOf computes the index a host supplies for its complete original inventory;
-// nil stays unavailable.
+// DialectFieldIndexOf computes the revision field index a host serves for one original revision;
+// nil Fields stays unavailable.
+func DialectFieldIndexOf(revision DialectResearchRevision) *DialectFieldIndex {
+	if revision.Fields == nil {
+		return nil
+	}
+	index := &DialectFieldIndex{Revision: revision.Revision, Fields: make([]DialectIndexField, 0, len(revision.Fields))}
+	for _, f := range revision.Fields {
+		index.Fields = append(index.Fields, DialectIndexField{Name: f.Name, Digest: dialectHash(f.FieldJSON)})
+	}
+	return index
+}
+
+// DialectResearchIndexOf computes the top index a host supplies for its complete original
+// inventory; nil stays unavailable.
 func DialectResearchIndexOf(revisions []DialectResearchRevision) (*DialectResearchIndex, error) {
 	if revisions == nil {
 		return nil, nil
@@ -503,11 +560,13 @@ func DialectResearchIndexOf(revisions []DialectResearchRevision) (*DialectResear
 	index := &DialectResearchIndex{Revisions: make([]DialectIndexRevision, 0, len(revisions))}
 	for _, r := range revisions {
 		row := DialectIndexRevision{Revision: r.Revision}
-		if r.Fields != nil {
-			row.Fields = make([]DialectIndexField, 0, len(r.Fields))
-			for _, f := range r.Fields {
-				row.Fields = append(row.Fields, DialectIndexField{Name: f.Name, Digest: dialectHash(f.FieldJSON)})
+		if fields := DialectFieldIndexOf(r); fields != nil {
+			canonical, err := dialectCanonical(fields)
+			if err != nil {
+				return nil, err
 			}
+			count, size := len(fields.Fields), len(canonical)
+			row.Fields, row.Digest, row.Bytes = &count, dialectStringPointer(dialectHash(canonical)), &size
 		}
 		index.Revisions = append(index.Revisions, row)
 	}
@@ -519,49 +578,128 @@ func DialectResearchIndexOf(revisions []DialectResearchRevision) (*DialectResear
 	return index, nil
 }
 
-// dialectIndex checks the bounded index and returns its flattened declaration order.
-func dialectIndex(index *DialectResearchIndex) ([]dialectIndexed, error) {
+// dialectIndex checks the bounded top index and returns its entries with their flattened positions.
+func dialectIndex(index *DialectResearchIndex) (dialectInventory, error) {
+	inventory := dialectInventory{}
 	if index == nil {
-		return nil, nil
+		return inventory, nil
 	}
 	canonical, err := dialectCanonical(index)
 	if err != nil || len(canonical) > DialectIndexBytes {
-		return nil, dialectFail("the original inventory index exceeds its byte limit.")
+		return inventory, dialectFail("the original inventory index exceeds its byte limit.")
 	}
 	malformed := dialectFail("the original inventory index is malformed.")
 	if index.Revisions == nil || len(index.Revisions) > DialectColumns || !dialectDigest(index.Digest) {
-		return nil, malformed
+		return inventory, malformed
 	}
-	order := []dialectIndexed{}
 	seen := map[string]bool{}
 	for _, r := range index.Revisions {
-		if !dialectText(r.Revision, 160) || !utf8.ValidString(r.Revision) || seen[r.Revision] || len(r.Fields) > DialectColumns {
-			return nil, malformed
+		if !dialectText(r.Revision, 160) || !utf8.ValidString(r.Revision) || seen[r.Revision] {
+			return inventory, malformed
+		}
+		if r.Fields == nil {
+			if r.Digest != nil || r.Bytes != nil {
+				return inventory, malformed
+			}
+		} else if *r.Fields < 0 || *r.Fields > DialectColumns || r.Digest == nil || !dialectDigest(*r.Digest) || r.Bytes == nil || *r.Bytes < 0 {
+			return inventory, malformed
+		}
+		if r.Bytes != nil && *r.Bytes > DialectPageBytes {
+			return inventory, dialectFail("a revision field index exceeds its byte limit.")
 		}
 		seen[r.Revision] = true
-		names := map[string]bool{}
-		for _, f := range r.Fields {
-			if !dialectColumn(f.Name) || len(f.Name) > 160 || names[f.Name] || !dialectDigest(f.Digest) {
-				return nil, malformed
-			}
-			names[f.Name] = true
-			order = append(order, dialectIndexed{r.Revision, f.Name, f.Digest})
+		inventory.entries = append(inventory.entries, r)
+		inventory.starts = append(inventory.starts, inventory.total)
+		if r.Fields != nil {
+			inventory.total += *r.Fields
 		}
 	}
 	if digest, err := dialectInventoryDigest(index.Revisions); err != nil || digest != index.Digest {
-		return nil, dialectFail("the original inventory index digest does not match its entries.")
+		return inventory, dialectFail("the original inventory index digest does not match its entries.")
 	}
-	return order, nil
+	// An empty revision needs no read, but its field index digest is still checked.
+	for _, r := range inventory.entries {
+		if r.Fields != nil && *r.Fields == 0 {
+			if _, err := dialectFieldIndex(DialectFieldIndex{Revision: r.Revision, Fields: []DialectIndexField{}}, r); err != nil {
+				return inventory, err
+			}
+		}
+	}
+	return inventory, nil
 }
 
-// dialectPage reads one bounded page from cursor and checks every declaration against the index.
-func dialectPage(ctx context.Context, readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), base DialectDeclarationPageRequest, order []dialectIndexed, cursor int) ([]DialectDeclaration, error) {
+// dialectFieldIndex checks one revision field index against its top entry: exact canonical length
+// and digest, then its shape.
+func dialectFieldIndex(index DialectFieldIndex, entry DialectIndexRevision) ([]dialectIndexed, error) {
+	canonical, err := dialectCanonical(index)
+	if err != nil || entry.Bytes == nil || entry.Digest == nil || len(canonical) != *entry.Bytes || dialectHash(canonical) != *entry.Digest {
+		return nil, dialectFail("a revision field index does not match its indexed digest.")
+	}
+	malformed := dialectFail("a revision field index is malformed.")
+	if index.Revision != entry.Revision || index.Fields == nil || entry.Fields == nil || len(index.Fields) != *entry.Fields {
+		return nil, malformed
+	}
+	names := map[string]bool{}
+	out := make([]dialectIndexed, 0, len(index.Fields))
+	for _, f := range index.Fields {
+		if !dialectColumn(f.Name) || len(f.Name) > 160 || names[f.Name] || !dialectDigest(f.Digest) {
+			return nil, malformed
+		}
+		names[f.Name] = true
+		out = append(out, dialectIndexed{entry.Revision, f.Name, f.Digest})
+	}
+	return out, nil
+}
+
+// dialectFieldIndexPage reads the revision field index of one top entry through the read port and
+// checks it against that entry.
+func dialectFieldIndexPage(ctx context.Context, readIndex func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error), base DialectDeclarationPageRequest, inventory dialectInventory, at int) ([]dialectIndexed, error) {
+	if readIndex == nil {
+		return nil, dialectFail("an indexed original inventory requires the revision field index read port.")
+	}
+	request := DialectFieldIndexRequest{ID: base.ID, PackKey: base.PackKey, Revision: base.Revision, InventoryDigest: base.InventoryDigest, Entry: at}
+	var page DialectFieldIndexPage
+	err := dialectBounded(ctx, func(b context.Context) error { var e error; page, e = readIndex(b, request); return e })
+	if err != nil {
+		return nil, err
+	}
+	canonical, err := dialectCanonical(page)
+	if err != nil || len(canonical) > DialectPageBytes {
+		return nil, dialectFail("a revision field index page exceeds its byte limit.")
+	}
+	if page.ID != request.ID || page.PackKey != request.PackKey || page.Revision != request.Revision || page.InventoryDigest != request.InventoryDigest || page.Entry != at {
+		return nil, dialectFail("a revision field index page is bound to another collection revision or inventory.")
+	}
+	return dialectFieldIndex(page.FieldIndex, inventory.entries[at])
+}
+
+// dialectIndexedRange returns the indexed declarations at flattened positions [from,to), from the
+// revision field indexes of the revisions they fall in.
+func dialectIndexedRange(ctx context.Context, readIndex func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error), base DialectDeclarationPageRequest, inventory dialectInventory, from, to int) ([]dialectIndexed, error) {
+	out := []dialectIndexed{}
+	for at := 0; at < len(inventory.entries) && inventory.starts[at] < to; at++ {
+		entry, start := inventory.entries[at], inventory.starts[at]
+		if entry.Fields == nil || *entry.Fields == 0 || start+*entry.Fields <= from {
+			continue
+		}
+		fields, err := dialectFieldIndexPage(ctx, readIndex, base, inventory, at)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, fields[max(0, from-start):min(len(fields), to-start)]...)
+	}
+	return out, nil
+}
+
+// dialectPage reads one bounded page from cursor and checks every declaration against the indexed
+// declarations it must hold.
+func dialectPage(ctx context.Context, readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), base DialectDeclarationPageRequest, wanted []dialectIndexed, cursor int) ([]DialectDeclaration, error) {
 	if readPage == nil {
 		return nil, dialectFail("an indexed original inventory requires the paged declaration read port.")
 	}
 	request := base
 	request.Cursor = cursor
-	request.Limit = min(DialectPageDeclarations, len(order)-cursor)
+	request.Limit = len(wanted)
 	var page DialectDeclarationPage
 	err := dialectBounded(ctx, func(b context.Context) error { var e error; page, e = readPage(b, request); return e })
 	if err != nil {
@@ -581,7 +719,7 @@ func dialectPage(ctx context.Context, readPage func(context.Context, DialectDecl
 		return nil, dialectFail("a declaration page exceeds its declaration bound.")
 	}
 	for i, d := range page.Declarations {
-		want := order[cursor+i]
+		want := wanted[i]
 		if d.Revision != want.revision || d.Name != want.name {
 			return nil, dialectFail("a declaration page omitted an indexed declaration or broke its order.")
 		}
@@ -594,6 +732,16 @@ func dialectPage(ctx context.Context, readPage func(context.Context, DialectDecl
 	}
 	return page.Declarations, nil
 }
+
+// dialectInventoryPage reads one checked page of declarations from cursor: the revision field
+// indexes it spans, then the page.
+func dialectInventoryPage(ctx context.Context, readIndex func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error), readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), base DialectDeclarationPageRequest, inventory dialectInventory, cursor int) ([]DialectDeclaration, error) {
+	wanted, err := dialectIndexedRange(ctx, readIndex, base, inventory, cursor, min(inventory.total, cursor+DialectPageDeclarations))
+	if err != nil {
+		return nil, err
+	}
+	return dialectPage(ctx, readPage, base, wanted, cursor)
+}
 func dialectPageBase(s DialectSnapshot) DialectDeclarationPageRequest {
 	base := DialectDeclarationPageRequest{ID: s.ID, PackKey: s.PackKey, Revision: s.Revision}
 	if s.ResearchIndex != nil {
@@ -602,11 +750,12 @@ func dialectPageBase(s DialectSnapshot) DialectDeclarationPageRequest {
 	return base
 }
 
-// ReadDialectDeclarations reads a complete original inventory through the paged read port and
-// checks every declaration against index. Host consumers such as preview and review read
-// declarations this way instead of from an inline inventory.
-func ReadDialectDeclarations(ctx context.Context, readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), id, packKey, revision string, index *DialectResearchIndex) ([]DialectResearchRevision, error) {
-	order, err := dialectIndex(index)
+// ReadDialectDeclarations reads a complete original inventory through the read port, checking every
+// revision field index against the top index and every declaration against its field digest. Host
+// consumers such as preview and review read declarations this way instead of from an inline
+// inventory.
+func ReadDialectDeclarations(ctx context.Context, readIndex func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error), readPage func(context.Context, DialectDeclarationPageRequest) (DialectDeclarationPage, error), id, packKey, revision string, index *DialectResearchIndex) ([]DialectResearchRevision, error) {
+	inventory, err := dialectIndex(index)
 	if err != nil || index == nil {
 		return nil, err
 	}
@@ -615,14 +764,14 @@ func ReadDialectDeclarations(ctx context.Context, readPage func(context.Context,
 	for i, r := range index.Revisions {
 		row := DialectResearchRevision{Revision: r.Revision}
 		if r.Fields != nil {
-			row.Fields = make([]DialectResearchField, 0, len(r.Fields))
+			row.Fields = make([]DialectResearchField, 0, *r.Fields)
 		}
 		out = append(out, row)
 		position[r.Revision] = i
 	}
 	base := DialectDeclarationPageRequest{ID: id, PackKey: packKey, Revision: revision, InventoryDigest: index.Digest}
-	for cursor := 0; cursor < len(order); {
-		page, err := dialectPage(ctx, readPage, base, order, cursor)
+	for cursor := 0; cursor < inventory.total; {
+		page, err := dialectInventoryPage(ctx, readIndex, readPage, base, inventory, cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -634,19 +783,19 @@ func ReadDialectDeclarations(ctx context.Context, readPage func(context.Context,
 	}
 	return out, nil
 }
-func (g *dialectToolsState) verifyInventory(ctx context.Context, s DialectSnapshot) error {
-	order, err := dialectIndex(s.ResearchIndex)
+func (g *dialectToolsState) verifyInventory(ctx context.Context, s DialectSnapshot) (dialectInventory, error) {
+	inventory, err := dialectIndex(s.ResearchIndex)
 	if err != nil {
-		return err
+		return inventory, err
 	}
-	for cursor := 0; cursor < len(order); {
-		page, err := dialectPage(ctx, g.ports.ReadDeclarations, dialectPageBase(s), order, cursor)
+	for cursor := 0; cursor < inventory.total; {
+		page, err := dialectInventoryPage(ctx, g.ports.ReadFieldIndex, g.ports.ReadDeclarations, dialectPageBase(s), inventory, cursor)
 		if err != nil {
-			return err
+			return inventory, err
 		}
 		cursor += len(page)
 	}
-	return nil
+	return inventory, nil
 }
 func dialectSafeTemplateJSON(raw string) bool {
 	if !dialectStrictJSON([]byte(raw)) || !dialectScalarJSON(raw) {
@@ -1064,22 +1213,18 @@ func (g *dialectToolsState) readTool(ctx context.Context, raw json.RawMessage) (
 	if err != nil {
 		return ToolResult{}, err
 	}
-	if err = g.verifyInventory(ctx, s); err != nil {
+	checked, err := g.verifyInventory(ctx, s)
+	if err != nil {
 		return ToolResult{}, err
 	}
 	bound := dialectIdentity(s)
 	var inventory any
 	if s.ResearchIndex != nil {
-		revisions, total := []map[string]any{}, 0
+		revisions := []map[string]any{}
 		for _, r := range s.ResearchIndex.Revisions {
-			var fields any
-			if r.Fields != nil {
-				fields = len(r.Fields)
-				total += len(r.Fields)
-			}
-			revisions = append(revisions, map[string]any{"revision": r.Revision, "fields": fields})
+			revisions = append(revisions, map[string]any{"revision": r.Revision, "fields": r.Fields})
 		}
-		inventory = map[string]any{"digest": s.ResearchIndex.Digest, "declarations": total, "revisions": revisions}
+		inventory = map[string]any{"digest": s.ResearchIndex.Digest, "declarations": checked.total, "revisions": revisions}
 	}
 	columns := []map[string]any{}
 	for _, c := range s.Columns {
@@ -1134,19 +1279,19 @@ func (g *dialectToolsState) pageTool(ctx context.Context, request DialectReadReq
 		g.forget(key)
 		return ToolResult{}, dialectFail("the dialect, pack or original inventory changed; read it again before paging.")
 	}
-	order, err := dialectIndex(s.ResearchIndex)
+	inventory, err := dialectIndex(s.ResearchIndex)
 	if err != nil {
 		return ToolResult{}, err
 	}
-	if cursor < 0 || cursor > dialectCursorMax || cursor >= len(order) {
+	if cursor < 0 || cursor > dialectCursorMax || cursor >= inventory.total {
 		return ToolResult{}, dialectFail("the cursor is outside the original declaration inventory.")
 	}
-	page, err := dialectPage(ctx, g.ports.ReadDeclarations, dialectPageBase(s), order, cursor)
+	page, err := dialectInventoryPage(ctx, g.ports.ReadFieldIndex, g.ports.ReadDeclarations, dialectPageBase(s), inventory, cursor)
 	if err != nil {
 		return ToolResult{}, err
 	}
 	var next any
-	if cursor+len(page) < len(order) {
+	if cursor+len(page) < inventory.total {
 		next = cursor + len(page)
 	}
 	return dialectResult(map[string]any{"id": s.ID, "revision": s.Revision, "packKey": s.PackKey, "inventoryDigest": s.ResearchIndex.Digest, "cursor": cursor, "declarations": page, "nextCursor": next})
@@ -1192,7 +1337,7 @@ func (g *dialectToolsState) proposeTool(ctx context.Context, raw json.RawMessage
 		g.forget(key)
 		return ToolResult{}, dialectFail("the original declaration inventory changed; read it again before proposing.")
 	}
-	if err = g.verifyInventory(ctx, s); err != nil {
+	if _, err = g.verifyInventory(ctx, s); err != nil {
 		return ToolResult{}, err
 	}
 	var rawFacts []struct {
