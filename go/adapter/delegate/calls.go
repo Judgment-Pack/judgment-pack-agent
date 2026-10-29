@@ -95,6 +95,13 @@ func (c *coordinator) chargeChild(task *contract.DelegatedTask, budget turn.Task
 		c.childMu.Unlock()
 		return runcontext.ErrExecutionPaused
 	}
+	if len(atomic) == 0 || !atomic[0] {
+		// save holds usageMu from reading the root count to the host's acknowledgement; the count
+		// advances and is checkpointed under it too, so overlapping children never save a root
+		// count behind one already saved (agent#249).
+		c.usageMu.Lock()
+		defer c.usageMu.Unlock()
+	}
 	if err := c.shared.childRequest(task); err != nil {
 		c.childMu.Lock()
 		c.refusedBy[task.ID] = "reserve"

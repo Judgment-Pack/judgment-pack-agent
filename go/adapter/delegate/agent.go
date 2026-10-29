@@ -333,6 +333,11 @@ func (c *coordinator) save(ctx context.Context) error {
 		if live != nil {
 			c.shared.mu.Lock()
 			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Sources": live.Sources.Rows(state.Sources)})
+			// Children charge their requests to the live parent (childRequest), and the root count
+			// is acknowledged as it advances; the copy's count may be behind it (agent#249).
+			if used := int64(live.Execution.State().Used); used > state.Used {
+				state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Used": used})
+			}
 			usage := live.Execution.Usage()
 			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"Usage": &usage})
 			state, _, _ = runcontext.MutateCheckpoint(state, runcontext.CheckpointPatch{"ChildUsage": live.Execution.State().ChildUsage})
