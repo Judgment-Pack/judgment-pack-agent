@@ -24,9 +24,10 @@ parse/stringify step defines identity. An absent dialect has an explicit null
 digest. Sample `valueJson` remains exact privately; a displayed prefix carries
 `truncated`. A prefix is not complete JSON or a typed answer. Absence, null,
 false, zero, empty strings, integer precision and decimal spellings remain
-distinct. `researchDeclarations` carries the complete original revision inventory as
-`{revision,fields:[{name,fieldJson}]}` entries. A null inventory or null fields means
-unavailable, while an empty array means known empty. Exact fieldJson bytes retain all
+distinct. `researchIndex` carries the complete original revision inventory by digest
+as `{digest,revisions:[{revision,fields:[{name,digest}]}]}`; the declarations themselves
+are read through the read port in pages (see "Paging original declarations" below). A null
+index or null fields means unavailable, while no revisions means known empty. Exact fieldJson bytes retain all
 eight historical types (text, integer, decimal, boolean, text-list, range, string,
 number), opaque original members and numeric spellings. Unknown types stay inspectable
 and become per-record preview issues. Column `research` remains optional legacy editor
@@ -119,10 +120,13 @@ If its envelope cannot fit, the original candidate and authored failure remain.
 The result list is diagnostic data; its presence does not assert semantic validity.
 
 `retainDraft(checkpoint,signal)` is required in both port interfaces. Checkpoints
-have version1, a32hex random attempt ID, fingerprint, candidate/checked stage,
+have version 2 (version 1 before #243), a32hex random attempt ID, fingerprint, candidate/checked stage,
 content digest, nullable previous receipt, immutable initial candidate, and optional
 check evidence. New candidates additionally carry conversionContract,
-researchDeclarations and retainedRead. Their schema additions are optional for old
+researchIndex and retainedRead, and their checkpoints have version 2. Version-1
+checkpoints written by v0.11.0 carry inline researchDeclarations instead and still read; the
+schema refuses a version-2 checkpoint without researchIndex or with researchDeclarations,
+and a version-1 checkpoint with researchIndex. Their schema additions are optional for old
 version-1 checkpoint inspection; the schema preserves the exact historical private-Draft tuple as an alternative whole
 identity for inspection. Mixed old/new identity members are refused. Existing checkpoint
 bytes, digests, reports and receipts are never rewritten or rebound. Historical inspection
@@ -140,8 +144,8 @@ mapping/conversion/sample identity, separate from the attempt fingerprint.
 Only accepted validation and coverage, deterministic conversion preview, and an
 exact revision/document/pack reread allow final `retain`. Its receipt truthfully
 means the proposal completed this pipeline for human review. The preview receives
-a detached canonical candidate, original declarations and exact bounded sample
-text; its response echoes the canonical fingerprint and retained record count,
+a detached canonical candidate with the original inventory index and exact bounded
+sample text; a host preview reads the declarations themselves through the paged reader; its response echoes the canonical fingerprint and retained record count,
 with bounded issue summaries. It does not acquire data or infer values from prose.
 Port calls receive ten-second cancellation deadlines checked at await boundaries;
 Go ports must honor their context. No rollback or best-effort cancellation write
@@ -192,3 +196,62 @@ Runtime implementation on the exact supplied mapping and pack. A fixture report
 is never represented as upstream semantic validation or Desk acceptance. Full
 integrated checks, exact-head CI, independent review and release review remain
 batch gates.
+
+## Paging original declarations (#243)
+
+The complete original inventory no longer travels inline. A host's read returns
+`researchIndex`: every original revision in order, each with its ordered fields as
+`{name,digest}`, where `digest` is `sha256:` and the lowercase hex SHA-256 of the exact
+`fieldJson` bytes, and `digest` over the whole index, the SHA-256 of the canonical JSON
+of `revisions`. `dialectResearchIndex(revisions)` in TypeScript and
+`DialectResearchIndexOf(revisions)` in Go compute it from a complete inventory. A
+TypeScript snapshot that still carries inline `researchDeclarations` is refused with that
+reason; Go's snapshot no longer has the member.
+
+The declarations are served by the read port's paged member, `readDeclarations(request,
+signal)` in TypeScript and `ReadDeclarations(ctx, request)` in Go. A request names the
+read's `id`, `packKey`, the bound collection `revision`, the `inventoryDigest`, a `cursor`
+(a position in the index's flattened order: revisions in order, then their fields in
+order, skipping unavailable revisions) and a `limit` of at most 1,000 declarations. The
+page echoes all five binding members and returns `declarations`, each
+`{revision,name,fieldJson}` with `revision` the original revision. A host returns at least
+one declaration and at most `limit`, and keeps the page's canonical JSON within 1 MiB; it
+may return fewer than `limit` to stay within the byte bound.
+
+The factory checks every page before using it, and refuses, as tool input failures:
+
+- a page bound to another collection revision, pack, id, inventory digest or cursor;
+- an empty page while declarations remain, or a declaration out of index order (a
+  missing declaration);
+- a declaration whose SHA-256 differs from its indexed digest;
+- a page over 1 MiB of canonical JSON or over its `limit`;
+- a declaration that is not the named field's original declaration.
+
+An index whose digest differs from its entries, a malformed index, or one over its bound
+is refused at the read. A non-empty index without the paged port is refused.
+
+`read_dialect` pages the inventory once and shows the model a summary
+(`researchInventory`: digest, declaration count, and per revision its field count or
+null). With `cursor` it returns one checked page and `nextCursor` (null at the end); a
+cursor read requires a prior read of the same identity and inventory and refuses after
+either changed. `propose_dialect` pages and checks the complete inventory again before
+its first draft. The candidate, both draft checkpoints, the preview and the final
+proposal carry the index, so their fingerprints and digests bind the inventory digest.
+After preview the currentness read must still show the candidate's inventory digest;
+otherwise the proposal is refused before `retain`.
+
+Host consumers that need declarations, such as a preview implementation or review,
+read them with `readDialectDeclarations(readDeclarations, {id,packKey,revision}, index,
+signal)` in TypeScript or `ReadDialectDeclarations(ctx, readDeclarations, id, packKey,
+revision, index)` in Go, which apply the same checks and return the complete inventory.
+
+Bounds: the index's canonical JSON is at most 2 MiB (`indexBytes`,
+`DialectIndexBytes`), half the unchanged 4 MiB snapshot bound. A field entry costs 95
+bytes plus its name, 255 bytes at the 160-byte name limit, so the index holds about 8,200
+declarations at the longest names and about 16,700 at 30-byte names; each declaration
+is itself up to 16 KiB. The issue's 150 revisions of 30 fields fit in 1,175,648 bytes
+at the longest names. Pages are at most 1,000 declarations (`pageDeclarations`,
+`DialectPageDeclarations`) and 1 MiB (`pageBytes`, `DialectPageBytes`); canonical
+escaping at most doubles a declaration, so a page always holds 31 of the largest. The
+snapshot, candidate (4 MiB), draft (8 MiB), result (2 MiB) and proposal bounds keep their
+values. ADR-0028 records the decision.

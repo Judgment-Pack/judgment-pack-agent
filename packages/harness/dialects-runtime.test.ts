@@ -3,7 +3,7 @@ import {mkdtempSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join,resolve} from 'node:path'
 import {spawnSync} from 'node:child_process'
-import {dialectTools,type DialectReviewProposal} from './dialects'
+import {dialectResearchIndex,dialectTools,type DialectReviewProposal} from './dialects'
 import {dialectFixture} from './testing/dialects'
 import fixture from '../../contract/testdata/dialect-authoring/authoring.json'
 import generatedRead from '../../contract/testdata/dialect-authoring/generated-read.json'
@@ -24,9 +24,9 @@ describe('actual selected provisional Runtime CLI dialect transport',()=>{
   for(const mode of modes){
    const omitted=mode==='omitted'
    const x=dialectFixture(),retained:DialectReviewProposal[]=[]
-   x.state.snapshot.researchDeclarations=structuredClone(retainedPolicy.researchDeclarations)
+   x.state.declarations=structuredClone(retainedPolicy.researchDeclarations)
    if(mode==='generated')x.state.snapshot.retainedRead={...generatedRead,occurrence:{kind:'source',name:'retained-generated'}}
-   if(mode==='planned'){x.state.snapshot.recordCount=0;x.state.snapshot.columns.forEach(c=>{c.samples=[];delete c.research});x.state.snapshot.researchDeclarations=null}
+   if(mode==='planned'){x.state.snapshot.recordCount=0;x.state.snapshot.columns.forEach(c=>{c.samples=[];delete c.research});x.state.declarations=null}
    const tools=dialectTools({...x.ports,runtime:async(name,args,signal)=>{
     signal.throwIfAborted();if(invocations.length>=modes.length*3)throw Error('Runtime probe call bound exceeded');const operation=name==='get_dialect_contract'?'contract':name==='dialect_validate'?'validate':'check'
     invocations.push(operation)
@@ -42,7 +42,7 @@ describe('actual selected provisional Runtime CLI dialect transport',()=>{
    expect(body.coverageStatus).toBe(omitted?'review-required':'complete');expect(retained).toHaveLength(1)
    expect(retained[0]!.packJson).toBe(fixture.snapshot.packJson)
    expect(retained[0]!.validation.status).toBe('document-valid')
-   expect(retained[0]!.researchDeclarations).toEqual(x.state.snapshot.researchDeclarations)
+   expect(retained[0]!.researchIndex).toEqual(await dialectResearchIndex(x.state.declarations))
    if(mode==='generated'){
     if(process.env.JPACK_DIALECT_EVIDENCE)writeFileSync(join(process.env.JPACK_DIALECT_EVIDENCE,'ts-generated-checkpoint.json'),JSON.stringify(x.state.drafts[0],null,2))
     const expected=canonicalJSON(generatedExpected.document),proposal=retained[0]!

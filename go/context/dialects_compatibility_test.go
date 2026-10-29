@@ -103,7 +103,7 @@ func TestDialectCompatibilityUnknownDraftAcknowledgment(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "unknown") {
 					t.Fatal("nonce bypassed unknown stage")
 				}
-				if !reflect.DeepEqual(w.calls[before:], []string{"read"}) {
+				if !reflect.DeepEqual(w.calls[before:], []string{"read", "page"}) {
 					t.Fatal("unknown acknowledgment continued effects", w.calls[before:])
 				}
 				expected := 1
@@ -189,7 +189,7 @@ func TestDialectCompatibilityBoundedFailureAndLineage(t *testing.T) {
 		if _, err := w.propose(w.args(bound)); err == nil {
 			t.Fatal("unknown final retried")
 		}
-		if len(w.retained) != 1 || !reflect.DeepEqual(w.calls[before:], []string{"read"}) {
+		if len(w.retained) != 1 || !reflect.DeepEqual(w.calls[before:], []string{"read", "page"}) {
 			t.Fatal("unknown final continued effects")
 		}
 	})

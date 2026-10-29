@@ -101,9 +101,36 @@
       ],
       "evidence": [],
       "summary": "Retain the original declared research value."
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "cursor": 0
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:81d5612257c81e44325b31ef0ba247a626810f956e6261e75c22114c4c3fb5d6",
+      "cursor": 0,
+      "limit": 1
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:81d5612257c81e44325b31ef0ba247a626810f956e6261e75c22114c4c3fb5d6",
+      "cursor": 0,
+      "declarations": [
+        {
+          "revision": "original-recipe:one",
+          "name": "typed",
+          "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
+        }
+      ]
     }
   ],
-  "description": "Handwritten exact read and complete replacement tool input witnesses.",
+  "description": "Handwritten exact read, paged read and complete replacement tool input witnesses, with the read port's page request and page for the fixture inventory (#243).",
   "source": {
     "harness": {
       "repository": "Judgment-Pack/judgment-pack-agent",

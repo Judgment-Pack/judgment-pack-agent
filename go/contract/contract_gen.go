@@ -135,6 +135,9 @@ var Registry = map[string]func() any{
 	"dialect-authoring.json#/$defs/fact":                        func() any { return new(DialectAuthoringFact) },
 	"dialect-authoring.json#/$defs/evidence":                    func() any { return new(DialectAuthoringEvidence) },
 	"dialect-authoring.json#/$defs/propose":                     func() any { return new(DialectAuthoringPropose) },
+	"dialect-authoring.json#/$defs/pageRequest":                 func() any { return new(DialectAuthoringPageRequest) },
+	"dialect-authoring.json#/$defs/declaration":                 func() any { return new(DialectAuthoringDeclaration) },
+	"dialect-authoring.json#/$defs/page":                        func() any { return new(DialectAuthoringPage) },
 	"dialect-draft.json":                                        func() any { return new(DialectDraft) },
 	"dialect-draft.json#/$defs/conversion":                      func() any { return new(DialectDraftConversion) },
 	"dialect-draft.json#/$defs/fact":                            func() any { return new(DialectDraftFact) },
@@ -153,220 +156,223 @@ var Registry = map[string]func() any{
 	"dialect-draft.json#/$defs/originalRevision":                func() any { return new(DialectDraftOriginalRevision) },
 	"dialect-draft.json#/$defs/conversionContract":              func() any { return new(DialectDraftConversionContract) },
 	"dialect-draft.json#/$defs/retainedRead":                    func() any { return new(DialectDraftRetainedRead) },
-	"export.json":                                               func() any { return new(Export) },
-	"export.json#/$defs/record":                                 func() any { return new(ExportRecord) },
-	"failure.json":                                              func() any { return new(Failure) },
-	"failure.json#/$defs/code":                                  func() any { return new(string) },
-	"failure.json#/$defs/source":                                func() any { return new(string) },
-	"failure.json#/$defs/outcome":                               func() any { return new(string) },
-	"failure.json#/$defs/recovery":                              func() any { return new(string) },
-	"failure.json#/$defs/catalogueEntry":                        func() any { return new(FailureCatalogueEntry) },
-	"failure.json#/$defs/toolFailureContent":                    func() any { return new(FailureToolFailureContent) },
-	"feedback.json":                                             func() any { return new(Feedback) },
-	"feedback.json#/$defs/view":                                 func() any { return new(FeedbackView) },
-	"history-chunk.json":                                        func() any { return new(HistoryChunk) },
-	"history-entry.json":                                        func() any { return new(HistoryEntry) },
-	"history-metadata.json":                                     func() any { return new(HistoryMetadata) },
-	"history-relation-evidence.json":                            func() any { return new(HistoryRelationEvidence) },
-	"memory.json":                                               func() any { return new(Memory) },
-	"memory.json#/$defs/answer":                                 func() any { return new([]Memory) },
-	"memory.json#/$defs/lifecycleUpdate":                        func() any { return new(MemoryLifecycleUpdate) },
-	"memory.json#/$defs/lifecycleAnswer":                        func() any { return new([]MemoryLifecycleUpdate) },
-	"policy.json":                                               func() any { return new(Policy) },
-	"policy.json#/$defs/role":                                   func() any { return new(PolicyRole) },
-	"policy.json#/$defs/member":                                 func() any { return new(PolicyMember) },
-	"policy.json#/$defs/discovered":                             func() any { return new(PolicyDiscovered) },
-	"policy.json#/$defs/reasoningValue":                         func() any { return new(string) },
-	"policy.json#/$defs/resolved":                               func() any { return new(map[string]PolicyMember) },
-	"policy.json#/$defs/paceUsed":                               func() any { return new(PolicyPaceUsed) },
-	"policy.json#/$defs/outputPattern":                          func() any { return new(PolicyOutputPattern) },
-	"policy.json#/$defs/routeSelection":                         func() any { return new(PolicyRouteSelection) },
-	"provenance.json":                                           func() any { return new(Provenance) },
-	"provenance.json#/$defs/recordDigest":                       func() any { return new(string) },
-	"provenance.json#/$defs/retainUntil":                        func() any { return new(string) },
-	"provenance.json#/$defs/completion":                         func() any { return new(ProvenanceCompletion) },
-	"provenance.json#/$defs/tokens":                             func() any { return new(int64) },
-	"provenance.json#/$defs/sha256":                             func() any { return new(string) },
-	"provenance.json#/$defs/requestKey":                         func() any { return new(string) },
-	"provenance.json#/$defs/promptDigest":                       func() any { return new(ProvenancePromptDigest) },
-	"provenance.json#/$defs/compactionSummary":                  func() any { return new(ProvenanceCompactionSummary) },
-	"provenance.json#/$defs/compactionReport":                   func() any { return new(ProvenanceCompactionReport) },
-	"provenance.json#/$defs/queuedSteer":                        func() any { return new(ProvenanceQueuedSteer) },
-	"provenance.json#/$defs/deliveredSteer":                     func() any { return new(ProvenanceDeliveredSteer) },
-	"provenance.json#/$defs/steerReport":                        func() any { return new(ProvenanceSteerReport) },
-	"provenance.json#/$defs/engine":                             func() any { return new(string) },
-	"provenance.json#/$defs/criticFigures":                      func() any { return new(ProvenanceCriticFigures) },
-	"provenance.json#/$defs/tokenFigures":                       func() any { return new(ProvenanceTokenFigures) },
-	"provenance.json#/$defs/childFigures":                       func() any { return new(ProvenanceChildFigures) },
-	"provenance.json#/$defs/figuresTotal":                       func() any { return new(ProvenanceFiguresTotal) },
-	"provenance.json#/$defs/batchFigures":                       func() any { return new(ProvenanceBatchFigures) },
-	"provenance.json#/$defs/parentFigures":                      func() any { return new(ProvenanceParentFigures) },
-	"provenance.json#/$defs/delegationReport":                   func() any { return new(ProvenanceDelegationReport) },
-	"provenance.json#/$defs/sourceFigures":                      func() any { return new(ProvenanceSourceFigures) },
-	"provenance.json#/$defs/identityFigures":                    func() any { return new(ProvenanceIdentityFigures) },
-	"provenance.json#/$defs/skillLoad":                          func() any { return new(ProvenanceSkillLoad) },
-	"provenance.json#/$defs/criticReason":                       func() any { return new(string) },
-	"provenance.json#/$defs/criticDecision":                     func() any { return new(ProvenanceCriticDecision) },
-	"provenance.json#/$defs/policy":                             func() any { return new(map[string]PolicyMember) },
-	"provenance.json#/$defs/provider":                           func() any { return new(ProvenanceProvider) },
-	"provenance.json#/$defs/crossProvider":                      func() any { return new(ProvenanceCrossProvider) },
-	"provenance.json#/$defs/usage":                              func() any { return new(UsageRow) },
-	"provenance.json#/$defs/memoryRecall":                       func() any { return new(ProvenanceMemoryRecall) },
-	"provenance.json#/$defs/memories":                           func() any { return new(ProvenanceMemories) },
-	"provenance.json#/$defs/edit":                               func() any { return new(ProvenanceEdit) },
-	"provenance.json#/$defs/edits":                              func() any { return new([]ProvenanceEdit) },
-	"provenance.json#/$defs/outputGuard":                        func() any { return new(map[string]int64) },
-	"provenance.json#/$defs/recordFigures":                      func() any { return new(ProvenanceRecordFigures) },
-	"question.json":                                             func() any { return new(Question) },
-	"question.json#/$defs/option":                               func() any { return new(QuestionOption) },
-	"question.json#/$defs/draft":                                func() any { return new(QuestionDraft) },
-	"question.json#/$defs/saved":                                func() any { return new(QuestionSaved) },
-	"question.json#/$defs/formatFailure":                        func() any { return new(QuestionFormatFailure) },
-	"run-archive-view.json":                                     func() any { return new(RunArchiveView) },
-	"run-archive.json":                                          func() any { return new(RunArchive) },
-	"run-archive.json#/$defs/ref":                               func() any { return new(RunArchiveRef) },
-	"run-archive.json#/$defs/representation":                    func() any { return new(RunArchiveRepresentation) },
-	"run-archive.json#/$defs/head":                              func() any { return new(RunArchiveHead) },
-	"run-capture.json":                                          func() any { return new(RunCapture) },
-	"run-event.json":                                            func() any { return new(RunEvent) },
-	"run-event.json#/$defs/steered":                             func() any { return new(RunEventSteered) },
-	"run-event.json#/$defs/compacted":                           func() any { return new(RunEventCompacted) },
-	"run-event.json#/$defs/execution_checkpoint":                func() any { return new(RunEventExecutionCheckpoint) },
-	"run-event.json#/$defs/budget_paused":                       func() any { return new(RunEventBudgetPaused) },
-	"run-event.json#/$defs/approval_requested":                  func() any { return new(RunEventApprovalRequested) },
-	"run-event.json#/$defs/skill_loaded":                        func() any { return new(RunEventSkillLoaded) },
-	"run-event.json#/$defs/skill_unloaded":                      func() any { return new(RunEventSkillUnloaded) },
-	"run-event.json#/$defs/retry":                               func() any { return new(RunEventRetry) },
-	"run-event.json#/$defs/response_recovery":                   func() any { return new(RunEventResponseRecovery) },
-	"run-event.json#/$defs/delegation_requested":                func() any { return new(RunEventDelegationRequested) },
-	"run-event.json#/$defs/delegated_task":                      func() any { return new(RunEventDelegatedTask) },
-	"run-event.json#/$defs/user_question":                       func() any { return new(RunEventUserQuestion) },
-	"run-event.json#/$defs/reasoning":                           func() any { return new(RunEventReasoning) },
-	"run-event.json#/$defs/message":                             func() any { return new(RunEventMessage) },
-	"run-event.json#/$defs/message_progress":                    func() any { return new(RunEventMessageProgress) },
-	"run-event.json#/$defs/guardrail":                           func() any { return new(RunEventGuardrail) },
-	"run-event.json#/$defs/thinking_unavailable":                func() any { return new(RunEventThinkingUnavailable) },
-	"run-event.json#/$defs/critic_decided":                      func() any { return new(RunEventCriticDecided) },
-	"run-event.json#/$defs/critique":                            func() any { return new(RunEventCritique) },
-	"run-event.json#/$defs/proposal":                            func() any { return new(RunEventProposal) },
-	"run-event.json#/$defs/error":                               func() any { return new(RunEventError) },
-	"run-event.json#/$defs/end":                                 func() any { return new(RunEventEnd) },
-	"run-event.json#/$defs/caseOutcome":                         func() any { return new(RunEventCaseOutcome) },
-	"run-event.json#/$defs/caseComparison":                      func() any { return new(RunEventCaseComparison) },
-	"run-event.json#/$defs/criticCase":                          func() any { return new(RunEventCriticCase) },
-	"run-event.json#/$defs/policy_resolved":                     func() any { return new(RunEventPolicyResolved) },
-	"run-event.json#/$defs/memory_proposed":                     func() any { return new(RunEventMemoryProposed) },
-	"run-event.json#/$defs/memory_recalled":                     func() any { return new(RunEventMemoryRecalled) },
-	"run-event.json#/$defs/edit_applied":                        func() any { return new(RunEventEditApplied) },
-	"run-event.json#/$defs/edit_refused":                        func() any { return new(RunEventEditRefused) },
-	"run-event.json#/$defs/output_guarded":                      func() any { return new(RunEventOutputGuarded) },
-	"run-event.json#/$defs/export_written":                      func() any { return new(RunEventExportWritten) },
-	"run-event.json#/$defs/connection_switched":                 func() any { return new(RunEventConnectionSwitched) },
-	"run-event.json#/$defs/usage":                               func() any { return new(RunEventUsage) },
-	"run-event.json#/$defs/recorded":                            func() any { return new(RunEventRecorded) },
-	"run-event.json#/$defs/plan_revised":                        func() any { return new(RunEventPlanRevised) },
-	"run-event.json#/$defs/plan_departed":                       func() any { return new(RunEventPlanDeparted) },
-	"run-event.json#/$defs/plan_completion_refused":             func() any { return new(RunEventPlanCompletionRefused) },
-	"run-event.json#/$defs/plan_drift_decided":                  func() any { return new(RunEventPlanDriftDecided) },
-	"run-event.json#/$defs/route_decided":                       func() any { return new(RunEventRouteDecided) },
-	"run-event.json#/$defs/route_widened":                       func() any { return new(RunEventRouteWidened) },
-	"run-event.json#/$defs/repeat_detected":                     func() any { return new(RunEventRepeatDetected) },
-	"run-lease.json":                                            func() any { return new(RunLease) },
-	"run-lease.json#/$defs/identifier":                          func() any { return new(string) },
-	"run-lease.json#/$defs/epoch":                               func() any { return new(string) },
-	"run-lease.json#/$defs/expiry":                              func() any { return new(string) },
-	"run-lease.json#/$defs/digest":                              func() any { return new(string) },
-	"run-lease.json#/$defs/fence":                               func() any { return new(RunLeaseFence) },
-	"run-lease.json#/$defs/operation":                           func() any { return new(RunLeaseOperation) },
-	"run-lease.json#/$defs/effectAdmission":                     func() any { return new(RunLeaseEffectAdmission) },
-	"run-lease.json#/$defs/refusal":                             func() any { return new(RunLeaseRefusal) },
-	"run-lease.json#/$defs/capabilityRefusal":                   func() any { return new(RunLeaseCapabilityRefusal) },
-	"run-report-v2.json":                                        func() any { return new(RunReportV2) },
-	"run-report-v2.json#/$defs/total":                           func() any { return new(RunReportV2Total) },
-	"run-report-v2.json#/$defs/totals":                          func() any { return new(RunReportV2Totals) },
-	"run-report-v2.json#/$defs/oldSourceTaskStep":               func() any { return new(json.RawMessage) },
-	"run-report-v2.json#/$defs/oldSourcePlanState":              func() any { return new(RunReportV2OldSourcePlanState) },
-	"run-report.json":                                           func() any { return new(RunReport) },
-	"skill.json":                                                func() any { return new(Skill) },
-	"skill.json#/$defs/name":                                    func() any { return new(string) },
-	"skill.json#/$defs/resource":                                func() any { return new(SkillResource) },
-	"skill.json#/$defs/digest":                                  func() any { return new(string) },
-	"skill.json#/$defs/bytes":                                   func() any { return new(int64) },
-	"subagent.json":                                             func() any { return new(Subagent) },
-	"subagent.json#/$defs/record":                               func() any { return new(SubagentRecord) },
-	"tool-call.json":                                            func() any { return new(ToolCall) },
-	"tool-call.json#/$defs/mcpCall":                             func() any { return new(ToolCallMCPCall) },
-	"tool-call.json#/$defs/agentWireCall":                       func() any { return new(ToolCallAgentWireCall) },
-	"tool-call.json#/$defs/testCasesArguments":                  func() any { return new(ToolCallTestCasesArguments) },
-	"tool-call.json#/$defs/textToolCall":                        func() any { return new(ToolCallTextToolCall) },
-	"tool-offer.json":                                           func() any { return new(ToolOffer) },
-	"tool-offer.json#/$defs/runtimeTool":                        func() any { return new(ToolOfferRuntimeTool) },
-	"tool-offer.json#/$defs/hostTool":                           func() any { return new(ToolOfferHostTool) },
-	"tool-offer.json#/$defs/proposePack":                        func() any { return new(ToolOfferProposePack) },
-	"tool-offer.json#/$defs/agentWireTool":                      func() any { return new(ToolOfferAgentWireTool) },
-	"tool-offer.json#/$defs/runtimeCeiling":                     func() any { return new(string) },
-	"tool-offer.json#/$defs/reservedName":                       func() any { return new(string) },
-	"tool-offer.json#/$defs/criticTools":                        func() any { return new(string) },
-	"tool-offer.json#/$defs/effectClass":                        func() any { return new(string) },
-	"tool-offer.json#/$defs/approvalPolicy":                     func() any { return new(string) },
-	"tool-offer.json#/$defs/identity":                           func() any { return new(ToolOfferIdentity) },
-	"tool-offer.json#/$defs/sourceRecord":                       func() any { return new(ToolOfferSourceRecord) },
-	"tool-offer.json#/$defs/toolListDigest":                     func() any { return new(string) },
-	"tool-offer.json#/$defs/wireName":                           func() any { return new(string) },
-	"tool-offer.json#/$defs/nameMapping":                        func() any { return new(ToolOfferNameMapping) },
-	"tool-offer.json#/$defs/sourceDeclaration":                  func() any { return new(ToolOfferSourceDeclaration) },
-	"tool-offer.json#/$defs/catalogueEntry":                     func() any { return new(ToolOfferCatalogueEntry) },
-	"tool-offer.json#/$defs/loadTool":                           func() any { return new(ToolOfferLoadTool) },
-	"tool-offer.json#/$defs/loadedSchema":                       func() any { return new(ToolOfferLoadedSchema) },
-	"tool-offer.json#/$defs/skillDeclaration":                   func() any { return new(json.RawMessage) },
-	"tool-offer.json#/$defs/skillCatalogueEntry":                func() any { return new(ToolOfferSkillCatalogueEntry) },
-	"tool-offer.json#/$defs/loadSkill":                          func() any { return new(ToolOfferLoadSkill) },
-	"tool-offer.json#/$defs/unloadSkill":                        func() any { return new(ToolOfferUnloadSkill) },
-	"tool-offer.json#/$defs/loadedSkill":                        func() any { return new(ToolOfferLoadedSkill) },
-	"tool-offer.json#/$defs/criticMode":                         func() any { return new(string) },
-	"tool-offer.json#/$defs/criticReasoning":                    func() any { return new(string) },
-	"tool-offer.json#/$defs/requestReview":                      func() any { return new(ToolOfferRequestReview) },
-	"tool-offer.json#/$defs/subagentCatalogueEntry":             func() any { return new(ToolOfferSubagentCatalogueEntry) },
-	"tool-offer.json#/$defs/remember":                           func() any { return new(ToolOfferRemember) },
-	"tool-offer.json#/$defs/propose_edit":                       func() any { return new(ToolOfferProposeEdit) },
-	"tool-offer.json#/$defs/propose_delete":                     func() any { return new(ToolOfferProposeDelete) },
-	"tool-offer.json#/$defs/propose_insert":                     func() any { return new(ToolOfferProposeInsert) },
-	"tool-offer.json#/$defs/undo_edit":                          func() any { return new(ToolOfferUndoEdit) },
-	"tool-offer.json#/$defs/draftId":                            func() any { return new(string) },
-	"tool-result.json":                                          func() any { return new(ToolResult) },
-	"tool-result.json#/$defs/mcpToolResult":                     func() any { return new(ToolResultMCPToolResult) },
-	"tool-result.json#/$defs/reference":                         func() any { return new(ToolResultReference) },
-	"tool-result.json#/$defs/referenceEnvelope":                 func() any { return new(ToolResultReferenceEnvelope) },
-	"tool-result.json#/$defs/unavailableEnvelope":               func() any { return new(ToolResultUnavailableEnvelope) },
-	"tool-result.json#/$defs/readContextArguments":              func() any { return new(ToolResultReadContextArguments) },
-	"tool-result.json#/$defs/readArguments":                     func() any { return new(ToolResultReadArguments) },
-	"tool-result.json#/$defs/readResult":                        func() any { return new(ToolResultReadResult) },
-	"tool-result.json#/$defs/imagePart":                         func() any { return new(ToolResultImagePart) },
-	"tool-result.json#/$defs/imageReadResult":                   func() any { return new(ToolResultImageReadResult) },
-	"tool-result.json#/$defs/attachment":                        func() any { return new(ToolResultAttachment) },
-	"tool-result.json#/$defs/searchArguments":                   func() any { return new(ToolResultSearchArguments) },
-	"tool-result.json#/$defs/searchResult":                      func() any { return new(ToolResultSearchResult) },
-	"tool-result.json#/$defs/agentWireAnswer":                   func() any { return new(ToolResultAgentWireAnswer) },
-	"tool-result.json#/$defs/framedData":                        func() any { return new(string) },
-	"tool-result.json#/$defs/textToolResultMessage":             func() any { return new(ToolResultTextToolResultMessage) },
-	"tool-result.json#/$defs/turnIndex":                         func() any { return new(ToolResultTurnIndex) },
-	"tool-result.json#/$defs/readCacheKey":                      func() any { return new(ToolResultReadCacheKey) },
-	"tool-taxonomy.json":                                        func() any { return new(ToolTaxonomy) },
-	"tool-taxonomy.json#/$defs/profile":                         func() any { return new(ToolTaxonomyProfile) },
-	"turn-route.json":                                           func() any { return new(TurnRoute) },
-	"turn-route.json#/$defs/selection":                          func() any { return new(TurnRouteSelection) },
-	"turn-route.json#/$defs/policy":                             func() any { return new(TurnRoutePolicy) },
-	"turn-route.json#/$defs/classifier":                         func() any { return new(TurnRouteClassifier) },
-	"usage-budget.json":                                         func() any { return new(UsageBudget) },
-	"usage-budget.json#/$defs/amounts":                          func() any { return new(UsageBudgetAmounts) },
-	"usage-budget.json#/$defs/scope":                            func() any { return new(UsageBudgetScope) },
-	"usage-budget.json#/$defs/reservation":                      func() any { return new(UsageBudgetReservation) },
-	"usage-budget.json#/$defs/receipt":                          func() any { return new(UsageBudgetReceipt) },
-	"usage-budget.json#/$defs/entry":                            func() any { return new(UsageBudgetEntry) },
-	"usage-budget.json#/$defs/refusal":                          func() any { return new(UsageBudgetRefusal) },
-	"usage.json":                                                func() any { return new(Usage) },
-	"usage.json#/$defs/tokens":                                  func() any { return new(UsageTokens) },
-	"usage.json#/$defs/row":                                     func() any { return new(UsageRow) },
+	"dialect-draft.json#/$defs/indexField":                      func() any { return new(DialectDraftIndexField) },
+	"dialect-draft.json#/$defs/indexRevision":                   func() any { return new(DialectDraftIndexRevision) },
+	"dialect-draft.json#/$defs/researchIndex":                   func() any { return new(DialectDraftResearchIndex) },
+	"export.json":                                   func() any { return new(Export) },
+	"export.json#/$defs/record":                     func() any { return new(ExportRecord) },
+	"failure.json":                                  func() any { return new(Failure) },
+	"failure.json#/$defs/code":                      func() any { return new(string) },
+	"failure.json#/$defs/source":                    func() any { return new(string) },
+	"failure.json#/$defs/outcome":                   func() any { return new(string) },
+	"failure.json#/$defs/recovery":                  func() any { return new(string) },
+	"failure.json#/$defs/catalogueEntry":            func() any { return new(FailureCatalogueEntry) },
+	"failure.json#/$defs/toolFailureContent":        func() any { return new(FailureToolFailureContent) },
+	"feedback.json":                                 func() any { return new(Feedback) },
+	"feedback.json#/$defs/view":                     func() any { return new(FeedbackView) },
+	"history-chunk.json":                            func() any { return new(HistoryChunk) },
+	"history-entry.json":                            func() any { return new(HistoryEntry) },
+	"history-metadata.json":                         func() any { return new(HistoryMetadata) },
+	"history-relation-evidence.json":                func() any { return new(HistoryRelationEvidence) },
+	"memory.json":                                   func() any { return new(Memory) },
+	"memory.json#/$defs/answer":                     func() any { return new([]Memory) },
+	"memory.json#/$defs/lifecycleUpdate":            func() any { return new(MemoryLifecycleUpdate) },
+	"memory.json#/$defs/lifecycleAnswer":            func() any { return new([]MemoryLifecycleUpdate) },
+	"policy.json":                                   func() any { return new(Policy) },
+	"policy.json#/$defs/role":                       func() any { return new(PolicyRole) },
+	"policy.json#/$defs/member":                     func() any { return new(PolicyMember) },
+	"policy.json#/$defs/discovered":                 func() any { return new(PolicyDiscovered) },
+	"policy.json#/$defs/reasoningValue":             func() any { return new(string) },
+	"policy.json#/$defs/resolved":                   func() any { return new(map[string]PolicyMember) },
+	"policy.json#/$defs/paceUsed":                   func() any { return new(PolicyPaceUsed) },
+	"policy.json#/$defs/outputPattern":              func() any { return new(PolicyOutputPattern) },
+	"policy.json#/$defs/routeSelection":             func() any { return new(PolicyRouteSelection) },
+	"provenance.json":                               func() any { return new(Provenance) },
+	"provenance.json#/$defs/recordDigest":           func() any { return new(string) },
+	"provenance.json#/$defs/retainUntil":            func() any { return new(string) },
+	"provenance.json#/$defs/completion":             func() any { return new(ProvenanceCompletion) },
+	"provenance.json#/$defs/tokens":                 func() any { return new(int64) },
+	"provenance.json#/$defs/sha256":                 func() any { return new(string) },
+	"provenance.json#/$defs/requestKey":             func() any { return new(string) },
+	"provenance.json#/$defs/promptDigest":           func() any { return new(ProvenancePromptDigest) },
+	"provenance.json#/$defs/compactionSummary":      func() any { return new(ProvenanceCompactionSummary) },
+	"provenance.json#/$defs/compactionReport":       func() any { return new(ProvenanceCompactionReport) },
+	"provenance.json#/$defs/queuedSteer":            func() any { return new(ProvenanceQueuedSteer) },
+	"provenance.json#/$defs/deliveredSteer":         func() any { return new(ProvenanceDeliveredSteer) },
+	"provenance.json#/$defs/steerReport":            func() any { return new(ProvenanceSteerReport) },
+	"provenance.json#/$defs/engine":                 func() any { return new(string) },
+	"provenance.json#/$defs/criticFigures":          func() any { return new(ProvenanceCriticFigures) },
+	"provenance.json#/$defs/tokenFigures":           func() any { return new(ProvenanceTokenFigures) },
+	"provenance.json#/$defs/childFigures":           func() any { return new(ProvenanceChildFigures) },
+	"provenance.json#/$defs/figuresTotal":           func() any { return new(ProvenanceFiguresTotal) },
+	"provenance.json#/$defs/batchFigures":           func() any { return new(ProvenanceBatchFigures) },
+	"provenance.json#/$defs/parentFigures":          func() any { return new(ProvenanceParentFigures) },
+	"provenance.json#/$defs/delegationReport":       func() any { return new(ProvenanceDelegationReport) },
+	"provenance.json#/$defs/sourceFigures":          func() any { return new(ProvenanceSourceFigures) },
+	"provenance.json#/$defs/identityFigures":        func() any { return new(ProvenanceIdentityFigures) },
+	"provenance.json#/$defs/skillLoad":              func() any { return new(ProvenanceSkillLoad) },
+	"provenance.json#/$defs/criticReason":           func() any { return new(string) },
+	"provenance.json#/$defs/criticDecision":         func() any { return new(ProvenanceCriticDecision) },
+	"provenance.json#/$defs/policy":                 func() any { return new(map[string]PolicyMember) },
+	"provenance.json#/$defs/provider":               func() any { return new(ProvenanceProvider) },
+	"provenance.json#/$defs/crossProvider":          func() any { return new(ProvenanceCrossProvider) },
+	"provenance.json#/$defs/usage":                  func() any { return new(UsageRow) },
+	"provenance.json#/$defs/memoryRecall":           func() any { return new(ProvenanceMemoryRecall) },
+	"provenance.json#/$defs/memories":               func() any { return new(ProvenanceMemories) },
+	"provenance.json#/$defs/edit":                   func() any { return new(ProvenanceEdit) },
+	"provenance.json#/$defs/edits":                  func() any { return new([]ProvenanceEdit) },
+	"provenance.json#/$defs/outputGuard":            func() any { return new(map[string]int64) },
+	"provenance.json#/$defs/recordFigures":          func() any { return new(ProvenanceRecordFigures) },
+	"question.json":                                 func() any { return new(Question) },
+	"question.json#/$defs/option":                   func() any { return new(QuestionOption) },
+	"question.json#/$defs/draft":                    func() any { return new(QuestionDraft) },
+	"question.json#/$defs/saved":                    func() any { return new(QuestionSaved) },
+	"question.json#/$defs/formatFailure":            func() any { return new(QuestionFormatFailure) },
+	"run-archive-view.json":                         func() any { return new(RunArchiveView) },
+	"run-archive.json":                              func() any { return new(RunArchive) },
+	"run-archive.json#/$defs/ref":                   func() any { return new(RunArchiveRef) },
+	"run-archive.json#/$defs/representation":        func() any { return new(RunArchiveRepresentation) },
+	"run-archive.json#/$defs/head":                  func() any { return new(RunArchiveHead) },
+	"run-capture.json":                              func() any { return new(RunCapture) },
+	"run-event.json":                                func() any { return new(RunEvent) },
+	"run-event.json#/$defs/steered":                 func() any { return new(RunEventSteered) },
+	"run-event.json#/$defs/compacted":               func() any { return new(RunEventCompacted) },
+	"run-event.json#/$defs/execution_checkpoint":    func() any { return new(RunEventExecutionCheckpoint) },
+	"run-event.json#/$defs/budget_paused":           func() any { return new(RunEventBudgetPaused) },
+	"run-event.json#/$defs/approval_requested":      func() any { return new(RunEventApprovalRequested) },
+	"run-event.json#/$defs/skill_loaded":            func() any { return new(RunEventSkillLoaded) },
+	"run-event.json#/$defs/skill_unloaded":          func() any { return new(RunEventSkillUnloaded) },
+	"run-event.json#/$defs/retry":                   func() any { return new(RunEventRetry) },
+	"run-event.json#/$defs/response_recovery":       func() any { return new(RunEventResponseRecovery) },
+	"run-event.json#/$defs/delegation_requested":    func() any { return new(RunEventDelegationRequested) },
+	"run-event.json#/$defs/delegated_task":          func() any { return new(RunEventDelegatedTask) },
+	"run-event.json#/$defs/user_question":           func() any { return new(RunEventUserQuestion) },
+	"run-event.json#/$defs/reasoning":               func() any { return new(RunEventReasoning) },
+	"run-event.json#/$defs/message":                 func() any { return new(RunEventMessage) },
+	"run-event.json#/$defs/message_progress":        func() any { return new(RunEventMessageProgress) },
+	"run-event.json#/$defs/guardrail":               func() any { return new(RunEventGuardrail) },
+	"run-event.json#/$defs/thinking_unavailable":    func() any { return new(RunEventThinkingUnavailable) },
+	"run-event.json#/$defs/critic_decided":          func() any { return new(RunEventCriticDecided) },
+	"run-event.json#/$defs/critique":                func() any { return new(RunEventCritique) },
+	"run-event.json#/$defs/proposal":                func() any { return new(RunEventProposal) },
+	"run-event.json#/$defs/error":                   func() any { return new(RunEventError) },
+	"run-event.json#/$defs/end":                     func() any { return new(RunEventEnd) },
+	"run-event.json#/$defs/caseOutcome":             func() any { return new(RunEventCaseOutcome) },
+	"run-event.json#/$defs/caseComparison":          func() any { return new(RunEventCaseComparison) },
+	"run-event.json#/$defs/criticCase":              func() any { return new(RunEventCriticCase) },
+	"run-event.json#/$defs/policy_resolved":         func() any { return new(RunEventPolicyResolved) },
+	"run-event.json#/$defs/memory_proposed":         func() any { return new(RunEventMemoryProposed) },
+	"run-event.json#/$defs/memory_recalled":         func() any { return new(RunEventMemoryRecalled) },
+	"run-event.json#/$defs/edit_applied":            func() any { return new(RunEventEditApplied) },
+	"run-event.json#/$defs/edit_refused":            func() any { return new(RunEventEditRefused) },
+	"run-event.json#/$defs/output_guarded":          func() any { return new(RunEventOutputGuarded) },
+	"run-event.json#/$defs/export_written":          func() any { return new(RunEventExportWritten) },
+	"run-event.json#/$defs/connection_switched":     func() any { return new(RunEventConnectionSwitched) },
+	"run-event.json#/$defs/usage":                   func() any { return new(RunEventUsage) },
+	"run-event.json#/$defs/recorded":                func() any { return new(RunEventRecorded) },
+	"run-event.json#/$defs/plan_revised":            func() any { return new(RunEventPlanRevised) },
+	"run-event.json#/$defs/plan_departed":           func() any { return new(RunEventPlanDeparted) },
+	"run-event.json#/$defs/plan_completion_refused": func() any { return new(RunEventPlanCompletionRefused) },
+	"run-event.json#/$defs/plan_drift_decided":      func() any { return new(RunEventPlanDriftDecided) },
+	"run-event.json#/$defs/route_decided":           func() any { return new(RunEventRouteDecided) },
+	"run-event.json#/$defs/route_widened":           func() any { return new(RunEventRouteWidened) },
+	"run-event.json#/$defs/repeat_detected":         func() any { return new(RunEventRepeatDetected) },
+	"run-lease.json":                                func() any { return new(RunLease) },
+	"run-lease.json#/$defs/identifier":              func() any { return new(string) },
+	"run-lease.json#/$defs/epoch":                   func() any { return new(string) },
+	"run-lease.json#/$defs/expiry":                  func() any { return new(string) },
+	"run-lease.json#/$defs/digest":                  func() any { return new(string) },
+	"run-lease.json#/$defs/fence":                   func() any { return new(RunLeaseFence) },
+	"run-lease.json#/$defs/operation":               func() any { return new(RunLeaseOperation) },
+	"run-lease.json#/$defs/effectAdmission":         func() any { return new(RunLeaseEffectAdmission) },
+	"run-lease.json#/$defs/refusal":                 func() any { return new(RunLeaseRefusal) },
+	"run-lease.json#/$defs/capabilityRefusal":       func() any { return new(RunLeaseCapabilityRefusal) },
+	"run-report-v2.json":                            func() any { return new(RunReportV2) },
+	"run-report-v2.json#/$defs/total":               func() any { return new(RunReportV2Total) },
+	"run-report-v2.json#/$defs/totals":              func() any { return new(RunReportV2Totals) },
+	"run-report-v2.json#/$defs/oldSourceTaskStep":   func() any { return new(json.RawMessage) },
+	"run-report-v2.json#/$defs/oldSourcePlanState":  func() any { return new(RunReportV2OldSourcePlanState) },
+	"run-report.json":                               func() any { return new(RunReport) },
+	"skill.json":                                    func() any { return new(Skill) },
+	"skill.json#/$defs/name":                        func() any { return new(string) },
+	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
+	"skill.json#/$defs/digest":                      func() any { return new(string) },
+	"skill.json#/$defs/bytes":                       func() any { return new(int64) },
+	"subagent.json":                                 func() any { return new(Subagent) },
+	"subagent.json#/$defs/record":                   func() any { return new(SubagentRecord) },
+	"tool-call.json":                                func() any { return new(ToolCall) },
+	"tool-call.json#/$defs/mcpCall":                 func() any { return new(ToolCallMCPCall) },
+	"tool-call.json#/$defs/agentWireCall":           func() any { return new(ToolCallAgentWireCall) },
+	"tool-call.json#/$defs/testCasesArguments":      func() any { return new(ToolCallTestCasesArguments) },
+	"tool-call.json#/$defs/textToolCall":            func() any { return new(ToolCallTextToolCall) },
+	"tool-offer.json":                               func() any { return new(ToolOffer) },
+	"tool-offer.json#/$defs/runtimeTool":            func() any { return new(ToolOfferRuntimeTool) },
+	"tool-offer.json#/$defs/hostTool":               func() any { return new(ToolOfferHostTool) },
+	"tool-offer.json#/$defs/proposePack":            func() any { return new(ToolOfferProposePack) },
+	"tool-offer.json#/$defs/agentWireTool":          func() any { return new(ToolOfferAgentWireTool) },
+	"tool-offer.json#/$defs/runtimeCeiling":         func() any { return new(string) },
+	"tool-offer.json#/$defs/reservedName":           func() any { return new(string) },
+	"tool-offer.json#/$defs/criticTools":            func() any { return new(string) },
+	"tool-offer.json#/$defs/effectClass":            func() any { return new(string) },
+	"tool-offer.json#/$defs/approvalPolicy":         func() any { return new(string) },
+	"tool-offer.json#/$defs/identity":               func() any { return new(ToolOfferIdentity) },
+	"tool-offer.json#/$defs/sourceRecord":           func() any { return new(ToolOfferSourceRecord) },
+	"tool-offer.json#/$defs/toolListDigest":         func() any { return new(string) },
+	"tool-offer.json#/$defs/wireName":               func() any { return new(string) },
+	"tool-offer.json#/$defs/nameMapping":            func() any { return new(ToolOfferNameMapping) },
+	"tool-offer.json#/$defs/sourceDeclaration":      func() any { return new(ToolOfferSourceDeclaration) },
+	"tool-offer.json#/$defs/catalogueEntry":         func() any { return new(ToolOfferCatalogueEntry) },
+	"tool-offer.json#/$defs/loadTool":               func() any { return new(ToolOfferLoadTool) },
+	"tool-offer.json#/$defs/loadedSchema":           func() any { return new(ToolOfferLoadedSchema) },
+	"tool-offer.json#/$defs/skillDeclaration":       func() any { return new(json.RawMessage) },
+	"tool-offer.json#/$defs/skillCatalogueEntry":    func() any { return new(ToolOfferSkillCatalogueEntry) },
+	"tool-offer.json#/$defs/loadSkill":              func() any { return new(ToolOfferLoadSkill) },
+	"tool-offer.json#/$defs/unloadSkill":            func() any { return new(ToolOfferUnloadSkill) },
+	"tool-offer.json#/$defs/loadedSkill":            func() any { return new(ToolOfferLoadedSkill) },
+	"tool-offer.json#/$defs/criticMode":             func() any { return new(string) },
+	"tool-offer.json#/$defs/criticReasoning":        func() any { return new(string) },
+	"tool-offer.json#/$defs/requestReview":          func() any { return new(ToolOfferRequestReview) },
+	"tool-offer.json#/$defs/subagentCatalogueEntry": func() any { return new(ToolOfferSubagentCatalogueEntry) },
+	"tool-offer.json#/$defs/remember":               func() any { return new(ToolOfferRemember) },
+	"tool-offer.json#/$defs/propose_edit":           func() any { return new(ToolOfferProposeEdit) },
+	"tool-offer.json#/$defs/propose_delete":         func() any { return new(ToolOfferProposeDelete) },
+	"tool-offer.json#/$defs/propose_insert":         func() any { return new(ToolOfferProposeInsert) },
+	"tool-offer.json#/$defs/undo_edit":              func() any { return new(ToolOfferUndoEdit) },
+	"tool-offer.json#/$defs/draftId":                func() any { return new(string) },
+	"tool-result.json":                              func() any { return new(ToolResult) },
+	"tool-result.json#/$defs/mcpToolResult":         func() any { return new(ToolResultMCPToolResult) },
+	"tool-result.json#/$defs/reference":             func() any { return new(ToolResultReference) },
+	"tool-result.json#/$defs/referenceEnvelope":     func() any { return new(ToolResultReferenceEnvelope) },
+	"tool-result.json#/$defs/unavailableEnvelope":   func() any { return new(ToolResultUnavailableEnvelope) },
+	"tool-result.json#/$defs/readContextArguments":  func() any { return new(ToolResultReadContextArguments) },
+	"tool-result.json#/$defs/readArguments":         func() any { return new(ToolResultReadArguments) },
+	"tool-result.json#/$defs/readResult":            func() any { return new(ToolResultReadResult) },
+	"tool-result.json#/$defs/imagePart":             func() any { return new(ToolResultImagePart) },
+	"tool-result.json#/$defs/imageReadResult":       func() any { return new(ToolResultImageReadResult) },
+	"tool-result.json#/$defs/attachment":            func() any { return new(ToolResultAttachment) },
+	"tool-result.json#/$defs/searchArguments":       func() any { return new(ToolResultSearchArguments) },
+	"tool-result.json#/$defs/searchResult":          func() any { return new(ToolResultSearchResult) },
+	"tool-result.json#/$defs/agentWireAnswer":       func() any { return new(ToolResultAgentWireAnswer) },
+	"tool-result.json#/$defs/framedData":            func() any { return new(string) },
+	"tool-result.json#/$defs/textToolResultMessage": func() any { return new(ToolResultTextToolResultMessage) },
+	"tool-result.json#/$defs/turnIndex":             func() any { return new(ToolResultTurnIndex) },
+	"tool-result.json#/$defs/readCacheKey":          func() any { return new(ToolResultReadCacheKey) },
+	"tool-taxonomy.json":                            func() any { return new(ToolTaxonomy) },
+	"tool-taxonomy.json#/$defs/profile":             func() any { return new(ToolTaxonomyProfile) },
+	"turn-route.json":                               func() any { return new(TurnRoute) },
+	"turn-route.json#/$defs/selection":              func() any { return new(TurnRouteSelection) },
+	"turn-route.json#/$defs/policy":                 func() any { return new(TurnRoutePolicy) },
+	"turn-route.json#/$defs/classifier":             func() any { return new(TurnRouteClassifier) },
+	"usage-budget.json":                             func() any { return new(UsageBudget) },
+	"usage-budget.json#/$defs/amounts":              func() any { return new(UsageBudgetAmounts) },
+	"usage-budget.json#/$defs/scope":                func() any { return new(UsageBudgetScope) },
+	"usage-budget.json#/$defs/reservation":          func() any { return new(UsageBudgetReservation) },
+	"usage-budget.json#/$defs/receipt":              func() any { return new(UsageBudgetReceipt) },
+	"usage-budget.json#/$defs/entry":                func() any { return new(UsageBudgetEntry) },
+	"usage-budget.json#/$defs/refusal":              func() any { return new(UsageBudgetRefusal) },
+	"usage.json":                                    func() any { return new(Usage) },
+	"usage.json#/$defs/tokens":                      func() any { return new(UsageTokens) },
+	"usage.json#/$defs/row":                         func() any { return new(UsageRow) },
 }
 
 // From admitted-skill-v1.json. Current in-process admission result: the declared skill, its
@@ -11807,12 +11813,18 @@ func (v DelegatedTaskTaskRequest) MarshalJSON() ([]byte, error) {
 // From dialect-authoring.json. First-party read and review-only complete replacement proposal
 // inputs. Hashes bind exact prior read bytes; none is a save, publication, execution or
 // preparation approval. Proposals require a trusted host opt-in to the package-pinned experimental
-// retained-column document contract; model arguments cannot select it.
+// retained-column document contract; model arguments cannot select it. A read with cursor returns
+// one page of original field declarations. The read port's paged exchange (pageRequest, page)
+// carries original declarations by position in the inventory index, bound to the exact collection
+// revision and inventory digest; the factory checks every declaration against its indexed SHA-256
+// digest (#243).
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectAuthoring struct {
-	Read    *DialectAuthoringRead
-	Propose *DialectAuthoringPropose
+	Read        *DialectAuthoringRead
+	Propose     *DialectAuthoringPropose
+	PageRequest *DialectAuthoringPageRequest
+	Page        *DialectAuthoringPage
 	// Raw is the value where more than one member decodes it; no member is set then.
 	Raw json.RawMessage
 }
@@ -11851,6 +11863,34 @@ func (v *DialectAuthoring) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
+	if kind == "object" && hasMembers(data, "cursor", "id", "inventoryDigest", "limit", "packKey", "revision") {
+		var candidate DialectAuthoringPageRequest
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.PageRequest = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "cursor", "declarations", "id", "inventoryDigest", "packKey", "revision") {
+		var candidate DialectAuthoringPage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Page = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
 	switch {
 	case decoded == 0:
 		return errorf("DialectAuthoring: the value is none of the union's members")
@@ -11873,6 +11913,12 @@ func (v DialectAuthoring) MarshalJSON() ([]byte, error) {
 	}
 	if v.Propose != nil {
 		set = append(set, v.Propose)
+	}
+	if v.PageRequest != nil {
+		set = append(set, v.PageRequest)
+	}
+	if v.Page != nil {
+		set = append(set, v.Page)
 	}
 	if len(set) == 0 && v.Raw != nil {
 		return v.Raw, nil
@@ -11908,6 +11954,34 @@ func (v *DialectAuthoringConversion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a DialectAuthoringConversion object.
 func (v DialectAuthoringConversion) MarshalJSON() ([]byte, error) {
 	type plain DialectAuthoringConversion
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/declaration.
+type DialectAuthoringDeclaration struct {
+	Revision  string `json:"revision"`
+	Name      string `json:"name"`
+	FieldJSON string `json:"fieldJson"`
+}
+
+var dialectAuthoringDeclarationMembers = []string{"revision", "name", "fieldJson"}
+
+// UnmarshalJSON decodes a DialectAuthoringDeclaration object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringDeclaration) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringDeclaration
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringDeclarationMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringDeclaration: %w", err)
+	}
+	*v = DialectAuthoringDeclaration(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringDeclaration object.
+func (v DialectAuthoringDeclaration) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringDeclaration
 	return encodeObject(plain(v), nil)
 }
 
@@ -11963,6 +12037,68 @@ func (v *DialectAuthoringFact) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a DialectAuthoringFact object.
 func (v DialectAuthoringFact) MarshalJSON() ([]byte, error) {
 	type plain DialectAuthoringFact
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/page.
+type DialectAuthoringPage struct {
+	ID              string                        `json:"id"`
+	PackKey         string                        `json:"packKey"`
+	Revision        string                        `json:"revision"`
+	InventoryDigest string                        `json:"inventoryDigest"`
+	Cursor          int64                         `json:"cursor"`
+	Declarations    []DialectAuthoringDeclaration `json:"declarations"`
+}
+
+var dialectAuthoringPageMembers = []string{"id", "packKey", "revision", "inventoryDigest", "cursor", "declarations"}
+
+// UnmarshalJSON decodes a DialectAuthoringPage object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringPage) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringPage
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringPageMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringPage: %w", err)
+	}
+	*v = DialectAuthoringPage(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringPage object.
+func (v DialectAuthoringPage) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringPage
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-authoring.json#/$defs/pageRequest.
+type DialectAuthoringPageRequest struct {
+	ID              string `json:"id"`
+	PackKey         string `json:"packKey"`
+	Revision        string `json:"revision"`
+	InventoryDigest string `json:"inventoryDigest"`
+	Cursor          int64  `json:"cursor"`
+	Limit           int64  `json:"limit"`
+}
+
+var dialectAuthoringPageRequestMembers = []string{"id", "packKey", "revision", "inventoryDigest", "cursor", "limit"}
+
+// UnmarshalJSON decodes a DialectAuthoringPageRequest object and refuses a member the closed schema does not name.
+func (v *DialectAuthoringPageRequest) UnmarshalJSON(data []byte) error {
+	type plain DialectAuthoringPageRequest
+	var p plain
+	extra, err := decodeObject(data, &p, dialectAuthoringPageRequestMembers, true)
+	if err != nil {
+		return errorf("DialectAuthoringPageRequest: %w", err)
+	}
+	*v = DialectAuthoringPageRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectAuthoringPageRequest object.
+func (v DialectAuthoringPageRequest) MarshalJSON() ([]byte, error) {
+	type plain DialectAuthoringPageRequest
 	return encodeObject(plain(v), nil)
 }
 
@@ -12071,9 +12207,10 @@ func (v DialectAuthoringProposeDialectDigest) MarshalJSON() ([]byte, error) {
 type DialectAuthoringRead struct {
 	ID      string `json:"id"`
 	PackKey string `json:"packKey"`
+	Cursor  *int64 `json:"cursor,omitzero"`
 }
 
-var dialectAuthoringReadMembers = []string{"id", "packKey"}
+var dialectAuthoringReadMembers = []string{"id", "packKey", "cursor"}
 
 // UnmarshalJSON decodes a DialectAuthoringRead object and refuses a member the closed schema does not name.
 func (v *DialectAuthoringRead) UnmarshalJSON(data []byte) error {
@@ -12096,9 +12233,11 @@ func (v DialectAuthoringRead) MarshalJSON() ([]byte, error) {
 
 // From dialect-draft.json. Portable host retention only. Byte ceilings, exact
 // content/digest/receipt chains, stage order and authority limits are additionally enforced by the
-// tool factory. A draft permits inspection and editing, never saving or execution. New factories
-// retain conversionContract and complete researchDeclarations (null means unavailable); older
-// version-1 checkpoints remain inspectable and grant no new contract support.
+// tool factory. A draft permits inspection and editing, never saving or execution. Version-2
+// checkpoints (#243) carry the complete original inventory by digest as researchIndex (null means
+// unavailable) and never researchDeclarations; version-1 checkpoints written by v0.11.0 keep their
+// inline researchDeclarations, never carry researchIndex, remain inspectable and grant no new
+// contract support.
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectDraft struct {
@@ -12240,9 +12379,10 @@ type DialectDraftCandidate struct {
 	ResearchDeclarations Nullable[DialectDraftCandidateResearchDeclarations] `json:"researchDeclarations,omitzero"`
 	ConversionContract   *DialectDraftConversionContract                     `json:"conversionContract,omitzero"`
 	RetainedRead         Nullable[DialectDraftCandidateRetainedRead]         `json:"retainedRead,omitzero"`
+	ResearchIndex        Nullable[DialectDraftCandidateResearchIndex]        `json:"researchIndex,omitzero"`
 }
 
-var dialectDraftCandidateMembers = []string{"id", "revision", "packKey", "packDigest", "dialectDigest", "documentJson", "packJson", "conversions", "facts", "evidence", "summary", "columns", "researchDeclarations", "conversionContract", "retainedRead"}
+var dialectDraftCandidateMembers = []string{"id", "revision", "packKey", "packDigest", "dialectDigest", "documentJson", "packJson", "conversions", "facts", "evidence", "summary", "columns", "researchDeclarations", "conversionContract", "retainedRead", "researchIndex"}
 
 // UnmarshalJSON decodes a DialectDraftCandidate object and refuses a member the closed schema does not name.
 func (v *DialectDraftCandidate) UnmarshalJSON(data []byte) error {
@@ -12395,6 +12535,78 @@ func (v DialectDraftCandidateResearchDeclarations) MarshalJSON() ([]byte, error)
 	}
 	if len(set) != 1 {
 		return nil, errorf("DialectDraftCandidateResearchDeclarations: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From dialect-draft.json#/$defs/candidate/properties/researchIndex.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftCandidateResearchIndex struct {
+	Option1                   *json.RawMessage
+	DialectDraftResearchIndex *DialectDraftResearchIndex
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftCandidateResearchIndex) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftCandidateResearchIndex{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "digest", "revisions") {
+		var candidate DialectDraftResearchIndex
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.DialectDraftResearchIndex = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftCandidateResearchIndex: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftCandidateResearchIndex{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftCandidateResearchIndex) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.DialectDraftResearchIndex != nil {
+		set = append(set, v.DialectDraftResearchIndex)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftCandidateResearchIndex: %d members are set; a union holds exactly one", len(set))
 	}
 	return json.Marshal(set[0])
 }
@@ -12802,6 +13014,128 @@ func (v DialectDraftFailure) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From dialect-draft.json#/$defs/indexField.
+type DialectDraftIndexField struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+var dialectDraftIndexFieldMembers = []string{"name", "digest"}
+
+// UnmarshalJSON decodes a DialectDraftIndexField object and refuses a member the closed schema does not name.
+func (v *DialectDraftIndexField) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftIndexField
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftIndexFieldMembers, true)
+	if err != nil {
+		return errorf("DialectDraftIndexField: %w", err)
+	}
+	*v = DialectDraftIndexField(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftIndexField object.
+func (v DialectDraftIndexField) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftIndexField
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/indexRevision.
+type DialectDraftIndexRevision struct {
+	Revision string                          `json:"revision"`
+	Fields   DialectDraftIndexRevisionFields `json:"fields"`
+}
+
+var dialectDraftIndexRevisionMembers = []string{"revision", "fields"}
+
+// UnmarshalJSON decodes a DialectDraftIndexRevision object and refuses a member the closed schema does not name.
+func (v *DialectDraftIndexRevision) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftIndexRevision
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftIndexRevisionMembers, true)
+	if err != nil {
+		return errorf("DialectDraftIndexRevision: %w", err)
+	}
+	*v = DialectDraftIndexRevision(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftIndexRevision object.
+func (v DialectDraftIndexRevision) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftIndexRevision
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/indexRevision/properties/fields.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type DialectDraftIndexRevisionFields struct {
+	Option1 *json.RawMessage
+	Option2 *[]DialectDraftIndexField
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *DialectDraftIndexRevisionFields) UnmarshalJSON(data []byte) error {
+	*v = DialectDraftIndexRevisionFields{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "array" {
+		var candidate []DialectDraftIndexField
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("DialectDraftIndexRevisionFields: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = DialectDraftIndexRevisionFields{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v DialectDraftIndexRevisionFields) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("DialectDraftIndexRevisionFields: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
 // From dialect-draft.json#/$defs/lineage.
 type DialectDraftLineage struct {
 	AttemptID        string `json:"attemptId"`
@@ -12978,6 +13312,33 @@ func (v *DialectDraftResearch) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a DialectDraftResearch object.
 func (v DialectDraftResearch) MarshalJSON() ([]byte, error) {
 	type plain DialectDraftResearch
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/researchIndex.
+type DialectDraftResearchIndex struct {
+	Digest    string                      `json:"digest"`
+	Revisions []DialectDraftIndexRevision `json:"revisions"`
+}
+
+var dialectDraftResearchIndexMembers = []string{"digest", "revisions"}
+
+// UnmarshalJSON decodes a DialectDraftResearchIndex object and refuses a member the closed schema does not name.
+func (v *DialectDraftResearchIndex) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftResearchIndex
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftResearchIndexMembers, true)
+	if err != nil {
+		return errorf("DialectDraftResearchIndex: %w", err)
+	}
+	*v = DialectDraftResearchIndex(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftResearchIndex object.
+func (v DialectDraftResearchIndex) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftResearchIndex
 	return encodeObject(plain(v), nil)
 }
 

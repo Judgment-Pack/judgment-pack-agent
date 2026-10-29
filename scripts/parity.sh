@@ -288,6 +288,7 @@ $pkg/contract/run-report-v1.json
 $pkg/contract/run-report-v2.json
 $pkg/corpusCandidate.ts
 $pkg/dialects-compatibility.test.ts
+$pkg/dialects-inventory.test.ts
 $pkg/dialects-pin.test.ts
 $pkg/dialects-retained.test.ts
 $pkg/dialects-runtime.test.ts

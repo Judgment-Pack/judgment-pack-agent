@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest'
 import fixture from '../../contract/testdata/dialect-authoring/authoring.json'
 import inputVectors from '../../contract/vectors/dialect-authoring/inputs.json'
 import {dialectFixture} from './testing/dialects'
+import {dialectTools} from './dialects'
 import {contextDigest} from './context/ledger'
 import type {McpToolResult} from './engine'
 const signal=()=>new AbortController().signal
@@ -11,7 +12,7 @@ describe('dialect authoring shared vectors through exported tools',()=>{
  it('reads exact identities and retains one complete replacement after checks, preview and exact reread',async()=>{
   const x=dialectFixture(),read=await x.read(),result=await x.propose(read)
   expect(result.status).toBe('review-required');expect(x.state.retained).toHaveLength(1)
-  expect(x.state.calls).toEqual(['read','read','draft:candidate','get_dialect_contract','dialect_validate','dialect_check','draft:checked','preview','read','retain'])
+  expect(x.state.calls).toEqual(['read','page','read','page','draft:candidate','get_dialect_contract','dialect_validate','dialect_check','draft:checked','preview','read','retain'])
   expect(x.state.retained[0]!.documentJson).toBe(fixture.expectedDocument)
   expect(x.state.retained[0]!.fingerprint).toBe(fixture.expectedFingerprint);expect(x.state.retained[0]!.mappingDigest).toBe(fixture.expectedMappingDigest)
   expect(x.state.retained[0]!.packJson).toBe(fixture.snapshot.packJson)
@@ -20,7 +21,12 @@ describe('dialect authoring shared vectors through exported tools',()=>{
   await x.propose(read);expect(x.state.retained).toHaveLength(2)
  })
  it('reads every public input-schema witness through the exported tools',async()=>{
-  for(const row of inputVectors.items){const x=dialectFixture();if('revision'in row){if(row.dialectDigest===null)delete x.state.snapshot.dialectJson;await x.read();const result=await x.tools[1]!.execute(row as unknown as Record<string,unknown>,signal());expect(body(result).status).toBe('review-required');expect(x.state.retained).toHaveLength(1)}else await x.tools[0]!.execute(row,signal())}
+  for(const row of inputVectors.items){const x=dialectFixture()
+   // The read port's page request and page for the fixture inventory, and the paged read itself.
+   if('limit'in row){await x.read();expect(x.state.pages[0]).toEqual(row);continue}
+   if('declarations'in row){x.ports.readDeclarations=async()=>structuredClone(row) as never;await dialectTools(x.ports)[0]!.execute(fixture.request,signal());continue}
+   if('cursor'in row){await x.read();expect(body(await x.tools[0]!.execute(row,signal())).cursor).toBe(0);continue}
+   if('revision'in row){if(row.dialectDigest===null)delete x.state.snapshot.dialectJson;await x.read();const result=await x.tools[1]!.execute(row as unknown as Record<string,unknown>,signal());expect(body(result).status).toBe('review-required');expect(x.state.retained).toHaveLength(1)}else await x.tools[0]!.execute(row,signal())}
  })
  it('keeps explicit omissions review-required',async()=>{const x=dialectFixture(),read=await x.read();const result=await x.propose(read,{...fixture.bindings,facts:[],evidence:[]});expect(result.coverageStatus).toBe('review-required');expect(JSON.parse(x.state.retained[0]!.documentJson)).toMatchObject({unmapped:['/amount'],unmappedEvidence:['receipt']})})
  it('requires an actual prior read even for otherwise exact identities',async()=>{const x=dialectFixture();await expect(x.propose({...fixture.request,revision:fixture.snapshot.revision,packDigest:await sha(fixture.snapshot.packJson),dialectDigest:await sha(fixture.snapshot.dialectJson)})).rejects.toThrow('read the exact');expect(x.state.retained).toHaveLength(0)})
@@ -34,7 +40,7 @@ describe('dialect authoring shared vectors through exported tools',()=>{
   const x=dialectFixture(),read=await x.read();x.state.mode=mode;await expect(x.propose(read)).rejects.toThrow();expect(x.state.retained).toHaveLength(0)
  })
  for(const member of ['packJson','dialectJson'] as const)it('binds exact raw '+member+' even with repeated revision',async()=>{
-  const x=dialectFixture(),read=await x.read();x.state.snapshot[member]+=' ';const error=await x.propose(read).then(()=>null,error=>error);expect(x.state.calls).toEqual(['read','read']);expect(error?.message).toContain('changed');expect(x.state.retained).toHaveLength(0)
+  const x=dialectFixture(),read=await x.read();x.state.snapshot[member]+=' ';const error=await x.propose(read).then(()=>null,error=>error);expect(x.state.calls).toEqual(['read','page','read']);expect(error?.message).toContain('changed');expect(x.state.retained).toHaveLength(0)
  })
  for(const mode of ['lost-ack','wrong-ack'])it('does not retry unknown retention '+mode,async()=>{
   const x=dialectFixture(),read=await x.read();x.state.mode=mode;await expect(x.propose(read)).rejects.toMatchObject({failure:{outcome:'unknown'}});await expect(x.propose(read)).rejects.toMatchObject({failure:{outcome:'unknown'}});expect(x.state.retained).toHaveLength(1)

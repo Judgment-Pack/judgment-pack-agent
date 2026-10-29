@@ -34,7 +34,7 @@ func TestDialectActualRuntime(t *testing.T) {
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			w := newDialectWorld(t)
-			w.snapshot.ResearchDeclarations = retainedPolicyFixture(t)
+			w.declarations = retainedPolicyFixture(t)
 			if mode == "generated" {
 				raw, e := os.ReadFile("../../contract/testdata/dialect-authoring/generated-read.json")
 				if e != nil {
@@ -47,7 +47,7 @@ func TestDialectActualRuntime(t *testing.T) {
 			}
 			if mode == "planned" {
 				w.snapshot.RecordCount = 0
-				w.snapshot.ResearchDeclarations = nil
+				w.declarations = nil
 				for i := range w.snapshot.Columns {
 					w.snapshot.Columns[i].Samples = []DialectSample{}
 					w.snapshot.Columns[i].Research = nil
