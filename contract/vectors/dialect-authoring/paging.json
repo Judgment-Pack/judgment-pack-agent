@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten #243 paging witnesses: the complete original inventory travels as an index of SHA-256 digests and its declarations arrive in read-port pages bound to the collection revision and inventory digest. Items are the host pages the cases serve by cursor; inventory, index, changedInventory and changedIndex are the host collection before and after a change during preview. Digests are SHA-256 over the exact declaration bytes and over the canonical JSON of index.revisions, computed outside the package. Go and TypeScript drive both factories through every case.",
+  "description": "Handwritten #243 and #252 paging witnesses. The complete original inventory travels as a bounded top index (per original revision: its field count and the SHA-256 and canonical byte length of its revision field index, plus the SHA-256 of the canonical JSON of revisions); each revision field index (ordered names and declaration digests) and the declarations arrive in read-port pages bound to the collection revision and inventory digest. items are the declaration pages the cases serve by cursor; fieldIndexes are the revision field index pages they serve by entry (fieldIndexPages, default [0,1]); a case with its own index serves every page under that index's digest; fieldIndexRequests are the exact requests of the successful case; inventory, index, changedInventory and changedIndex are the host collection before and after a change during preview. bounds are the #252 bound proof: an inventory generator gives revision r (from 0) the label issue-252 'prep_'+32 'c'+':recipe:'+(r+1) or max 156 'r' + r as 4 digits (160 bytes), field f the name issue-252 'f'+61 'a'+f as 2 digits (64 bytes) or wide 157 'w'+f as 3 digits (160 bytes), and fieldJson {\"name\":<name>,\"description\":\"r\"+(r+1) as at least 3 digits,\"type\":\"text\"}; a top generator gives entry r the label 157 U+0001 followed by three characters from the 27 control characters other than U+0008, U+0009, U+000A, U+000C and U+000D (index r in base 27, most significant first), the stated fields and bytes (label, when given, replaces the generated label of every entry), and digest 'sha256:'+'ab' x 32. indexBytes, fieldIndexBytes and oneLevelIndexBytes (the #250 one-level index) are canonical byte lengths. Digests and lengths were computed outside the package. Go and TypeScript drive both factories through every case.",
   "schema": "dialect-authoring.json#/$defs/page",
   "source": {
     "harness": {
@@ -16,7 +16,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 0,
       "declarations": [
         {
@@ -35,7 +35,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 2,
       "declarations": [
         {
@@ -54,7 +54,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 4,
       "declarations": [
         {
@@ -68,7 +68,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 2,
       "declarations": [
         {
@@ -87,7 +87,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:other",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 0,
       "declarations": [
         {
@@ -106,7 +106,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
       "cursor": 4,
       "declarations": []
     }
@@ -153,41 +153,25 @@
     }
   ],
   "index": {
-    "digest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+    "digest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
     "revisions": [
       {
         "revision": "original-recipe:one",
-        "fields": [
-          {
-            "name": "typed",
-            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
-          },
-          {
-            "name": "amount",
-            "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
-          }
-        ]
+        "fields": 2,
+        "digest": "sha256:ff1665e2b85bee3d350e4026ace9010d7116e4a1c120f18ac9d908d2626350b8",
+        "bytes": 246
       },
       {
         "revision": "original-recipe:two",
-        "fields": [
-          {
-            "name": "typed",
-            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
-          },
-          {
-            "name": "note",
-            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
-          },
-          {
-            "name": "count",
-            "digest": "sha256:9f1980155fc5db29e4d23988791f98190e133afdeac45e77faf7e06b050c3735"
-          }
-        ]
+        "fields": 3,
+        "digest": "sha256:d669c2390c1d230597252804b1ce656f38783b2d2f5a1509b87d3ba1787c0ff7",
+        "bytes": 344
       },
       {
         "revision": "original-recipe:retired",
-        "fields": null
+        "fields": null,
+        "digest": null,
+        "bytes": null
       }
     ]
   },
@@ -228,41 +212,25 @@
     }
   ],
   "changedIndex": {
-    "digest": "sha256:efd090df55b1b4b84bb81ccb4aaa47efaaf988350f3a64640880510ae356fa90",
+    "digest": "sha256:c346acfe5be1737f6e31e7feed1228dba44481cf3505d9d794f94a306fda87a4",
     "revisions": [
       {
         "revision": "original-recipe:one",
-        "fields": [
-          {
-            "name": "typed",
-            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
-          },
-          {
-            "name": "amount",
-            "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
-          }
-        ]
+        "fields": 2,
+        "digest": "sha256:ff1665e2b85bee3d350e4026ace9010d7116e4a1c120f18ac9d908d2626350b8",
+        "bytes": 246
       },
       {
         "revision": "original-recipe:two",
-        "fields": [
-          {
-            "name": "typed",
-            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
-          },
-          {
-            "name": "note",
-            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
-          },
-          {
-            "name": "count",
-            "digest": "sha256:3823de0d25e759a10ab13739b7fd41743d7794159ffd4fa321bccc0832af2826"
-          }
-        ]
+        "fields": 3,
+        "digest": "sha256:539693e2d6f0ed7ac5369fc56e0e0806afa9be521f2ca3bb7dfc27bcea3e6484",
+        "bytes": 344
       },
       {
         "revision": "original-recipe:retired",
-        "fields": null
+        "fields": null,
+        "digest": null,
+        "bytes": null
       }
     ]
   },
@@ -280,7 +248,7 @@
           "id": "collection:opaque/one",
           "packKey": "declared:pack",
           "revision": "revision:one",
-          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
           "cursor": 0,
           "limit": 5
         },
@@ -288,7 +256,7 @@
           "id": "collection:opaque/one",
           "packKey": "declared:pack",
           "revision": "revision:one",
-          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
           "cursor": 2,
           "limit": 3
         },
@@ -296,11 +264,58 @@
           "id": "collection:opaque/one",
           "packKey": "declared:pack",
           "revision": "revision:one",
-          "inventoryDigest": "sha256:cdeb07adebf2e8cb0ceb15ae44dc438f3e27624aa7f447c84e2a2b710bd4289d",
+          "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
           "cursor": 4,
           "limit": 1
         }
       ]
+    },
+    {
+      "name": "revision field index does not match its top entry",
+      "pages": [
+        0,
+        1,
+        2
+      ],
+      "fieldIndexPages": [
+        0,
+        2
+      ],
+      "expect": "refused",
+      "message": "a revision field index does not match its indexed digest"
+    },
+    {
+      "name": "revision field index length disagrees with its top entry",
+      "pages": [
+        0,
+        1,
+        2
+      ],
+      "index": {
+        "digest": "sha256:d9d9f500ff6ffd7097ae216d1e0aa98d52f73124d683fce81d51d04a7cce3e8a",
+        "revisions": [
+          {
+            "revision": "original-recipe:one",
+            "fields": 2,
+            "digest": "sha256:ff1665e2b85bee3d350e4026ace9010d7116e4a1c120f18ac9d908d2626350b8",
+            "bytes": 246
+          },
+          {
+            "revision": "original-recipe:two",
+            "fields": 3,
+            "digest": "sha256:d669c2390c1d230597252804b1ce656f38783b2d2f5a1509b87d3ba1787c0ff7",
+            "bytes": 345
+          },
+          {
+            "revision": "original-recipe:retired",
+            "fields": null,
+            "digest": null,
+            "bytes": null
+          }
+        ]
+      },
+      "expect": "refused",
+      "message": "a revision field index does not match its indexed digest"
     },
     {
       "name": "declaration does not match its digest",
@@ -342,17 +357,209 @@
       "changeDuringPreview": true,
       "expect": "refused",
       "message": "changed during preview"
+    }
+  ],
+  "fieldIndexes": [
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
+      "entry": 0,
+      "fieldIndex": {
+        "revision": "original-recipe:one",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
+          },
+          {
+            "name": "amount",
+            "digest": "sha256:c265105d279a9aa53ba665b1df4069a1c311ed924ac238b809706caee73d7917"
+          }
+        ]
+      }
     },
     {
-      "name": "index over its bound",
-      "generate": {
-        "revisions": 9,
-        "fields": 1000,
-        "nameBytes": 160
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
+      "entry": 1,
+      "fieldIndex": {
+        "revision": "original-recipe:two",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
+          },
+          {
+            "name": "note",
+            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
+          },
+          {
+            "name": "count",
+            "digest": "sha256:9f1980155fc5db29e4d23988791f98190e133afdeac45e77faf7e06b050c3735"
+          }
+        ]
+      }
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
+      "entry": 1,
+      "fieldIndex": {
+        "revision": "original-recipe:two",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:7fd5c3f2119d9bc6a7c0e1bce8299945af28b23b8971b2d2b8272cce255062b9"
+          },
+          {
+            "name": "note",
+            "digest": "sha256:5ae5b592229c4f94dd8d5578e48f1c98a7dc1636470e6d05304d29ece1a1b33f"
+          },
+          {
+            "name": "count",
+            "digest": "sha256:3823de0d25e759a10ab13739b7fd41743d7794159ffd4fa321bccc0832af2826"
+          }
+        ]
+      }
+    }
+  ],
+  "fieldIndexRequests": [
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
+      "entry": 0
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:61da003251332b2a9379982cced81bd90a68767bffdf8f27824297b1620cc53b",
+      "entry": 1
+    }
+  ],
+  "bounds": [
+    {
+      "name": "issue #252 family: 450 revisions x 30 fields with 64-byte names",
+      "inventory": {
+        "revisions": 450,
+        "fields": 30,
+        "label": "issue-252",
+        "name": "issue-252"
       },
-      "indexBytes": 2296781,
+      "expect": "retained",
+      "indexBytes": 77390,
+      "fieldIndexBytes": 4844,
+      "oneLevelIndexBytes": 2180240
+    },
+    {
+      "name": "largest accepted Desk collection: 1,000 revisions x 30 fields, 160-byte labels, 64-byte names",
+      "inventory": {
+        "revisions": 1000,
+        "fields": 30,
+        "label": "max",
+        "name": "issue-252"
+      },
+      "expect": "retained",
+      "indexBytes": 284098,
+      "fieldIndexBytes": 4956
+    },
+    {
+      "name": "largest unescaped revision field index the shape admits: 1,000 fields with 160-byte names",
+      "inventory": {
+        "revisions": 1,
+        "fields": 1000,
+        "label": "max",
+        "name": "wide"
+      },
+      "expect": "retained",
+      "indexBytes": 386,
+      "fieldIndexBytes": 255186
+    },
+    {
+      "name": "largest top index the shape admits: 1,000 revisions, labels escaped sixfold",
+      "top": {
+        "revisions": 1000,
+        "fields": 1000,
+        "bytes": 1048576
+      },
+      "expect": "top-accepted",
+      "indexBytes": 1089098
+    },
+    {
+      "name": "top index over its cap",
+      "top": {
+        "revisions": 2000,
+        "fields": 1000,
+        "bytes": 1048576
+      },
       "expect": "refused",
-      "message": "index exceeds its byte limit"
+      "message": "index exceeds its byte limit",
+      "indexBytes": 2178098
+    },
+    {
+      "name": "revision field index over its page bound",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048577
+      },
+      "expect": "refused",
+      "message": "a revision field index exceeds its byte limit",
+      "indexBytes": 1187
+    },
+    {
+      "name": "top index over the revision limit inside its cap: 1,001 revisions",
+      "top": {
+        "revisions": 1001,
+        "fields": 1000,
+        "bytes": 1048576
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 1090187
+    },
+    {
+      "name": "a revision label of only U+0085 is blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": ""
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 229
+    },
+    {
+      "name": "a revision label of only U+FEFF is blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": "﻿"
+      },
+      "expect": "refused",
+      "message": "index is malformed",
+      "indexBytes": 230
+    },
+    {
+      "name": "a revision label with U+0085 and U+FEFF beside a letter is not blank",
+      "top": {
+        "revisions": 1,
+        "fields": 1000,
+        "bytes": 1048576,
+        "label": "a﻿"
+      },
+      "expect": "top-accepted",
+      "indexBytes": 233
     }
   ]
 }

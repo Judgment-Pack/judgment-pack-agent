@@ -16,7 +16,7 @@ it('retains every original revision/type and emits executable declared leaves fo
   const index=await dialectResearchIndex(retained.researchDeclarations)
   expect(candidate.researchIndex).toEqual(index);expect(candidate.version).toBe(2);expect(Object.hasOwn(candidate,'researchDeclarations')).toBe(false)
   expect(x.state.drafts.every(d=>d.version===2&&canonicalJSON(d.candidate.researchIndex)===canonicalJSON(index))).toBe(true)
-  expect(await readDialectDeclarations(x.ports.readDeclarations!,candidate,candidate.researchIndex,new AbortController().signal)).toEqual(retained.researchDeclarations)
+  expect(await readDialectDeclarations(x.ports,candidate,candidate.researchIndex,new AbortController().signal)).toEqual(retained.researchDeclarations)
   expect(candidate.columns).toEqual(fixture.snapshot.columns)
  }
 })

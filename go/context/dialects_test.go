@@ -3,6 +3,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -48,6 +49,17 @@ type dialectTestWorld struct {
 	declarations []DialectResearchRevision
 	pageSize     int
 	pages        []DialectDeclarationPageRequest
+	fieldIndexes []DialectFieldIndexRequest
+}
+
+// dialectServeFieldIndex is the test host's revision field index page for the requested top entry.
+func dialectServeFieldIndex(inventory []DialectResearchRevision, request DialectFieldIndexRequest) (DialectFieldIndexPage, error) {
+	page := DialectFieldIndexPage{ID: request.ID, PackKey: request.PackKey, Revision: request.Revision, InventoryDigest: request.InventoryDigest, Entry: request.Entry}
+	if request.Entry < 0 || request.Entry >= len(inventory) || inventory[request.Entry].Fields == nil {
+		return page, errors.New("no revision field index at this entry")
+	}
+	page.FieldIndex = *DialectFieldIndexOf(inventory[request.Entry])
+	return page, nil
 }
 
 // dialectServePage is the test host's handwritten pager: the flattened inventory from the cursor.
@@ -100,6 +112,11 @@ func newDialectWorld(t *testing.T) *dialectTestWorld {
 				s.ResearchIndex, err = DialectResearchIndexOf(w.declarations)
 			}
 			return s, err
+		},
+		ReadFieldIndex: func(_ context.Context, request DialectFieldIndexRequest) (DialectFieldIndexPage, error) {
+			w.calls = append(w.calls, "field-index")
+			w.fieldIndexes = append(w.fieldIndexes, request)
+			return dialectServeFieldIndex(w.declarations, request)
 		},
 		ReadDeclarations: func(_ context.Context, request DialectDeclarationPageRequest) (DialectDeclarationPage, error) {
 			w.calls = append(w.calls, "page")
@@ -257,7 +274,24 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 			_, limit := row["limit"]
 			_, declarations := row["declarations"]
 			_, cursor := row["cursor"]
-			if limit {
+			_, entry := row["entry"]
+			_, fieldIndex := row["fieldIndex"]
+			if fieldIndex {
+				// The read port's revision field index page, served verbatim and accepted.
+				var page DialectFieldIndexPage
+				_ = json.Unmarshal(encoded, &page)
+				w.ports.ReadFieldIndex = func(context.Context, DialectFieldIndexRequest) (DialectFieldIndexPage, error) { return page, nil }
+				w.tools = NewDialectTools(w.ports)
+				w.read()
+			} else if entry {
+				// The read port's revision field index request: the factory's own first request.
+				var want DialectFieldIndexRequest
+				_ = json.Unmarshal(encoded, &want)
+				w.read()
+				if len(w.fieldIndexes) == 0 || w.fieldIndexes[0] != want {
+					t.Fatal("field index request witness differs", w.fieldIndexes)
+				}
+			} else if limit {
 				// The read port's page request: the factory's own first request for the fixture inventory.
 				var want DialectDeclarationPageRequest
 				_ = json.Unmarshal(encoded, &want)
@@ -322,7 +356,7 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 		if len(w.retained) != 1 || w.retained[0].DocumentJSON != w.fixture.ExpectedDocument || w.retained[0].Fingerprint != w.fixture.ExpectedFingerprint || w.retained[0].MappingDigest != w.fixture.ExpectedMappingDigest {
 			t.Fatalf("wrong replacement: %#v", w.retained)
 		}
-		if strings.Join(w.calls, ",") != "read,page,read,page,draft:candidate,get_dialect_contract,dialect_validate,dialect_check,draft:checked,preview,read,retain" {
+		if strings.Join(w.calls, ",") != "read,field-index,page,read,field-index,page,draft:candidate,get_dialect_contract,dialect_validate,dialect_check,draft:checked,preview,read,retain" {
 			t.Fatal(w.calls)
 		}
 		if w.retained[0].PackJSON != w.fixture.Snapshot.PackJSON || *bound.DialectDigest != dialectHash(*w.fixture.Snapshot.DialectJSON) {
@@ -396,7 +430,7 @@ func TestDialectAuthoringSharedVectors(t *testing.T) {
 				*w.snapshot.DialectJSON += " "
 			}
 			_, err := w.propose(w.args(bound))
-			if strings.Join(w.calls, ",") != "read,page,read" {
+			if strings.Join(w.calls, ",") != "read,field-index,page,read" {
 				t.Fatal("stale snapshots reached Runtime", w.calls)
 			}
 			if err == nil || !strings.Contains(err.Error(), "changed") {

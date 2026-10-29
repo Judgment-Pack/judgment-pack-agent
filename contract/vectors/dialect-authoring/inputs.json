@@ -111,7 +111,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:81d5612257c81e44325b31ef0ba247a626810f956e6261e75c22114c4c3fb5d6",
+      "inventoryDigest": "sha256:43993a83691aeaf770dd48abf82bcc90b05ffdb5394056baa8eff38ee2edcd45",
       "cursor": 0,
       "limit": 1
     },
@@ -119,7 +119,7 @@
       "id": "collection:opaque/one",
       "packKey": "declared:pack",
       "revision": "revision:one",
-      "inventoryDigest": "sha256:81d5612257c81e44325b31ef0ba247a626810f956e6261e75c22114c4c3fb5d6",
+      "inventoryDigest": "sha256:43993a83691aeaf770dd48abf82bcc90b05ffdb5394056baa8eff38ee2edcd45",
       "cursor": 0,
       "declarations": [
         {
@@ -128,9 +128,32 @@
           "fieldJson": "{\"name\":\"typed\",\"type\":\"boolean\",\"required\":false,\"description\":\"A retained typed field.\"}"
         }
       ]
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:43993a83691aeaf770dd48abf82bcc90b05ffdb5394056baa8eff38ee2edcd45",
+      "entry": 0
+    },
+    {
+      "id": "collection:opaque/one",
+      "packKey": "declared:pack",
+      "revision": "revision:one",
+      "inventoryDigest": "sha256:43993a83691aeaf770dd48abf82bcc90b05ffdb5394056baa8eff38ee2edcd45",
+      "entry": 0,
+      "fieldIndex": {
+        "revision": "original-recipe:one",
+        "fields": [
+          {
+            "name": "typed",
+            "digest": "sha256:5a7e949c4889d0bd60db2b1531f6c8e08dac15362c0497bd7820efa1569080cc"
+          }
+        ]
+      }
     }
   ],
-  "description": "Handwritten exact read, paged read and complete replacement tool input witnesses, with the read port's page request and page for the fixture inventory (#243).",
+  "description": "Handwritten exact read, paged read and complete replacement tool input witnesses, with the read port's revision field index request and page (#252) and declaration page request and page (#243) for the fixture inventory.",
   "source": {
     "harness": {
       "repository": "Judgment-Pack/judgment-pack-agent",

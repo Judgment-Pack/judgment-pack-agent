@@ -101,22 +101,88 @@ class DialectAuthoringContract(unittest.TestCase):
         self.assertFalse(validator.is_valid(relabelled))
 
     def test_paging_vector_digests_are_exact(self):
-        """The handwritten index digests are SHA-256 over exact declaration bytes and the canonical index."""
+        """#243, #252: the handwritten top index, revision field indexes and declaration digests are exact SHA-256 values."""
         import hashlib
         vector = json.loads((ROOT / 'contract/vectors/dialect-authoring/paging.json').read_text())
         canonical = lambda value: json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
         sha = lambda text: 'sha256:' + hashlib.sha256(text.encode()).hexdigest()
-        for inventory, index in ((vector['inventory'], vector['index']), (vector['changedInventory'], vector['changedIndex'])):
-            self.assertEqual(index['digest'], sha(canonical(index['revisions'])))
-            self.assertEqual([r['revision'] for r in inventory], [r['revision'] for r in index['revisions']])
-            for revision, indexed in zip(inventory, index['revisions']):
+        field_index = lambda revision: {'revision': revision['revision'], 'fields': [{'name': f['name'], 'digest': sha(f['fieldJson'])} for f in revision['fields']]}
+
+        def top(inventory):
+            rows = []
+            for revision in inventory:
                 if revision['fields'] is None:
-                    self.assertIsNone(indexed['fields'])
+                    rows.append({'revision': revision['revision'], 'fields': None, 'digest': None, 'bytes': None})
                     continue
-                self.assertEqual([(f['name'], sha(f['fieldJson'])) for f in revision['fields']], [(f['name'], f['digest']) for f in indexed['fields']])
+                raw = canonical(field_index(revision))
+                rows.append({'revision': revision['revision'], 'fields': len(revision['fields']), 'digest': sha(raw), 'bytes': len(raw.encode())})
+            return {'digest': sha(canonical(rows)), 'revisions': rows}
+        for inventory, index in ((vector['inventory'], vector['index']), (vector['changedInventory'], vector['changedIndex'])):
+            self.assertEqual(index, top(inventory))
         self.assertNotEqual(vector['index']['digest'], vector['changedIndex']['digest'])
+        entries = vector['index']['revisions']
+        for page in vector['fieldIndexes'][:2]:
+            raw = canonical(page['fieldIndex'])
+            entry = entries[page['entry']]
+            self.assertEqual((sha(raw), len(raw.encode()), len(page['fieldIndex']['fields'])), (entry['digest'], entry['bytes'], entry['fields']))
+        wrong = vector['fieldIndexes'][2]
+        raw = canonical(wrong['fieldIndex'])
+        self.assertEqual(len(raw.encode()), entries[wrong['entry']]['bytes'])
+        self.assertNotEqual(sha(raw), entries[wrong['entry']]['digest'])
         schema = json.loads((ROOT / 'contract/schemas/dialect-authoring.json').read_text())
-        requests = jsonschema.Draft202012Validator({**schema, '$ref': '#/$defs/pageRequest'})
+        shape = lambda name: jsonschema.Draft202012Validator({'$defs': schema['$defs'], '$ref': '#/$defs/' + name})
         for case in vector['cases']:
             for request in case.get('requests', []):
-                requests.validate(request)
+                shape('pageRequest').validate(request)
+        for request in vector['fieldIndexRequests']:
+            shape('fieldIndexRequest').validate(request)
+        for page in vector['fieldIndexes']:
+            shape('fieldIndexPage').validate(page)
+        for page in vector['items']:
+            shape('page').validate(page)
+        draft = json.loads((ROOT / 'contract/schemas/dialect-draft.json').read_text())
+        index = jsonschema.Draft202012Validator({'$defs': draft['$defs'], '$ref': '#/$defs/researchIndex'})
+        index.validate(vector['index'])
+        for member in ('digest', 'bytes'):
+            mixed = copy.deepcopy(vector['index'])
+            mixed['revisions'][2][member] = mixed['revisions'][0][member]
+            self.assertFalse(index.is_valid(mixed), member)
+            missing = copy.deepcopy(vector['index'])
+            missing['revisions'][0][member] = None
+            self.assertFalse(index.is_valid(missing), member)
+
+    def test_bound_proof_arithmetic(self):
+        """#252: the top index and revision field index bounds, derived from the shape and the Desk domain."""
+        canonical = lambda value: json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        # An available top entry costs 117 bytes plus the digits of its byte length and field count and its
+        # escaped label; the wrapper costs 99 bytes, and entries are separated by commas.
+        entry = lambda label, fields, size: 117 + len(str(size)) + len(str(fields)) + label
+        top = lambda revisions, each: 99 + revisions * each + revisions - 1
+        # A field index entry costs 94 bytes plus its escaped name; the field index wrapper 27 bytes plus its label.
+        field_index = lambda fields, name, label: 27 + label + fields * (94 + name) + fields - 1
+        sample = {'revision': 'x' * 160, 'fields': 1000, 'digest': 'sha256:' + 'a' * 64, 'bytes': 1048576}
+        self.assertEqual(len(canonical(sample)), entry(160, 1000, 1048576))
+        self.assertEqual(len(canonical({'digest': sample['digest'], 'revisions': [sample, sample]})), top(2, entry(160, 1000, 1048576)))
+        one = {'revision': 'x' * 160, 'fields': [{'name': 'n' * 64, 'digest': sample['digest']}] * 2}
+        self.assertEqual(len(canonical(one)), field_index(2, 64, 160))
+        # Canonical JSON escapes a one-byte character to at most six bytes (\u0001), so a 160-byte label costs at most 960.
+        self.assertEqual(len(canonical('\u0001')) - 2, 6)
+        index_bytes, page_bytes = 2097152, 1048576
+        self.assertEqual(top(1000, entry(960, 1000, page_bytes)), 1089098)
+        self.assertLessEqual(1089098, index_bytes)
+        self.assertEqual(top(1000, entry(160, 30, field_index(30, 64, 160))), 284098)
+        self.assertEqual(field_index(30, 64, 160), 4956)
+        self.assertEqual(field_index(1000, 160, 160), 255186)
+        self.assertLessEqual(255186, page_bytes)
+        issue = 98 + 4842 * 450 + sum(len(str(n)) for n in range(1, 451))
+        self.assertEqual(issue, 2180240)
+        rows = {row['name']: row for row in json.loads((ROOT / 'contract/vectors/dialect-authoring/paging.json').read_text())['bounds']}
+        self.assertEqual([row['indexBytes'] for row in rows.values()], [77390, 284098, 386, 1089098, 2178098, 1187, 1090187, 229, 230, 233])
+        self.assertEqual(rows['issue #252 family: 450 revisions x 30 fields with 64-byte names']['oneLevelIndexBytes'], issue)
+        self.assertEqual(rows['largest accepted Desk collection: 1,000 revisions x 30 fields, 160-byte labels, 64-byte names']['fieldIndexBytes'], 4956)
+        self.assertEqual(rows['largest unescaped revision field index the shape admits: 1,000 fields with 160-byte names']['fieldIndexBytes'], 255186)
+        self.assertEqual(top(2000, entry(960, 1000, page_bytes)), 2178098)
+        self.assertEqual(top(1, entry(960, 1000, page_bytes + 1)), 1187)
+        # 1,001 revisions stay inside the cap, so the revision limit, not the byte cap, refuses them.
+        self.assertEqual(top(1001, entry(960, 1000, page_bytes)), 1090187)
+        self.assertLessEqual(1090187, index_bytes)
