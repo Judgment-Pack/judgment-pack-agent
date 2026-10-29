@@ -753,6 +753,34 @@ export type SourceNotice = (event: Extract<AssistantEvent, { type: 'guardrail' }
  * test-call cap is shared; a child's own gate keeps only what is its own, the schemas it loaded
  * and the marks of its calls' events.
  */
+/** What the model and the host are told of an external read whose receipt did not verify (ADR-0027): the call ran, its result was withheld, and it is not retried. */
+export const RECEIPT_WITHHELD = 'External read receipt verification failed; its result was withheld. The call ran; do not retry automatically.'
+const receiptWithheld = () => new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'unknown', detail: RECEIPT_WITHHELD })
+
+/**
+ * One external read's receipt check (ADR-0027, #242), made by the source gate before the call runs and carried down the
+ * call with its deadline signal (`receiptAdmission`). Until it has verified, nothing of the result is kept: the durable
+ * writer records a refused result as the call's uncertain outcome, never as a result, and the read wrapper retains nothing
+ * of it, so no context reader, later request or Plan step is given it. It runs once; a later caller is given the first
+ * outcome.
+ */
+export class ReceiptAdmission {
+  private checked?: Promise<{ shown: McpToolResult; receipt: unknown; verified: boolean }>
+  constructor(private readonly check: (result: McpToolResult) => Promise<{ shown: McpToolResult; receipt: unknown; verified: boolean }>) {}
+  /** Whether the check has run (or is running). */
+  get ran(): boolean { return this.checked !== undefined }
+  /** Checks result where nothing has yet; throws the gate's refusal where it did not verify. */
+  async admit(result: McpToolResult): Promise<void> {
+    this.checked ??= this.check(result).catch(() => ({ shown: {}, receipt: undefined, verified: false }))
+    if (!(await this.checked).verified) throw receiptWithheld()
+  }
+  /** The checked result, its receipt and whether it verified, once the check has run. */
+  outcome() { return this.checked }
+}
+const admissions = new WeakMap<AbortSignal, ReceiptAdmission>()
+/** The receipt check of the source call `signal` bounds, or undefined. */
+export function receiptAdmission(signal: AbortSignal): ReceiptAdmission | undefined { return admissions.get(signal) }
+
 export class SourceGate {
   private readonly changed = new Set<string>()
   private readonly changedIdentities = new Set<string>()
@@ -1062,6 +1090,8 @@ export class SourceGate {
    * deadline, counted in the report. The call's slot under `sourceCallsPerTurn` is claimed at the
    * check, before the first await, so calls made together cannot pass the bound; a refusal after
    * it gives the slot back. `callId` is the id of the call's events, which its marks are kept by.
+   * An external read's result is kept nowhere until its receipt verifies (#242): `run` finds the check
+   * by its signal (`receiptAdmission`), and one that did not verify is answered as withheld.
    */
   async call(tool: HostTool, args: Record<string, unknown>, signal: AbortSignal, run: (args: Record<string, unknown>, signal: AbortSignal) => Promise<McpToolResult>, callId?: string): Promise<McpToolResult> {
     const entry = this.entries.get(tool.name)
@@ -1138,17 +1168,12 @@ export class SourceGate {
     const argsEvidence = canonicalJSON(args)
     let result: McpToolResult
     let gatewayInvocation: Readonly<GatewayExecutionContext> | undefined
-    try {
-      result = await withDeadline((bounded) => {
-        if(entry.declared.source!.gatewayReceipt!==undefined) gatewayInvocation=beginGatewayInvocation(bounded)
-        return run(args,bounded)
-      }, signal, limit, () => toolTimeout(limit))
-    } catch (error) {
-      row.milliseconds += Date.now() - started;this.publish()
-      this.mark(tool.name, callId, {})
-      throw error
-    }
-    try {
+    // #242: an external read's receipt is checked before anything of its result is kept. The check goes down the call
+    // with its signal: the durable writer runs it after the host's execute and before it records the result, and the read
+    // wrapper before it retains one; the gate runs it here only where nothing below did (a result served without a call,
+    // or a run outside the wrappers).
+    const admission = entry.declared.taxonomy!.effect === 'read-external' ? new ReceiptAdmission(async raw => {
+      let checked = raw
       let gatewayReceipt: string | undefined
       let gatewayVerified = false
       if(entry.declared.source!.gatewayReceipt!==undefined) {
@@ -1156,23 +1181,49 @@ export class SourceGate {
           const source=entry.declared.source!
           const remaining=limit-(Date.now()-started)
           if(remaining<=0)throw Error('Gateway verification deadline exceeded')
-          const verified=await withDeadline(bounded=>verifyGatewayResult(result,source.gatewayReceipt!,source.descriptorApproval!,source.descriptorSnapshot!,entry.record.tool!,JSON.parse(argsEvidence),gatewayInvocation!,GATEWAY_RECEIPT_ENVELOPE_BYTES,bounded),signal,remaining,()=>toolTimeout(limit))
-          result=verified.result;gatewayReceipt=verified.receipt;gatewayVerified=true
+          const verified=await withDeadline(bounded=>verifyGatewayResult(checked,source.gatewayReceipt!,source.descriptorApproval!,source.descriptorSnapshot!,entry.record.tool!,JSON.parse(argsEvidence),gatewayInvocation!,GATEWAY_RECEIPT_ENVELOPE_BYTES,bounded),signal,remaining,()=>toolTimeout(limit))
+          checked=verified.result;gatewayReceipt=verified.receipt;gatewayVerified=true
         } catch { /* No custom-verifier fallback after Gateway verification failure. */ }
       }
-      const { receipt: hostReceipt, ...body } = result as McpToolResult & { receipt?: unknown }
+      const { receipt: hostReceipt, ...body } = checked as McpToolResult & { receipt?: unknown }
       const receipt=gatewayReceipt??hostReceipt
       const shown = structuredClone(body)
-      if (entry.declared.taxonomy!.effect === 'read-external') {
-        let verified = gatewayVerified
-        try {
-          if (entry.declared.source!.gatewayReceipt===undefined && typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128) verified = await withDeadline(bounded => Promise.resolve(entry.declared.source!.verifyReceipt!(Object.freeze({source: canonicalJSON(entry.record), tool: entry.record.tool!, args: argsEvidence, result: canonicalJSON(shown), receipt}), bounded)), signal, Math.max(1, limit - (Date.now() - started)), () => toolTimeout(limit)) === true
-        } catch { /* Verification fails closed; verifier text is not published. */ }
+      let verified = gatewayVerified
+      try {
+        if (entry.declared.source!.gatewayReceipt===undefined && typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128) verified = await withDeadline(bounded => Promise.resolve(entry.declared.source!.verifyReceipt!(Object.freeze({source: canonicalJSON(entry.record), tool: entry.record.tool!, args: argsEvidence, result: canonicalJSON(shown), receipt}), bounded)), signal, Math.max(1, limit - (Date.now() - started)), () => toolTimeout(limit)) === true
+      } catch { /* Verification fails closed; verifier text is not published. */ }
+      return { shown, receipt, verified }
+    }) : undefined
+    const withheld = () => {
+      this.refuse(tool.name, RECEIPT_WITHHELD)
+      return this.refused(entry, receiptWithheld(), callId)
+    }
+    try {
+      result = await withDeadline((bounded) => {
+        if(entry.declared.source!.gatewayReceipt!==undefined) gatewayInvocation=beginGatewayInvocation(bounded)
+        if(admission!==undefined) admissions.set(bounded, admission)
+        return run(args,bounded)
+      }, signal, limit, () => toolTimeout(limit))
+    } catch (error) {
+      row.milliseconds += Date.now() - started;this.publish()
+      // The check below refused the result before anything kept it: the gate's refusal, whatever the run then said.
+      if (admission?.ran && !(await admission.outcome())!.verified) throw withheld()
+      this.mark(tool.name, callId, {})
+      throw error
+    }
+    try {
+      let shown: McpToolResult
+      let receipt: unknown
+      if (admission !== undefined) {
+        await admission.admit(result).catch(() => undefined)
+        const { shown: checked, receipt: given, verified } = (await admission.outcome())!
         if (!verified) {
-          const detail = 'External read receipt verification failed; its result was withheld. The call ran; do not retry automatically.'
-          this.refuse(tool.name, detail)
-          throw this.refused(entry, new AIFailureError({version: 1, code: 'tool-failed', source: 'tool', outcome: 'unknown', detail}), callId)
+          throw withheld()
         }
+        shown = checked;receipt = given
+      } else {
+        const { receipt: hostReceipt, ...body } = result as McpToolResult & { receipt?: unknown }
+        shown = structuredClone(body);receipt = hostReceipt
       }
       row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
       this.mark(tool.name, callId, typeof receipt === 'string' && receipt.length >= 1 && receipt.length <= 128 ? { receipt } : {})

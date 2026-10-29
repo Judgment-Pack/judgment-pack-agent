@@ -106,6 +106,17 @@ name, so a host opens its gate with `runcontext.OfferedHostTools(...)`, beside t
 context tools. `runcontext.ToolListDigest` is the digest a host pins when the person approves a
 server's list.
 
+An external read's result (a tool whose taxonomy is `read-external`, checked by its source's
+`VerifyReceipt` or `GatewayReceipt`) is kept only once its receipt verifies (ADR-0027's amendment,
+agent#242). Until then nothing of it is retained in the ledger or the read cache, recorded as a
+durable result or observation, listed or returned by `list_context`, `read_context`, `read_window` or
+`search`, shown in a later run's index, or offered or accepted as Plan evidence. A rejected, missing or
+expired receipt leaves the call inspectable as a failed operation, never as data: its `tool_result`
+refusal (`tool-failed`, outcome `unknown`, not retried), its durable row (`unknown`, that failure, no
+result) and, where the run lists its operations (the API adapter), its operation record
+(`<tool> · failed`). A checkpoint written while the check runs
+holds none of the result, and a call checked alongside another keeps only its own outcome.
+
 Identity is `person`, `service` or `connection` with a recognisable label, never a credential; it
 defaults to a connection labelled by the source id. `ContextualSession` adds its digest, places
 `runs as: <label>` inside the framed offer, carries it on every call and result, and counts calls per

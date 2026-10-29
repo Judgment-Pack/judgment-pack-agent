@@ -4,6 +4,10 @@
 
 Runtime must publish `{operation,effect,checkKind?,experimental?}` directly inside MCP `_meta`. Gateway snapshot-backed registrations require current V2 owner taxonomy and independent full approval context; historical V1 remains readable but cannot authorize current admission. An external read's host verifier must authenticate the receipt and bind its source, descriptor pin, tool, canonical arguments and canonical result. Returning true merely because a receipt string exists violates the host contract.
 
+The verifier is asked before anything of the result is kept: an unverified result is never retained
+for the context readers, recorded as a durable result or offered as Plan evidence, and the call
+stays inspectable only as a failed operation (ADR-0027's amendment, agent#242).
+
 A host approving a skill computes its pin with `skillDigest` / `SkillDigest` and the admitted tool taxonomy map. Pass that same run's map to skill admission. Unknown dependencies never receive a default profile. Optional kind/tags affect the pin; a computed profile is never accepted from an author or model. Preset helpers always retain a valid pure ask, preserving `ask_user`. Routing #172 must consume these helpers and still apply all existing phase, approval and name gates.
 
 

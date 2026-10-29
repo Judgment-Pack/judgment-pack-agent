@@ -7485,6 +7485,66 @@
   "status": "caught",
   "origin": "agent#237",
   "note": "TypeScript safeguard removal caught at the actual interrupted-terminal native test with taskSteps=false: expected 3 provider calls to be 2. The taskSteps=true control passes. Go twin removes only len(w.nativePlanSuperseded) > 0 from supersededNativePlanLocked; the paired task-steps-off fixture fails calls=3 want=2. The acknowledged Plan decision and exact original unknown audit remain retained; this proves refusal before an extra physical provider dispatch, not a repeated host side effect. Restored focused checks are recorded in the R4 handoff."
+},
+{
+  "name": "receipt quarantine Q1 the gate hands its check down the call",
+  "file": "toolSources.ts",
+  "find": "        if(admission!==undefined) admissions.set(bounded, admission)\n",
+  "replace": "",
+  "tests": [
+    "receiptQuarantine.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Re-orders the verification back after retention (the v0.11.0 order): the gate checks only after the durable writer and the read wrapper ran. Caught at receiptQuarantine.test.ts: list_context lists the unverified result, read_context returns it, the native agent's answers and the API requests carry it, the durable row is a result, and the checkpoint written during the overlapping call carries it. Go twin (by hand, dropping bounded = context.WithValue(bounded, receiptAdmissionKey{}, admission) in SourceGate.Call): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach (list_context's answer; the error result recorded as a result) and TestOverlappingCallsAndARestoredCheckpointKeepOnlyTheVerifiedResult (the checkpoint written while the receipt check ran carries the result)."
+},
+{
+  "name": "receipt quarantine Q2 the read wrapper retains nothing its check refuses",
+  "file": "execution/controller.ts",
+  "find": "   await admission?.admit(result)\n",
+  "replace": "",
+  "tests": [
+    "receiptQuarantine.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Lets a reader return quarantined bytes wherever the read wrapper is reached without the durable writer's check. Caught at receiptQuarantine.test.ts > retains nothing in the read wrapper that its check refuses: the refused call answers and the chat snapshot carries the sentinel. Go twin (by hand, dropping the receiptAdmissionOf block in WrapRead): caught at TestTheReadWrapperRetainsNothingItsCheckRefuses, verified false answered nil."
+},
+{
+  "name": "receipt quarantine Q3 the durable writer records a refused result as uncertain",
+  "file": "storage/writer.ts",
+  "find": "if(admit&&!signal?.aborted){live=undefined;await admit(value)}",
+  "replace": "if(admit&&!signal?.aborted){live=undefined}",
+  "tests": [
+    "receiptQuarantine.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Lets a Plan step accept a quarantined result: the durable row is recorded as a result with an operation observation before the receipt is checked. Caught at receiptQuarantine.test.ts withheldRow: complete_plan_step accepts the rejected dispatch, then the row is state result (the read wrapper still refuses retention). Go twin (by hand, keeping ctx = context.WithoutCancel(ctx) and dropping runErr = admit(value) in invokeDurable): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach, a Plan step accepted the rejected call, and the overlap test, the checkpoint written while the receipt check ran carries the result in the durable row."
+},
+{
+  "name": "receipt quarantine Q4 the receipt check's time is not the call's",
+  "file": "storage/writer.ts",
+  "find": "{live=undefined;await admit(value)}",
+  "replace": "{await admit(value)}",
+  "tests": [
+    "receiptQuarantine.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Counts the check's own time as the call's: an expired receipt (the verifier outlasts the source's deadline) closes the run's dispatch instead of recording the withheld outcome. Caught at receiptQuarantine.test.ts expired-receipt: the context readers answer refused, the API run ends with an error event and the native run stops after two requests. Go twin (by hand, dropping ctx = context.WithoutCancel(ctx) in invokeDurable): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach/expired-receipt, list_context's answer."
+},
+{
+  "name": "receipt quarantine Q5 the gate answers a refused check as withheld",
+  "file": "toolSources.ts",
+  "find": "      if (admission?.ran && !(await admission.outcome())!.verified) throw withheld()\n",
+  "replace": "",
+  "tests": [
+    "receiptQuarantine.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#242",
+  "note": "Without it a result the chain refused is answered as whatever the run said: for an expired receipt the deadline's timeout, losing the no-retry distinction. Caught at receiptQuarantine.test.ts expired-receipt in all three runs (the source's answer, the API events, the native answers). Go twin (by hand, consulting the outcome only where err == nil in SourceGate.Call): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach/expired-receipt, the source's answer."
 }
  ]
 }
