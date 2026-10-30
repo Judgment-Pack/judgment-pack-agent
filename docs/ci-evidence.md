@@ -100,9 +100,10 @@ and `unit-tests` 484 s of it) may take from the merged pull request's newest run
 the gate binds the run to the one pull request of its head branch, merged into `main` as this
 commit with no base change, checked out as a merge commit on this commit's first parent with this
 commit's tree, with the same inputs, runtime, identity and bound environment. Every refusal is a
-fresh run of the whole rest of the list. On a pull request into `main`, the `check` job records
-what its scoped selection passed (`Record the pull request's checks`); that record is never
-evidence for a release by itself. On a push to `main`, `Plan reuse from the merged pull request`
+fresh run of the whole rest of the list. On a pull request into `main` from this repository, the
+`check` job records what its scoped selection passed (`Record the pull request's checks`); that
+record is never evidence for a release by itself. A fork's pull request records nothing, since the
+gate never reuses one. On a push to `main`, `Plan reuse from the merged pull request`
 decides before the checks, and the capture records each covered check as `REUSED`. At the release
 the gate admits that pull request evidence again, under the same rules and the same 48 hours.
 
@@ -129,19 +130,34 @@ table plans none: a pull request's mutation sample is not shard coverage, and th
 run on every push to `main`.
 
 `tests/test_release_evidence.py` holds every check of the `check` job to one of the two lists, so a
-new `dev.json` check must be classified before CI passes. It also requires that no tracked source
-reads the event or the ref (`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_BASE_REF` and the like, or
-the `EVENT`, `BASE_REF` and `COVERED` variables of the Checks step): a reusable check must not
-branch on the event.
+new `dev.json` check must be classified before CI passes. It also scans every tracked source under
+`scripts/`, `tests/`, `packages/` and `go/`, and `dev.json`'s commands, for the event, the ref, the
+commit and the run: the `GITHUB_*` names (`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_HEAD_REF`,
+`GITHUB_BASE_REF`, `GITHUB_SHA`, `GITHUB_WORKFLOW_REF`, `GITHUB_RUN_ID` and the like) as bare words
+in any spelling, `github.event` and the other expression contexts, and reads of the Checks step's
+`EVENT`, `BASE_REF` and `COVERED` (`$EVENT`, `${EVENT:-}`, `process.env.X`, `process.env['X']`,
+`os.getenv`, `os.environ`, `os.Getenv`, `os.LookupEnv`). Only the gate and the test itself are
+exempt. A reusable check must not branch on the event or on which ref or commit it runs at. What a
+static scan cannot see (a name assembled at run time, an environment read through a library) is
+outside it.
 
-**The bound environment.** `JPDEV_BIND_ENV`, set once for `ci.yml`, names the variables the checks
-read as flags, which must equal `pull_request_reuse.environment`: `CI`, `JPDEV_DESK`,
-`JP_AGENT_GATEWAY_SOURCE`, `NODE_OPTIONS`, `GOFLAGS`, `GOEXPERIMENT`, `NODE`, `DIFF_SEED`,
-`DIFF_CASE`, the `JPACK_DIALECT_*` variables, `JP_RUNTIME_BINARY`, `JP_RUNTIME_BINARY_SHA256`,
-`JP_AGENT_GATEWAY_FIXTURE` and `JP_CORPUS_ROOT`. `check.sh` prints the SHA-256 of each value, and of
-the manifest it read, on its `environment:` line; the capture records them and the gate compares
-the pull request's with the branch's. `TMPDIR` and `JPDEV_SCRATCH`, which name per-run scratch
-directories, are not bound; no secret is.
+**The bound environment.** `JPDEV_BIND_ENV`, set once for `ci.yml`, must equal
+`pull_request_reuse.environment`. The test derives that list: it is every variable the checks'
+sources read (the same spellings as above, in every tracked source but the kit's runner scripts and
+the Python test modules of the fresh `python-tests` check), plus the toolchain flags `GOFLAGS`,
+`GOEXPERIMENT`, `GORACE`, `GODEBUG`, `CGO_ENABLED`, `GOTOOLCHAIN`, `GOPROXY`, `GOSUMDB`,
+`NODE_OPTIONS`, `NODE_ENV` and `TZ`, minus named exemptions. Today that binds `CI`, `JPDEV_DESK`,
+`JP_AGENT_GATEWAY_SOURCE`, `NODE`, `DIFF_SEED`, `DIFF_CASE`, the `JPACK_DIALECT_*` variables,
+`JP_RUNTIME_BINARY`, `JP_RUNTIME_BINARY_SHA256`, `JP_AGENT_GATEWAY_FIXTURE`, `JP_CORPUS_ROOT`,
+`JPS_CHAT_CONTEXT_STORE`, `JPS_CHAT_CONTEXT_ID`, `JP_CHECKPOINT_GUARD_ROOT`, `JP_REASONING_GUARD_ROOT`,
+`BODY_PARSER_PROBE_ROOT` and `UNDICI_PROBE_ROOT`, with the toolchain flags. The exemptions, each with
+its reason in the test: `TMPDIR` and `JPDEV_SCRATCH` (per-run scratch directories), `PATH` (where
+the recorded tools are), `GITHUB_STEP_SUMMARY` (the live audit only), `LANGSMITH_API_KEY` (a secret,
+never bound), and the variables a script or test sets for its own child process. `check.sh` prints
+the SHA-256 of each bound value (`unset` when absent), and of the manifest it read, on its
+`environment:` line; the capture records them and the gate compares the pull request's with the
+branch's. The workflow sets no bound variable except the two checkout paths, which are the same on
+every hosted run (also a test).
 
 **Main-to-release reuse** (#213) is unchanged in kind: the release takes the exact commit's main
 evidence, now under the gate's v0.13.0 contract.

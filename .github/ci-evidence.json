@@ -132,7 +132,21 @@
           "JP_RUNTIME_BINARY",
           "JP_RUNTIME_BINARY_SHA256",
           "JP_AGENT_GATEWAY_FIXTURE",
-          "JP_CORPUS_ROOT"
+          "JP_CORPUS_ROOT",
+          "JPS_CHAT_CONTEXT_STORE",
+          "JPS_CHAT_CONTEXT_ID",
+          "JP_CHECKPOINT_GUARD_ROOT",
+          "JP_REASONING_GUARD_ROOT",
+          "BODY_PARSER_PROBE_ROOT",
+          "UNDICI_PROBE_ROOT",
+          "GORACE",
+          "GODEBUG",
+          "CGO_ENABLED",
+          "GOTOOLCHAIN",
+          "GOPROXY",
+          "GOSUMDB",
+          "NODE_ENV",
+          "TZ"
         ]
       },
       "jobs": {

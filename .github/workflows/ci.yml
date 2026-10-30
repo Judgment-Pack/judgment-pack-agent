@@ -27,7 +27,7 @@ permissions:
 
 # pull_request_reuse.environment of .github/ci-evidence.json, for every check.sh step of both jobs.
 env:
-  JPDEV_BIND_ENV: CI,JPDEV_DESK,JP_AGENT_GATEWAY_SOURCE,NODE_OPTIONS,GOFLAGS,GOEXPERIMENT,NODE,DIFF_SEED,DIFF_CASE,JPACK_DIALECT_RUNTIME,JPACK_DIALECT_RUNTIME_MODE,JPACK_DIALECT_EVIDENCE,JP_RUNTIME_BINARY,JP_RUNTIME_BINARY_SHA256,JP_AGENT_GATEWAY_FIXTURE,JP_CORPUS_ROOT
+  JPDEV_BIND_ENV: CI,JPDEV_DESK,JP_AGENT_GATEWAY_SOURCE,NODE_OPTIONS,GOFLAGS,GOEXPERIMENT,NODE,DIFF_SEED,DIFF_CASE,JPACK_DIALECT_RUNTIME,JPACK_DIALECT_RUNTIME_MODE,JPACK_DIALECT_EVIDENCE,JP_RUNTIME_BINARY,JP_RUNTIME_BINARY_SHA256,JP_AGENT_GATEWAY_FIXTURE,JP_CORPUS_ROOT,JPS_CHAT_CONTEXT_STORE,JPS_CHAT_CONTEXT_ID,JP_CHECKPOINT_GUARD_ROOT,JP_REASONING_GUARD_ROOT,BODY_PARSER_PROBE_ROOT,UNDICI_PROBE_ROOT,GORACE,GODEBUG,CGO_ENABLED,GOTOOLCHAIN,GOPROXY,GOSUMDB,NODE_ENV,TZ
 
 jobs:
   contract:
@@ -185,13 +185,14 @@ jobs:
       - name: Record exact CI inputs and coverage
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --reuse-plan "${{ runner.temp }}/reuse-plan.json" --output "${{ runner.temp }}/evidence.json"
-      # A pull request into main records what its scoped selection passed, at its merge commit: the
-      # evidence a later push to main may reuse. It is never evidence for a release by itself.
+      # A pull request into main from this repository records what its scoped selection passed, at
+      # its merge commit: the evidence a later push to main may reuse. It is never evidence for a
+      # release by itself, and a fork's pull request records nothing (the gate never reuses one).
       - name: Record the pull request's checks
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
         run: python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
-        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main')
+        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-evidence-ci-check-${{ github.run_attempt }}

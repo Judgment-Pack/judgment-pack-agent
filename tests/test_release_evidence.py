@@ -69,6 +69,81 @@ def manifest_checks():
     return [row['name'] for row in manifest['checks']] + (['parity'] if 'parity' in manifest else [])
 
 
+# The sources a check runs: every tracked script, test and module of the repository, and the
+# manifest's own commands. The gate and this test are exempt (they read the run's context by design).
+SOURCE_EXEMPT = {'scripts/dev/release_evidence.py', 'tests/test_release_evidence.py'}
+SOURCE_SUFFIX = re.compile(r'\.(mjs|cjs|js|ts|tsx|go|py|sh)$')
+# Not the source of a reusable check, for the bound environment: the kit's runner scripts (their
+# variables are the runner's own options, not the checks' flags) and the Python test modules (the
+# python-tests check, which always runs fresh on main). The event scan covers them all the same.
+RUNNER_SCRIPTS = {'scripts/dev/check.sh', 'scripts/dev/handover_check.sh', 'scripts/dev/changed_checks.py'}
+PYTHON_TESTS = re.compile(r'tests/[^/]+\.py')
+# Reads of an environment variable by name, in each spelling the sources use.
+ENV_READ = [
+    re.compile(r'process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*[\'"`]([A-Za-z_][A-Za-z0-9_]*)[\'"`]\s*\])'),
+    re.compile(r'os\.(?:getenv|environ\.get|environ\.setdefault|environ\.pop)\(\s*[\'"]([A-Za-z_][A-Za-z0-9_]*)[\'"]'),
+    re.compile(r'os\.environ\[\s*[\'"]([A-Za-z_][A-Za-z0-9_]*)[\'"]\s*\]'),
+    re.compile(r'\b(?:getenv|environ\.get)\(\s*[\'"]([A-Za-z_][A-Za-z0-9_]*)[\'"]'),
+    re.compile(r'os\.(?:Getenv|LookupEnv)\(\s*"([A-Za-z_][A-Za-z0-9_]*)"'),
+]
+# A shell expansion of an upper-case name ($NAME, ${NAME}, ${NAME:-...}); lower-case names are the
+# scripts' own locals.
+SHELL_READ = re.compile(r'\$\{?([A-Z_][A-Z0-9_]*)')
+# Read by a source but not bound, each for a stated reason.
+ENV_EXEMPT = {
+    'TMPDIR': 'a per-run scratch directory, not a flag',
+    'JPDEV_SCRATCH': 'a per-run scratch directory, not a flag',
+    'PATH': 'where the toolchains are; the runtime identity records the tools resolved through it',
+    'GITHUB_STEP_SUMMARY': 'written only by the live audit (dependency-audit-live, never reused); its test sets it',
+    'LANGSMITH_API_KEY': 'a secret: never bound; a Go certification test fails when it is set',
+    'CERTIFY_MEASUREMENT': 'set by packages/harness/scripts/certify.mjs for its own child',
+    'CERTIFY_PROVIDERS': 'set by packages/harness/scripts/certify.mjs for its own child',
+    'PROBE_REPORT': 'set by scripts/dependency-audit.test.mjs for its own child',
+    'PROBE_EXIT': 'set by scripts/dependency-audit.test.mjs for its own child',
+    'RECEIPT_TEST_DESCENDANT_IDENTITY': 'set by scripts/gateway-receipt-process.test.mjs for its own child',
+    'STAND_IN_FIXTURE': 'set by packages/harness/certification/recorder.test.ts for its own child',
+    'JPACK_COMMIT': 'set by packages/harness/certification/recorder.test.ts for its own child',
+    'JP_AGENT_GATEWAY_OUTPUT': 'set by scripts/gateway-receipt-check.mjs for the pinned Gateway producer test',
+    'JP_AGENT_GATEWAY_PREPARED': 'set by scripts/gateway-receipt-check.mjs for the pinned Gateway producer test',
+}
+# Flags the toolchains themselves read, bound though no source names them.
+TOOLCHAIN_FLAGS = {'GOFLAGS', 'GOEXPERIMENT', 'GORACE', 'GODEBUG', 'CGO_ENABLED', 'GOTOOLCHAIN', 'GOPROXY',
+                   'GOSUMDB', 'NODE_OPTIONS', 'NODE_ENV', 'TZ'}
+# The event, the ref, the commit and the run, as GitHub names them, and the Checks step's own
+# variables derived from them: no check source may read any of them.
+EVENT_VARIABLES = {'EVENT', 'BASE_REF', 'COVERED', 'GITHUB_EVENT_NAME', 'GITHUB_EVENT_PATH', 'GITHUB_REF',
+                   'GITHUB_REF_NAME', 'GITHUB_REF_TYPE', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'GITHUB_SHA',
+                   'GITHUB_WORKFLOW_REF', 'GITHUB_WORKFLOW_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
+                   'GITHUB_RUN_NUMBER', 'GITHUB_JOB'}
+# The GitHub names as bare words, whatever reads them (a computed key, a template), and the
+# workflow expression contexts.
+EVENT_WORDS = re.compile(r'\b(%s)\b|\bgithub\.(event|ref|sha|head_ref|base_ref|run_id|workflow_ref)\b' % '|'.join(
+    sorted(name for name in EVENT_VARIABLES if name.startswith('GITHUB_'))))
+
+
+def check_sources():
+    """(path, text) of every tracked source a check may run, and of dev.json's commands."""
+    listed = subprocess.run(['git', 'ls-files', '-z', '--', 'scripts', 'tests', 'packages', 'go'], cwd=ROOT,
+                            check=True, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL).stdout.decode()
+    for path in sorted(listed.split('\0')):
+        fixture = path.startswith('tests/fixtures/') and path.endswith(('.txt', '.mjs', '.go', '.sh'))
+        if path and path not in SOURCE_EXEMPT and (SOURCE_SUFFIX.search(path) or fixture):
+            yield path, (ROOT / path).read_text(encoding='utf-8', errors='replace')
+    manifest = json.loads(read('dev.json'))
+    rows = manifest['setup'] + manifest['checks'] + ([manifest['parity']] if 'parity' in manifest else [])
+    yield 'dev.json', '\n'.join(row['run'] for row in rows)
+
+
+def env_reads(path, text):
+    """The names of the environment variables the text reads."""
+    names = set()
+    for pattern in ENV_READ:
+        names.update(next(group for group in match.groups() if group) for match in pattern.finditer(text))
+    if path.endswith('.sh') or path == 'dev.json' or path.startswith('tests/fixtures/'):
+        names.update(SHELL_READ.findall(text))
+    return names
+
+
 def job_block(workflow, job_id):
     """The text of one job of a workflow file: from its key to the next job's key."""
     begin = workflow.index('\n  %s:\n' % job_id) + 1
@@ -159,22 +234,43 @@ class Configuration(unittest.TestCase):
         self.assertIn('CI', names)
         self.assertFalse({'EVENT', 'BASE_REF', 'COVERED', 'TMPDIR', 'JPDEV_SCRATCH'} & set(names))
 
-    def test_no_check_reads_the_event_or_the_ref(self):
-        """A reusable check must not branch on the event: no tracked source a check runs reads the
-        event, the ref or the variables the Checks step sets from them."""
-        pattern = re.compile(r'GITHUB_(EVENT_NAME|EVENT_PATH|BASE_REF|HEAD_REF|REF|REF_NAME|REF_TYPE)\b|'
-                             r'github\.event|\benv\.(EVENT|BASE_REF|COVERED)\b|'
-                             r'''environ(\.get)?\(?\[?['"](EVENT|BASE_REF|COVERED)['"]|'''
-                             r'''Getenv\("(EVENT|BASE_REF|COVERED)"''')
-        listed = subprocess.run(['git', 'ls-files', '-z', '--', 'scripts', 'tests', 'packages', 'go', 'dev.json'],
-                                cwd=ROOT, check=True, stdout=subprocess.PIPE, stdin=subprocess.DEVNULL).stdout
-        exempt = {'scripts/dev/release_evidence.py', 'tests/test_release_evidence.py'}
-        found = []
-        for name in listed.decode().split('\0'):
-            if not name or name in exempt or not re.search(r'\.(mjs|cjs|js|ts|go|py|sh|json)$', name):
+    def test_the_bound_environment_is_every_flag_the_check_sources_read(self):
+        """Every variable a check's source reads is bound, or is a named exemption; the toolchain
+        flags are bound whether or not a source names them."""
+        names = config()['workflows']['ci']['pull_request_reuse']['environment']
+        reads = {}
+        for path, text in check_sources():
+            if path in RUNNER_SCRIPTS or PYTHON_TESTS.fullmatch(path):
                 continue
-            text = (ROOT / name).read_text(encoding='utf-8', errors='replace')
-            found += ['%s: %s' % (name, match.group(0)) for match in pattern.finditer(text)]
+            for name in env_reads(path, text):
+                reads.setdefault(name, set()).add(path)
+        unbound = {name: sorted(paths) for name, paths in reads.items()
+                   if name not in names and name not in ENV_EXEMPT}
+        self.assertEqual(unbound, {})
+        self.assertEqual(sorted(names), sorted((set(reads) - set(ENV_EXEMPT)) | TOOLCHAIN_FLAGS))
+        # An exemption is for a variable a source still reads, never a placeholder.
+        self.assertEqual(sorted(set(ENV_EXEMPT) - set(reads)), [])
+
+    def test_ci_sets_no_bound_variable_but_the_two_pinned_checkouts(self):
+        """A bound flag that the workflow set from the event or a run value would differ between the
+        pull request's run and main's and refuse reuse; none is set but the two checkout paths, which
+        are the same on every hosted run."""
+        names = config()['workflows']['ci']['pull_request_reuse']['environment']
+        ci = read('.github/workflows/ci.yml')
+        ci = ci.replace(re.search(r'^  JPDEV_BIND_ENV: \S+$', ci, re.M).group(0), '')
+        settings = re.findall(r'^.*\b(?:%s)\b\s*[:=].*$' % '|'.join(names), ci, re.M)
+        self.assertEqual([line.strip() for line in settings], [
+            'run: echo "JPDEV_DESK=${GITHUB_WORKSPACE}/desk-checkout" >> "$GITHUB_ENV"',
+            'run: echo "JP_AGENT_GATEWAY_SOURCE=${GITHUB_WORKSPACE}/gateway-checkout" >> "$GITHUB_ENV"'])
+
+    def test_no_check_reads_the_event_or_the_ref(self):
+        """A reusable check must not branch on the event or on which commit or ref it runs at: no
+        tracked source a check runs names the event, the ref, the commit or the run, in any
+        spelling, nor reads the variables the Checks step sets from them."""
+        found = []
+        for path, text in check_sources():
+            found += ['%s: %s' % (path, match.group(0)) for match in EVENT_WORDS.finditer(text)]
+            found += ['%s: reads %s' % (path, name) for name in env_reads(path, text) if name in EVENT_VARIABLES]
         self.assertEqual(found, [])
 
 
@@ -212,6 +308,15 @@ class Workflows(unittest.TestCase):
         self.assertNotIn('mutation-check.mjs --check', mutation)
         self.assertIn('mutation-rows', config()['workflows']['ci']['jobs']['check']['checks'])
 
+    def test_the_four_full_legs_partition_the_table(self):
+        """Each leg runs its own quarter: four legs, shard N of 4, and every key of the configuration."""
+        full = job_block(read('.github/workflows/mutation.yml'), 'full')
+        self.assertIn('    strategy:\n      fail-fast: false\n      matrix:\n        shard: [1, 2, 3, 4]\n', full)
+        self.assertIn('    name: every row (shard ${{ matrix.shard }} of 4)\n', full)
+        self.assertIn('          SHARD: ${{ matrix.shard }}\n', full)
+        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/4"'])
+        self.assertEqual(sorted(config()['workflows']['mutation']['jobs']), ['full-%d' % n for n in (1, 2, 3, 4)])
+
     def test_the_check_job_plans_before_its_checks_and_records_the_plan(self):
         job = job_block(read('.github/workflows/ci.yml'), 'check')
         main = "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
@@ -246,7 +351,8 @@ class Workflows(unittest.TestCase):
 
     def test_a_pull_request_into_main_records_its_checks_for_reuse(self):
         job = job_block(read('.github/workflows/ci.yml'), 'check')
-        pr = "github.event_name == 'pull_request' && github.base_ref == 'main'"
+        pr = ("github.event_name == 'pull_request' && github.base_ref == 'main' && "
+              "github.event.pull_request.head.repo.full_name == github.repository")
         record = step_block(job, "Record the pull request's checks")
         self.assertIn('        if: %s\n' % pr, record)
         self.assertIn('python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log', record)

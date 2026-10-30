@@ -7,7 +7,8 @@ name: Mutation check
 # release.yml takes the evidence of the four full shards of a push or dispatch run on main at the
 # tagged commit (docs/ci-evidence.md). That every row still applies (each row's text occurs once in
 # its file, each test it names exists) is the `mutation-rows` step of dev.json, which the CI `check`
-# job runs: this workflow does not run it a second time.
+# job runs (on a push to main it may instead reuse the merged pull request's passed result, which
+# the release admits again): this workflow does not run it a second time.
 on:
   pull_request:
     paths:

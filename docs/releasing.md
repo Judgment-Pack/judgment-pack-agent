@@ -167,7 +167,8 @@ with `contract` and `check`, through the [release evidence gate](ci-evidence.md)
 newest applicable attempt on main whatever its result; a newer failed, cancelled or running attempt
 (a weekly scheduled run included) refuses, and nothing searches back for an older green one. A
 pull request's sample and a partial re-run cannot qualify. That every row still applies is the
-`mutation-rows` step of `dev.json`, which the `check` job runs.
+`mutation-rows` step of `dev.json`, which the `check` job runs, or, on a push to main, may reuse
+from the merged pull request's run, which the release admits again.
 
 The age limit is 48 hours. A rolled hosted image, changed tools or inputs, stale, missing or
 unreadable evidence, a missing or unexpected runner identity, or tag movement refuses. The bounded
