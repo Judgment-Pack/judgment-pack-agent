@@ -1,11 +1,20 @@
 {
-  "schema": 1,
+  "$comment": [
+    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.13.0), schema 2: docs/ci-evidence.md.",
+    "Every job records the image identity its standard GitHub-hosted runner reports (identity), a reported identity and",
+    "not a pinned VM image. Every profile compares with the release runner: a rolled image refuses (runtime-identity)",
+    "and takes the fresh route; there is no revalidation here, because the check job does work outside the check list",
+    "(the Desk and Gateway checkouts) and the mutation shards are not the check list.",
+    "pull_request_reuse lists only the check job's checks whose result depends on the tree and the recorded inputs;",
+    "tests/test_release_evidence.py holds every check of the check job to one side or the other."
+  ],
+  "schema": 2,
   "repository": "Judgment-Pack/judgment-pack-agent",
+  "branch": "main",
   "max_age_hours": 48,
   "inputs": [
-    "dev.json",
     "scripts/dev/check.sh",
-    "scripts/dev/ci_evidence.py",
+    "scripts/dev/changed_checks.py",
     "package-lock.json",
     "requirements-dev.txt",
     "go/go.mod",
@@ -25,113 +34,164 @@
     "scripts/gateway-receipt-check.mjs",
     "scripts/gateway-receipt-process.mjs",
     "tests/fixtures/gateway-receipts/producer_test.go.txt",
-    "tests/test_ci_evidence.py",
-    "docs/security/v011-runner-image-exception.md"
+    "tests/test_release_evidence.py"
   ],
+  "fresh_at_release": [
+    "tag grammar, annotated tag naming the commit, the commit on main",
+    "an existing go/ tag names the release commit",
+    "release notes naming the tag",
+    "host upgrade guidance for the actual tag (scripts/check-upgrade-guides.py --tag)",
+    "a reviewer on the release environment",
+    "the package version equals the tag",
+    "npm ci, build, pack and checksums",
+    "build-provenance attestation",
+    "no existing release, draft identity",
+    "the published release holds what the run wrote",
+    "the paired go/<tag> Go module tag",
+    "the live dependency advisory review (docs/releasing.md)"
+  ],
+  "identity": {
+    "manifest": ".github/runner-identity.json",
+    "sha256": "333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da"
+  },
   "profiles": {
-    "base": {},
+    "base": {
+      "$comment": "The contract job: Python from actions/setup-python, as the release's verify job sets it up.",
+      "variant": "linux-x64",
+      "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
+      "compare": "release-runner",
+      "tools": {
+        "python": ["python3", "--version"]
+      }
+    },
     "check": {
-      "node": [
-        "node",
-        "--version"
-      ],
-      "npm": [
-        "npm",
-        "--version"
-      ],
-      "go": [
-        "go",
-        "version"
-      ],
-      "python": [
-        ".venv/bin/python3",
-        "--version"
-      ],
-      "python-packages": [
-        ".venv/bin/python3",
-        "-c",
-        "import importlib.metadata,json; print(json.dumps(sorted((d.metadata[\"Name\"],d.version) for d in importlib.metadata.distributions())))"
-      ]
+      "variant": "linux-x64",
+      "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
+      "compare": "release-runner",
+      "tools": {
+        "node": ["node", "--version"],
+        "npm": ["npm", "--version"],
+        "go": ["go", "version"],
+        "python": [".venv/bin/python3", "--version"],
+        "python-packages": [".venv/bin/python3", "-c", "import importlib.metadata,json; print(json.dumps(sorted((d.metadata[\"Name\"],d.version) for d in importlib.metadata.distributions())))"]
+      }
     },
     "mutation": {
-      "node": [
-        "node",
-        "--version"
-      ],
-      "npm": [
-        "npm",
-        "--version"
-      ]
+      "variant": "linux-x64",
+      "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
+      "compare": "release-runner",
+      "tools": {
+        "node": ["node", "--version"],
+        "npm": ["npm", "--version"]
+      }
     }
   },
   "workflows": {
     "ci": {
       "path": ".github/workflows/ci.yml",
-      "events": [
-        "push",
-        "workflow_dispatch"
-      ],
+      "name": "CI",
+      "events": ["push", "workflow_dispatch"],
+      "pull_request_reuse": {
+        "$comment": "Not listed, so run on every branch push: generated-docs (a generator reading Go module metadata), python-tests (reads the checkout's release tags), dependency-audit-live (a live advisory query), build (its output is read by later checks of the job) and packed-smoke (packs and installs the package).",
+        "checks": [
+          "record-shapes",
+          "dependency-audit",
+          "release-quality",
+          "mutation-rows",
+          "release-quality-engine",
+          "reference",
+          "unit-tests",
+          "certify-vercel",
+          "certify-codex",
+          "certify-deepagents",
+          "differential",
+          "gateway-receipt-process",
+          "gateway-receipts",
+          "go-module-path",
+          "gofmt",
+          "go-vet",
+          "go-generate",
+          "go-test",
+          "go-race",
+          "harness-check",
+          "parity"
+        ],
+        "environment": [
+          "CI",
+          "JPDEV_DESK",
+          "JP_AGENT_GATEWAY_SOURCE",
+          "NODE_OPTIONS",
+          "GOFLAGS",
+          "GOEXPERIMENT",
+          "NODE",
+          "DIFF_SEED",
+          "DIFF_CASE",
+          "JPACK_DIALECT_RUNTIME",
+          "JPACK_DIALECT_RUNTIME_MODE",
+          "JPACK_DIALECT_EVIDENCE",
+          "JP_RUNTIME_BINARY",
+          "JP_RUNTIME_BINARY_SHA256",
+          "JP_AGENT_GATEWAY_FIXTURE",
+          "JP_CORPUS_ROOT"
+        ]
+      },
       "jobs": {
         "contract": {
           "name": "contract",
           "job_id": "contract",
+          "labels": ["ubuntu-latest"],
           "profile": "base",
-          "checks": [
-            "contract",
-            "local-paths",
-            "agent-docs",
-            "diff-check"
-          ]
+          "checks": ["contract", "local-paths", "agent-docs", "diff-check"]
         },
         "check": {
           "name": "check",
           "job_id": "check",
+          "labels": ["ubuntu-latest"],
           "profile": "check",
-          "checks": "all",
-          "setup": true,
-          "optional_skips": [
-            "dependency-audit-live"
-          ]
+          "checks": [
+            "generated-docs",
+            "record-shapes",
+            "python-tests",
+            "dependency-audit",
+            "release-quality",
+            "dependency-audit-live",
+            "mutation-rows",
+            "build",
+            "release-quality-engine",
+            "packed-smoke",
+            "reference",
+            "unit-tests",
+            "certify-vercel",
+            "certify-codex",
+            "certify-deepagents",
+            "differential",
+            "gateway-receipt-process",
+            "gateway-receipts",
+            "go-module-path",
+            "gofmt",
+            "go-vet",
+            "go-generate",
+            "go-test",
+            "go-race",
+            "harness-check",
+            "parity"
+          ],
+          "optional_skips": ["dependency-audit-live"],
+          "setup": true
         }
       }
     },
     "mutation": {
       "path": ".github/workflows/mutation.yml",
-      "events": [
-        "push",
-        "workflow_dispatch",
-        "schedule"
-      ],
+      "name": "Mutation check",
+      "events": ["push", "workflow_dispatch"],
+      "skipped_jobs": ["rows of the files this pull request changes, and a sample"],
       "jobs": {
-        "rows-apply": {
-          "name": "every row applies",
-          "job_id": "rows-apply",
-          "profile": "mutation"
-        },
-        "full-1": {
-          "name": "every row (shard 1 of 4)",
-          "job_id": "full",
-          "profile": "mutation"
-        },
-        "full-2": {
-          "name": "every row (shard 2 of 4)",
-          "job_id": "full",
-          "profile": "mutation"
-        },
-        "full-3": {
-          "name": "every row (shard 3 of 4)",
-          "job_id": "full",
-          "profile": "mutation"
-        },
-        "full-4": {
-          "name": "every row (shard 4 of 4)",
-          "job_id": "full",
-          "profile": "mutation"
-        }
-      },
-      "skipped": [
-        "rows of the files this pull request changes, and a sample"
-      ]
+        "full-1": {"name": "every row (shard 1 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-2": {"name": "every row (shard 2 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-3": {"name": "every row (shard 3 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-4": {"name": "every row (shard 4 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []}
+      }
     }
   }
 }

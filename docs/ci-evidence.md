@@ -1,181 +1,192 @@
 # Trusted CI evidence at release
 
-Agent issue #213 originally adopted the historical Devkit issue #37
-`lib/ci_evidence.py` helper and handwritten collector/CLI fixtures. Agent now owns
-`scripts/dev/ci_evidence.py`, its configuration and workflows. Current Devkit has
-removed that legacy helper and uses a different release-evidence implementation;
-this document does not claim current shared code or migrate Agent to that contract.
-The Agent release-admission CLI and JSON evidence contract use schema 1.
+A release takes the evidence main CI and the full mutation table already produced at the exact
+release commit, instead of running them again, and refuses when that evidence is missing, partial,
+stale, unreadable or different. The gate is the devkit's
+[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.13.0/docs/ci-evidence.md),
+vendored unchanged from devkit v0.13.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
+file and release), with this repository's configuration in
+[`.github/ci-evidence.json`](../.github/ci-evidence.json), schema 2. The kit's document is the
+contract; this one records what the agent configures, why, and what changed.
 
-## Identity and collection
+History: agent #213 adopted an early form of the gate as `scripts/dev/ci_evidence.py` (schema 1),
+which the agent kept as its own verifier. Agent #239 and #240 move the agent to the shared gate at
+v0.13.0, adopting its reported runner identity
+([devkit #59](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/59)) and its
+pull-request-to-branch reuse ([devkit #60](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/60)).
+`scripts/dev/ci_evidence.py` is removed.
 
-`capture --workflow KEY --job KEY [--check-log FILE] [--setup-log FILE] --output FILE`
-runs after successful checks on trusted main. The CI workflow uploads that one
-`evidence.json` with a pinned immutable artifact action and a name containing the
-workflow key, producer job key (including matrix leg) and run attempt. Capture is
-not an admission command. A local file or a caller's successful assertion cannot
-establish reusable evidence.
+## Why the shared gate, not a port
 
-`verify` reads only this repository's Actions API, through the supported `gh api`
-route with `actions: read` and `contents: read`. There is no input for a local
-evidence file, an alternate API host, a green flag or an age override. Expected
-repository name and numeric ID come from the release's GitHub context. Source is
-its exact `GITHUB_SHA`; HEAD must match and tracked files must be unchanged.
-Configuration and input hashes come independently from `git show` at that commit,
-never from an artifact. This includes the workflow definitions, helper, check
-runner, manifest and configured dependency/parity inputs. The workflow's git blob
-identity is also compared. Tree equivalence and a different commit do not qualify.
+The alternative was to port the reported identity and the reuse rules into the agent's own
+verifier. That would be a second copy of about six hundred lines of binding logic (the identity
+manifest, the actions reader, the merged pull request's binding, the plan, the readmission), to be
+reviewed again here and kept in step with every kit release by hand: the duplication #240 is about.
+The shared gate is a superset of what the agent's verifier checked, and every guarantee of the
+agent's gate is held either by the gate's own contract or by this repository's configuration:
 
-The numeric workflow ID is resolved independently by the expected workflow path.
-Run metadata must bind that ID/path, this repository and head repository (names
-and numeric IDs), exact source, `main`, an allowed main event, and no PR association.
-Only a complete successful attempt qualifies. GitHub job display names are not
-immutable workflow identities: the source-controlled map binds each unique name
-to a producer job key, and the verified workflow bytes bind that map to the actual
-commands. Producer artifacts carry the key and attempt. Duplicate or unexpected
-API jobs fail, as do missing jobs or matrix legs. Only explicitly configured
-PR-only jobs may be skipped. Check-runner summaries must cover every configured
-check, with no failures/not-run rows or unexpected skips. Agent permits only its
-existing optional `dependency-audit-live` skip; this never establishes advisory
-clearance. Parity and setup checks are required.
+| Guarantee of the agent's gate | Held at v0.13.0 by |
+| --- | --- |
+| Exact source: this repository, the release commit, no tree-equivalent commit | the gate's contract (`run-sha`, `evidence-identity`, `input-identity`); inputs are git object ids at the commit |
+| Latest attempt, never an older green one | the gate's selection (`run-newer-failed`, `run-unfinished`, `run-race`, `attempt-changed`, `latest-changed`, `final-latest-changed`) |
+| Coverage: every job and matrix leg, every check, the PR-only job skipped | `workflows.*.jobs`, `checks`, `setup`, `skipped_jobs` |
+| Freshness: 48 hours from the selected attempt's start | `max_age_hours: 48`; the reused pull request run is held to it too |
+| Advisory: only `dependency-audit-live` may be skipped, which proves nothing about advisories | `optional_skips`; the live query stays fresh (below) |
+| Mutation: all four full shards of a main run at the commit | the `mutation` workflow's four jobs |
+| Approval, provenance, the paired Go tag | unchanged jobs of `release.yml`, outside the gate; named in `fresh_at_release` |
+| The runner and tools, resolved again on the release runner | every profile `compare: release-runner`, now with the reported identity |
 
-The collector reads all pages (100 entries per page, at most 10 pages) and requires
-stable exact totals and unique IDs. It refuses counts of 1,000 or more because
-GitHub caps filtered workflow-run searches at 1,000. It does not filter by status.
-Among applicable main events, the greatest `(created_at, run_id)` selects the run;
-that run's current `run_attempt` selects its attempt. A later failed, canceled,
-queued or running applicable run blocks reuse. An older run's rerun does not move
-it past a newer-created applicable run. No latest-green search occurs.
+Where the shared gate differs, it is stricter, with one exception named here. Stricter: the
+workflow `name:` and the jobs' workflow name are bound; every job's labels and hosted-runner group;
+the default branch is read from the API; every run at the commit on main is scanned whatever its
+trigger (a newer failed scheduled mutation run refuses); every `uses:` must be pinned. The exception
+is the selection rule: the agent's verifier selected the run created last, the gate selects the run
+whose latest attempt started last. A re-run of an older run is therefore the newest attempt, and an
+earlier failed run does not block it; any run whose attempt started after the selected one and did
+not succeed still refuses. This is the shared contract's definition of the newest attempt, and it
+is what makes its fresh route (re-run all jobs of the main run) work.
 
-Jobs are fetched from the attempt-specific endpoint. A failed-jobs-only rerun
-with incomplete attempt coverage is refused; jobs/artifacts from different
-attempts are never combined. An artifact must have exactly the expected name,
-producer interval, run/source/ref metadata, nonexpired state, bounded size, and
-API-reported SHA-256 of the downloaded ZIP. The ZIP must contain exactly one
-bounded `evidence.json` entry. Archive files are never extracted or executed.
-Malformed, missing, inaccessible, expired and partial evidence refuse admission.
+The v0.11.0 runner image exception is not carried over: the configuration had already dropped it,
+the gate has no such member, and the
+[approval record](security/v011-runner-image-exception.md) stays as the history of v0.11.0.
 
-## Execution inputs and mutable state
+## Runner identity (#239)
 
-The same source alone does not establish equivalent execution. Each artifact
-records the actual GitHub-hosted image (`ImageOS`, `ImageVersion`), OS release
-hash, platform/architecture and configured tool-version commands. Release resolves
-these independently on its current runner; a changed image or tool resolution
-refuses reuse, except for the explicit v0.11.0 image policy below. Agent's
-baseline contract job is bound to its hosted image; its check job additionally
-records Node/npm/Go, the actual Python virtual-environment interpreter and installed
-Python distribution versions. The release runs the existing Python dependency
-setup to resolve that inventory independently. Mutation records its Node/npm
-resolution, all four full shards and `every row applies`; the PR sample must be
-skipped. Agent's manifest and mutation workflow currently both resolve Node 22;
-a future intentional difference needs an explicit separate release resolution.
+The organisation uses standard GitHub-hosted runners (the maintainer's decision on devkit #59).
+A label such as `ubuntu-latest` is an address that GitHub moves to newer images; a standard runner
+cannot be pinned to an image version. Every job therefore records the image identity its runner
+**reports**, and the gate compares those reports. This is a reported image identity, **not a
+pinned VM image**: nothing here chooses, holds or attests the machine a job runs on.
 
-Dependencies remain bound to source lockfiles/requirements and their existing
-installer behavior; this is not a new package provenance system. Python inventory
-compares resolved distribution versions, not every installed file's bytes. No
-local cache is accepted as proof. Existing setup/download integrity and trusted
-hosted-runner assumptions remain.
+- `.github/runner-identity.json` is the kit's manifest, revision 1, vendored unchanged and pinned
+  by SHA-256 in the configuration's `identity` member.
+- Every profile (`base` for `contract`, `check`, `mutation` for the shards) is variant `linux-x64`,
+  pins `ImageOS` `ubuntu26` and records its tools. Every profile compares with the release runner:
+  the release's `CI at the tag` job sets up Node, Go and Python from `dev.json` with the same pinned
+  actions the CI jobs use, makes the Python environment, and must resolve exactly what each job
+  reported (image version, OS-release digest and every tool).
+- Every `uses:` of `ci.yml`, `mutation.yml` and `release.yml` is pinned to a full commit, and the
+  producers and the consumer use the same pin of each action.
+- What the identity does not cover, as the kit states: the inner `uses:` of remote composite actions
+  and reusable workflows, and container or service images. The agent's workflows use none of the
+  latter.
 
-The initial age cap is 48 hours, measured from the selected attempt's start and
-held in source configuration. Future-started runs refuse. This conservative cap
-and image/tool equality can require another full main run, so reuse is not a
-promise of lower duration. The collector rechecks the selected attempt and latest
-run after artifacts, then every workflow again after all collection. The annotated
-release tag must still peel to the release commit before/after, and its tag object
-must be unchanged across collection. API reads are not an atomic transaction: a
-run/tag can change after the final read. Existing tag checks before draft and
-publish remain, and protected approval is still required.
+When the hosted image rolls between the CI run and the release, the release refuses
+(`runtime-identity`): the agent does not opt in to revalidation, because its `check` job does work
+outside the check list (the Desk and Gateway checkouts) and its mutation shards are not the check
+list. The fresh route below applies. When `ubuntu-latest` moves to another OS release, capture
+refuses on the next main run (`runner-platform`) and the `ImageOS` pin moves in a reviewed change.
+GitHub patches and retires hosted images; nothing here freezes one.
 
-Fresh advisory review, current tag/main/protection decisions, actual-tag upgrade
-admission, version/template-copy checks, package execution/build, archive/checksum
-and attestation checks, protected approval, exact draft/published asset identity,
-and Agent's paired Go tag remain under their existing gates. The evidence gate
-neither grants an advisory exception nor changes live-quality requirements.
+## Removed repetition and pull-request reuse (#240)
 
-## Approved v0.11.0 image exception
+The inventory of #240, and what this change does with each item. Timings are job and check
+durations reported by the API and by `check.sh`'s summary on main run 41088263343 (CI) and
+41088263379 (mutation table), at `86ce27ab82fd05fcacc4252c84f07c88dd599285`, before this change.
+No timing after it has been measured.
 
-The [maintainer approval](security/v011-runner-image-exception.md) permits only
-ImageVersion 20261023.163.3 and 20261026.180.1 for Agent repository ID 1424951648,
-exact tag `v0.11.0`. Both producer and independently resolved verifier must be in
-that pair and exactly match ubuntu26/Linux/X64 and the approved os_release hash.
-Configured profile tools remain exact. This accepts unknown host library, kernel
-and preinstalled-tool differences; it does not prove cross-image equivalence or
-claim a product behavior change or live validation.
+| Repeated work | Before | After |
+| --- | --- | --- |
+| `contract`, `local-paths`, `agent-docs`, `diff-check` | run by the `contract` job and again by `check` (under 1 s each in `check`) | `contract` runs them on every event; `check` skips them (`--skip`), and its configured checks no longer list them |
+| the rows-applicability check | `dev.json`'s `mutation-rows` in `check` (under 1 s) and the mutation workflow's `every row applies` job (7 s) | `mutation-rows` in `check` only, which also covers the row that names `docs/reference/providers.md`; the `every row applies` job is removed |
+| the offline `dependency-audit` test | in `check` and again in the audit workflow | in `check` only; the audit workflow runs the live query alone, fresh |
 
-The source config binds the concrete approval record's SHA-256; independent
-release-source inputs must include that same hash. Scope fields cannot be widened
-through config. Missing/extra/malformed scope, wrong repository/tag, either runner
-outside the approved tuple/pair, any tool mismatch or other payload difference
-refuses. Raw artifacts are not normalized. The verifier reports raw producer and
-verifier runtimes per job, per-job `image_version_exception_used`, and top-level
-`runner_image_exception` scope/approval plus `used` (whether any image differed).
-Capture continues to record actual runtime unchanged.
+The status names `contract`, `check`, `dependency-audit` and the four `every row (shard N of 4)`
+jobs are unchanged. Branch protection requires `DCO` and `contract`.
 
-The verifier reads its real UTC clock at entry and again after collection and all
-run/tag rechecks. It must finish before 2026-11-07 00:00:00 UTC; equality and a
-collection crossing that instant refuse, regardless of an earlier run-age clock.
-The configured exception refuses after expiry and on any other release, even if
-images match. Configurations without the exception retain exact legacy matching
-and output. Removing or changing this policy requires a reviewed source change;
-there is no generic ignore-image flag, environment override or local-evidence path.
+**Pull-request-to-branch reuse.** The `check` job (45 minutes on the run above, `go-race` 1,341 s
+and `unit-tests` 484 s of it) may take from the merged pull request's newest run the checks
+`pull_request_reuse.checks` lists, where that run passed them. Tree equality alone never qualifies:
+the gate binds the run to the one pull request of its head branch, merged into `main` as this
+commit with no base change, checked out as a merge commit on this commit's first parent with this
+commit's tree, with the same inputs, runtime, identity and bound environment. Every refusal is a
+fresh run of the whole rest of the list. On a pull request into `main`, the `check` job records
+what its scoped selection passed (`Record the pull request's checks`); that record is never
+evidence for a release by itself. On a push to `main`, `Plan reuse from the merged pull request`
+decides before the checks, and the capture records each covered check as `REUSED`. At the release
+the gate admits that pull request evidence again, under the same rules and the same 48 hours.
 
-The exception was not extended to v0.12.0 ([maintainer decision](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6506875748)).
-`.github/ci-evidence.json` no longer configures it, so verification uses exact runner and
-tool matching. The approval record stays as the history of v0.11.0.
+Listed as reusable, because each result depends only on the tree and the recorded inputs:
+`record-shapes`, `dependency-audit`, `release-quality`, `mutation-rows`,
+`release-quality-engine`, `reference`, `unit-tests`, the three certification suites,
+`differential`, `gateway-receipt-process`, `gateway-receipts` (the Gateway checkout is pinned by
+commit in `tests/fixtures/gateway-receipts/source.json`), `go-module-path`, `gofmt`, `go-vet`,
+`go-generate`, `go-test`, `go-race`, `harness-check` and `parity` (the Desk checkout is pinned by
+commit in `scripts/parity.sh`).
 
-A new validated main commit and independent review are required. Prior artifacts
-at a different source do not qualify. Latest-attempt, age, complete coverage,
-archive/API integrity and every tag/publication/advisory gate remain in force.
-The one fresh recovery pair exposed the same mismatch; further arbitrary reruns
-or no-op commits are not the remedy. This approval does not waive other gates.
+Not reusable, run on every branch push:
 
-## Bounded recovery and operation
+| Check | Why |
+| --- | --- |
+| `python-tests` | reads the checkout's release tags (`scripts/check-upgrade-guides.py`) |
+| `generated-docs` | a generator that reads Go module metadata |
+| `build` | its output is read by later checks of the job |
+| `packed-smoke` | packs and installs the package: a packaged-consumer check |
+| `dependency-audit-live` | a live advisory query, kept fresh (and optional on main) |
 
-If reuse is refused, stop that release attempt. A maintainer may explicitly
-trigger **one full fresh CI run on main** using its `workflow_dispatch` entry, and
-Agent's full mutation workflow on main, then wait outside the release workflow
-and retry verification once. Main must still name the exact intended release
-commit. A newer failure/running attempt must be resolved; do not select an older
-green. If main has advanced, or inputs remain incompatible, prepare a new release
-from a validated main commit under the existing tag policy. A dispatch on a tag,
-PR or another repository is ineligible. Unavailable evidence never becomes success.
-No workflow automatically dispatches/retries, and no automatic full CI is disabled.
+The four `contract` steps run in their own job on every event and plan no reuse. The mutation
+table plans none: a pull request's mutation sample is not shard coverage, and the four full shards
+run on every push to `main`.
 
-The unchanged `lint`/`tests` and `contract`/`check` job names retain branch-protection
-statuses. Main/PR CI still runs full deterministic checks. Release now verifies
-that the required full deterministic work was completed at the exact source and
-compatible inputs, rather than executing those equivalent checks again. Review,
-exact-head CI and publication approval requirements remain.
+`tests/test_release_evidence.py` holds every check of the `check` job to one of the two lists, so a
+new `dev.json` check must be classified before CI passes. It also requires that no tracked source
+reads the event or the ref (`GITHUB_EVENT_NAME`, `GITHUB_REF`, `GITHUB_BASE_REF` and the like, or
+the `EVENT`, `BASE_REF` and `COVERED` variables of the Checks step): a reusable check must not
+branch on the event.
 
-Logs include the selected workflow ID/path, run/attempt/state, source/input hashes,
-job IDs/results/coverage/runtime identities and the reuse/refusal decision. Only
-repository-owned JSON metadata and tool versions are logged; credentials and raw
-command stderr are not printed. Each external command has a 45-second timeout and
-an output-size admission bound, spooled under `TMPDIR`; the release job also has
-a 15-minute bound. API request failures do not fall back to a cache.
+**The bound environment.** `JPDEV_BIND_ENV`, set once for `ci.yml`, names the variables the checks
+read as flags, which must equal `pull_request_reuse.environment`: `CI`, `JPDEV_DESK`,
+`JP_AGENT_GATEWAY_SOURCE`, `NODE_OPTIONS`, `GOFLAGS`, `GOEXPERIMENT`, `NODE`, `DIFF_SEED`,
+`DIFF_CASE`, the `JPACK_DIALECT_*` variables, `JP_RUNTIME_BINARY`, `JP_RUNTIME_BINARY_SHA256`,
+`JP_AGENT_GATEWAY_FIXTURE` and `JP_CORPUS_ROOT`. `check.sh` prints the SHA-256 of each value, and of
+the manifest it read, on its `environment:` line; the capture records them and the gate compares
+the pull request's with the branch's. `TMPDIR` and `JPDEV_SCRATCH`, which name per-run scratch
+directories, are not bound; no secret is.
 
-## Verification and measurement limits
+**Main-to-release reuse** (#213) is unchanged in kind: the release takes the exact commit's main
+evidence, now under the gate's v0.13.0 contract.
 
-Run `python3 -m unittest discover -s tests -p test_ci_evidence.py` in Agent for the
-focused handwritten fixtures. They exercise the collector and public capture/
-verify commands, including pagination, failed/running/canceled latest runs,
-partial reruns, matrix coverage, artifact/input identities and tag movement.
-The API fixture replaces a live dependency; these tests are not evidence that a
-remote candidate workflow ran. Intended safeguard removals belong in isolated
-scratch, never the candidate.
+## The release
 
-Observed historical Agent runs at `e00d2b11d11af4dabb0a4de6c1a5e7322bd8527e`:
-main run `40147506913` executed `contract` in 5 seconds and `check` in 1,291 seconds;
-release run `40152129767` repeated them in 6 and 1,687 seconds. Devkit main run
-`39962337298` at `d0c0a0152b8a601bde80b0b5a4f9d3bd481edc1f` executed `lint` in
-9 seconds and `tests` in 72 seconds. These are actual API job start/end intervals,
-not summed elapsed release time or a prediction of candidate savings. Before,
-release called the full CI workflow; after, it executes the collector and current
-input resolution while main still executes every original job. Candidate remote
-job inventory/duration and release behavior must be observed after exact-head CI
-and a future authorized release. No in-flight release is changed by this work.
+The `CI at the tag` job runs `scripts/dev/release_evidence.py verify`, writes the decision record to
+its log and keeps it as the run's `release-evidence-<attempt>` artifact, and sets the `decision`
+output. The `Package` job, which every publishing job needs, begins by requiring that decision to
+be `reuse`. Tag admission, release notes, upgrade guidance, the environment reviewer, the package
+version, packing, checksums, attestation, the draft and published identities and the paired
+`go/<tag>` tag stay fresh in `release.yml`, as before; the configuration names them in
+`fresh_at_release`. So does the live dependency advisory review of `docs/releasing.md`.
 
-GitHub's primary API contracts:
-[workflow runs](https://docs.github.com/en/rest/actions/workflow-runs),
-[attempt-specific jobs](https://docs.github.com/en/rest/actions/workflow-jobs),
-[artifact metadata/downloads](https://docs.github.com/en/rest/actions/artifacts).
+## The fresh route
+
+A refusal stops that release run. The operator reads the refusal and chooses; no workflow
+dispatches or re-runs anything automatically.
+
+1. Make fresh evidence at the same commit, once: re-run **all** jobs of the main CI run at the
+   commit, and of the main mutation run when its evidence refused
+   (`gh run rerun <run id> --repo Judgment-Pack/judgment-pack-agent`; a failed-jobs-only re-run
+   leaves the other jobs' evidence in an earlier attempt and refuses). This works after main moved
+   on, and is the route for a rolled image (`runtime-identity`) and for `run-age`. When main still
+   names the commit, a dispatch of `ci.yml` or `mutation.yml` on `main` is another. A re-run or a
+   dispatch never reuses a pull request's checks: it runs the whole list.
+2. When that run has completed, re-run the release run's failed jobs once.
+3. If it refuses again, or the evidence cannot be made at that commit, stop: fix the cause on main
+   and release a new version from a validated commit under the tag policy.
+
+`run-unfinished` usually means the tag was pushed while main CI, the mutation table or its weekly
+scheduled run at the commit was still running: wait for it, then step 2.
+
+## Limits
+
+- **Not live-tested.** The pull request capture first runs on the pull request that made this
+  change; the main capture of the identity and the bound environment, and the first reuse plan,
+  on the next push to `main` after it merges (only a pull request run that recorded evidence with
+  this version of `ci.yml` can be reused). The GitHub API reads behind the reuse binding were
+  exercised only against fixtures, here and in the kit. The first live reuse decisions should be
+  watched.
+- **No savings claimed.** The removed repetition was measured above as seconds; the possible saving
+  is reuse, and it is measured on this repository's own runs after the change, not inferred.
+- **Event names.** A future base-change event whose name contains neither `base_change` nor
+  `base_ref` would not be refused (the kit's stated limit).
+- **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
+  configuration and workflow files at a fixture commit, with handwritten Actions API answers. It is
+  not evidence that a remote workflow ran. The kit's own suite tests the gate's contract.

@@ -141,7 +141,11 @@ jobs:
             || { echo "The release environment could not be read; create it with a required reviewer (docs/releasing.md)" >&2; exit 1; }
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
-  # Reuse only complete trusted-main evidence; tag-sensitive/package/publication gates stay fresh.
+  # The release evidence gate (scripts/dev/release_evidence.py, devkit v0.13.0; docs/ci-evidence.md):
+  # reuse only the complete evidence main CI and the full mutation table produced at this exact
+  # commit, on runners that reported the image this runner reports, or refuse. Tag-sensitive,
+  # package and publication gates stay fresh. A rolled hosted image refuses (runtime-identity) and
+  # takes the fresh route: there is no revalidation in this workflow.
   verify:
     name: CI at the tag
     needs: admit
@@ -150,6 +154,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+      # A check main took from its merged pull request's run is admitted again: the pull request,
+      # its head branch's pull requests and its timeline are read.
+      pull-requests: read
+    outputs:
+      # reuse or refuse; only reuse is a publication decision.
+      decision: ${{ steps.gate.outputs.decision }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -171,15 +181,26 @@ jobs:
         with:
           go-version: ${{ steps.dev.outputs.go }}
           cache: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      # The same pinned actions the CI producers use, so that each profile resolves its tools here
+      # the way its jobs resolved them.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ steps.dev.outputs.python }}
       - name: Resolve current Python dependency identities
         run: scripts/dev/check.sh --setup --only python-deps
-      - name: Require complete exact-source CI evidence
+      - name: Reuse exact-commit main CI evidence, or refuse
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/dev/ci_evidence.py verify
+        run: python3 scripts/dev/release_evidence.py verify --output "${{ runner.temp }}/release-evidence.json"
+      # The decision record, reuse or refusal, is also in the log of the step above.
+      - name: Keep the decision record
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-evidence-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-evidence.json
+          if-no-files-found: error
 
   package:
     name: Package
@@ -193,6 +214,18 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # Only a publication decision is packaged and published: the gate's reuse. A refusal, or no
+      # decision, stops here, whatever the verify job's exit status was.
+      - name: Require a publication decision from the gate
+        shell: bash
+        env:
+          DECISION: ${{ needs.verify.outputs.decision }}
+        run: |
+          case "${DECISION}" in
+            reuse) ;;
+            *) echo "The release evidence gate decided '${DECISION:-nothing}'; only reuse is a publication decision (docs/ci-evidence.md)" >&2; exit 1 ;;
+          esac
+
       - name: Check out the commit the run was started for
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

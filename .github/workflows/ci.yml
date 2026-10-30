@@ -1,10 +1,18 @@
 name: CI
 
-# The check list is dev.json, run by scripts/dev/check.sh (the devkit's vendored runner). Two jobs:
-# `contract`, which branch protection requires by name, runs the cheap steps; `check` sets the
-# toolchains up from the manifest and runs the steps, the Desk parity step included. On a pull
-# request `check` runs the steps jpdev.json maps the changed paths to (`check.sh --changed`); on a
-# push to main and when the release calls it, the whole list.
+# The check list is dev.json, run by scripts/dev/check.sh (the devkit's vendored runner). Two jobs
+# divide it between them, each check run once: `contract`, which branch protection requires by
+# name, runs the four cheap steps on every event; `check` sets the toolchains up from the manifest
+# and runs every other step, the Desk parity step included. On a pull request `check` runs the
+# steps jpdev.json maps the changed paths to (`check.sh --changed`); on a push to main and on a
+# dispatch, the whole rest of the list.
+#
+# The release takes main's evidence instead of running this again (docs/ci-evidence.md): each job
+# records it with scripts/dev/release_evidence.py (devkit v0.13.0). On a push to main the `check`
+# job first asks whether the merged pull request's own run already passed some of its tree-only
+# checks (`pull_request_reuse` in .github/ci-evidence.json), bound through records the pull request
+# cannot write; every refusal runs the whole list. JPDEV_BIND_ENV names the variables those checks
+# read as flags: check.sh prints their digests, and both runs must have had the same values.
 
 on:
   push:
@@ -16,6 +24,10 @@ on:
 
 permissions:
   contents: read
+
+# pull_request_reuse.environment of .github/ci-evidence.json, for every check.sh step of both jobs.
+env:
+  JPDEV_BIND_ENV: CI,JPDEV_DESK,JP_AGENT_GATEWAY_SOURCE,NODE_OPTIONS,GOFLAGS,GOEXPERIMENT,NODE,DIFF_SEED,DIFF_CASE,JPACK_DIALECT_RUNTIME,JPACK_DIALECT_RUNTIME_MODE,JPACK_DIALECT_EVIDENCE,JP_RUNTIME_BINARY,JP_RUNTIME_BINARY_SHA256,JP_AGENT_GATEWAY_FIXTURE,JP_CORPUS_ROOT
 
 jobs:
   contract:
@@ -44,7 +56,7 @@ jobs:
 
       - name: Record exact CI inputs and coverage
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: python3 scripts/dev/ci_evidence.py capture --workflow ci --job contract --check-log "${{ runner.temp }}/checks.log" --output "${{ runner.temp }}/evidence.json"
+        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job contract --check-log "${{ runner.temp }}/checks.log" --output "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -58,6 +70,11 @@ jobs:
     name: check
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # The reuse plan reads the merged pull request, its timeline and its run; nothing is written.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     steps:
       - name: Initialize job scratch
         run: |
@@ -66,7 +83,8 @@ jobs:
           mkdir "${scratch}/tmp"
           echo "JPDEV_SCRATCH=${scratch}" >> "$GITHUB_ENV"
           echo "TMPDIR=${scratch}/tmp" >> "$GITHUB_ENV"
-      # The whole history, so that --changed finds the merge base with the base branch.
+      # The whole history, so that --changed finds the merge base with the base branch, and so that
+      # a pull request's evidence names its merge commit's two parents.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -138,24 +156,42 @@ jobs:
         run: |
           set -o pipefail
           scripts/dev/check.sh --setup | tee "${{ runner.temp }}/setup.log"
-      # Pull requests select mapped checks; main and release run the full list.
+      # On main, before the checks: which of this job's tree-only checks the merged pull request's
+      # newest run already passed (decision reuse), or none (fresh: a dispatch, a re-run, or any
+      # refusal). Either decision passes this step; the capture below reads the plan.
+      - name: Plan reuse from the merged pull request
+        id: plan
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/dev/release_evidence.py reuse --workflow ci --job check --output "${{ runner.temp }}/reuse-plan.json"
+      # Pull requests select mapped checks; main and a dispatch run the full list. The four steps the
+      # contract job runs on every event are not run again here. Main skips what the plan covered.
       - name: Checks
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          COVERED: ${{ steps.plan.outputs.covered }}
         run: |
           set -o pipefail
+          skip=contract,local-paths,agent-docs,diff-check
+          if [ -n "$COVERED" ]; then skip="$skip,$COVERED"; fi
           if [ "$EVENT" = pull_request ]; then
-            scripts/dev/check.sh --all --changed "origin/$BASE_REF" | tee "${{ runner.temp }}/checks.log"
+            scripts/dev/check.sh --all --changed "origin/$BASE_REF" --skip "$skip" | tee "${{ runner.temp }}/checks.log"
           else
-            scripts/dev/check.sh --all | tee "${{ runner.temp }}/checks.log"
+            scripts/dev/check.sh --all --skip "$skip" | tee "${{ runner.temp }}/checks.log"
           fi
 
       - name: Record exact CI inputs and coverage
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: python3 scripts/dev/ci_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
+        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --reuse-plan "${{ runner.temp }}/reuse-plan.json" --output "${{ runner.temp }}/evidence.json"
+      # A pull request into main records what its scoped selection passed, at its merge commit: the
+      # evidence a later push to main may reuse. It is never evidence for a release by itself.
+      - name: Record the pull request's checks
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-evidence-ci-check-${{ github.run_attempt }}

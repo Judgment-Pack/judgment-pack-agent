@@ -1,0 +1,46 @@
+{
+  "$comment": [
+    "The shared runner identity manifest of the release evidence gate (docs/ci-evidence.md#runner-identity).",
+    "Vendor it unchanged, as .github/runner-identity.json, and pin its SHA-256 in .github/ci-evidence.json",
+    "(identity.sha256); the gate takes only a revision it ships. A change is a new kit revision, never a local edit.",
+    "It describes a REPORTED image identity, not a pinned VM image: a standard GitHub-hosted runner is chosen by a",
+    "label that GitHub moves to newer images, and the gate can only compare what each runner reports about itself.",
+    "runner: the fields each job records and the gate compares, per variant and profile. ImageOS and ImageVersion",
+    "are the image name and version the runner reports; os_release is the SHA-256 of the variant's OS-release file",
+    "(null: the OS has none, and the field is not recorded). actions: every action and reusable workflow a",
+    "workflow names is a local path, a full commit id or an image digest; a tag or a branch refuses."
+  ],
+  "manifestVersion": 1,
+  "revision": "1",
+  "identity": "reported",
+  "runner": ["ImageOS", "ImageVersion", "RUNNER_OS", "RUNNER_ARCH", "os_release"],
+  "actions": "full-commit-sha",
+  "variants": {
+    "linux-x64": {
+      "RUNNER_OS": "Linux",
+      "RUNNER_ARCH": "X64",
+      "os_release": "/etc/os-release"
+    },
+    "linux-arm64": {
+      "RUNNER_OS": "Linux",
+      "RUNNER_ARCH": "ARM64",
+      "os_release": "/etc/os-release"
+    },
+    "macos-arm64": {
+      "RUNNER_OS": "macOS",
+      "RUNNER_ARCH": "ARM64",
+      "os_release": "/System/Library/CoreServices/SystemVersion.plist"
+    },
+    "macos-x64": {
+      "RUNNER_OS": "macOS",
+      "RUNNER_ARCH": "X64",
+      "os_release": "/System/Library/CoreServices/SystemVersion.plist"
+    },
+    "windows-x64": {
+      "$comment": "Windows has no OS-release file; its identity is the reported image name and version, the platform and the tools.",
+      "RUNNER_OS": "Windows",
+      "RUNNER_ARCH": "X64",
+      "os_release": null
+    }
+  }
+}
