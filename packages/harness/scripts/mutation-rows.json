@@ -8382,6 +8382,18 @@
   "status": "caught",
   "origin": "agent#248",
   "note": "Go twin: remove the UseAcknowledgedRoot block after c.inner.Run in coordinator.drive; ^TestDelegateFinalEndKeepsRetainedChatScope248/api$ fails at its final checkpoint scope assertion (the host store refuses the end's checkpoint in a fresh scope)."
+},
+{
+  "name": "delegate coordinator hands a failed parent invocation's snapshot back to the acknowledged root",
+  "file": "delegation.ts",
+  "find": "finally{if(persistence?.writer.checkpoint)",
+  "replace": "finally{if(!failed&&persistence?.writer.checkpoint)",
+  "tests": [
+    "storage/delegateChatScope.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#248",
+  "note": "Go twin: skip the UseAcknowledgedRoot block after c.inner.Run in coordinator.drive when c.parentFailed is set; ^TestDelegateFinalEndKeepsRetainedChatScope248/api$ fails at the failed turn's final checkpoint scope assertion (the host store refuses the stopped checkpoint in a fresh scope). Review of record F2."
 }
  ]
 }

@@ -15,7 +15,7 @@ import {MemoryRunStore,type RunStore} from './run'
 // gated Runtime connection and durable writer. The host store refuses any root checkpoint that leaves
 // the retained chat's scope, the invariant a later turn on that chat reopens against.
 const RUNTIME={identity:'sha256:'+'2'.repeat(64),version:'1.0.0'}
-for(const engine of ['api','native'] as const)it(`${engine}: the delegate's final end keeps the retained chat scope; a second turn reuses immutable reads and reads mutable state fresh`,async()=>{
+for(const engine of ['api','native'] as const)it(`${engine}: the delegate's final end keeps the retained chat scope; a second turn reuses immutable reads and reads mutable state fresh; a failed turn stays in scope`,async()=>{
  const chat=new ChatContext(),memory=new MemoryRunStore(),refused:string[]=[]
  const store:RunStore={durability:'memory',load:memory.load.bind(memory),readEvents:memory.readEvents.bind(memory),commit:async input=>{
   const cp=input.checkpoint?JSON.parse(new TextDecoder().decode(input.checkpoint)):undefined
@@ -29,18 +29,19 @@ for(const engine of ['api','native'] as const)it(`${engine}: the delegate's fina
  }})
  const script=[{name:'get_schema',args:{spec_version:'0.2.0-draft'}},{name:'validate',args:{document:{id:'workspace'}}}]
  try{
-  const turn=async(id:string)=>{
+  // A failed turn's provider refuses after the first Runtime read; its final checkpoint is written after the invocation closed.
+  const turn=async(id:string,fail=false)=>{
    let requests=0
    const context={chat,runtime:RUNTIME,currentRequest:{message:'Author the pack.',input:'Author the pack.'},runStore:{store,id}}
    const common={prompt:'Author the pack.',testPrompt:'',tools:runtime.tools,callTool:runtime.callTool,hostTools:[],signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off' as const,context}
    let wrapped:Engine,session:AssistantSession|AgentAssistantSession
    if(engine==='api'){
     wrapped=withDelegation(vercel)
-    session={...common,thinking:normalize('off','openai-compatible'),model:{family:'openai-compatible',model:'fixture',call:async()=>{const step=script[requests++];return new Response(step?sseTurn({tool:step}):sseTurn({text:'Proposal ready.'}),{headers:{'content-type':'text/event-stream'}})}}}
+    session={...common,thinking:normalize('off','openai-compatible'),model:{family:'openai-compatible',model:'fixture',call:async()=>{const step=script[requests++];if(fail&&requests===2)return new Response(JSON.stringify({error:{message:'fixture refusal',type:'invalid_request_error'}}),{status:400,headers:{'content-type':'application/json'}});return new Response(step?sseTurn({tool:step}):sseTurn({text:'Proposal ready.'}),{headers:{'content-type':'text/event-stream'}})}}}
    }else{
     const run:AgentRun=async(request,callbacks)=>{
      try{
-      for(const step of script){requests++;const tool=request.tools.find(t=>t.description.startsWith(step.name+':'));if(!tool)throw Error(`fixture: ${step.name} was not offered`);await callbacks.tool({id:`native-${step.name}`,name:tool.name,arguments:step.args},callbacks.signal)}
+      for(const step of script){requests++;const tool=request.tools.find(t=>t.description.startsWith(step.name+':'));if(!tool)throw Error(`fixture: ${step.name} was not offered`);await callbacks.tool({id:`native-${step.name}`,name:tool.name,arguments:step.args},callbacks.signal);if(fail)throw Error('fixture provider refusal')}
       requests++;await callbacks.event({type:'message',id:'final',text:'Proposal ready.',phase:'final'})
      }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
     }
@@ -48,14 +49,15 @@ for(const engine of ['api','native'] as const)it(`${engine}: the delegate's fina
     session={...common,agent:{model:'fixture',run}}
    }
    const events:AssistantEvent[]=[];for await(const event of wrapped.start(session))events.push(event)
-   expect(events.filter(event=>event.type==='error')).toEqual([])
-   expect(requests).toBe(3)
+   if(fail)expect(events.some(event=>event.type==='error')).toBe(true)
+   else{expect(events.filter(event=>event.type==='error')).toEqual([]);expect(requests).toBe(3)}
    const saved=JSON.parse(new TextDecoder().decode((await memory.load(id))!.checkpoint!))
-   expect({scope:saved.context.scope,status:saved.status,refused}).toEqual({scope:chat.scope,status:'complete',refused:[]})
+   expect({scope:saved.context.scope,status:saved.status,refused}).toEqual({scope:chat.scope,status:fail?'stopped':'complete',refused:[]})
    return JSON.stringify(events.filter(event=>event.type==='tool_result'&&event.name==='validate'))
   }
   const first=await turn(`${engine}-chat-turn-1`),second=await turn(`${engine}-chat-turn-2`)
   expect(Object.fromEntries(physical)).toEqual({get_schema:1,validate:2})
   expect(first).toContain('revision 1');expect(second).toContain('revision 2')
+  await turn(`${engine}-chat-turn-failed`,true)
  }finally{await runtime.close()}
 })

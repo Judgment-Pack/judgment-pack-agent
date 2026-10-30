@@ -1038,9 +1038,9 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
             await deliver(event,true)
           }
         }finally{
-          await released(request!==undefined);shared.closed()
-          // agent#248: the returned invocation closed its session; later coordinator events belong to the acknowledged root.
-          if(persistence?.writer.checkpoint)persistence.writer.useAcknowledgedRoot(persistence)
+          try{await released(request!==undefined);shared.closed()}
+          // agent#248: the returned invocation closed its session; later coordinator events belong to the acknowledged root, even when its release refuses.
+          finally{if(persistence?.writer.checkpoint)persistence.writer.useAcknowledgedRoot(persistence)}
         }
         if(fatal!==undefined)throw fatal
         if(!request||failed||signal.aborted)return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -117,7 +118,9 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 		}
 		return json.Marshal(map[string]any{"jsonrpc": "2.0", "id": request.ID, "result": result})
 	}
-	turn := func(id string) []contract.RunEvent {
+	// A failed turn's provider refuses after the first Runtime read: its final checkpoint is
+	// written after the invocation closed, the same transfer keeps it in the chat's scope.
+	turn := func(id string, fail bool) []contract.RunEvent {
 		t.Helper()
 		g := gate.New(gate.Options{Runtime: runtime, Granted: gate.Ceiling})
 		offer, err := g.Open(context.Background(), nil)
@@ -139,6 +142,9 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 				case 1:
 					return chatScopeReply("get_schema", `{"spec_version":"0.2.0-draft"}`), nil
 				case 2:
+					if fail {
+						return &http.Response{StatusCode: 400, Status: "400 Bad Request", Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"fixture refusal","type":"invalid_request_error"}}`))}, nil
+					}
 					return chatScopeReply("validate", `{"document":"workspace"}`), nil
 				}
 				return chatScopeReply("", ""), nil
@@ -164,6 +170,9 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 					if !found {
 						return errors.New("fixture: " + call.name + " was not offered")
 					}
+					if fail {
+						return errors.New("fixture provider refusal")
+					}
 				}
 				requests++
 				return cb.Event(ctx, adapter.AgentEvent{Type: "message", ID: "final", Text: "Proposal ready.", Phase: "final"})
@@ -172,13 +181,20 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 		if err := delegate.With(implementation, delegate.Options{}).Run(context.Background(), run); err != nil {
 			t.Fatal(err)
 		}
+		failed := false
 		for _, e := range events {
 			if e.Error != nil {
-				raw, _ := json.Marshal(e)
-				t.Errorf("%s: %s", id, raw)
+				failed = true
+				if !fail {
+					raw, _ := json.Marshal(e)
+					t.Errorf("%s: %s", id, raw)
+				}
 			}
 		}
-		if requests != 3 {
+		if fail != failed {
+			t.Fatalf("%s: parent failed=%v, want %v", id, failed, fail)
+		}
+		if !fail && requests != 3 {
 			t.Fatalf("%s: %d model requests, want 3", id, requests)
 		}
 		head, err := memory.Load(context.Background(), id)
@@ -192,8 +208,12 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 		store.mu.Lock()
 		refused := append([]string{}, store.refused...)
 		store.mu.Unlock()
-		if saved.Context.Scope != chat.Scope() || saved.Status != "complete" || len(refused) > 0 {
-			t.Fatalf("%s: final checkpoint scope=%s status=%s, want the retained chat scope %s complete; refused commits %v", id, saved.Context.Scope, saved.Status, chat.Scope(), refused)
+		status := "complete"
+		if fail {
+			status = "stopped"
+		}
+		if saved.Context.Scope != chat.Scope() || saved.Status != status || len(refused) > 0 {
+			t.Fatalf("%s: final checkpoint scope=%s status=%s, want the retained chat scope %s %s; refused commits %v", id, saved.Context.Scope, saved.Status, chat.Scope(), status, refused)
 		}
 		return events
 	}
@@ -206,14 +226,17 @@ func chatScopeTwoTurns(t *testing.T, engine string) {
 		}
 		return ""
 	}
-	first := turn(engine + "-chat-turn-1")
-	second := turn(engine + "-chat-turn-2")
+	first := turn(engine+"-chat-turn-1", false)
+	second := turn(engine+"-chat-turn-2", false)
 	mu.Lock()
-	defer mu.Unlock()
-	if physical["get_schema"] != 1 || physical["validate"] != 2 {
-		t.Fatalf("physical Runtime reads %v, want one immutable get_schema across both turns and a fresh validate per turn", physical)
+	reads := fmt.Sprint(physical)
+	reused := physical["get_schema"] == 1 && physical["validate"] == 2
+	mu.Unlock()
+	if !reused {
+		t.Fatalf("physical Runtime reads %s, want one immutable get_schema across both turns and a fresh validate per turn", reads)
 	}
 	if !strings.Contains(validated(first), "workspace revision 1") || !strings.Contains(validated(second), "workspace revision 2") {
 		t.Fatalf("mutable reads were not fresh: turn 1 %s; turn 2 %s", validated(first), validated(second))
 	}
+	turn(engine+"-chat-turn-failed", true)
 }
