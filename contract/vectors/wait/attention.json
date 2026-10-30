@@ -96,24 +96,6 @@
     {
       "version": 1,
       "type": "needs_attention",
-      "id": "sha256:30f7e43c3fc60af9bc02621f8a73230dfbd6b394bc900edb04b9b930c74628d4",
-      "resource": "run-codex",
-      "wait": "wait-9",
-      "reason": "budget",
-      "needs": "budget-grant",
-      "condition": {
-        "event": {
-          "kind": "budget-grant",
-          "subject": "run-codex"
-        }
-      },
-      "deadline": "2026-01-08T00:00:00.000Z",
-      "releaseUncertain": false,
-      "at": "2026-01-01T00:00:00.000Z"
-    },
-    {
-      "version": 1,
-      "type": "needs_attention",
       "id": "sha256:92798b6e046aed4abb7ee53672741c569fcc0354574d9cf175f82503e8074f3a",
       "resource": "run-late",
       "wait": "wait-1",
@@ -165,6 +147,25 @@
         }
       },
       "deadline": "2026-01-02T00:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+      "resource": "run-unsettled",
+      "wait": "wait-1",
+      "reason": "approval",
+      "needs": "approval-decision",
+      "subject": "call-12",
+      "condition": {
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-12"
+        }
+      },
+      "deadline": "2026-01-01T01:00:00.000Z",
       "releaseUncertain": false,
       "at": "2026-01-01T00:00:00.000Z"
     }

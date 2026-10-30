@@ -77,6 +77,14 @@
     {
       "version": 1,
       "reason": "approval-ttl-required"
+    },
+    {
+      "version": 1,
+      "reason": "key-reused"
+    },
+    {
+      "version": 1,
+      "reason": "not-resumable"
     }
   ],
   "refused": [

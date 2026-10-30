@@ -21,11 +21,13 @@ type waitClock struct{ at atomic.Int64 }
 
 func (c *waitClock) now() time.Time { return time.UnixMilli(c.at.Load()).UTC() }
 
-// The Go half of "a real store restart with park/wake and no held provider": an act call paused by the
+// The Go half of "a new process with park/wake and no held provider" (#265 M7(c): this keeps one store
+// instance and restarts the adapter run; the store restart is the wait conformance kit's, in
+// go/context/run_wait_conformance_test.go): an act call paused by the
 // host's policy on the real eino and agent adapters, parked, woken and resumed under a new lease by a
 // fresh adapter run that shares nothing but the store and the effect host.
-func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
-	const key = "host-wake-key-for-tests-0001"
+func TestDurableApprovalWaitAcrossANewProcessOverTheSameStore(t *testing.T) {
+	const key = "wk.adapter.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1G"
 	for _, engine := range []string{"eino", "native"} {
 		t.Run(engine, func(t *testing.T) {
 			ctx := context.Background()
@@ -127,7 +129,7 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 // before the expiry dispatches the call after it; once the call has settled, the run is leased as
 // before.
 func TestApprovalExpiryBoundsEveryLeaseThroughTheAdapters(t *testing.T) {
-	const key = "host-wake-key-for-tests-0003"
+	const key = "wk.adapter.0003.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2K"
 	const hour = int64(3_600_000)
 	for _, engine := range []string{"native", "eino"} {
 		t.Run(engine, func(t *testing.T) {

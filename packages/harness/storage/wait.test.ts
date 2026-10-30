@@ -26,8 +26,10 @@ const capability=(reason:string)=>expect.objectContaining({name:'WaitCapabilityR
 /** Stands for a host store kind whose leases and waits outlive its process. */
 class DurableWaitStore extends MemoryRunStore {override readonly leaseLifetime:LeaseLifetime='durable';override readonly waitLifetime:WaitLifetime='durable'}
 function clocked(){const clock={at:T0};const store=new DurableWaitStore({now:()=>new Date(clock.at)});return {clock,store}}
-const KEY='host-wake-key-for-tests-0001',OTHER_KEY='host-wake-key-for-other-run-02'
+const KEY='wk.tests.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K',OTHER_KEY='wk.other-run.02.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2'
 const iso=(ms:number)=>new Date(ms).toISOString()
+/** A host store's row moved by something other than its ports: the head gets a new revision and the same bytes. */
+const moveHead=(store:MemoryRunStore,run:string)=>{const runs=(store as unknown as {runs:Map<string,{head:{revision:string}}>}).runs,held=runs.get(run)!;runs.set(run,{...held,head:{...held.head,revision:'rev-moved'}})}
 const decode=(bytes:Uint8Array)=>new TextDecoder().decode(bytes)
 
 describe('shared wait vectors (#224, #228)',()=>{
@@ -38,6 +40,11 @@ describe('shared wait vectors (#224, #228)',()=>{
  it('evidence: readers, digests without the key, and key digests',()=>{
   evidenceVector.items.forEach((item,i)=>{expect(readWakeEvidence(structuredClone(item))).toEqual(item);expect(wakeEvidenceDigest(item as WakeEvidence)).toBe(evidenceVector.digests[i])})
   for(const [key,digest] of evidenceVector.keys.digests)expect(wakeKeyDigest(key!)).toBe(digest)
+  // #265 M1: a short or repetitive key is refused wherever a key is read.
+  for(const key of evidenceVector.keys.refused){
+   expect(()=>wakeKeyDigest(key),key).toThrow(refusal('invalid'))
+   expect(()=>readWakeEvidence({...evidenceVector.items[0]!,key}),key).toThrow(refusal('invalid'))
+  }
   for(const item of [...evidenceVector.refused,...evidenceVector.readerRefused])expect(()=>readWakeEvidence(structuredClone(item.evidence)),item.problem).toThrow(refusal('invalid'))
   // The vector's dispositions are the evidence digests the waits retained.
   const byEvidence=new Map(evidenceVector.items.map((item,i)=>[item.evidence,evidenceVector.digests[i]]))
@@ -102,7 +109,8 @@ async function unchanged(store:RunStore,resource:string,wait:string){
 }
 const resume=async(input:Parameters<typeof resumeParked>[0])=>resumeParked({...input,current:input.current??await unchanged(input.store,input.resource,input.wait)})
 
-describe('a durable approval wait across a real store restart (#224)',()=>{
+// #265 M7(c): this keeps one store instance and restarts the engine; the store restart is waitConformance.test.ts.
+describe('a durable approval wait across a new process over the same store (#224)',()=>{
  it('parks atomically with no held provider, wakes once, resumes under a new lease and runs the call once',async()=>{
   const {clock,store}=clocked(),host=new ReferenceEffectHost(store),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
   const a=await store.acquireLease({resource:'run-approval',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
@@ -434,7 +442,9 @@ describe('capability refusals and off-byte parity (#224)',()=>{
  it('a resume whose run moved while parked is refused and takes no lease',async()=>{
   const {clock,store,parked}=await parkedApproval()
   clock.at+=MINUTE;await wakeRun(store,decisionEvent)
-  await store.commit({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'outside',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]})
+  // #266 M4: the store's own ports move no parked run; a host row moved by anything else is simulated here.
+  await expect(store.commit({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'outside',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]})).rejects.toEqual(refusal('wait-pending'))
+  moveHead(store,'run-approval')
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:true}})).rejects.toEqual(refusal('checkpoint-changed'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'});expect((await store.readWait('run-approval','wait-1'))!.state).toBe('woken')
  })
@@ -448,7 +458,7 @@ describe('capability refusals and off-byte parity (#224)',()=>{
   await expect(store.resumeWait({...claim,lease:{...claim.lease,expectedRevision:'rev-other'}})).rejects.toEqual(leaseRefusal('revision-changed'))
   // A revalidation of other pins is no revalidation of this wait.
   await expect(store.resumeWait({...claim,revalidation:{...revalidation,pins:'sha256:'+'0'.repeat(64)}})).rejects.toEqual(refusal('invalid'))
-  await store.commit({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'moved',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]})
+  moveHead(store,'run-approval')
   await expect(store.resumeWait(claim)).rejects.toEqual(refusal('checkpoint-changed'))
   expect((await store.readWait('run-approval','wait-1'))!.state).toBe('woken');expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
  })
