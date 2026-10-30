@@ -381,6 +381,8 @@ $pkg/storage/lease.test.ts
 $pkg/storage/delegateChatScope.test.ts
 $pkg/storage/wait.ts
 $pkg/storage/wait.test.ts
+$pkg/storage/resume.ts
+$pkg/storage/resume.test.ts
 EOF
 }
 

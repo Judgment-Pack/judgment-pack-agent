@@ -3,7 +3,7 @@ its schema and states nothing its schema does not, and the schemas name every ev
 failure class the Desk names at the pinned commit (contract/desk/)."""
 
 import copy
-from datetime import date
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import re
@@ -74,6 +74,7 @@ EXPECTED_SCHEMAS = {
     "turn-route.json",
     "run-lease.json",
     "run-wait.json",
+    "run-resume.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -1135,6 +1136,127 @@ class VectorTests(unittest.TestCase):
             self.assertEqual(expected, digest(key))
         derivations = rows["wait/report.json"]["derivations"]
         self.assertEqual([row["report"] for row in derivations], list(range(len(rows["wait/report.json"]["items"]))))
+
+    def test_every_run_resume_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #225 and #227: every member of run-resume.json (root and definitions) and every enum value
+        # is carried by a handwritten resume or wait vector, every refused record fails the schema,
+        # every reader-only refusal is schema-valid (the readers hold it), and every digest and
+        # stamped deadline is the one an independent implementation of the documented rules gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("resume/")}
+        self.assertEqual(set(rows), {"resume/limits.json", "resume/pins.json", "resume/evidence.json", "resume/revalidation.json", "resume/refusal.json"})
+        schema = self.schemas["run-resume.json"]
+        limits, pins, evidence, revalidation = rows["resume/limits.json"], rows["resume/pins.json"], rows["resume/evidence.json"], rows["resume/revalidation.json"]
+        carried = [(row["schema"], row["items"]) for row in rows.values()]
+        carried += [
+            ("run-resume.json#/$defs/runLimit", limits["runLimits"]["items"]),
+            ("run-resume.json#/$defs/deadline", [stamp["deadline"] for stamp in limits["stamps"] if "deadline" in stamp]),
+            ("run-resume.json#/$defs/pins", [case["pins"] for case in pins["checkpoints"]]),
+            ("run-resume.json#/$defs/approval", [case["approval"] for case in pins["checkpoints"] if "approval" in case]),
+            ("run-resume.json#/$defs/evidence", [case["evidence"] for case in revalidation["cases"]]),
+            ("run-wait.json", self.vectors["wait/wait.json"]["items"]),
+        ]
+
+        def invalid(changed):
+            return any(problems(validator(changed, reference), items) for reference, items in carried)
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-resume.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            with self.subTest(path=path):
+                self.assertTrue(invalid(changed), path)
+
+        def enums(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    yield from enums(value, path + [key])
+
+        for path in enums(schema, []):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-resume.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                with self.subTest(path=path, value=value):
+                    self.assertTrue(invalid(changed), (path, value))
+        for name, member in (("resume/limits.json", "limits"), ("resume/pins.json", "pins"), ("resume/evidence.json", "evidence"), ("resume/revalidation.json", "revalidation")):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                with self.subTest(vector=name, problem=refused["problem"]):
+                    self.assertNotEqual(problems(check, [refused[member]]), [])
+            for refused in rows[name].get("readerRefused", []):
+                with self.subTest(vector=name, reader=refused["problem"]):
+                    self.assertEqual(problems(check, [refused[member]]), [])
+        run_limit = validator(self.schemas, "run-resume.json#/$defs/runLimit")
+        for refused in limits["runLimits"]["refused"]:
+            self.assertNotEqual(problems(run_limit, [refused["limit"]]), [])
+        deadline = validator(self.schemas, "run-resume.json#/$defs/deadline")
+        for refused in limits["deadlinesRefused"]:
+            with self.subTest(deadline=refused["problem"]):
+                self.assertEqual(problems(deadline, [refused["deadline"]]), [])
+        refusal = validator(self.schemas, "run-resume.json#/$defs/refusal")
+        for refused in rows["resume/refusal.json"]["refused"]:
+            self.assertNotEqual(problems(refusal, [refused]), [])
+
+        def digest(value):
+            return "sha256:" + sha256(value if isinstance(value, str) else canonical(value))
+
+        def millis(text):
+            return int(datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+        def text(ms):
+            return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (ms % 1000)
+
+        for stamp in limits["stamps"]:
+            # The earliest of run (the park's run limit or the store's earlier one), park + waitMs and
+            # park + approvalTtlMs; a tie names run, then wait, then approval.
+            policy, parked = stamp.get("limits", {}), millis(stamp["parkedAt"])
+            runs = [millis(t) for t in (policy.get("run"), stamp.get("ceiling")) if t is not None]
+            times = {name: value for name, value in (("run", min(runs) if runs else None), ("wait", parked + policy["waitMs"] if "waitMs" in policy else None), ("approval", parked + policy["approvalTtlMs"] if "approvalTtlMs" in policy else None)) if value is not None}
+            expected = None
+            if times:
+                at = min(times.values())
+                expected = {"at": text(at), "by": next(name for name in ("run", "wait", "approval") if times.get(name) == at), **{name: text(value) for name, value in times.items()}}
+            with self.subTest(stamp=stamp["case"]):
+                self.assertEqual(stamp.get("deadline"), expected)
+        for item, expected in zip(pins["items"], pins["digests"], strict=True):
+            self.assertEqual(expected, digest(item))
+        for members, expected in pins["policies"]:
+            self.assertEqual(expected, digest(members))
+        for case in pins["checkpoints"]:
+            if "approval" in case:
+                asked = case["checkpoint"]["approval"]
+                call = {"name": asked["name"], "tool": asked["tool"], "args": asked["args"]}
+                if "runtime" in asked:
+                    call["runtime"] = asked["runtime"]
+                self.assertEqual(case["approval"]["callDigest"], digest(call))
+            self.assertEqual(case["pins"]["policy"], digest(case["checkpoint"].get("policy", {})))
+        for item, expected in zip(evidence["items"], evidence["digests"], strict=True):
+            self.assertEqual(expected, digest(item))
+        for case in revalidation["cases"]:
+            if "revalidation" in case["outcome"]:
+                record = revalidation["items"][case["outcome"]["revalidation"]]
+                with self.subTest(case=case["case"]):
+                    self.assertEqual(record["pins"], digest(case["wait"]["pins"]))
+                    self.assertEqual(record["evidence"], digest(case["evidence"]))
+                    self.assertEqual((record["resource"], record["wait"]), (case["wait"]["resource"], case["wait"]["wait"]))
+        self.assertEqual(sorted({case["outcome"].get("refused") for case in revalidation["cases"]} - {None}), sorted(item["reason"] for item in rows["resume/refusal.json"]["items"]))
+        for wait in self.vectors["wait/wait.json"]["items"]:
+            if "revalidation" in wait:
+                self.assertEqual(wait["revalidation"]["pins"], digest(wait["pins"]))
 
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the

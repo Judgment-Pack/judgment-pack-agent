@@ -296,6 +296,28 @@ var Registry = map[string]func() any{
 	"run-report-v2.json#/$defs/oldSourceTaskStep":   func() any { return new(json.RawMessage) },
 	"run-report-v2.json#/$defs/oldSourcePlanState":  func() any { return new(RunReportV2OldSourcePlanState) },
 	"run-report.json":                               func() any { return new(RunReport) },
+	"run-resume.json":                               func() any { return new(RunResume) },
+	"run-resume.json#/$defs/identifier":             func() any { return new(string) },
+	"run-resume.json#/$defs/label":                  func() any { return new(string) },
+	"run-resume.json#/$defs/digest":                 func() any { return new(string) },
+	"run-resume.json#/$defs/time":                   func() any { return new(string) },
+	"run-resume.json#/$defs/source":                 func() any { return new(string) },
+	"run-resume.json#/$defs/duration":               func() any { return new(int64) },
+	"run-resume.json#/$defs/limits":                 func() any { return new(RunResumeLimits) },
+	"run-resume.json#/$defs/runLimit":               func() any { return new(RunResumeRunLimit) },
+	"run-resume.json#/$defs/deadline":               func() any { return new(RunResumeDeadline) },
+	"run-resume.json#/$defs/approval":               func() any { return new(RunResumeApproval) },
+	"run-resume.json#/$defs/model":                  func() any { return new(RunResumeModel) },
+	"run-resume.json#/$defs/sourcePin":              func() any { return new(RunResumeSourcePin) },
+	"run-resume.json#/$defs/artifactPin":            func() any { return new(RunResumeArtifactPin) },
+	"run-resume.json#/$defs/planPin":                func() any { return new(RunResumePlanPin) },
+	"run-resume.json#/$defs/pins":                   func() any { return new(RunResumePins) },
+	"run-resume.json#/$defs/currentModel":           func() any { return new(RunResumeCurrentModel) },
+	"run-resume.json#/$defs/currentPolicy":          func() any { return new(RunResumeCurrentPolicy) },
+	"run-resume.json#/$defs/admission":              func() any { return new(RunResumeAdmission) },
+	"run-resume.json#/$defs/evidence":               func() any { return new(RunResumeEvidence) },
+	"run-resume.json#/$defs/change":                 func() any { return new(RunResumeChange) },
+	"run-resume.json#/$defs/refusal":                func() any { return new(RunResumeRefusal) },
 	"run-wait.json":                                 func() any { return new(RunWait) },
 	"run-wait.json#/$defs/identifier":               func() any { return new(string) },
 	"run-wait.json#/$defs/digest":                   func() any { return new(string) },
@@ -20015,18 +20037,545 @@ func (v RunReportV2Totals) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-wait.json. Version 1 durable wait of one run (ADR-0025 decisions 2 and 6, #224 and
-// #228): its run-scoped identity, its reason and the pending decision read from the retained
-// checkpoint or event log, its wake condition (an expected event and/or a wake time), an optional
-// timeout, its continuation identity, the parked checkpoint it binds, the digest of the host's
-// wake key, the provider release evidence, who parked it and when, and what became of it. The
-// store commits the wait and its one needs_attention event, and releases the run's lease, in one
-// transaction. Rules the reader holds that JSON Schema does not state: pending.kind is the reason;
-// a question wait's condition names an event and no wake time, and a question is carried unless
-// the wait is redacted; parked carries no disposition, resolution or resumed; woken and timed-out
-// carry a disposition (timeout exactly for timed-out) and resumed carries a disposition and
-// resumed; a question wait that is woken carries an answered resolution and one that timed out an
-// unanswered one, and no other wait carries a resolution; reconciled only with resumed; release
+// From run-resume.json. Version 1 records of deadlines, approval expiry and resume revalidation
+// for unattended runs (ADR-0025 decisions 3 and 5, #225 and #227). The root is the revalidation
+// one resume recorded when it claimed a woken wait: the digests of the pins the wait kept at its
+// park and of the host's current evidence, and every change the resume took with the explicit
+// admission or trusted policy layer that allowed it. The definitions are the host's deadline
+// policy (limits, runLimit), the deadline a park stamps from the store clock, an approval wait's
+// binding, the pins a park reads from the retained checkpoint (and the model the trusted host
+// admitted the run with), the host's current evidence at resume, an explicit admission of one
+// change, and the named refusals. Rules the reader holds that JSON Schema does not state: sources
+// are unique by source and sorted by it, artifacts unique by kind and id and sorted by them,
+// admissions unique by kind and subject; changes are unique by kind and subject; a change of kind
+// model has subject model, carries actor and at and no layer; one of kind reference has a source:,
+// artifact: or dialect: subject and digest values, and carries actor and at and no layer; one of
+// kind policy has subject policy and digest values, and carries layer and no actor or at; a
+// change's from and to differ; a deadline's at is the earliest of its run, wait and approval times
+// and by names the first of them, in that order, that equals it.
+type RunResume struct {
+	Version  int64             `json:"version"`
+	Resource string            `json:"resource"`
+	Wait     string            `json:"wait"`
+	Pins     string            `json:"pins"`
+	Evidence string            `json:"evidence"`
+	Changes  []RunResumeChange `json:"changes"`
+}
+
+var runResumeMembers = []string{"version", "resource", "wait", "pins", "evidence", "changes"}
+
+// UnmarshalJSON decodes a RunResume object and refuses a member the closed schema does not name.
+func (v *RunResume) UnmarshalJSON(data []byte) error {
+	type plain RunResume
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeMembers, true)
+	if err != nil {
+		return errorf("RunResume: %w", err)
+	}
+	*v = RunResume(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResume object.
+func (v RunResume) MarshalJSON() ([]byte, error) {
+	type plain RunResume
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/admission. An explicit, host-attested admission of exactly one
+// change: from the pinned value to the current one, by an actor at a time. model: subject model,
+// values provider/model. reference: subject source:<id>, artifact:<id> or dialect:<id>, values
+// digests. Enrollment metadata is not an admission.
+type RunResumeAdmission struct {
+	Kind    string `json:"kind"`
+	Subject string `json:"subject"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Actor   string `json:"actor"`
+	At      string `json:"at"`
+}
+
+var runResumeAdmissionMembers = []string{"kind", "subject", "from", "to", "actor", "at"}
+
+// UnmarshalJSON decodes a RunResumeAdmission object and refuses a member the closed schema does not name.
+func (v *RunResumeAdmission) UnmarshalJSON(data []byte) error {
+	type plain RunResumeAdmission
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeAdmissionMembers, true)
+	if err != nil {
+		return errorf("RunResumeAdmission: %w", err)
+	}
+	*v = RunResumeAdmission(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeAdmission object.
+func (v RunResumeAdmission) MarshalJSON() ([]byte, error) {
+	type plain RunResumeAdmission
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/approval. What an approval wait's expiry is bound to, read from the
+// retained checkpoint: the asked call's id, the SHA-256 of the canonical JSON of its wire name,
+// tool name, arguments and Runtime binding, and its source, whose identity and descriptor pins are
+// among the wait's pins with the Plan and policy identities.
+type RunResumeApproval struct {
+	CallID     string `json:"callId"`
+	CallDigest string `json:"callDigest"`
+	Source     string `json:"source"`
+}
+
+var runResumeApprovalMembers = []string{"callId", "callDigest", "source"}
+
+// UnmarshalJSON decodes a RunResumeApproval object and refuses a member the closed schema does not name.
+func (v *RunResumeApproval) UnmarshalJSON(data []byte) error {
+	type plain RunResumeApproval
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeApprovalMembers, true)
+	if err != nil {
+		return errorf("RunResumeApproval: %w", err)
+	}
+	*v = RunResumeApproval(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeApproval object.
+func (v RunResumeApproval) MarshalJSON() ([]byte, error) {
+	type plain RunResumeApproval
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/artifactPin. One artifact or dialect revision the run observed, by
+// its content digest: the last observation of it in the checkpoint's durable book.
+type RunResumeArtifactPin struct {
+	Kind   string `json:"kind"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var runResumeArtifactPinMembers = []string{"kind", "id", "digest"}
+
+// UnmarshalJSON decodes a RunResumeArtifactPin object and refuses a member the closed schema does not name.
+func (v *RunResumeArtifactPin) UnmarshalJSON(data []byte) error {
+	type plain RunResumeArtifactPin
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeArtifactPinMembers, true)
+	if err != nil {
+		return errorf("RunResumeArtifactPin: %w", err)
+	}
+	*v = RunResumeArtifactPin(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeArtifactPin object.
+func (v RunResumeArtifactPin) MarshalJSON() ([]byte, error) {
+	type plain RunResumeArtifactPin
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/change. One identity the continuation runs under that differs from
+// its pin: the old value (from) and the new one (to). A model or reference change names the
+// admission's actor and time; a policy change names the trusted layer.
+type RunResumeChange struct {
+	Kind    string  `json:"kind"`
+	Subject string  `json:"subject"`
+	From    string  `json:"from"`
+	To      string  `json:"to"`
+	Actor   *string `json:"actor,omitzero"`
+	At      *string `json:"at,omitzero"`
+	Layer   *string `json:"layer,omitzero"`
+}
+
+var runResumeChangeMembers = []string{"kind", "subject", "from", "to", "actor", "at", "layer"}
+
+// UnmarshalJSON decodes a RunResumeChange object and refuses a member the closed schema does not name.
+func (v *RunResumeChange) UnmarshalJSON(data []byte) error {
+	type plain RunResumeChange
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeChangeMembers, true)
+	if err != nil {
+		return errorf("RunResumeChange: %w", err)
+	}
+	*v = RunResumeChange(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeChange object.
+func (v RunResumeChange) MarshalJSON() ([]byte, error) {
+	type plain RunResumeChange
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/currentModel. The model the continuation would use, and whether its
+// provider still serves it.
+type RunResumeCurrentModel struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+	Status   string `json:"status"`
+}
+
+var runResumeCurrentModelMembers = []string{"provider", "model", "status"}
+
+// UnmarshalJSON decodes a RunResumeCurrentModel object and refuses a member the closed schema does not name.
+func (v *RunResumeCurrentModel) UnmarshalJSON(data []byte) error {
+	type plain RunResumeCurrentModel
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeCurrentModelMembers, true)
+	if err != nil {
+		return errorf("RunResumeCurrentModel: %w", err)
+	}
+	*v = RunResumeCurrentModel(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeCurrentModel object.
+func (v RunResumeCurrentModel) MarshalJSON() ([]byte, error) {
+	type plain RunResumeCurrentModel
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/currentPolicy. The identity of the policy the continuation would
+// resolve, and, when the trusted host supplies a new layer, that layer's digest. The host resolves
+// the full layer order; a changed identity without a layer is refused.
+type RunResumeCurrentPolicy struct {
+	Digest string  `json:"digest"`
+	Layer  *string `json:"layer,omitzero"`
+}
+
+var runResumeCurrentPolicyMembers = []string{"digest", "layer"}
+
+// UnmarshalJSON decodes a RunResumeCurrentPolicy object and refuses a member the closed schema does not name.
+func (v *RunResumeCurrentPolicy) UnmarshalJSON(data []byte) error {
+	type plain RunResumeCurrentPolicy
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeCurrentPolicyMembers, true)
+	if err != nil {
+		return errorf("RunResumeCurrentPolicy: %w", err)
+	}
+	*v = RunResumeCurrentPolicy(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeCurrentPolicy object.
+func (v RunResumeCurrentPolicy) MarshalJSON() ([]byte, error) {
+	type plain RunResumeCurrentPolicy
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/deadline. The deadline a park stamps from the store clock: run is
+// the earliest run deadline the store holds, wait the park time plus waitMs, approval the park
+// time plus approvalTtlMs. at is the earliest of them and by names it. At or after at, no wake,
+// answer or claim of the wait is accepted and only a deadline wake ends it, terminally.
+type RunResumeDeadline struct {
+	At       string  `json:"at"`
+	By       string  `json:"by"`
+	Run      *string `json:"run,omitzero"`
+	Wait     *string `json:"wait,omitzero"`
+	Approval *string `json:"approval,omitzero"`
+}
+
+var runResumeDeadlineMembers = []string{"at", "by", "run", "wait", "approval"}
+
+// UnmarshalJSON decodes a RunResumeDeadline object and refuses a member the closed schema does not name.
+func (v *RunResumeDeadline) UnmarshalJSON(data []byte) error {
+	type plain RunResumeDeadline
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeDeadlineMembers, true)
+	if err != nil {
+		return errorf("RunResumeDeadline: %w", err)
+	}
+	*v = RunResumeDeadline(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeDeadline object.
+func (v RunResumeDeadline) MarshalJSON() ([]byte, error) {
+	type plain RunResumeDeadline
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/evidence. The host's current evidence for one resume: what the
+// continuation would run under now. Every pinned item needs its current counterpart; missing
+// evidence refuses.
+type RunResumeEvidence struct {
+	Version    int64                  `json:"version"`
+	Resource   string                 `json:"resource"`
+	Wait       string                 `json:"wait"`
+	Model      RunResumeCurrentModel  `json:"model"`
+	Policy     RunResumeCurrentPolicy `json:"policy"`
+	Plan       *RunResumePlanPin      `json:"plan,omitzero"`
+	Sources    []RunResumeSourcePin   `json:"sources"`
+	Artifacts  []RunResumeArtifactPin `json:"artifacts"`
+	Admissions []RunResumeAdmission   `json:"admissions,omitzero"`
+}
+
+var runResumeEvidenceMembers = []string{"version", "resource", "wait", "model", "policy", "plan", "sources", "artifacts", "admissions"}
+
+// UnmarshalJSON decodes a RunResumeEvidence object and refuses a member the closed schema does not name.
+func (v *RunResumeEvidence) UnmarshalJSON(data []byte) error {
+	type plain RunResumeEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeEvidenceMembers, true)
+	if err != nil {
+		return errorf("RunResumeEvidence: %w", err)
+	}
+	*v = RunResumeEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeEvidence object.
+func (v RunResumeEvidence) MarshalJSON() ([]byte, error) {
+	type plain RunResumeEvidence
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/limits. The host's deadline policy for one park, all optional and
+// absent by default. run: the run's own deadline (a later value never extends an earlier one the
+// store holds). waitMs: how long this wait may last from its park. approvalTtlMs: how long an
+// approval wait's asked call stays approvable from its park; required for every approval wait and
+// refused on any other.
+type RunResumeLimits struct {
+	Run           *string `json:"run,omitzero"`
+	WaitMs        *int64  `json:"waitMs,omitzero"`
+	ApprovalTtlMs *int64  `json:"approvalTtlMs,omitzero"`
+}
+
+var runResumeLimitsMembers = []string{"run", "waitMs", "approvalTtlMs"}
+
+// UnmarshalJSON decodes a RunResumeLimits object and refuses a member the closed schema does not name.
+func (v *RunResumeLimits) UnmarshalJSON(data []byte) error {
+	type plain RunResumeLimits
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeLimitsMembers, true)
+	if err != nil {
+		return errorf("RunResumeLimits: %w", err)
+	}
+	*v = RunResumeLimits(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeLimits object.
+func (v RunResumeLimits) MarshalJSON() ([]byte, error) {
+	type plain RunResumeLimits
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/model. The model the trusted host admitted the run with: its
+// provider family and model identity.
+type RunResumeModel struct {
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
+}
+
+var runResumeModelMembers = []string{"provider", "model"}
+
+// UnmarshalJSON decodes a RunResumeModel object and refuses a member the closed schema does not name.
+func (v *RunResumeModel) UnmarshalJSON(data []byte) error {
+	type plain RunResumeModel
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeModelMembers, true)
+	if err != nil {
+		return errorf("RunResumeModel: %w", err)
+	}
+	*v = RunResumeModel(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeModel object.
+func (v RunResumeModel) MarshalJSON() ([]byte, error) {
+	type plain RunResumeModel
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/pins. The execution authority a parked run continues under, kept
+// with its wait: the admitted model, the identity of the resolved policy (the SHA-256 of the
+// canonical JSON of the checkpoint's policy members, or of {} without them), the Plan lineage, and
+// the source and artifact pins, all read from the retained checkpoint except the model.
+type RunResumePins struct {
+	Model     RunResumeModel         `json:"model"`
+	Policy    string                 `json:"policy"`
+	Plan      *RunResumePlanPin      `json:"plan,omitzero"`
+	Sources   []RunResumeSourcePin   `json:"sources"`
+	Artifacts []RunResumeArtifactPin `json:"artifacts"`
+}
+
+var runResumePinsMembers = []string{"model", "policy", "plan", "sources", "artifacts"}
+
+// UnmarshalJSON decodes a RunResumePins object and refuses a member the closed schema does not name.
+func (v *RunResumePins) UnmarshalJSON(data []byte) error {
+	type plain RunResumePins
+	var p plain
+	extra, err := decodeObject(data, &p, runResumePinsMembers, true)
+	if err != nil {
+		return errorf("RunResumePins: %w", err)
+	}
+	*v = RunResumePins(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumePins object.
+func (v RunResumePins) MarshalJSON() ([]byte, error) {
+	type plain RunResumePins
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/planPin. The Plan lineage: the plan's revision and, when one was
+// accepted, the accepted Plan's revision.
+type RunResumePlanPin struct {
+	Revision string  `json:"revision"`
+	Accepted *string `json:"accepted,omitzero"`
+}
+
+var runResumePlanPinMembers = []string{"revision", "accepted"}
+
+// UnmarshalJSON decodes a RunResumePlanPin object and refuses a member the closed schema does not name.
+func (v *RunResumePlanPin) UnmarshalJSON(data []byte) error {
+	type plain RunResumePlanPin
+	var p plain
+	extra, err := decodeObject(data, &p, runResumePlanPinMembers, true)
+	if err != nil {
+		return errorf("RunResumePlanPin: %w", err)
+	}
+	*v = RunResumePlanPin(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumePlanPin object.
+func (v RunResumePlanPin) MarshalJSON() ([]byte, error) {
+	type plain RunResumePlanPin
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/refusal. A named resume revalidation refusal. Nothing was claimed or
+// dispatched; the wait still holds the run. evidence-missing: a pinned item has no current
+// evidence. identity-changed: a source's identity changed (a new run is needed, ADR-0019).
+// lineage-changed: the Plan lineage changed (a new run is needed). model-retired: the model's
+// provider retired it (an explicit decision is needed; nothing is substituted). model-changed,
+// reference-changed: a changed model or reference has no matching admission. policy-changed: the
+// policy identity changed with no trusted layer. approval-changed: an approval wait's source
+// descriptor or the policy identity changed, so the reviewed call cannot run, admitted or not; the
+// store also refuses with it a commit that does not carry exactly the reviewed call while that
+// call is unsettled. admission-invalid: an admission matches no change.
+type RunResumeRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runResumeRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunResumeRefusal object and refuses a member the closed schema does not name.
+func (v *RunResumeRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunResumeRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeRefusalMembers, true)
+	if err != nil {
+		return errorf("RunResumeRefusal: %w", err)
+	}
+	*v = RunResumeRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeRefusal object.
+func (v RunResumeRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunResumeRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/runLimit. A run's deadline as the host sets it before or during the
+// run, and as the store answers it: the earliest it holds. From it every lease of the run expires
+// no later than the deadline, so no commit, claim or effect admission is accepted at or after it;
+// equal time is past.
+type RunResumeRunLimit struct {
+	Version  int64  `json:"version"`
+	Resource string `json:"resource"`
+	Run      string `json:"run"`
+}
+
+var runResumeRunLimitMembers = []string{"version", "resource", "run"}
+
+// UnmarshalJSON decodes a RunResumeRunLimit object and refuses a member the closed schema does not name.
+func (v *RunResumeRunLimit) UnmarshalJSON(data []byte) error {
+	type plain RunResumeRunLimit
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeRunLimitMembers, true)
+	if err != nil {
+		return errorf("RunResumeRunLimit: %w", err)
+	}
+	*v = RunResumeRunLimit(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeRunLimit object.
+func (v RunResumeRunLimit) MarshalJSON() ([]byte, error) {
+	type plain RunResumeRunLimit
+	return encodeObject(plain(v), nil)
+}
+
+// From run-resume.json#/$defs/sourcePin. One source's identity digest and descriptor (tool-list)
+// digest as the run was admitted with them.
+type RunResumeSourcePin struct {
+	Source           string  `json:"source"`
+	IdentityDigest   *string `json:"identityDigest,omitzero"`
+	DescriptorDigest *string `json:"descriptorDigest,omitzero"`
+}
+
+var runResumeSourcePinMembers = []string{"source", "identityDigest", "descriptorDigest"}
+
+// UnmarshalJSON decodes a RunResumeSourcePin object and refuses a member the closed schema does not name.
+func (v *RunResumeSourcePin) UnmarshalJSON(data []byte) error {
+	type plain RunResumeSourcePin
+	var p plain
+	extra, err := decodeObject(data, &p, runResumeSourcePinMembers, true)
+	if err != nil {
+		return errorf("RunResumeSourcePin: %w", err)
+	}
+	*v = RunResumeSourcePin(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunResumeSourcePin object.
+func (v RunResumeSourcePin) MarshalJSON() ([]byte, error) {
+	type plain RunResumeSourcePin
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json. Version 1 durable wait of one run (ADR-0025 decisions 2, 3, 5 and 6, #224,
+// #225, #227 and #228): its run-scoped identity, its reason and the pending decision read from the
+// retained checkpoint or event log, its wake condition (an expected event and/or a wake time), an
+// optional timeout, the host's optional deadline policy and the deadline the store stamped from
+// it, an approval wait's binding, the execution authority it pins, its continuation identity, the
+// parked checkpoint it binds, the digest of the host's wake key, the provider release evidence,
+// who parked it and when, and what became of it. The store commits the wait and its one
+// needs_attention event, and releases the run's lease, in one transaction; until the wait is
+// resumed it holds the run, and no lease of the run is granted except the resume's own claim.
+// Rules the reader holds that JSON Schema does not state: pending.kind is the reason; a question
+// wait's condition names an event and no wake time, and a question is carried unless the wait is
+// redacted; an approval wait carries an approval binding for its pending call, whose source is
+// pinned, and limits with approvalTtlMs, and no other wait carries either; limits with waitMs or
+// approvalTtlMs carry a deadline whose wait or approval time is the park time plus that duration,
+// a deadline's run time is no later than limits.run, and its at is after the park time; parked
+// carries no disposition, resolution, resumed or expired; woken and timed-out carry a disposition
+// (timeout exactly for timed-out) and resumed carries a disposition, resumed and revalidation;
+// expired carries expired (kind deadline, at or after its deadline) and the disposition it was
+// woken with, if any; a question wait that is woken carries an answered resolution and one that
+// timed out an unanswered one, a question that expired unwoken an unanswered one at its expiry,
+// and no other wait carries a resolution; reconciled and revalidation only with resumed; release
 // resources are unique; times are the store clock's.
 type RunWait struct {
 	Version       int64                    `json:"version"`
@@ -20036,8 +20585,12 @@ type RunWait struct {
 	Pending       RunWaitPending           `json:"pending"`
 	Condition     RunWaitCondition         `json:"condition"`
 	TimeoutAt     *string                  `json:"timeoutAt,omitzero"`
+	Limits        *RunResumeLimits         `json:"limits,omitzero"`
+	Deadline      *RunResumeDeadline       `json:"deadline,omitzero"`
+	Approval      *RunResumeApproval       `json:"approval,omitzero"`
 	Continuation  string                   `json:"continuation"`
 	Checkpoint    RunWaitCheckpointBinding `json:"checkpoint"`
+	Pins          RunResumePins            `json:"pins"`
 	Chat          *RunWaitChatBinding      `json:"chat,omitzero"`
 	WakeKeyDigest string                   `json:"wakeKeyDigest"`
 	Release       []RunWaitRelease         `json:"release"`
@@ -20046,13 +20599,15 @@ type RunWait struct {
 	RetainUntil   *string                  `json:"retainUntil,omitzero"`
 	State         string                   `json:"state"`
 	Disposition   *RunWaitDisposition      `json:"disposition,omitzero"`
+	Expired       *RunWaitDisposition      `json:"expired,omitzero"`
 	Resolution    *RunWaitResolution       `json:"resolution,omitzero"`
 	Resumed       *RunWaitActor            `json:"resumed,omitzero"`
+	Revalidation  *RunResume               `json:"revalidation,omitzero"`
 	Reconciled    []RunWaitRelease         `json:"reconciled,omitzero"`
 	Redacted      *bool                    `json:"redacted,omitzero"`
 }
 
-var runWaitMembers = []string{"version", "resource", "wait", "reason", "pending", "condition", "timeoutAt", "continuation", "checkpoint", "chat", "wakeKeyDigest", "release", "parked", "attention", "retainUntil", "state", "disposition", "resolution", "resumed", "reconciled", "redacted"}
+var runWaitMembers = []string{"version", "resource", "wait", "reason", "pending", "condition", "timeoutAt", "limits", "deadline", "approval", "continuation", "checkpoint", "pins", "chat", "wakeKeyDigest", "release", "parked", "attention", "retainUntil", "state", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "redacted"}
 
 // UnmarshalJSON decodes a RunWait object and refuses a member the closed schema does not name.
 func (v *RunWait) UnmarshalJSON(data []byte) error {
@@ -20114,11 +20669,12 @@ type RunWaitAttention struct {
 	Subject          *string          `json:"subject,omitzero"`
 	Condition        RunWaitCondition `json:"condition"`
 	TimeoutAt        *string          `json:"timeoutAt,omitzero"`
+	Deadline         *string          `json:"deadline,omitzero"`
 	ReleaseUncertain bool             `json:"releaseUncertain"`
 	At               string           `json:"at"`
 }
 
-var runWaitAttentionMembers = []string{"version", "type", "id", "resource", "wait", "reason", "needs", "subject", "condition", "timeoutAt", "releaseUncertain", "at"}
+var runWaitAttentionMembers = []string{"version", "type", "id", "resource", "wait", "reason", "needs", "subject", "condition", "timeoutAt", "deadline", "releaseUncertain", "at"}
 
 // UnmarshalJSON decodes a RunWaitAttention object and refuses a member the closed schema does not name.
 func (v *RunWaitAttention) UnmarshalJSON(data []byte) error {
@@ -20314,7 +20870,7 @@ func (v RunWaitDelivery) MarshalJSON() ([]byte, error) {
 }
 
 // From run-wait.json#/$defs/disposition. The wake that won: retained, returned to a duplicate
-// delivery, and never replaced.
+// delivery, and never replaced. A deadline wake is recorded apart from it, as expired.
 type RunWaitDisposition struct {
 	Evidence string `json:"evidence"`
 	Kind     string `json:"kind"`
@@ -20547,7 +21103,11 @@ func (v RunWaitPendingQuestion) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-wait.json#/$defs/refusal. A named wait refusal. Nothing changed.
+// From run-wait.json#/$defs/refusal. A named wait refusal. Nothing changed. deadline-passed: the
+// run's, the wait's or the approval's deadline is at or before the store's time. closed: the run
+// ended at a terminal wait (timed-out approval or budget, or expired); nothing continues it.
+// approval-ttl-required: an approval wait needs the host's approval TTL. wait-pending: a wait not
+// yet resumed holds the run, so nothing else parks it or leases it.
 type RunWaitRefusal struct {
 	Version int64  `json:"version"`
 	Reason  string `json:"reason"`
@@ -20632,9 +21192,9 @@ func (v RunWaitReport) MarshalJSON() ([]byte, error) {
 }
 
 // From run-wait.json#/$defs/reportEntry. One decision, read from the retained wait: a park with
-// its owner, epoch, condition, deadline and release outcome; a wake or a timeout with its
+// its owner, epoch, condition, timeout, deadline and release outcome; a wake or a timeout with its
 // evidence; a question's answer with its actor or its unanswered end; a resume with its owner and
-// epoch.
+// epoch; a deadline that ended the wait with its evidence.
 type RunWaitReportEntry struct {
 	Wait      string            `json:"wait"`
 	Decision  string            `json:"decision"`
@@ -20648,11 +21208,12 @@ type RunWaitReportEntry struct {
 	Subject   *string           `json:"subject,omitzero"`
 	Condition *RunWaitCondition `json:"condition,omitzero"`
 	TimeoutAt *string           `json:"timeoutAt,omitzero"`
+	Deadline  *string           `json:"deadline,omitzero"`
 	Release   *string           `json:"release,omitzero"`
 	Content   *RunWaitContent   `json:"content,omitzero"`
 }
 
-var runWaitReportEntryMembers = []string{"wait", "decision", "reason", "at", "owner", "epoch", "evidence", "wake", "actor", "subject", "condition", "timeoutAt", "release", "content"}
+var runWaitReportEntryMembers = []string{"wait", "decision", "reason", "at", "owner", "epoch", "evidence", "wake", "actor", "subject", "condition", "timeoutAt", "deadline", "release", "content"}
 
 // UnmarshalJSON decodes a RunWaitReportEntry object and refuses a member the closed schema does not name.
 func (v *RunWaitReportEntry) UnmarshalJSON(data []byte) error {
@@ -20707,7 +21268,8 @@ func (v RunWaitResolution) MarshalJSON() ([]byte, error) {
 
 // From run-wait.json#/$defs/wakeEvidence. Bounded, authenticated, run-bound wake evidence the host
 // delivers. Rules the reader holds that JSON Schema does not state: event exactly for kind event;
-// answer and actor together and only with an event.
+// answer and actor together and only with an event. A deadline wake is due at the wait's deadline
+// by the store clock; at or after it every other wake is refused.
 type RunWaitWakeEvidence struct {
 	Version  int64                  `json:"version"`
 	Resource string                 `json:"resource"`

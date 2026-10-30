@@ -65,6 +65,18 @@
     {
       "version": 1,
       "reason": "chat-changed"
+    },
+    {
+      "version": 1,
+      "reason": "deadline-passed"
+    },
+    {
+      "version": 1,
+      "reason": "closed"
+    },
+    {
+      "version": 1,
+      "reason": "approval-ttl-required"
     }
   ],
   "refused": [

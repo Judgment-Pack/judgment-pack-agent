@@ -19,6 +19,7 @@
         "wakeAt": "2026-01-02T09:00:00.000Z"
       },
       "timeoutAt": "2026-01-08T00:00:00.000Z",
+      "deadline": "2026-01-03T00:00:00.000Z",
       "releaseUncertain": false,
       "at": "2026-01-01T00:00:00.000Z"
     },
@@ -106,6 +107,64 @@
           "subject": "run-codex"
         }
       },
+      "deadline": "2026-01-08T00:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:92798b6e046aed4abb7ee53672741c569fcc0354574d9cf175f82503e8074f3a",
+      "resource": "run-late",
+      "wait": "wait-1",
+      "reason": "approval",
+      "needs": "approval-decision",
+      "subject": "call-12",
+      "condition": {
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-12"
+        }
+      },
+      "deadline": "2026-01-01T01:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:76092e1210e4d15267d881f0507352fc02578bc46fc52314efc73fce73c49b05",
+      "resource": "run-quiet",
+      "wait": "wait-1",
+      "reason": "question",
+      "needs": "question-answer",
+      "subject": "question-event-3",
+      "condition": {
+        "event": {
+          "kind": "question-answer",
+          "subject": "question-event-3"
+        }
+      },
+      "deadline": "2026-01-01T08:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:cc14eb56ee251749a1dfedfed69c584f15ff175e3838dda0e3ac8b5eece6505e",
+      "resource": "run-switch",
+      "wait": "wait-2",
+      "reason": "approval",
+      "needs": "approval-decision",
+      "subject": "call-21",
+      "condition": {
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-21"
+        }
+      },
+      "deadline": "2026-01-02T00:00:00.000Z",
       "releaseUncertain": false,
       "at": "2026-01-01T00:00:00.000Z"
     }
@@ -261,6 +320,30 @@
         "releaseUncertain": false,
         "at": "2026-01-01T00:00:00.000Z",
         "subject": "run-budget"
+      }
+    },
+    {
+      "problem": "a deadline comes after the park",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "approval-decision",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "deadline": "2026-01-01T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
       }
     }
   ],

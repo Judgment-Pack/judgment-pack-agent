@@ -1,0 +1,70 @@
+{
+  "description": "Every named revalidation refusal both languages give, in order, and records both readers refuse.",
+  "schema": "run-resume.json#/$defs/refusal",
+  "items": [
+    {
+      "version": 1,
+      "reason": "invalid"
+    },
+    {
+      "version": 1,
+      "reason": "evidence-missing"
+    },
+    {
+      "version": 1,
+      "reason": "identity-changed"
+    },
+    {
+      "version": 1,
+      "reason": "lineage-changed"
+    },
+    {
+      "version": 1,
+      "reason": "model-retired"
+    },
+    {
+      "version": 1,
+      "reason": "model-changed"
+    },
+    {
+      "version": 1,
+      "reason": "reference-changed"
+    },
+    {
+      "version": 1,
+      "reason": "policy-changed"
+    },
+    {
+      "version": 1,
+      "reason": "approval-changed"
+    },
+    {
+      "version": 1,
+      "reason": "admission-invalid"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "expired"
+    },
+    {
+      "version": 2,
+      "reason": "invalid"
+    },
+    {
+      "version": 1,
+      "reason": "invalid",
+      "detail": "x"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/resume.ts (readResumePins, readResumeEvidence, readRevalidation, readWaitLimits, readRunLimit, readWaitDeadline, stampDeadline, pinsFrom, approvalBinding, revalidateResume)"
+    ]
+  }
+}

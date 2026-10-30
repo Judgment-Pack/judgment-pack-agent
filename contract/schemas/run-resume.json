@@ -1,0 +1,481 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-resume.json",
+  "title": "Run resume revalidation",
+  "description": "Version 1 records of deadlines, approval expiry and resume revalidation for unattended runs (ADR-0025 decisions 3 and 5, #225 and #227). The root is the revalidation one resume recorded when it claimed a woken wait: the digests of the pins the wait kept at its park and of the host's current evidence, and every change the resume took with the explicit admission or trusted policy layer that allowed it. The definitions are the host's deadline policy (limits, runLimit), the deadline a park stamps from the store clock, an approval wait's binding, the pins a park reads from the retained checkpoint (and the model the trusted host admitted the run with), the host's current evidence at resume, an explicit admission of one change, and the named refusals. Rules the reader holds that JSON Schema does not state: sources are unique by source and sorted by it, artifacts unique by kind and id and sorted by them, admissions unique by kind and subject; changes are unique by kind and subject; a change of kind model has subject model, carries actor and at and no layer; one of kind reference has a source:, artifact: or dialect: subject and digest values, and carries actor and at and no layer; one of kind policy has subject policy and digest values, and carries layer and no actor or at; a change's from and to differ; a deadline's at is the earliest of its run, wait and approval times and by names the first of them, in that order, that equals it.",
+  "type": "object",
+  "required": [
+    "version",
+    "resource",
+    "wait",
+    "pins",
+    "evidence",
+    "changes"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "resource": {
+      "$ref": "#/$defs/identifier",
+      "description": "The run id."
+    },
+    "wait": {
+      "$ref": "#/$defs/identifier",
+      "description": "The wait whose continuation this revalidation preceded."
+    },
+    "pins": {
+      "$ref": "#/$defs/digest",
+      "description": "The SHA-256 of the canonical JSON of the wait's pins."
+    },
+    "evidence": {
+      "$ref": "#/$defs/digest",
+      "description": "The SHA-256 of the canonical JSON of the host's current evidence, admissions included."
+    },
+    "changes": {
+      "description": "Every pinned identity the continuation runs under that differs from its pin, with the old and the new value. Empty when nothing changed.",
+      "type": "array",
+      "maxItems": 384,
+      "items": {
+        "$ref": "#/$defs/change"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "description": "An opaque storage identifier: 1 to 256 UTF-8 bytes, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "label": {
+      "description": "An admission's or change's subject or value: 1 to 320 UTF-8 bytes, no control characters. A subject is model, policy, source:<id>, artifact:<id> or dialect:<id>; a model value is provider/model; a reference or policy value is a digest.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "time": {
+      "description": "UTC with exactly millisecond precision.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "source": {
+      "description": "A tool source id (tool-offer.json#/$defs/sourceRecord).",
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]{0,23}$"
+    },
+    "duration": {
+      "description": "Milliseconds of the store clock: 1 ms to 30 days.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2592000000
+    },
+    "limits": {
+      "type": "object",
+      "description": "The host's deadline policy for one park, all optional and absent by default. run: the run's own deadline (a later value never extends an earlier one the store holds). waitMs: how long this wait may last from its park. approvalTtlMs: how long an approval wait's asked call stays approvable from its park; required for every approval wait and refused on any other.",
+      "minProperties": 1,
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/time"
+        },
+        "waitMs": {
+          "$ref": "#/$defs/duration"
+        },
+        "approvalTtlMs": {
+          "$ref": "#/$defs/duration"
+        }
+      },
+      "additionalProperties": false
+    },
+    "runLimit": {
+      "type": "object",
+      "description": "A run's deadline as the host sets it before or during the run, and as the store answers it: the earliest it holds. From it every lease of the run expires no later than the deadline, so no commit, claim or effect admission is accepted at or after it; equal time is past.",
+      "required": [
+        "version",
+        "resource",
+        "run"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "run": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deadline": {
+      "type": "object",
+      "description": "The deadline a park stamps from the store clock: run is the earliest run deadline the store holds, wait the park time plus waitMs, approval the park time plus approvalTtlMs. at is the earliest of them and by names it. At or after at, no wake, answer or claim of the wait is accepted and only a deadline wake ends it, terminally.",
+      "required": [
+        "at",
+        "by"
+      ],
+      "properties": {
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "by": {
+          "enum": [
+            "run",
+            "wait",
+            "approval"
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/time"
+        },
+        "wait": {
+          "$ref": "#/$defs/time"
+        },
+        "approval": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "approval": {
+      "type": "object",
+      "description": "What an approval wait's expiry is bound to, read from the retained checkpoint: the asked call's id, the SHA-256 of the canonical JSON of its wire name, tool name, arguments and Runtime binding, and its source, whose identity and descriptor pins are among the wait's pins with the Plan and policy identities.",
+      "required": [
+        "callId",
+        "callDigest",
+        "source"
+      ],
+      "properties": {
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "callDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "object",
+      "description": "The model the trusted host admitted the run with: its provider family and model identity.",
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "model": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourcePin": {
+      "type": "object",
+      "description": "One source's identity digest and descriptor (tool-list) digest as the run was admitted with them.",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "identityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "descriptorDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "artifactPin": {
+      "type": "object",
+      "description": "One artifact or dialect revision the run observed, by its content digest: the last observation of it in the checkpoint's durable book.",
+      "required": [
+        "kind",
+        "id",
+        "digest"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "artifact",
+            "dialect"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "planPin": {
+      "type": "object",
+      "description": "The Plan lineage: the plan's revision and, when one was accepted, the accepted Plan's revision.",
+      "required": [
+        "revision"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/digest"
+        },
+        "accepted": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pins": {
+      "type": "object",
+      "description": "The execution authority a parked run continues under, kept with its wait: the admitted model, the identity of the resolved policy (the SHA-256 of the canonical JSON of the checkpoint's policy members, or of {} without them), the Plan lineage, and the source and artifact pins, all read from the retained checkpoint except the model.",
+      "required": [
+        "model",
+        "policy",
+        "sources",
+        "artifacts"
+      ],
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "policy": {
+          "$ref": "#/$defs/digest"
+        },
+        "plan": {
+          "$ref": "#/$defs/planPin"
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/sourcePin"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifactPin"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "currentModel": {
+      "type": "object",
+      "description": "The model the continuation would use, and whether its provider still serves it.",
+      "required": [
+        "provider",
+        "model",
+        "status"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "model": {
+          "$ref": "#/$defs/identifier"
+        },
+        "status": {
+          "enum": [
+            "available",
+            "retired"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "currentPolicy": {
+      "type": "object",
+      "description": "The identity of the policy the continuation would resolve, and, when the trusted host supplies a new layer, that layer's digest. The host resolves the full layer order; a changed identity without a layer is refused.",
+      "required": [
+        "digest"
+      ],
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "layer": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "admission": {
+      "type": "object",
+      "description": "An explicit, host-attested admission of exactly one change: from the pinned value to the current one, by an actor at a time. model: subject model, values provider/model. reference: subject source:<id>, artifact:<id> or dialect:<id>, values digests. Enrollment metadata is not an admission.",
+      "required": [
+        "kind",
+        "subject",
+        "from",
+        "to",
+        "actor",
+        "at"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "model",
+            "reference"
+          ]
+        },
+        "subject": {
+          "$ref": "#/$defs/label"
+        },
+        "from": {
+          "$ref": "#/$defs/label"
+        },
+        "to": {
+          "$ref": "#/$defs/label"
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "description": "The host's current evidence for one resume: what the continuation would run under now. Every pinned item needs its current counterpart; missing evidence refuses.",
+      "required": [
+        "version",
+        "resource",
+        "wait",
+        "model",
+        "policy",
+        "sources",
+        "artifacts"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "wait": {
+          "$ref": "#/$defs/identifier"
+        },
+        "model": {
+          "$ref": "#/$defs/currentModel"
+        },
+        "policy": {
+          "$ref": "#/$defs/currentPolicy"
+        },
+        "plan": {
+          "$ref": "#/$defs/planPin"
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/sourcePin"
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifactPin"
+          }
+        },
+        "admissions": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/admission"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "change": {
+      "type": "object",
+      "description": "One identity the continuation runs under that differs from its pin: the old value (from) and the new one (to). A model or reference change names the admission's actor and time; a policy change names the trusted layer.",
+      "required": [
+        "kind",
+        "subject",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "model",
+            "reference",
+            "policy"
+          ]
+        },
+        "subject": {
+          "$ref": "#/$defs/label"
+        },
+        "from": {
+          "$ref": "#/$defs/label"
+        },
+        "to": {
+          "$ref": "#/$defs/label"
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "layer": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "A named resume revalidation refusal. Nothing was claimed or dispatched; the wait still holds the run. evidence-missing: a pinned item has no current evidence. identity-changed: a source's identity changed (a new run is needed, ADR-0019). lineage-changed: the Plan lineage changed (a new run is needed). model-retired: the model's provider retired it (an explicit decision is needed; nothing is substituted). model-changed, reference-changed: a changed model or reference has no matching admission. policy-changed: the policy identity changed with no trusted layer. approval-changed: an approval wait's source descriptor or the policy identity changed, so the reviewed call cannot run, admitted or not; the store also refuses with it a commit that does not carry exactly the reviewed call while that call is unsettled. admission-invalid: an admission matches no change.",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "invalid",
+            "evidence-missing",
+            "identity-changed",
+            "lineage-changed",
+            "model-retired",
+            "model-changed",
+            "reference-changed",
+            "policy-changed",
+            "approval-changed",
+            "admission-invalid"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

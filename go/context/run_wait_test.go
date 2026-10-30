@@ -295,7 +295,7 @@ func parkedApprovalStore(t *testing.T, timeout int64) (*leaseClock, durableWaitS
 		at := waitTime(clock, timeout)
 		input.TimeoutAt = &at
 	}
-	wait, attention, err := ParkRun(ctx, input)
+	wait, attention, err := ParkRun(ctx, withWaitPolicy(input))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +303,58 @@ func parkedApprovalStore(t *testing.T, timeout int64) (*leaseClock, durableWaitS
 		t.Fatalf("attention %+v", attention)
 	}
 	return clock, store, FenceOf(lease), wait
+}
+
+// waitModel is the model the host admitted the test runs with; waitTTL an approval TTL long enough not
+// to matter here (#225).
+var waitModel = PinnedModel{Provider: "openai", Model: "fixture"}
+
+const waitTTL = 7 * 24 * waitHour
+
+// withWaitPolicy gives a park the host's admitted model and an approval TTL, as a host must.
+func withWaitPolicy(input ParkInput) ParkInput {
+	if input.Model == (PinnedModel{}) {
+		input.Model = waitModel
+	}
+	if input.Limits == nil {
+		ttl := int64(waitTTL)
+		input.Limits = &WaitLimits{ApprovalTtlMs: &ttl}
+	}
+	return input
+}
+
+// unchangedEvidence is the host's current evidence when nothing pinned changed (#227): the wait's own
+// pins, its model available.
+func unchangedEvidence(t *testing.T, store RunStore, resource, wait string) *ResumeEvidence {
+	t.Helper()
+	held, err := store.(WaitStore).ReadWait(context.Background(), resource, wait)
+	if err != nil || held == nil {
+		return nil
+	}
+	return &ResumeEvidence{Version: 1, Resource: resource, Wait: wait, Model: contract.RunResumeCurrentModel{Provider: held.Pins.Model.Provider, Model: held.Pins.Model.Model, Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: held.Pins.Policy}, Plan: held.Pins.Plan, Sources: held.Pins.Sources, Artifacts: held.Pins.Artifacts}
+}
+
+// withCurrent gives a resume that names no evidence the unchanged evidence of its wait.
+func withCurrent(t *testing.T, input ResumeInput) ResumeInput {
+	t.Helper()
+	if input.Current == nil {
+		input.Current = unchangedEvidence(t, input.Store, input.Resource, input.Wait)
+	}
+	return input
+}
+
+// waitClaim is a store claim for the approval wait with its revalidation.
+func waitClaim(t *testing.T, store RunStore, evidence, owner, revision string) WaitClaim {
+	t.Helper()
+	held, err := store.(WaitStore).ReadWait(context.Background(), "run-approval", "wait-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	revalidation, err := RevalidateResume(RevalidatedWait{Resource: held.Resource, Wait: held.Wait, Reason: held.Reason, Pins: held.Pins, Approval: held.Approval}, *unchangedEvidence(t, store, "run-approval", "wait-1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return WaitClaim{Resource: "run-approval", Wait: "wait-1", Evidence: evidence, Lease: LeaseAcquire{Resource: "run-approval", Owner: owner, ExpectedRevision: revision, DurationMs: waitHour}, Revalidation: revalidation}
 }
 func decisionEvidence() WakeEvidence {
 	return WakeEvidence{Version: 1, Resource: "run-approval", Wait: "wait-1", Evidence: "decision-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call_2_1"}, Key: waitKey}
@@ -327,23 +379,20 @@ func TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes(t *testing.T) {
 	}
 	// A repeat of the same park returns it; a different park under the same id is a conflict.
 	again := ParkInput{Store: store, Fence: fence, Wait: "wait-1", Continuation: "continue-1", Condition: wait.Condition, WakeKeyDigest: wait.WakeKeyDigest, Release: []WaitRelease{}}
-	if held, _, err := ParkRun(ctx, again); err != nil || !reflect.DeepEqual(held, wait) {
+	if held, _, err := ParkRun(ctx, withWaitPolicy(again)); err != nil || !reflect.DeepEqual(held, wait) {
 		t.Fatalf("repeat park: %v", err)
 	}
 	again.Continuation = "continue-other"
-	if _, _, err := ParkRun(ctx, again); waitReasonOf(err) != "conflict" {
+	if _, _, err := ParkRun(ctx, withWaitPolicy(again)); waitReasonOf(err) != "conflict" {
 		t.Fatalf("conflicting park: %v", err)
 	}
 	// The parking driver's released fence parks nothing more.
-	if _, _, err := ParkRun(ctx, ParkInput{Store: store, Fence: fence, Wait: "wait-2", Continuation: "k", Condition: wait.Condition, WakeKeyDigest: wait.WakeKeyDigest}); leaseReason(err) != "released" {
+	if _, _, err := ParkRun(ctx, withWaitPolicy(ParkInput{Store: store, Fence: fence, Wait: "wait-2", Continuation: "k", Condition: wait.Condition, WakeKeyDigest: wait.WakeKeyDigest})); leaseReason(err) != "released" {
 		t.Fatalf("released fence: %v", err)
 	}
-	b, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-b", ExpectedRevision: head.Revision, DurationMs: waitHour})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := ParkRun(ctx, ParkInput{Store: store, Fence: FenceOf(b), Wait: "wait-2", Continuation: "k", Condition: wait.Condition, WakeKeyDigest: wait.WakeKeyDigest}); waitReasonOf(err) != "wait-pending" {
-		t.Fatalf("second park: %v", err)
+	// #265 M2: the committed park closes the run; no fresh lease takes it, so nothing parks it again.
+	if _, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-b", ExpectedRevision: head.Revision, DurationMs: waitHour}); waitReasonOf(err) != "wait-pending" {
+		t.Fatalf("a fresh lease on a parked run: %v", err)
 	}
 }
 
@@ -358,7 +407,21 @@ func TestWaitTheStoreRefusesAParkWhoseHeadMoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	wakeAt := waitTime(clock, 0)
-	park := RunWait{Version: 1, Resource: "run-moved", Wait: "w", Reason: "approval", Pending: contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: "call_2_1", Name: "tracker__create_issue", Tool: "create_issue"}}, Condition: WaitCondition{WakeAt: &wakeAt}, Continuation: "k", Checkpoint: contract.RunWaitCheckpointBinding{Revision: receipt.Revision, Digest: CheckpointBytesDigest(checkpoint)}, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{}}
+	value, _ := ParseJSON(checkpoint)
+	paused, err := ReadExecution(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pins, err := PinsFrom(paused, waitModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := ApprovalBindingOf(*paused.Approval)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ttl := int64(waitTTL)
+	park := RunWait{Version: 1, Resource: "run-moved", Wait: "w", Reason: "approval", Pending: contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: "call_2_1", Name: "tracker__create_issue", Tool: "create_issue"}}, Condition: WaitCondition{WakeAt: &wakeAt}, Limits: &WaitLimits{ApprovalTtlMs: &ttl}, Approval: &binding, Continuation: "k", Checkpoint: contract.RunWaitCheckpointBinding{Revision: receipt.Revision, Digest: CheckpointBytesDigest(checkpoint)}, Pins: pins, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{}}
 	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-moved", ExpectedRevision: receipt.Revision, CommitID: "moved", Events: [][]byte{[]byte(`{"version":1}`)}}, FenceOf(lease)); err != nil {
 		t.Fatal(err)
 	}
@@ -493,31 +556,31 @@ func TestWaitResumeNeedsTheDecisionAndANewLease(t *testing.T) {
 		i.Grant = &contract.CheckpointGrant{From: 20, To: 30, At: waitTime(clock, 0)}
 		return i
 	}()} {
-		if _, err := ResumeParked(ctx, bad); waitReasonOf(err) != "decision-required" {
+		if _, err := ResumeParked(ctx, withCurrent(t, bad)); waitReasonOf(err) != "decision-required" {
 			t.Fatalf("decision: %v", err)
 		}
 	}
 	unseen := input
 	unseen.Evidence = "decision-unseen"
 	unseen.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}
-	if _, err := ResumeParked(ctx, unseen); waitReasonOf(err) != "unacknowledged" {
+	if _, err := ResumeParked(ctx, withCurrent(t, unseen)); waitReasonOf(err) != "unacknowledged" {
 		t.Fatalf("unacknowledged: %v", err)
 	}
 	if lease, _ := store.ReadLease(ctx, "run-approval"); lease.State != "released" || lease.Epoch != "1" {
 		t.Fatalf("a refused resume took a lease: %+v", lease)
 	}
 	input.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}
-	resumed, err := ResumeParked(ctx, input)
+	resumed, err := ResumeParked(ctx, withCurrent(t, input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resumed.Lease.Epoch != "2" || resumed.Wait.State != "resumed" || resumed.Wait.Resumed.Owner != "worker-b" || resumed.Approval.CallID != "call_2_1" {
 		t.Fatalf("resumed %+v", resumed)
 	}
-	if _, err := ResumeParked(ctx, input); waitReasonOf(err) != "already-resumed" {
+	if _, err := ResumeParked(ctx, withCurrent(t, input)); waitReasonOf(err) != "already-resumed" {
 		t.Fatalf("second resume: %v", err)
 	}
-	if _, err := store.ResumeWait(ctx, "run-approval", "wait-1", "decision-1", resumed.Fence, nil); waitReasonOf(err) != "already-resumed" {
+	if _, _, err := store.ResumeWait(ctx, waitClaim(t, store, "decision-1", "worker-c", wait.Checkpoint.Revision)); waitReasonOf(err) != "already-resumed" {
 		t.Fatalf("the store claims twice: %v", err)
 	}
 	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "stale", Checkpoint: pausedCheckpoint(t, nil)}, oldFence); leaseReason(err) != "stale-epoch" {
@@ -542,17 +605,16 @@ func TestWaitTimeoutAndMovedRunRefusals(t *testing.T) {
 		t.Fatalf("equal time is due: %v", err)
 	}
 	// A timed-out approval is never approved by its timeout.
-	if _, err := ResumeParked(ctx, ResumeInput{Store: store, Resource: "run-approval", Wait: "wait-1", Evidence: "deadline-1", Owner: "worker-b", DurationMs: waitHour, Approval: &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}}); waitReasonOf(err) != "timed-out" {
+	if _, err := ResumeParked(ctx, withCurrent(t, ResumeInput{Store: store, Resource: "run-approval", Wait: "wait-1", Evidence: "deadline-1", Owner: "worker-b", DurationMs: waitHour, Approval: &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}})); waitReasonOf(err) != "timed-out" {
 		t.Fatalf("timed out: %v", err)
 	}
-	b, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-b", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: waitHour})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.ResumeWait(ctx, "run-approval", "wait-1", "deadline-1", FenceOf(b), nil); waitReasonOf(err) != "timed-out" {
+	if _, _, err := store.ResumeWait(ctx, waitClaim(t, store, "deadline-1", "worker-b", wait.Checkpoint.Revision)); waitReasonOf(err) != "timed-out" {
 		t.Fatalf("the store claims a timed-out approval: %v", err)
 	}
-	_, _ = store.ReleaseLease(ctx, FenceOf(b))
+	// A timed-out approval ends its run: nothing leases it again.
+	if _, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-b", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: waitHour}); waitReasonOf(err) != "closed" {
+		t.Fatalf("a closed run leased: %v", err)
+	}
 	clock2, moved, _, parked := parkedApprovalStore(t, 0)
 	clock2.advance(leaseMinute)
 	if _, err := WakeRun(ctx, moved, decisionEvidence()); err != nil {
@@ -561,39 +623,54 @@ func TestWaitTimeoutAndMovedRunRefusals(t *testing.T) {
 	if _, err := moved.Commit(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: parked.Checkpoint.Revision, CommitID: "outside", Events: [][]byte{[]byte(`{"version":1}`)}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ResumeParked(ctx, ResumeInput{Store: moved, Resource: "run-approval", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: waitHour, Approval: &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}}); leaseReason(err) != "revision-changed" {
+	if _, err := ResumeParked(ctx, withCurrent(t, ResumeInput{Store: moved, Resource: "run-approval", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: waitHour, Approval: &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}})); waitReasonOf(err) != "checkpoint-changed" {
 		t.Fatalf("moved run: %v", err)
 	}
 	_ = wait
 }
 
-func TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim(t *testing.T) {
+func TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim(t *testing.T) {
 	ctx := context.Background()
 	clock, store, _, wait := parkedApprovalStore(t, 0)
 	clock.advance(leaseMinute)
 	if _, err := WakeRun(ctx, store, decisionEvidence()); err != nil {
 		t.Fatal(err)
 	}
-	b, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-b", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: waitHour})
-	if err != nil {
-		t.Fatal(err)
-	}
-	forged := FenceOf(b)
-	forged.Owner = "worker-x"
-	if _, err := store.ResumeWait(ctx, "run-approval", "wait-1", "decision-unseen", FenceOf(b), nil); waitReasonOf(err) != "unacknowledged" {
+	claim := waitClaim(t, store, "decision-1", "worker-b", wait.Checkpoint.Revision)
+	unseen := claim
+	unseen.Evidence = "decision-unseen"
+	if _, _, err := store.ResumeWait(ctx, unseen); waitReasonOf(err) != "unacknowledged" {
 		t.Fatalf("unacknowledged claim: %v", err)
 	}
-	if _, err := store.ResumeWait(ctx, "run-approval", "wait-1", "decision-1", forged, nil); leaseReason(err) != "other-owner" {
-		t.Fatalf("forged fence: %v", err)
+	// The lease the claim takes is checked in the claim's own transaction: another resource, or another
+	// revision.
+	other := claim
+	other.Lease.Resource = "run-other"
+	if _, _, err := store.ResumeWait(ctx, other); leaseReason(err) != "resource-mismatch" {
+		t.Fatalf("another resource: %v", err)
 	}
-	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "moved", Events: [][]byte{[]byte(`{"version":1}`)}}, FenceOf(b)); err != nil {
+	other = claim
+	other.Lease.ExpectedRevision = "rev-other"
+	if _, _, err := store.ResumeWait(ctx, other); leaseReason(err) != "revision-changed" {
+		t.Fatalf("another revision: %v", err)
+	}
+	// A revalidation of other pins is no revalidation of this wait.
+	other = claim
+	other.Revalidation.Pins = "sha256:" + strings.Repeat("0", 64)
+	if _, _, err := store.ResumeWait(ctx, other); waitReasonOf(err) != "invalid" {
+		t.Fatalf("other pins: %v", err)
+	}
+	if _, err := store.Commit(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "moved", Events: [][]byte{[]byte(`{"version":1}`)}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.ResumeWait(ctx, "run-approval", "wait-1", "decision-1", FenceOf(b), nil); waitReasonOf(err) != "checkpoint-changed" {
+	if _, _, err := store.ResumeWait(ctx, claim); waitReasonOf(err) != "checkpoint-changed" {
 		t.Fatalf("moved head: %v", err)
 	}
 	if held, _ := store.ReadWait(ctx, "run-approval", "wait-1"); held.State != "woken" {
 		t.Fatalf("state %s", held.State)
+	}
+	if lease, _ := store.ReadLease(ctx, "run-approval"); lease.State != "released" || lease.Epoch != "1" {
+		t.Fatalf("a refused claim took a lease: %+v", lease)
 	}
 }
 
@@ -631,11 +708,11 @@ func TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered(t *test
 			timeout := waitTime(clock, 2*waitHour)
 			input := ParkInput{Store: store, Fence: fence, Wait: "wait-q", Continuation: "continue-q", Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}}, TimeoutAt: &timeout, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{{Resource: "provider-account", Outcome: "uncertain"}}, Question: "question-0"}
 			// Only the latest question is pending.
-			if _, _, err := ParkRun(ctx, input); waitReasonOf(err) != "nothing-pending" {
+			if _, _, err := ParkRun(ctx, withWaitPolicy(input)); waitReasonOf(err) != "nothing-pending" {
 				t.Fatalf("earlier question: %v", err)
 			}
 			input.Question = "question-1"
-			wait, attention, err := ParkRun(ctx, input)
+			wait, attention, err := ParkRun(ctx, withWaitPolicy(input))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -681,11 +758,11 @@ func TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered(t *test
 				}
 			}
 			resume := ResumeInput{Store: store, Resource: "run-question", Wait: "wait-q", Evidence: evidenceID, Owner: "worker-b", DurationMs: waitHour}
-			if _, err := ResumeParked(ctx, resume); waitReasonOf(err) != "release-uncertain" {
+			if _, err := ResumeParked(ctx, withCurrent(t, resume)); waitReasonOf(err) != "release-uncertain" {
 				t.Fatalf("uncertain release: %v", err)
 			}
 			resume.Reconciled = []WaitRelease{{Resource: "provider-account", Outcome: "released"}}
-			resumed, err := ResumeParked(ctx, resume)
+			resumed, err := ResumeParked(ctx, withCurrent(t, resume))
 			if err != nil || !reflect.DeepEqual(resumed.Resolution, held.Resolution) {
 				t.Fatalf("resume: %v", err)
 			}
@@ -712,7 +789,7 @@ func TestWaitAttentionDeliveryAndTheReportSources(t *testing.T) {
 	ctx := context.Background()
 	clock, store, fence, _ := questionStore(t)
 	retain := waitTime(clock, 10*waitHour)
-	wait, attention, err := ParkRun(ctx, ParkInput{Store: store, Fence: fence, Wait: "wait-q", Continuation: "continue-q", Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}}, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{}, Question: "question-1", RetainUntil: &retain})
+	wait, attention, err := ParkRun(ctx, withWaitPolicy(ParkInput{Store: store, Fence: fence, Wait: "wait-q", Continuation: "continue-q", Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}}, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{}, Question: "question-1", RetainUntil: &retain}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +815,7 @@ func TestWaitAttentionDeliveryAndTheReportSources(t *testing.T) {
 	if _, err := WakeRun(ctx, store, WakeEvidence{Version: 1, Resource: "run-question", Wait: "wait-q", Evidence: "answer-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}, Answer: &answer, Actor: &actor, Key: waitKey}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := ResumeParked(ctx, ResumeInput{Store: store, Resource: "run-question", Wait: "wait-q", Evidence: "answer-1", Owner: "worker-b", DurationMs: waitHour})
+	resumed, err := ResumeParked(ctx, withCurrent(t, ResumeInput{Store: store, Resource: "run-question", Wait: "wait-q", Evidence: "answer-1", Owner: "worker-b", DurationMs: waitHour}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +879,7 @@ func TestWaitCapabilityRefusalsByName(t *testing.T) {
 		if got := waitReasonOf(AdmitWaits(store)); got != want {
 			t.Errorf("admit %T: %s, want %s", store, got, want)
 		}
-		if _, _, err := ParkRun(ctx, ParkInput{Store: store, Fence: LeaseFence{Version: 1, Resource: "r", Owner: "o", Epoch: "1"}, Wait: "w", Continuation: "k", WakeKeyDigest: waitKeyDigest(t, waitKey)}); waitReasonOf(err) != want {
+		if _, _, err := ParkRun(ctx, withWaitPolicy(ParkInput{Store: store, Fence: LeaseFence{Version: 1, Resource: "r", Owner: "o", Epoch: "1"}, Wait: "w", Continuation: "k", WakeKeyDigest: waitKeyDigest(t, waitKey)})); waitReasonOf(err) != want {
 			t.Errorf("park %T: %v", store, err)
 		}
 	}
