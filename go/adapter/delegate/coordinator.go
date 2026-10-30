@@ -508,6 +508,17 @@ func (c *coordinator) drive(ctx context.Context) error {
 	parent.BeforeRuntimeCall = func(context.Context, string) error { return c.claimTool(nil, nil) }
 	parent.Emit = c.parentEmit
 	runErr := c.inner.Run(ctx, &parent)
+	if run.Context != nil && run.Context.Persistence != nil && run.Context.Persistence.Writer.Checkpoint() != nil {
+		// agent#248: the invocation has closed its session and released its ledger; the
+		// coordinator's events after it belong to the root the original writer acknowledged.
+		if err := run.Context.Persistence.Writer.UseAcknowledgedRoot(*run.Context.Persistence); err != nil {
+			c.emitMu.Lock()
+			if c.fatal == nil {
+				c.fatal = err
+			}
+			c.emitMu.Unlock()
+		}
+	}
 	if c.fatal != nil {
 		c.deliver(failure.Event(c.fatal, "desk"))
 	} else if runErr != nil && !failure.IsCancelled(runErr) && ctx.Err() == nil {
