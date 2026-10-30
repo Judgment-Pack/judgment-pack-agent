@@ -188,6 +188,16 @@
     {
       "case": "no policy and no run deadline: no deadline",
       "parkedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "case": "a run deadline at the Unix epoch bounds like any other",
+      "parkedAt": "1969-12-31T23:59:00.000Z",
+      "ceiling": "1970-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "1970-01-01T00:00:00.000Z",
+        "by": "run",
+        "run": "1970-01-01T00:00:00.000Z"
+      }
     }
   ],
   "deadlinesRefused": [

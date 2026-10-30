@@ -20466,8 +20466,9 @@ func (v RunResumePlanPin) MarshalJSON() ([]byte, error) {
 // provider retired it (an explicit decision is needed; nothing is substituted). model-changed,
 // reference-changed: a changed model or reference has no matching admission. policy-changed: the
 // policy identity changed with no trusted layer. approval-changed: an approval wait's source
-// descriptor or the policy identity changed, so the reviewed call cannot run, admitted or not.
-// admission-invalid: an admission matches no change.
+// descriptor or the policy identity changed, so the reviewed call cannot run, admitted or not; the
+// store also refuses with it a commit that does not carry exactly the reviewed call while that
+// call is unsettled. admission-invalid: an admission matches no change.
 type RunResumeRefusal struct {
 	Version int64  `json:"version"`
 	Reason  string `json:"reason"`

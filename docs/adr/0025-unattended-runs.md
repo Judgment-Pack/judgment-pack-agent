@@ -270,8 +270,11 @@ outcome and is never re-run (the effect host's `already-admitted` holds across l
 positive TTL (1 ms to 30 days; absent is `approval-ttl-required`). Its binding (the call id, the
 digest of the reviewed call and arguments, its source) and the pinned source, descriptor, Plan and
 policy identities are what the person reviewed; the approval expires at the park time plus the TTL.
-The claim's lease expires no later than that, and renewing it never extends it, so the approved call
-cannot be admitted at or after the expiry. A changed descriptor of its source or a changed policy
+From the claim until the approved call settles (its checkpoint records it executed, refused or
+answered), the expiry bounds every lease of the run, a takeover's or a re-acquired one included, and no
+lease is granted at or after it; renewing never extends it. So no commit, effect admission or dispatch
+of the approved call is accepted at or after the expiry, whoever holds the run, and every checkpoint
+committed meanwhile must carry exactly the reviewed call (`approval-changed` otherwise). A changed descriptor of its source or a changed policy
 identity refuses it (`approval-changed`), and a changed source identity or Plan lineage refuses any
 resume.
 

@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten pins (#227): the execution authority a park pins, and digests, each record's SHA-256 over its canonical JSON. checkpoints: the pins (and an approval wait's binding) a park reads from a retained checkpoint with the model the host admitted the run with; a source's identity from sourceIdentities, the asked approval's source with its descriptor (tool-list) digest, the last observation of each artifact, the Plan revision and accepted revision, and the identity of the resolved policy members. checkpointsRefused: a checkpoint whose asked approval names another identity for a pinned source. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state.",
+  "description": "Handwritten pins (#227): the execution authority a park pins, and digests, each record's SHA-256 over its canonical JSON. checkpoints: the pins (and an approval wait's binding) a park reads from a retained checkpoint with the model the host admitted the run with; a source's identity from sourceIdentities, the asked approval's source with its descriptor (tool-list) digest, the last observation of each artifact, the Plan revision and accepted revision, and the identity of the resolved policy members; a Runtime-bound approval's call digest covers its Runtime binding. checkpointsRefused: a checkpoint whose asked approval names another identity for a pinned source. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state.",
   "schema": "run-resume.json#/$defs/pins",
   "items": [
     {
@@ -713,6 +713,87 @@
         "callId": "call_2_1",
         "callDigest": "sha256:2727bb39b25554a351ae0abf47981acef0af66e15bbe6d9de638f7ff603d1719",
         "source": "tracker"
+      }
+    },
+    {
+      "case": "a Runtime-bound approval's call digest covers its Runtime binding",
+      "model": {
+        "provider": "openai",
+        "model": "fixture"
+      },
+      "checkpoint": {
+        "version": 3,
+        "id": "runtime-fixture",
+        "requestKey": "1111111111111111111111111111111111111111111111111111111111111111",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 1,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "runtime-fixture",
+          "entries": []
+        },
+        "approval": {
+          "callId": "runtime-call-one",
+          "name": "experimental_evaluate",
+          "tool": "experimental_evaluate",
+          "source": {
+            "kind": "runtime",
+            "id": "runtime",
+            "trust": "first-party",
+            "tool": "experimental_evaluate",
+            "toolListDigest": "sha256:3813eeb66e1a9e9831b7a6ea3e401c4acbaffecd574cfaad1f11b7936105cddf",
+            "identity": {
+              "kind": "connection",
+              "label": "Project editor"
+            },
+            "identityDigest": "sha256:67ccf62e31c9eff1a712c5514ed776a8fb22a702903ac9b244c8702cd6275db4"
+          },
+          "args": {
+            "value": 7,
+            "rehearsal": true
+          },
+          "state": "asked",
+          "runtime": {
+            "owner": {
+              "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "processId": "launch-one",
+              "projectId": "project-one",
+              "projectLabel": "Example project",
+              "sessionId": "server-session-one",
+              "principalDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "principalLabel": "Project editor",
+              "scopeDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "scopeLabel": "Evaluate example project"
+            },
+            "admissionDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "fixture"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "runtime",
+            "identityDigest": "sha256:67ccf62e31c9eff1a712c5514ed776a8fb22a702903ac9b244c8702cd6275db4",
+            "descriptorDigest": "sha256:3813eeb66e1a9e9831b7a6ea3e401c4acbaffecd574cfaad1f11b7936105cddf"
+          }
+        ],
+        "artifacts": []
+      },
+      "approval": {
+        "callId": "runtime-call-one",
+        "callDigest": "sha256:82bb79c816e490521a80d737861335c356826a194a10072d64a207e7e2ed090c",
+        "source": "runtime"
       }
     }
   ],

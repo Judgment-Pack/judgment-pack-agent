@@ -1239,7 +1239,10 @@ class VectorTests(unittest.TestCase):
         for case in pins["checkpoints"]:
             if "approval" in case:
                 asked = case["checkpoint"]["approval"]
-                self.assertEqual(case["approval"]["callDigest"], digest({"name": asked["name"], "tool": asked["tool"], "args": asked["args"]}))
+                call = {"name": asked["name"], "tool": asked["tool"], "args": asked["args"]}
+                if "runtime" in asked:
+                    call["runtime"] = asked["runtime"]
+                self.assertEqual(case["approval"]["callDigest"], digest(call))
             self.assertEqual(case["pins"]["policy"], digest(case["checkpoint"].get("policy", {})))
         for item, expected in zip(evidence["items"], evidence["digests"], strict=True):
             self.assertEqual(expected, digest(item))

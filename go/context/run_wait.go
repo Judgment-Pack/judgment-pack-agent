@@ -1308,8 +1308,9 @@ type WaitStore interface {
 	WakeWait(context.Context, WakeEvidence) (WakeDisposition, error)
 	// ResumeWait is one transaction: check the acknowledged wake, the deadline, the head and the release
 	// reconciliation, then lease the run (the only lease a held run is granted) and claim the
-	// continuation once. The lease of an approval wait's claim expires no later than the approval, and
-	// renewing it never extends that.
+	// continuation once. From an approval wait's claim until its approved call settles, no lease of the
+	// run (the claim's, a takeover's or a re-acquired one) is granted, renewed or held past the approval's
+	// expiry, and every checkpoint the run commits must carry exactly the reviewed call.
 	ResumeWait(context.Context, WaitClaim) (RunWait, RunLease, error)
 	// LimitRun sets the run's deadline; the earliest one the store holds wins, and a held lease is
 	// shortened to it.
@@ -1331,10 +1332,11 @@ type WaitRunStore interface {
 	WaitStore
 }
 
-// waitCap is the approval expiry that bounds one claim's lease epoch.
-type waitCap struct {
-	epoch string
-	at    int64
+// waitApproval is an approved call not yet settled: its expiry bounds every lease of the run, and every
+// checkpoint the run commits must carry exactly its binding.
+type waitApproval struct {
+	at      int64
+	binding ApprovalBinding
 }
 
 // WaitTable holds the wait transitions in memory. MemoryRunStore calls it under its own lock; a host
@@ -1344,17 +1346,17 @@ type WaitTable struct {
 	rows       map[string][]*RunWait
 	events     map[string][]AttentionEvent
 	deliveries map[string][]AttentionDelivery
-	// #225: each run's earliest deadline, and the approval expiry that bounds one claim's lease epoch.
-	ceilings map[string]int64
-	caps     map[string]waitCap
-	now      func() time.Time
+	// #225: each run's earliest deadline, and the expiry and binding of an approved call not yet settled.
+	ceilings  map[string]int64
+	approvals map[string]waitApproval
+	now       func() time.Time
 }
 
 func NewWaitTable(now func() time.Time) *WaitTable {
 	if now == nil {
 		now = time.Now
 	}
-	return &WaitTable{rows: map[string][]*RunWait{}, events: map[string][]AttentionEvent{}, deliveries: map[string][]AttentionDelivery{}, ceilings: map[string]int64{}, caps: map[string]waitCap{}, now: now}
+	return &WaitTable{rows: map[string][]*RunWait{}, events: map[string][]AttentionEvent{}, deliveries: map[string][]AttentionDelivery{}, ceilings: map[string]int64{}, approvals: map[string]waitApproval{}, now: now}
 }
 func (t *WaitTable) stamp() (string, error) {
 	at := t.now()
@@ -1412,15 +1414,47 @@ func (t *WaitTable) holds(resource string) error {
 	return nil
 }
 
-// Ceiling is the latest a lease of the run may expire, in store-clock milliseconds, or 0 for no limit:
-// its deadline and, for the claim's own epoch, an approval's expiry.
-func (t *WaitTable) Ceiling(resource, epoch string) int64 {
-	limit := t.ceilings[resource]
-	if held, ok := t.caps[resource]; ok && held.epoch == epoch && (limit == 0 || held.at < limit) {
-		limit = held.at
+// Ceiling is the latest any lease of the run may expire, in store-clock milliseconds, or nil for no
+// limit: its deadline and, until the approved call settles, the approval's expiry (#225 H1: every
+// lease, not only the claim's, so neither a takeover nor a re-acquired lease outlives the approval).
+func (t *WaitTable) Ceiling(resource string) *int64 {
+	var limit *int64
+	if held, ok := t.ceilings[resource]; ok {
+		limit = &held
+	}
+	if held, ok := t.approvals[resource]; ok && (limit == nil || held.at < *limit) {
+		at := held.at
+		limit = &at
 	}
 	return limit
 }
+
+// CommitApproval (#225 H1 and M3): while the run's approved call is unsettled, every checkpoint it
+// commits must carry exactly the call the person reviewed (its call id, the digest of the call and its
+// arguments, and its source), or the commit is refused approval-changed; nothing else can be claimed or
+// dispatched as that call. It reports whether the checkpoint records the call executed, refused or
+// answered: that commit settles it, and the approval's expiry stops bounding the run.
+func (t *WaitTable) CommitApproval(resource string, checkpoint []byte) (bool, error) {
+	held, ok := t.approvals[resource]
+	if !ok || checkpoint == nil {
+		return false, nil
+	}
+	var members struct {
+		Approval json.RawMessage `json:"approval"`
+	}
+	var approval contract.CheckpointApproval
+	if json.Unmarshal(checkpoint, &members) != nil || len(members.Approval) == 0 || json.Unmarshal(members.Approval, &approval) != nil {
+		return false, resumeRefused("approval-changed")
+	}
+	binding, err := ApprovalBindingOf(approval)
+	if err != nil || binding != held.binding {
+		return false, resumeRefused("approval-changed")
+	}
+	return approval.State == "executed" || approval.State == "refused" || approval.State == "answered", nil
+}
+
+// SettleApproval lifts a settled approval's expiry from the run.
+func (t *WaitTable) SettleApproval(resource string) { delete(t.approvals, resource) }
 
 // AdmitAcquire (#265 M2): a committed park closes the run. It refuses acquiring the run's lease while a
 // wait not yet resumed holds it, for good once a wait ended terminally, and from the run's deadline.
@@ -1429,12 +1463,14 @@ func (t *WaitTable) AdmitAcquire(resource string) error {
 	if slices.ContainsFunc(rows, terminalWait) {
 		return waitRefused("closed")
 	}
-	if ceiling, ok := t.ceilings[resource]; ok {
+	// #225: from the run's deadline, or an unsettled approval's expiry, nothing leases the run; equal
+	// time is past.
+	if ceiling := t.Ceiling(resource); ceiling != nil {
 		now := t.now()
 		if now.IsZero() {
 			return waitInvalid()
 		}
-		if now.UnixMilli() >= ceiling {
+		if now.UnixMilli() >= *ceiling {
 			return waitRefused("deadline-passed")
 		}
 	}
@@ -1502,7 +1538,11 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	}
 	// #225: the earliest applicable deadline wins, and this park's run limit never extends the one the
 	// store holds.
-	deadline, err := StampDeadline(park.Limits, waitTimeMillis(at), t.ceilings[park.Resource])
+	var runCeiling *int64
+	if ceiling, ok := t.ceilings[park.Resource]; ok {
+		runCeiling = &ceiling
+	}
+	deadline, err := StampDeadline(park.Limits, waitTimeMillis(at), runCeiling)
 	if err != nil {
 		return RunWait{}, AttentionEvent{}, asWait(err)
 	}
@@ -1727,10 +1767,11 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	}
 	// #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's
 	// expiry bounds it.
-	ceiling, approval := t.ceilings[row.Resource], int64(0)
+	ceiling, approval := t.Ceiling(row.Resource), (*int64)(nil)
 	if row.Reason == "approval" && row.Deadline != nil && row.Deadline.Approval != nil {
-		approval = waitTimeMillis(*row.Deadline.Approval)
-		if ceiling == 0 || approval < ceiling {
+		at := waitTimeMillis(*row.Deadline.Approval)
+		approval = &at
+		if ceiling == nil || at < *ceiling {
 			ceiling = approval
 		}
 	}
@@ -1738,8 +1779,8 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	if err != nil {
 		return RunWait{}, RunLease{}, err
 	}
-	if approval != 0 {
-		t.caps[row.Resource] = waitCap{epoch: lease.Epoch, at: approval}
+	if approval != nil {
+		t.approvals[row.Resource] = waitApproval{at: *approval, binding: *row.Approval}
 	}
 	row.State = "resumed"
 	row.Resumed = &contract.RunWaitActor{Owner: lease.Owner, Epoch: lease.Epoch, At: now}

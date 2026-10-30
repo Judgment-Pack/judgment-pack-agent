@@ -318,8 +318,9 @@ export interface WaitStore {
   * the wait's deadline only a deadline wake is accepted, and it ends the wait terminally (expired). */
  wakeWait(evidence:WakeEvidence,signal?:AbortSignal):Promise<WakeDisposition>
  /** One transaction: check the acknowledged wake, the deadline, the head and the release reconciliation, then lease the
-  * run (the only lease a held run is granted) and claim the continuation once. The lease of an approval wait's claim
-  * expires no later than the approval, and renewing it never extends that. */
+  * run (the only lease a held run is granted) and claim the continuation once. From an approval wait's claim until its
+  * approved call settles, no lease of the run (the claim's, a takeover's or a re-acquired one) is granted, renewed or
+  * held past the approval's expiry, and every checkpoint the run commits must carry exactly the reviewed call. */
  resumeWait(claim:WaitClaim,signal?:AbortSignal):Promise<{wait:RunWait;lease:RunLease}>
  /** Sets the run's deadline; the earliest one the store holds wins, and a held lease is shortened to it. */
  limitRun(limit:RunLimit,signal?:AbortSignal):Promise<RunLimit>
@@ -347,25 +348,39 @@ export class WaitTable {
  private rows=new Map<string,RunWait[]>()
  private events=new Map<string,AttentionEvent[]>()
  private deliveries=new Map<string,AttentionDelivery[]>()
- /** #225: each run's earliest deadline, and the approval expiry that bounds one claim's lease epoch. */
+ /** #225: each run's earliest deadline, and the expiry and binding of an approved call not yet settled. */
  private ceilings=new Map<string,number>()
- private caps=new Map<string,{epoch:string;at:number}>()
+ private approvals=new Map<string,{at:number;binding:ApprovalBinding}>()
  constructor(private readonly clock:()=>Date=()=>new Date()){}
  private now():string{const t=this.clock();const ms=t instanceof Date?t.getTime():NaN;if(!Number.isSafeInteger(ms))return invalid();return new Date(ms).toISOString()}
  private find(resource:string,wait:string):RunWait|undefined{return this.rows.get(resource)?.find(row=>row.wait===wait)}
  read(resource:string,wait:string):RunWait|undefined{const row=this.find(id(resource),id(wait));return row?copy(row):undefined}
- /** The latest a lease of the run may expire: its deadline and, for the claim's own epoch, an approval's expiry. */
- ceiling(resource:string,epoch?:string):number|undefined{
-  const run=this.ceilings.get(resource),cap=this.caps.get(resource)
-  const limits=[run,cap&&cap.epoch===epoch?cap.at:undefined].filter((t):t is number=>t!==undefined)
+ /** The latest any lease of the run may expire: its deadline and, until the approved call settles, the approval's expiry
+  * (#225 H1: every lease, not only the claim's, so neither a takeover nor a re-acquired lease outlives the approval). */
+ ceiling(resource:string):number|undefined{
+  const limits=[this.ceilings.get(resource),this.approvals.get(resource)?.at].filter((t):t is number=>t!==undefined)
   return limits.length?Math.min(...limits):undefined
  }
+ /** #225 H1 and M3: while the run's approved call is unsettled, every checkpoint it commits must carry exactly the call
+  * the person reviewed (its call id, the digest of the call and its arguments, and its source), or the commit is refused
+  * approval-changed; nothing else can be claimed or dispatched as that call. Returns true when the checkpoint records the
+  * call executed, refused or answered: that commit settles it, and the approval's expiry stops bounding the run. */
+ commitApproval(resource:string,checkpoint:Uint8Array|null):boolean{
+  const held=this.approvals.get(resource)
+  if(!held||checkpoint===null)return false
+  let approval:{state?:unknown}|undefined,binding:ApprovalBinding|undefined
+  try{approval=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(checkpoint))?.approval;binding=approvalBinding(approval as never)}catch{binding=undefined}
+  if(!binding||canonicalJSON(binding)!==canonicalJSON(held.binding))throw new ResumeRefused('approval-changed')
+  return ['executed','refused','answered'].includes(approval!.state as string)
+ }
+ settleApproval(resource:string):void{this.approvals.delete(resource)}
  /** #265 M2: a committed park closes the run. Refuses acquiring its lease while a wait not yet resumed holds it, for good
   * once a wait ended terminally, and from the run's deadline. */
  admitAcquire(resource:string):void{
   const rows=this.rows.get(resource)??[]
   if(rows.some(terminal))throw new WaitRefused('closed')
-  const ceiling=this.ceilings.get(resource)
+  // #225: from the run's deadline, or an unsettled approval's expiry, nothing leases the run; equal time is past.
+  const ceiling=this.ceiling(resource)
   if(ceiling!==undefined&&at(this.now())>=ceiling)throw new WaitRefused('deadline-passed')
   if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')
  }
@@ -468,11 +483,12 @@ export class WaitTable {
   if(uncertain.some(r=>!settled.some(s=>s.resource===r&&s.outcome!=='uncertain'))||settled.some(s=>!uncertain.includes(s.resource)))throw new WaitRefused('release-uncertain')
   // #227: the claim records the revalidation of this wait's own pins.
   if(claim.revalidation.resource!==row.resource||claim.revalidation.wait!==row.wait||claim.revalidation.pins!==pinsDigest(row.pins))throw new WaitRefused('invalid')
-  // #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's expiry bounds it.
+  // #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's expiry bounds it,
+  // and every later lease of the run, until the approved call settles (#266 H1).
   const approval=row.reason==='approval'&&row.deadline?.approval!==undefined?at(row.deadline.approval):undefined
   const ceiling=[this.ceilings.get(row.resource),approval].filter((t):t is number=>t!==undefined)
   const lease=leases.acquire(claim.lease,head.revision,ceiling.length?Math.min(...ceiling):undefined)
-  if(approval!==undefined)this.caps.set(row.resource,{epoch:lease.epoch,at:approval})
+  if(approval!==undefined)this.approvals.set(row.resource,{at:approval,binding:copy(row.approval!)})
   row.state='resumed';row.resumed={owner:lease.owner,epoch:lease.epoch,at:this.now()};row.revalidation=copy(claim.revalidation)
   if(settled.length)row.reconciled=settled
   return {wait:copy(row),lease}

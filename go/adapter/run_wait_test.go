@@ -121,3 +121,66 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 		})
 	}
 }
+
+// #266 H1, through the real native and eino adapters: after the claim, the approval's expiry bounds
+// every lease of the run until the approved call settles, so neither a takeover nor a lease taken
+// before the expiry dispatches the call after it; once the call has settled, the run is leased as
+// before.
+func TestApprovalExpiryBoundsEveryLeaseThroughTheAdapters(t *testing.T) {
+	const key = "host-wake-key-for-tests-0003"
+	const hour = int64(3_600_000)
+	for _, engine := range []string{"native", "eino"} {
+		t.Run(engine, func(t *testing.T) {
+			ctx := context.Background()
+			clock := &waitClock{}
+			clock.at.Store(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
+			store := waitStore{runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{Now: clock.now})}
+			host := runcontext.NewReferenceEffectHost(store)
+			a, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-a", DurationMs: hour})
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, _ := runcontext.FencedRunStore(store, runcontext.FenceOf(a), host)
+			events, err := newRuntimeActionFixture(t).run(t, view, engine, false, nil, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			asked := runtimeActionAsked(t, events)
+			keyDigest, _ := runcontext.WakeKeyDigest(key)
+			ttl := hour
+			wait, _, err := runcontext.ParkRun(ctx, runcontext.ParkInput{Store: store, Fence: runcontext.FenceOf(a), Wait: "wait-1", Continuation: "continue-1", Condition: runcontext.WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: asked.CallID}}, Model: runcontext.PinnedModel{Provider: "openai", Model: "fixture"}, Limits: &runcontext.WaitLimits{ApprovalTtlMs: &ttl}, WakeKeyDigest: keyDigest, Release: []runcontext.WaitRelease{{Resource: "provider-account", Outcome: "released"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			clock.at.Add(60_000)
+			if _, err := runcontext.WakeRun(ctx, store, runcontext.WakeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-1", Evidence: "decision-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: asked.CallID}, Key: key}); err != nil {
+				t.Fatal(err)
+			}
+			current := runcontext.ResumeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-1", Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: wait.Pins.Policy}, Plan: wait.Pins.Plan, Sources: wait.Pins.Sources, Artifacts: wait.Pins.Artifacts}
+			resumed, err := runcontext.ResumeParked(ctx, runcontext.ResumeInput{Store: store, Resource: "runtime-action-run", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: hour, Approval: &contract.CheckpointApprovalDecision{CallID: asked.CallID, Approved: true}, Current: &current})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The claimer stops and gives its lease up; another worker takes over before the expiry.
+			if _, err := store.ReleaseLease(ctx, resumed.Fence); err != nil {
+				t.Fatal(err)
+			}
+			clock.at.Add(29 * 60_000)
+			takeover, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-c", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: 24 * hour})
+			if err != nil || takeover.Expiry != *wait.Deadline.Approval {
+				t.Fatalf("takeover %+v %v", takeover, err)
+			}
+			// It stops too. Past the expiry nothing leases the run, and its lease dispatches nothing.
+			clock.at.Add(2 * hour)
+			var refused *runcontext.WaitRefused
+			if _, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-d", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: hour}); !errors.As(err, &refused) || refused.Reason != "deadline-passed" {
+				t.Fatalf("a lease after the expiry: %v", err)
+			}
+			late, _ := runcontext.FencedRunStore(store, runcontext.FenceOf(takeover), host)
+			fresh := newRuntimeActionFixture(t)
+			if _, err := fresh.run(t, late, engine, true, resumed.Approval, true); len(fresh.calls) != 0 {
+				t.Fatalf("the approved call after its expiry: dispatched %d time(s) (%v)", len(fresh.calls), err)
+			}
+		})
+	}
+}

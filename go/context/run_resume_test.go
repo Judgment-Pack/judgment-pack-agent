@@ -74,9 +74,10 @@ func TestResumeLimitsVectorsBothReaders(t *testing.T) {
 		if err := json.Unmarshal(row, &stamp); err != nil {
 			t.Fatal(err)
 		}
-		ceiling := int64(0)
+		var ceiling *int64
 		if stamp.Ceiling != nil {
-			ceiling = waitTimeMillis(*stamp.Ceiling)
+			at := waitTimeMillis(*stamp.Ceiling)
+			ceiling = &at
 		}
 		got, err := StampDeadline(stamp.Limits, waitTimeMillis(stamp.ParkedAt), ceiling)
 		if err != nil || !reflect.DeepEqual(got, stamp.Deadline) {
@@ -502,7 +503,10 @@ func TestResumeAnUnknownEffectIsNeverPerformedAgain(t *testing.T) {
 	if err := host.Dispatch(ctx, admission, func(context.Context) error { performed++; return errors.New("the connection dropped") }); err == nil {
 		t.Fatal("the dropped call succeeded")
 	}
-	clock.advance(waitHour)
+	// The claimer gives up its lease; another worker leases the run before the approval expires.
+	if _, err := store.ReleaseLease(ctx, resumed.Fence); err != nil {
+		t.Fatal(err)
+	}
 	later, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-c", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: waitHour})
 	if err != nil {
 		t.Fatal(err)
@@ -677,5 +681,156 @@ func TestResumeAnUnseenWakeIsUnacknowledgedBeforeTheDecision(t *testing.T) {
 	}
 	if _, err := ResumeParked(ctx, input); waitReasonOf(err) != "unacknowledged" {
 		t.Fatalf("another wake: %v", err)
+	}
+}
+
+// resumedApproval parks the published paused approval with a one-hour TTL, wakes it and claims it at
+// one minute.
+func resumedApproval(t *testing.T) (*leaseClock, durableWaitStore, RunWait, ResumedWait) {
+	t.Helper()
+	ctx := context.Background()
+	clock, store, _, wait := resumeApprovalStore(t, waitHour, nil)
+	clock.advance(leaseMinute)
+	if _, err := WakeRun(ctx, store, decisionEvidence()); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := ResumeParked(ctx, approvedResume(t, store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return clock, store, wait, resumed
+}
+
+func TestResumeTheApprovalBoundsEveryLeaseUntilItsCallSettles(t *testing.T) {
+	ctx := context.Background()
+	clock, store, wait, resumed := resumedApproval(t)
+	expiry := waitTime(clock, waitHour)
+	// The claimer records the decision (approved, not yet run: unsettled) and gives its lease up; a
+	// takeover before the expiry is bounded by it, renewal included.
+	approved := pausedCheckpoint(t, func(c map[string]any) { c["approval"].(map[string]any)["state"] = "approved" })
+	receipt, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "approved", Checkpoint: approved}, resumed.Fence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReleaseLease(ctx, resumed.Fence); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(29 * leaseMinute)
+	takeover, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-c", ExpectedRevision: receipt.Revision, DurationMs: 24 * waitHour})
+	if err != nil || takeover.Expiry != expiry {
+		t.Fatalf("takeover %+v %v", takeover, err)
+	}
+	if renewed, err := store.RenewLease(ctx, FenceOf(takeover), 24*waitHour); err != nil || renewed.Expiry != expiry {
+		t.Fatalf("renewal %+v %v", renewed, err)
+	}
+	// At the expiry nothing leases the run, and the takeover's fence commits and admits nothing.
+	clock.advance(waitHour)
+	if _, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-d", ExpectedRevision: receipt.Revision, DurationMs: waitHour}); waitReasonOf(err) != "deadline-passed" {
+		t.Fatalf("a lease after the expiry: %v", err)
+	}
+	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: receipt.Revision, CommitID: "late", Checkpoint: approved}, FenceOf(takeover)); leaseReason(err) != "expired" {
+		t.Fatalf("a commit after the expiry: %v", err)
+	}
+	admission, _ := NewEffectAdmission(FenceOf(takeover), EffectOperation{Run: "run-approval", Operation: "op-late", Source: "tracker", Tool: "create_issue", RequestDigest: "sha256:" + strings.Repeat("3", 64)})
+	performed := 0
+	if err := NewReferenceEffectHost(store).Dispatch(ctx, admission, func(context.Context) error { performed++; return nil }); leaseReason(err) != "expired" || performed != 0 {
+		t.Fatalf("an admission after the expiry: %v", err)
+	}
+}
+
+func TestResumeASettledApprovalStopsBoundingTheRun(t *testing.T) {
+	ctx := context.Background()
+	clock, store, wait, resumed := resumedApproval(t)
+	executed := pausedCheckpoint(t, func(c map[string]any) {
+		c["status"] = "running"
+		c["approval"].(map[string]any)["state"] = "executed"
+	})
+	receipt, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "executed", Checkpoint: executed}, resumed.Fence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReleaseLease(ctx, resumed.Fence); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(2 * waitHour)
+	if lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-approval", Owner: "worker-c", ExpectedRevision: receipt.Revision, DurationMs: waitHour}); err != nil || lease.Expiry != waitTime(clock, 3*waitHour+leaseMinute) {
+		t.Fatalf("a lease after a settled approval: %+v %v", lease, err)
+	}
+}
+
+func TestResumeACommitThatRewritesTheReviewedCallIsRefused(t *testing.T) {
+	ctx := context.Background()
+	_, store, wait, resumed := resumedApproval(t)
+	for name, edit := range map[string]func(map[string]any){
+		"arguments": func(c map[string]any) {
+			c["approval"].(map[string]any)["args"] = map[string]any{"title": "Something else entirely"}
+		},
+		"call id": func(c map[string]any) { c["approval"].(map[string]any)["callId"] = "call-other" },
+		"source": func(c map[string]any) {
+			c["approval"].(map[string]any)["source"].(map[string]any)["id"] = "ledger"
+		},
+		"no approval": func(c map[string]any) { delete(c, "approval") },
+	} {
+		if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "rewrite", Checkpoint: pausedCheckpoint(t, edit)}, resumed.Fence); resumeReasonOf(err) != "resume:approval-changed" {
+			t.Errorf("%s rewritten: %v", name, err)
+		}
+	}
+	if head, _ := store.Load(ctx, "run-approval"); head.Revision != wait.Checkpoint.Revision {
+		t.Fatal("a refused rewrite moved the head")
+	}
+	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "same", Checkpoint: pausedCheckpoint(t, nil)}, resumed.Fence); err != nil {
+		t.Fatalf("the reviewed call: %v", err)
+	}
+}
+
+func TestResumeARunDeadlineAtTheUnixEpochBoundsTheClaim(t *testing.T) {
+	ctx := context.Background()
+	clock, store, _, wait := resumeApprovalStore(t, 4*waitHour, nil)
+	clock.advance(leaseMinute)
+	if _, err := WakeRun(ctx, store, decisionEvidence()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LimitRun(ctx, store, RunLimit{Version: 1, Resource: "run-approval", Run: "1970-01-01T00:00:00.000Z"}); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := ResumeParked(ctx, approvedResume(t, store))
+	if err != nil || resumed.Lease.Expiry != "1970-01-01T00:00:00.000Z" {
+		t.Fatalf("claim lease %+v %v", resumed.Lease, err)
+	}
+	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "late", Checkpoint: pausedCheckpoint(t, nil)}, resumed.Fence); leaseReason(err) != "expired" {
+		t.Fatalf("a commit under it: %v", err)
+	}
+	if _, err := store.RenewLease(ctx, resumed.Fence, waitHour); leaseReason(err) != "expired" {
+		t.Fatalf("a renewal under it: %v", err)
+	}
+}
+
+func TestResumeTheClaimChecksTheHeadDigestAsWellAsItsRevision(t *testing.T) {
+	clock := newLeaseClock()
+	leases, table := NewLeaseTable(clock.now), NewWaitTable(clock.now)
+	checkpoint := pausedCheckpoint(t, nil)
+	value, _ := ParseJSON(checkpoint)
+	paused, _ := ReadExecution(value)
+	pins, _ := PinsFrom(paused, waitModel)
+	binding, _ := ApprovalBindingOf(*paused.Approval)
+	ttl := int64(waitHour)
+	a, _ := leases.Acquire(LeaseAcquire{Resource: "run-t", Owner: "worker-a", ExpectedRevision: "rev-1", DurationMs: waitHour}, "rev-1")
+	head := &RunHead{RunReceipt: RunReceipt{Revision: "rev-1"}, RunID: "run-t", Checkpoint: checkpoint}
+	wait, _, err := table.Park(RunWait{Version: 1, Resource: "run-t", Wait: "w", Reason: "approval", Pending: contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: "call_2_1", Name: "tracker__create_issue", Tool: "create_issue"}}, Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call_2_1"}}, Limits: &WaitLimits{ApprovalTtlMs: &ttl}, Approval: &binding, Continuation: "k", Checkpoint: contract.RunWaitCheckpointBinding{Revision: "rev-1", Digest: CheckpointBytesDigest(checkpoint)}, Pins: pins, WakeKeyDigest: waitKeyDigest(t, waitKey), Release: []WaitRelease{}}, FenceOf(a), head, leases)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := table.Wake(WakeEvidence{Version: 1, Resource: "run-t", Wait: "w", Evidence: "decision-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call_2_1"}, Key: waitKey}); err != nil {
+		t.Fatal(err)
+	}
+	digest, _ := PinsDigest(wait.Pins)
+	claim := WaitClaim{Resource: "run-t", Wait: "w", Evidence: "decision-1", Lease: LeaseAcquire{Resource: "run-t", Owner: "worker-b", ExpectedRevision: "rev-1", DurationMs: waitHour}, Revalidation: Revalidation{Version: 1, Resource: "run-t", Wait: "w", Pins: digest, Evidence: "sha256:" + strings.Repeat("e", 64), Changes: []ResumeChange{}}}
+	// A store that can repeat a revision: the same revision over other bytes is another head.
+	other := &RunHead{RunReceipt: RunReceipt{Revision: "rev-1"}, RunID: "run-t", Checkpoint: pausedCheckpoint(t, func(c map[string]any) { c["explanation"] = "moved" })}
+	if _, _, err := table.Resume(claim, other, leases); waitReasonOf(err) != "checkpoint-changed" {
+		t.Fatalf("same revision, other bytes: %v", err)
+	}
+	if held, _, err := table.Resume(claim, head, leases); err != nil || held.State != "resumed" {
+		t.Fatalf("the parked head: %v", err)
 	}
 }

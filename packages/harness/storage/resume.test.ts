@@ -277,7 +277,8 @@ describe('#225: deadlines and approval expiry by the store clock; equal time is 
   const operation={run:'run-a',operation:'op-1',source:'tracker',tool:'create_issue',requestDigest:'sha256:'+'2'.repeat(64)}
   let performed=0
   await expect(host.dispatch(effectAdmission(resumed.fence,operation),async()=>{performed++;throw new Error('the connection dropped')})).rejects.toThrow('the connection dropped')
-  clock.at=T0+HOUR
+  // The claimer gives up its lease; another worker leases the run before the approval expires.
+  await store.releaseLease(resumed.fence)
   const later=await store.acquireLease({resource:'run-a',owner:'worker-c',expectedRevision:(await store.load('run-a'))!.revision,durationMs:HOUR})
   await expect(host.dispatch(effectAdmission(fenceOf(later),operation),async()=>{performed++;return 'again'})).rejects.toEqual(leaseRefusal('already-admitted'))
   expect(performed).toBe(1)
@@ -308,5 +309,88 @@ describe('#227: every unattended resume revalidates the pinned execution authori
   expect(resumed.revalidation.changes).toEqual([{kind:'model',subject:'model',from:'openai/fixture',to:'openai/fixture-2',actor:'person-owner',at:iso(T0)}])
   expect((await store.readWait('run-a','wait-1'))!.revalidation).toEqual(resumed.revalidation)
   expect(resumed.revalidation.pins).toBe(pinsDigest(resumed.wait.pins))
+ })
+})
+
+describe('#266 fix round: the approval binds the run until its call settles',()=>{
+ it('H1: no takeover after the claim outlives the approval: a lease taken before the expiry ends at it, none is taken at or after it, and the approved call never runs late',async()=>{
+  const {clock,store,host,execute,asked,decision}=await parkedApproval(HOUR)
+  clock.at=T0+MINUTE;await wakeRun(store,decision)
+  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
+  // The claimer records the decision (approved, not yet run: unsettled) and stops; its lease ends at the expiry. Another
+  // worker takes over before it: its lease ends there too.
+  const head=(await store.load('run-a'))!,approved=JSON.parse(new TextDecoder().decode(head.checkpoint!))
+  approved.approval.state='approved'
+  const receipt=await store.commitFenced({runId:'run-a',expectedRevision:head.revision,commitId:'approved',checkpoint:new TextEncoder().encode(canonicalJSON(approved)),events:[]},resumed.fence)
+  await store.releaseLease(resumed.fence)
+  clock.at=T0+30*MINUTE
+  const takeover=await store.acquireLease({resource:'run-a',owner:'worker-c',expectedRevision:receipt.revision,durationMs:24*HOUR})
+  expect(takeover.expiry).toBe(iso(T0+HOUR))
+  expect((await store.renewLease(fenceOf(takeover),24*HOUR)).expiry).toBe(iso(T0+HOUR))
+  // At the expiry nothing leases the run, and the takeover's lease commits and admits nothing: the call never runs.
+  clock.at=T0+2*HOUR
+  await expect(store.acquireLease({resource:'run-a',owner:'worker-d',expectedRevision:receipt.revision,durationMs:HOUR})).rejects.toEqual(waitRefusal('deadline-passed'))
+  const continued=await drive(fencedRunStore(store,fenceOf(takeover),host),'run-a',[await actTool(execute)],provider([{say:'Filed.'}]).call,{resume:true,approval:resumed.approval})
+  expect(continued.some(e=>e.type==='error')).toBe(true);expect(execute).not.toHaveBeenCalled()
+ })
+ it('H1: the claimer\'s own release and re-acquire are bounded the same way, renewal included',async()=>{
+  const {clock,store,host,execute,asked,parked,decision}=await parkedApproval(HOUR)
+  clock.at=T0+MINUTE;await wakeRun(store,decision)
+  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
+  await store.releaseLease(resumed.fence)
+  const again=await store.acquireLease({resource:'run-a',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:24*HOUR})
+  expect(again.expiry).toBe(iso(T0+HOUR))
+  clock.at=T0+HOUR-1
+  expect((await store.renewLease(fenceOf(again),24*HOUR)).expiry).toBe(iso(T0+HOUR))
+  clock.at=T0+6*HOUR
+  const continued=await drive(fencedRunStore(store,fenceOf(again),host),'run-a',[await actTool(execute)],provider([{say:'Filed.'}]).call,{resume:true,approval:resumed.approval})
+  expect(continued.some(e=>e.type==='error')).toBe(true);expect(execute).not.toHaveBeenCalled()
+ })
+ it('H1: once the approved call settles, its expiry stops bounding the run',async()=>{
+  const {clock,store,host,execute,asked,decision}=await parkedApproval(HOUR)
+  clock.at=T0+MINUTE;await wakeRun(store,decision)
+  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
+  const continued=await drive(fencedRunStore(store,resumed.fence,host),'run-a',[await actTool(execute)],provider([{say:'Filed.'}]).call,{resume:true,approval:resumed.approval})
+  expect(continued.some(e=>e.type==='error')).toBe(false);expect(execute).toHaveBeenCalledOnce()
+  await store.releaseLease(resumed.fence)
+  clock.at=T0+2*HOUR
+  await expect(store.acquireLease({resource:'run-a',owner:'worker-c',expectedRevision:(await store.load('run-a'))!.revision,durationMs:HOUR})).resolves.toMatchObject({expiry:iso(T0+3*HOUR)})
+ })
+ it('M3: under the claim, a checkpoint that rewrites the reviewed call is refused, and the call runs as the person reviewed it',async()=>{
+  const {clock,store,host,execute,asked,decision}=await parkedApproval(HOUR)
+  clock.at=T0+MINUTE;await wakeRun(store,decision)
+  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
+  const head=(await store.load('run-a'))!,checkpoint=JSON.parse(new TextDecoder().decode(head.checkpoint!))
+  const rewrite=(change:(c:{approval:Record<string,unknown>})=>void)=>{const copy=structuredClone(checkpoint);change(copy);return store.commitFenced({runId:'run-a',expectedRevision:head.revision,commitId:'rewrite',checkpoint:new TextEncoder().encode(canonicalJSON(copy)),events:[]},resumed.fence)}
+  await expect(rewrite(c=>{c.approval.args={title:'Something else entirely'}})).rejects.toEqual(resumeRefusal('approval-changed'))
+  await expect(rewrite(c=>{c.approval.callId='call-other'})).rejects.toEqual(resumeRefusal('approval-changed'))
+  await expect(rewrite(c=>{(c.approval.source as {id:string}).id='ledger'})).rejects.toEqual(resumeRefusal('approval-changed'))
+  await expect(rewrite(c=>{delete (c as {approval?:unknown}).approval})).rejects.toEqual(resumeRefusal('approval-changed'))
+  expect((await store.load('run-a'))!.revision).toBe(head.revision)
+  const calls:unknown[]=[]
+  execute.mockImplementation((async(args:unknown)=>{calls.push(args);return {content:[{type:'text' as const,text:'created'}]}}) as never)
+  await drive(fencedRunStore(store,resumed.fence,host),'run-a',[await actTool(execute)],provider([{say:'Filed.'}]).call,{resume:true,approval:resumed.approval})
+  expect(calls).toEqual([{title:'Mileage'}])
+ })
+ it('M2: a run deadline at the Unix epoch bounds the claim\'s lease like any other',async()=>{
+  const {clock,store,asked,parked,decision}=await parkedApproval(4*HOUR)
+  clock.at=T0+MINUTE;await wakeRun(store,decision)
+  await limitRun(store,{version:1,resource:'run-a',run:'1970-01-01T00:00:00.000Z'})
+  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
+  expect(resumed.lease.expiry).toBe('1970-01-01T00:00:00.000Z')
+  await expect(store.commitFenced({runId:'run-a',expectedRevision:parked.wait.checkpoint.revision,commitId:'late',checkpoint:(await store.load('run-a'))!.checkpoint,events:[]},resumed.fence)).rejects.toEqual(leaseRefusal('expired'))
+  await expect(store.renewLease(resumed.fence,HOUR)).rejects.toEqual(leaseRefusal('expired'))
+ })
+ it('M7: the claim checks the head\'s digest as well as its revision',()=>{
+  const clock={at:T0},leases=new LeaseTable(()=>new Date(clock.at)),table=new WaitTable(()=>new Date(clock.at))
+  const checkpoint=new TextEncoder().encode(canonicalJSON(pauseVector.items[1]!.checkpoint)),paused=JSON.parse(new TextDecoder().decode(checkpoint))
+  const wait=table.park({version:1,resource:'run-t',wait:'w',reason:'approval',pending:{kind:'approval',callId:'call_2_1',name:'tracker__create_issue',tool:'create_issue'},condition:{event:{kind:'approval-decision',subject:'call_2_1'}},limits:{approvalTtlMs:HOUR},approval:approvalBinding(paused.approval),continuation:'k',checkpoint:{revision:'rev-1',digest:checkpointBytesDigest(checkpoint)},pins:pinsFrom(paused,MODEL),wakeKeyDigest:wakeKeyDigest(KEY),release:[]},fenceOf(leases.acquire({resource:'run-t',owner:'worker-a',expectedRevision:'rev-1',durationMs:HOUR},'rev-1')),{revision:'rev-1',checkpoint},leases).wait
+  table.wake({version:1,resource:'run-t',wait:'w',evidence:'decision-1',kind:'event',event:{kind:'approval-decision',subject:'call_2_1'},key:KEY})
+  const revalidation={version:1 as const,resource:'run-t',wait:'w',pins:pinsDigest(wait.pins),evidence:'sha256:'+'e'.repeat(64),changes:[]}
+  const claim={resource:'run-t',wait:'w',evidence:'decision-1',lease:{resource:'run-t',owner:'worker-b',expectedRevision:'rev-1',durationMs:HOUR},reconciled:[],revalidation}
+  // A store that can repeat a revision: the same revision over other bytes is another head.
+  const other=new TextEncoder().encode(canonicalJSON({...paused,explanation:'moved'}))
+  expect(()=>table.resume(claim,{revision:'rev-1',checkpoint:other},leases)).toThrow(waitRefusal('checkpoint-changed'))
+  expect(table.resume(claim,{revision:'rev-1',checkpoint},leases).wait.state).toBe('resumed')
  })
 })

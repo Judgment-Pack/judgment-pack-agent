@@ -435,8 +435,11 @@ transitions, each atomic under the same serialization as its commits and against
 A store kind's `acquireLease` refuses a run while any of its waits is not yet resumed (`wait-pending`),
 for good once one of them ended terminally (`closed`: a timed-out approval or budget wait, or an
 expired one), and from the run's deadline (`deadline-passed`); every lease it grants or renews
-expires no later than the run's deadline, and the lease of an approval wait's claim (its epoch) no
-later than the approval's expiry.
+expires no later than the run's deadline and, from an approval wait's claim until its approved call
+settles, no later than the approval's expiry. While that call is unsettled, every commit of the run
+carrying a checkpoint must carry exactly the reviewed call (its call id, the digest of its name, tool,
+arguments and Runtime binding, and its source), or it is refused `approval-changed`; the commit whose
+checkpoint records the call `executed`, `refused` or `answered` settles it.
 
 `MemoryRunStore` implements the port within its process (`waitLifetime` `process`), so `parkRun`
 on it refuses `store-lifetime`; the callback kind and a store without the port refuse
@@ -529,10 +532,16 @@ a resumable end, as before.
 `limits.approvalTtlMs` (`approval-ttl-required`) and records its binding, read from the checkpoint:
 the call id, the SHA-256 of the canonical JSON of `{name, tool, args, runtime?}` the person reviews,
 and its source, whose identity and descriptor are pinned with the Plan and policy identities. The
-approval expires at the park time plus the TTL. A decision delivered at or after that is refused, a
-claim at or after it is refused, and the lease the claim takes expires no later than it: the approved
-call's first commit and its effect admission are refused at the expiry, and renewing that lease never
-renews the approval. A changed descriptor of its source or a changed policy identity refuses the
+approval expires at the park time plus the TTL. A decision delivered at or after that is refused, and
+so is a claim. From the claim until the approved call settles, the expiry bounds the run, not one
+lease: the claim's lease, a takeover's, a lease the claimer re-acquires and every renewal end at it,
+and no lease of the run is granted at or after it (`deadline-passed`). So every commit, every effect
+admission and every dispatch claim of the approved call is refused at the expiry, whoever holds the
+run, and renewing or re-acquiring a lease never renews the approval. Every checkpoint the run commits
+meanwhile must carry exactly the reviewed call, so a rewritten call, arguments or source is refused
+(`approval-changed`) before anything can dispatch it. The commit that records the call `executed`,
+`refused` or `answered` settles it, and the run is then leased as before. An approved call that does
+not settle before the expiry leaves its run closed until a new park. A changed descriptor of its source or a changed policy identity refuses the
 approval at the revalidation (`approval-changed`), even admitted; a changed source identity or Plan
 lineage refuses any resume first. Re-asking needs a newly retained request and a new decision.
 

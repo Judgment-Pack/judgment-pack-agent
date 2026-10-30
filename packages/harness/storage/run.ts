@@ -74,7 +74,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
   if(resource!==undefined)this.waits.admitAcquire(resource)
   return this.leases.acquire(request,resource===undefined?null:this.runs.get(resource)?.head.revision??null,resource===undefined?undefined:this.waits.ceiling(resource))
  })}
- renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.renew(fence,durationMs,fence&&typeof fence==='object'?this.waits.ceiling(fence.resource,fence.epoch):undefined))}
+ renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.renew(fence,durationMs,fence&&typeof fence==='object'?this.waits.ceiling(fence.resource):undefined))}
  releaseLease(fence:LeaseFence,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.release(fence))}
  readLease(resource:string,signal?:AbortSignal):Promise<RunLease|undefined>{return this.serial(signal,()=>this.leases.read(resource))}
  checkFence(fence:LeaseFence,signal?:AbortSignal):Promise<void>{return this.serial(signal,()=>{this.leases.check(fence)})}
@@ -115,6 +115,9 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
    const held=this.runs.get(frozen.runId),prior=held?.commits.get(frozen.commitId)
    if(prior){if(!identical(prior.input,frozen)||prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();return {receipt:{...prior.receipt},historyReceipt:structuredClone(prior.historyReceipt!)}}
    if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)
+   // #225 H1 and M3: an unsettled approved call is committed only as the person reviewed it; the commit that records it
+   // settled lifts its expiry from the run.
+   const settles=this.waits.commitApproval(frozen.runId,frozen.checkpoint)
    const preliminary={revision:crypto.randomUUID(),cursor:null,commitId:frozen.commitId}
    const prepared=this.journal.prepare(frozen,preliminary,frozen.checkpoint??held?.head.checkpoint??null,extra)
    await this.options.beforeCommit?.()
@@ -130,6 +133,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
    // Publish only after all validation/acknowledgement. No externally visible partial state.
    this.runs.set(frozen.runId,{head,events:[...(held?.events??[]),...events],commits})
    this.journal.publish(prepared)
+   if(settles)this.waits.settleApproval(frozen.runId)
    await this.options.afterCommit?.()
    return {receipt:{...receipt},historyReceipt:structuredClone(historyReceipt)}
   })

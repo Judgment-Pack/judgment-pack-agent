@@ -859,8 +859,9 @@ after a terminal wait), and `resumeParked`'s claim takes the run's next lease in
 (#265 M2). `limitRun` sets a run's deadline, past which no lease of the run is granted, renewed or
 held; a park's `limits` stamp the wait's deadline (the earliest of the run's, the wait's and an
 approval's TTL), and only a `deadline` wake ends the wait then. An approval wait needs
-`limits.approvalTtlMs`, is bound to the reviewed call, its source and the pinned identities, and its
-claim's lease ends at the approval's expiry. Every park pins the host's admitted `model` and what the
+`limits.approvalTtlMs`, is bound to the reviewed call, its source and the pinned identities, and from
+its claim until the approved call settles no lease of the run outlives the approval's expiry and every
+committed checkpoint must carry the reviewed call. Every park pins the host's admitted `model` and what the
 checkpoint holds (policy identity, Plan lineage, source and artifact pins); `resumeParked` needs the
 host's `current` evidence and refuses missing evidence, a changed identity or lineage, a retired
 model, a changed model or reference without its explicit admission, a changed policy without the

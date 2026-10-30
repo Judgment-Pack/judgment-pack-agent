@@ -174,14 +174,14 @@ func ReadRunLimit(raw []byte) (RunLimit, error) {
 
 // StampDeadline is the deadline a park stamps: the earliest of the run's deadline (the earliest the
 // store holds and this park's), the park time plus waitMs and, for an approval wait, plus approvalTtlMs.
-// nil when none applies. ceiling is the store's run deadline in milliseconds, or 0 for none.
-func StampDeadline(limits *WaitLimits, parkedAt, ceiling int64) (*WaitDeadline, error) {
+// nil when none applies. ceiling is the store's run deadline in milliseconds, or nil for none.
+func StampDeadline(limits *WaitLimits, parkedAt int64, ceiling *int64) (*WaitDeadline, error) {
 	run := int64(math.MaxInt64)
 	if limits != nil && limits.Run != nil {
 		run = waitTimeMillis(*limits.Run)
 	}
-	if ceiling != 0 && ceiling < run {
-		run = ceiling
+	if ceiling != nil && *ceiling < run {
+		run = *ceiling
 	}
 	times := map[string]int64{}
 	if run != math.MaxInt64 {
