@@ -1,0 +1,93 @@
+{
+  "description": "Handwritten named wait refusals, one per reason. Every reason both languages can give is here and nothing else.",
+  "schema": "run-wait.json#/$defs/refusal",
+  "items": [
+    {
+      "version": 1,
+      "reason": "invalid"
+    },
+    {
+      "version": 1,
+      "reason": "nothing-pending"
+    },
+    {
+      "version": 1,
+      "reason": "wait-pending"
+    },
+    {
+      "version": 1,
+      "reason": "conflict"
+    },
+    {
+      "version": 1,
+      "reason": "checkpoint-changed"
+    },
+    {
+      "version": 1,
+      "reason": "no-wait"
+    },
+    {
+      "version": 1,
+      "reason": "unauthenticated"
+    },
+    {
+      "version": 1,
+      "reason": "mismatch"
+    },
+    {
+      "version": 1,
+      "reason": "not-due"
+    },
+    {
+      "version": 1,
+      "reason": "stale"
+    },
+    {
+      "version": 1,
+      "reason": "unacknowledged"
+    },
+    {
+      "version": 1,
+      "reason": "already-resumed"
+    },
+    {
+      "version": 1,
+      "reason": "decision-required"
+    },
+    {
+      "version": 1,
+      "reason": "timed-out"
+    },
+    {
+      "version": 1,
+      "reason": "release-uncertain"
+    },
+    {
+      "version": 1,
+      "reason": "chat-changed"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "expired"
+    },
+    {
+      "version": 1
+    },
+    {
+      "version": 1,
+      "reason": "stale",
+      "detail": "free text"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/wait.ts (readRunWait, readWakeEvidence, readAttentionEvent, reportFromExport)"
+    ]
+  }
+}

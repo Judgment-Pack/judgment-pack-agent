@@ -381,3 +381,93 @@ rely on (`checkFence`, `renewLease`, `releaseLease`, `commitFenced` and, with hi
 same owner's earlier epoch), another owner, a released lease and a mismatched resource; the history
 ports also refuse an expired fence, at equal time and after. It certifies the port; the store's
 durability across its own restarts and backups is the host's to prove.
+
+## Durable waits, attention and the report (#224, #228)
+
+This section is for the implementer of a host store kind's waits (one wait port per run store kind,
+beside its lease port) and for a host that parks, wakes and resumes runs. It implements ADR-0025
+decisions 2 and 6 as their amendment fixes them. The records are `contract/schemas/run-wait.json`,
+version 1, with handwritten shared vectors in `contract/vectors/wait/`. TypeScript is
+`packages/harness/storage/wait.ts`; Go is `go/context/run_wait.go`. Both read the same vectors and
+derive the same report from the same export.
+
+**What the package does and what the host does.** The package reads the pending decision from the
+retained record, validates every transition and records it. The host owns scheduling (when a time
+or timeout wake is delivered), its clock (the store's), wake delivery, the wake key, notifications
+and processes. Nothing in the package polls, schedules, sends a notification or keeps a credential.
+
+**The wait port.** A store kind implements `WaitStore` (Go `WaitStore`) beside `LeaseRunStore`:
+`waitVersion` 1 and `waitLifetime` (`durable` only when waits outlive the store's process), and these
+transitions, each atomic under the same serialization as its commits and against the same run head:
+
+- `parkWait(park, fence)`: check the fence (the lease refusals of #223), refuse a second parked wait
+  of the run (`wait-pending`) and a head that is not the one the park binds (`checkpoint-changed`),
+  then commit the wait (stamped with the fence's owner and epoch and the store's time) and its one
+  `needs_attention` event, and release the lease, in one transaction. The same park again returns
+  it; another park under the same wait id is `conflict`.
+- `wakeWait(evidence)`: find the wait (`no-wait`), compare the SHA-256 of the presented key with
+  the wait's `wakeKeyDigest` (`unauthenticated`), then: a duplicate (same evidence id and digest)
+  returns the retained disposition; the same id with other content is `conflict`; another wake
+  after the winner is `stale`; an event that is not the expected `{kind, subject}`, an answer on a
+  wait that is not a question, a question event without a real answer to the retained question, a
+  time wake with no `wakeAt` or a timeout with no `timeoutAt` is `mismatch`; a time or timeout
+  before its store time is `not-due` (equal time is due). Only then is the disposition and, for a
+  question, the resolution (`answered` with actor and answer digest, or `unanswered` on timeout)
+  written.
+- `resumeWait(resource, wait, evidence, fence, reconciled)`: the acknowledged wake must be the
+  retained one (`unacknowledged`), claimed once (`already-resumed`), under a current fence, not a
+  timed-out approval or budget wait (`timed-out`), over the unchanged head (`checkpoint-changed`),
+  and with every uncertain release reconciled to `released` or `not-held` (`release-uncertain`).
+- `readWait`, `exportWaits` (the run's waits in park order with their attention events and
+  deliveries), `recordDelivery` (a host's delivery attempt, kept apart from the event; a repeat
+  returns the first record) and `redactWait` (the question and answer content removed, every
+  identity and digest kept).
+
+`MemoryRunStore` implements the port within its process (`waitLifetime` `process`), so `parkRun`
+on it refuses `store-lifetime`; the callback kind and a store without the port refuse
+`store-unsupported`. `admitWaits` (Go `AdmitWaits`) gives the same refusals up front.
+
+**Parking.** After a run ends paused (an asked approval or a budget pause) or after a
+`user_question`, the host calls `parkRun({store, fence, wait, continuation, condition, timeoutAt,
+wakeKeyDigest, release, question?, chat?, retainUntil?})` (Go `ParkRun`) with the fence it ran under.
+The package loads the head, reads the checkpoint with the ordinary reader, and takes the pending
+decision from it: an asked approval is an approval wait, any other paused checkpoint a budget
+wait. A question wait names the `user_question` event: it must be the latest question in the
+run's retained event log, and its question, options and recommendation are retained whole with
+their digest. A question waits for an event and has no wake time. `release` is the host's
+evidence about each provider resource the run held; the paused run has already ended its
+invocation (ADR-0008), and the host says whether the account was released. Any `uncertain` entry
+is retained, the attention event says so, and the park is not a clean one. The park writes nothing
+into the run's checkpoint or event log, so with nothing configured every byte is what it was, and a
+legacy (version 1 or 2) paused checkpoint parks without being rewritten.
+
+**Waking and resuming.** The host delivers `wakeRun(store, evidence)` (Go `WakeRun`); an error from
+the store leaves the outcome unknown, and the host reads the wait to learn it. `resumeParked({store,
+resource, wait, evidence, owner, durationMs, approval?, grant?, reconciled?, chat?})` (Go
+`ResumeParked`) refuses before taking any lease a wake it was not shown (`unacknowledged`), a
+claimed wait, a timed-out approval or budget wait, and a missing decision: an approval wait needs
+the person's decision for the asked call, a budget wait a grant from its paused limit, and a
+question takes neither (`decision-required`). It then acquires a lease against the parked revision
+(a moved run is the lease's `revision-changed`), revalidates a chat binding through the ChatStore
+(`chat-changed`; Go has no ChatStore and refuses a chat-bound resume as `chat-store-unsupported`),
+and has the store claim the continuation. It returns the new lease and fence, the claimed wait and
+the decision (or the question's resolution); the host continues the run through
+`fencedRunStore(store, fence, effectHost)` with `context.approval` (Go `Input.Approval`) or the
+grant, as ADR-0008 continues a pause. A wake is never the approval or the grant.
+
+**Attention.** Each committed park records one `needs_attention` event `{version, type, id,
+resource, wait, reason, needs, subject?, condition, timeoutAt?, releaseUncertain, at}`: `needs` is
+`approval-decision`, `budget-grant` or `question-answer`, `subject` the asked call or the question
+event. Its `id` is the SHA-256 of the canonical JSON of `{resource, wait}`, the identity a notifier
+deduplicates by. The store records it and never sends it; `recordDelivery` keeps the host's
+attempts apart from it, and a failed attempt changes no wait.
+
+**The report.** `waitReport(store, resource, now)` (Go `WaitReportOf`) reads `exportWaits` and
+lists, per wait in park order, the park (owner, epoch, subject, condition, deadline, `clean` or
+`uncertain` release, and a question's content), the winning wake or timeout (evidence id and
+kind), a question's `answer` (actor and answer) or `unanswered` end, and the resume (owner and
+epoch), each with the store's time. It reads retained waits only, so compacting or replacing the
+run's checkpoint changes nothing in it, and an export written out and read back gives the same
+report (`reportFromExport`, Go `ReportFromExport`). Content of a wait whose host `retainUntil` is
+at or before `now` is `{state: expired, digest}`, and a redacted wait's is `{state: redacted,
+digest}`. The report carries no key, fence or decision, and nothing in it resumes a run.

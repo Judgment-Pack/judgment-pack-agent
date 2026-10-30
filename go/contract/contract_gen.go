@@ -296,6 +296,33 @@ var Registry = map[string]func() any{
 	"run-report-v2.json#/$defs/oldSourceTaskStep":   func() any { return new(json.RawMessage) },
 	"run-report-v2.json#/$defs/oldSourcePlanState":  func() any { return new(RunReportV2OldSourcePlanState) },
 	"run-report.json":                               func() any { return new(RunReport) },
+	"run-wait.json":                                 func() any { return new(RunWait) },
+	"run-wait.json#/$defs/identifier":               func() any { return new(string) },
+	"run-wait.json#/$defs/digest":                   func() any { return new(string) },
+	"run-wait.json#/$defs/time":                     func() any { return new(string) },
+	"run-wait.json#/$defs/epoch":                    func() any { return new(string) },
+	"run-wait.json#/$defs/reason":                   func() any { return new(string) },
+	"run-wait.json#/$defs/pending":                  func() any { return new(RunWaitPending) },
+	"run-wait.json#/$defs/pendingApproval":          func() any { return new(RunWaitPendingApproval) },
+	"run-wait.json#/$defs/pendingBudget":            func() any { return new(RunWaitPendingBudget) },
+	"run-wait.json#/$defs/pendingQuestion":          func() any { return new(RunWaitPendingQuestion) },
+	"run-wait.json#/$defs/eventCondition":           func() any { return new(RunWaitEventCondition) },
+	"run-wait.json#/$defs/condition":                func() any { return new(RunWaitCondition) },
+	"run-wait.json#/$defs/checkpointBinding":        func() any { return new(RunWaitCheckpointBinding) },
+	"run-wait.json#/$defs/chatBinding":              func() any { return new(RunWaitChatBinding) },
+	"run-wait.json#/$defs/release":                  func() any { return new(RunWaitRelease) },
+	"run-wait.json#/$defs/actor":                    func() any { return new(RunWaitActor) },
+	"run-wait.json#/$defs/disposition":              func() any { return new(RunWaitDisposition) },
+	"run-wait.json#/$defs/resolution":               func() any { return new(RunWaitResolution) },
+	"run-wait.json#/$defs/wakeEvidence":             func() any { return new(RunWaitWakeEvidence) },
+	"run-wait.json#/$defs/attention":                func() any { return new(RunWaitAttention) },
+	"run-wait.json#/$defs/delivery":                 func() any { return new(RunWaitDelivery) },
+	"run-wait.json#/$defs/content":                  func() any { return new(RunWaitContent) },
+	"run-wait.json#/$defs/reportEntry":              func() any { return new(RunWaitReportEntry) },
+	"run-wait.json#/$defs/report":                   func() any { return new(RunWaitReport) },
+	"run-wait.json#/$defs/export":                   func() any { return new(RunWaitExport) },
+	"run-wait.json#/$defs/refusal":                  func() any { return new(RunWaitRefusal) },
+	"run-wait.json#/$defs/capabilityRefusal":        func() any { return new(RunWaitCapabilityRefusal) },
 	"skill.json":                                    func() any { return new(Skill) },
 	"skill.json#/$defs/name":                        func() any { return new(string) },
 	"skill.json#/$defs/resource":                    func() any { return new(SkillResource) },
@@ -19985,6 +20012,732 @@ func (v *RunReportV2Totals) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunReportV2Totals object.
 func (v RunReportV2Totals) MarshalJSON() ([]byte, error) {
 	type plain RunReportV2Totals
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json. Version 1 durable wait of one run (ADR-0025 decisions 2 and 6, #224 and
+// #228): its run-scoped identity, its reason and the pending decision read from the retained
+// checkpoint or event log, its wake condition (an expected event and/or a wake time), an optional
+// timeout, its continuation identity, the parked checkpoint it binds, the digest of the host's
+// wake key, the provider release evidence, who parked it and when, and what became of it. The
+// store commits the wait and its one needs_attention event, and releases the run's lease, in one
+// transaction. Rules the reader holds that JSON Schema does not state: pending.kind is the reason;
+// a question wait's condition names an event and no wake time, and a question is carried unless
+// the wait is redacted; parked carries no disposition, resolution or resumed; woken and timed-out
+// carry a disposition (timeout exactly for timed-out) and resumed carries a disposition and
+// resumed; a question wait that is woken carries an answered resolution and one that timed out an
+// unanswered one, and no other wait carries a resolution; reconciled only with resumed; release
+// resources are unique; times are the store clock's.
+type RunWait struct {
+	Version       int64                    `json:"version"`
+	Resource      string                   `json:"resource"`
+	Wait          string                   `json:"wait"`
+	Reason        string                   `json:"reason"`
+	Pending       RunWaitPending           `json:"pending"`
+	Condition     RunWaitCondition         `json:"condition"`
+	TimeoutAt     *string                  `json:"timeoutAt,omitzero"`
+	Continuation  string                   `json:"continuation"`
+	Checkpoint    RunWaitCheckpointBinding `json:"checkpoint"`
+	Chat          *RunWaitChatBinding      `json:"chat,omitzero"`
+	WakeKeyDigest string                   `json:"wakeKeyDigest"`
+	Release       []RunWaitRelease         `json:"release"`
+	Parked        RunWaitActor             `json:"parked"`
+	Attention     string                   `json:"attention"`
+	RetainUntil   *string                  `json:"retainUntil,omitzero"`
+	State         string                   `json:"state"`
+	Disposition   *RunWaitDisposition      `json:"disposition,omitzero"`
+	Resolution    *RunWaitResolution       `json:"resolution,omitzero"`
+	Resumed       *RunWaitActor            `json:"resumed,omitzero"`
+	Reconciled    []RunWaitRelease         `json:"reconciled,omitzero"`
+	Redacted      *bool                    `json:"redacted,omitzero"`
+}
+
+var runWaitMembers = []string{"version", "resource", "wait", "reason", "pending", "condition", "timeoutAt", "continuation", "checkpoint", "chat", "wakeKeyDigest", "release", "parked", "attention", "retainUntil", "state", "disposition", "resolution", "resumed", "reconciled", "redacted"}
+
+// UnmarshalJSON decodes a RunWait object and refuses a member the closed schema does not name.
+func (v *RunWait) UnmarshalJSON(data []byte) error {
+	type plain RunWait
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitMembers, true)
+	if err != nil {
+		return errorf("RunWait: %w", err)
+	}
+	*v = RunWait(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWait object.
+func (v RunWait) MarshalJSON() ([]byte, error) {
+	type plain RunWait
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/actor.
+type RunWaitActor struct {
+	Owner string `json:"owner"`
+	Epoch string `json:"epoch"`
+	At    string `json:"at"`
+}
+
+var runWaitActorMembers = []string{"owner", "epoch", "at"}
+
+// UnmarshalJSON decodes a RunWaitActor object and refuses a member the closed schema does not name.
+func (v *RunWaitActor) UnmarshalJSON(data []byte) error {
+	type plain RunWaitActor
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitActorMembers, true)
+	if err != nil {
+		return errorf("RunWaitActor: %w", err)
+	}
+	*v = RunWaitActor(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitActor object.
+func (v RunWaitActor) MarshalJSON() ([]byte, error) {
+	type plain RunWaitActor
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/attention. The one needs_attention event a committed park records.
+// Recorded, never sent: the host delivers it.
+type RunWaitAttention struct {
+	Version          int64            `json:"version"`
+	Type             string           `json:"type"`
+	ID               string           `json:"id"`
+	Resource         string           `json:"resource"`
+	Wait             string           `json:"wait"`
+	Reason           string           `json:"reason"`
+	Needs            string           `json:"needs"`
+	Subject          *string          `json:"subject,omitzero"`
+	Condition        RunWaitCondition `json:"condition"`
+	TimeoutAt        *string          `json:"timeoutAt,omitzero"`
+	ReleaseUncertain bool             `json:"releaseUncertain"`
+	At               string           `json:"at"`
+}
+
+var runWaitAttentionMembers = []string{"version", "type", "id", "resource", "wait", "reason", "needs", "subject", "condition", "timeoutAt", "releaseUncertain", "at"}
+
+// UnmarshalJSON decodes a RunWaitAttention object and refuses a member the closed schema does not name.
+func (v *RunWaitAttention) UnmarshalJSON(data []byte) error {
+	type plain RunWaitAttention
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitAttentionMembers, true)
+	if err != nil {
+		return errorf("RunWaitAttention: %w", err)
+	}
+	*v = RunWaitAttention(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitAttention object.
+func (v RunWaitAttention) MarshalJSON() ([]byte, error) {
+	type plain RunWaitAttention
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/capabilityRefusal. A store that cannot keep the wait guarantee refuses
+// by name. store-unsupported: no wait or lease port. store-lifetime: its waits end with its
+// process. chat-store-unsupported: the chat store is a single-writer legacy adapter.
+type RunWaitCapabilityRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runWaitCapabilityRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunWaitCapabilityRefusal object and refuses a member the closed schema does not name.
+func (v *RunWaitCapabilityRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunWaitCapabilityRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitCapabilityRefusalMembers, true)
+	if err != nil {
+		return errorf("RunWaitCapabilityRefusal: %w", err)
+	}
+	*v = RunWaitCapabilityRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitCapabilityRefusal object.
+func (v RunWaitCapabilityRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunWaitCapabilityRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/chatBinding. A stored chat scope's chat and its revision at park,
+// revalidated through the ChatStore on resume.
+type RunWaitChatBinding struct {
+	ID       string `json:"id"`
+	Revision string `json:"revision"`
+}
+
+var runWaitChatBindingMembers = []string{"id", "revision"}
+
+// UnmarshalJSON decodes a RunWaitChatBinding object and refuses a member the closed schema does not name.
+func (v *RunWaitChatBinding) UnmarshalJSON(data []byte) error {
+	type plain RunWaitChatBinding
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitChatBindingMembers, true)
+	if err != nil {
+		return errorf("RunWaitChatBinding: %w", err)
+	}
+	*v = RunWaitChatBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitChatBinding object.
+func (v RunWaitChatBinding) MarshalJSON() ([]byte, error) {
+	type plain RunWaitChatBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/checkpointBinding. The parked run head: its store revision and the
+// SHA-256 of its checkpoint bytes.
+type RunWaitCheckpointBinding struct {
+	Revision string `json:"revision"`
+	Digest   string `json:"digest"`
+}
+
+var runWaitCheckpointBindingMembers = []string{"revision", "digest"}
+
+// UnmarshalJSON decodes a RunWaitCheckpointBinding object and refuses a member the closed schema does not name.
+func (v *RunWaitCheckpointBinding) UnmarshalJSON(data []byte) error {
+	type plain RunWaitCheckpointBinding
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitCheckpointBindingMembers, true)
+	if err != nil {
+		return errorf("RunWaitCheckpointBinding: %w", err)
+	}
+	*v = RunWaitCheckpointBinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitCheckpointBinding object.
+func (v RunWaitCheckpointBinding) MarshalJSON() ([]byte, error) {
+	type plain RunWaitCheckpointBinding
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/condition. What wakes the wait: an exact event, a wake time, or both,
+// whichever valid wake commits first.
+type RunWaitCondition struct {
+	Event  *RunWaitEventCondition `json:"event,omitzero"`
+	WakeAt *string                `json:"wakeAt,omitzero"`
+}
+
+var runWaitConditionMembers = []string{"event", "wakeAt"}
+
+// UnmarshalJSON decodes a RunWaitCondition object and refuses a member the closed schema does not name.
+func (v *RunWaitCondition) UnmarshalJSON(data []byte) error {
+	type plain RunWaitCondition
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitConditionMembers, true)
+	if err != nil {
+		return errorf("RunWaitCondition: %w", err)
+	}
+	*v = RunWaitCondition(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitCondition object.
+func (v RunWaitCondition) MarshalJSON() ([]byte, error) {
+	type plain RunWaitCondition
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/content. Retained content in a report: available with its value, or
+// explicitly unavailable with only its digest.
+type RunWaitContent struct {
+	State    string         `json:"state"`
+	Digest   string         `json:"digest"`
+	Question *Question      `json:"question,omitzero"`
+	Answer   *QuestionDraft `json:"answer,omitzero"`
+}
+
+var runWaitContentMembers = []string{"state", "digest", "question", "answer"}
+
+// UnmarshalJSON decodes a RunWaitContent object and refuses a member the closed schema does not name.
+func (v *RunWaitContent) UnmarshalJSON(data []byte) error {
+	type plain RunWaitContent
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitContentMembers, true)
+	if err != nil {
+		return errorf("RunWaitContent: %w", err)
+	}
+	*v = RunWaitContent(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitContent object.
+func (v RunWaitContent) MarshalJSON() ([]byte, error) {
+	type plain RunWaitContent
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/delivery. A host's delivery attempt of an attention event, kept apart
+// from the event: a repeat creates no event and a failure rolls back no park.
+type RunWaitDelivery struct {
+	Version   int64  `json:"version"`
+	Attention string `json:"attention"`
+	Delivery  string `json:"delivery"`
+	Outcome   string `json:"outcome"`
+	At        string `json:"at"`
+}
+
+var runWaitDeliveryMembers = []string{"version", "attention", "delivery", "outcome", "at"}
+
+// UnmarshalJSON decodes a RunWaitDelivery object and refuses a member the closed schema does not name.
+func (v *RunWaitDelivery) UnmarshalJSON(data []byte) error {
+	type plain RunWaitDelivery
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitDeliveryMembers, true)
+	if err != nil {
+		return errorf("RunWaitDelivery: %w", err)
+	}
+	*v = RunWaitDelivery(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitDelivery object.
+func (v RunWaitDelivery) MarshalJSON() ([]byte, error) {
+	type plain RunWaitDelivery
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/disposition. The wake that won: retained, returned to a duplicate
+// delivery, and never replaced.
+type RunWaitDisposition struct {
+	Evidence string `json:"evidence"`
+	Kind     string `json:"kind"`
+	At       string `json:"at"`
+	Digest   string `json:"digest"`
+}
+
+var runWaitDispositionMembers = []string{"evidence", "kind", "at", "digest"}
+
+// UnmarshalJSON decodes a RunWaitDisposition object and refuses a member the closed schema does not name.
+func (v *RunWaitDisposition) UnmarshalJSON(data []byte) error {
+	type plain RunWaitDisposition
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitDispositionMembers, true)
+	if err != nil {
+		return errorf("RunWaitDisposition: %w", err)
+	}
+	*v = RunWaitDisposition(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitDisposition object.
+func (v RunWaitDisposition) MarshalJSON() ([]byte, error) {
+	type plain RunWaitDisposition
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/eventCondition. An exact expected host event: its kind and subject.
+type RunWaitEventCondition struct {
+	Kind    string `json:"kind"`
+	Subject string `json:"subject"`
+}
+
+var runWaitEventConditionMembers = []string{"kind", "subject"}
+
+// UnmarshalJSON decodes a RunWaitEventCondition object and refuses a member the closed schema does not name.
+func (v *RunWaitEventCondition) UnmarshalJSON(data []byte) error {
+	type plain RunWaitEventCondition
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitEventConditionMembers, true)
+	if err != nil {
+		return errorf("RunWaitEventCondition: %w", err)
+	}
+	*v = RunWaitEventCondition(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitEventCondition object.
+func (v RunWaitEventCondition) MarshalJSON() ([]byte, error) {
+	type plain RunWaitEventCondition
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/export. The retained wait records of one run, exactly as stored: the
+// source of its report.
+type RunWaitExport struct {
+	Version    int64              `json:"version"`
+	Resource   string             `json:"resource"`
+	Waits      []RunWait          `json:"waits"`
+	Attention  []RunWaitAttention `json:"attention"`
+	Deliveries []RunWaitDelivery  `json:"deliveries"`
+}
+
+var runWaitExportMembers = []string{"version", "resource", "waits", "attention", "deliveries"}
+
+// UnmarshalJSON decodes a RunWaitExport object and refuses a member the closed schema does not name.
+func (v *RunWaitExport) UnmarshalJSON(data []byte) error {
+	type plain RunWaitExport
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitExportMembers, true)
+	if err != nil {
+		return errorf("RunWaitExport: %w", err)
+	}
+	*v = RunWaitExport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitExport object.
+func (v RunWaitExport) MarshalJSON() ([]byte, error) {
+	type plain RunWaitExport
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/pending. The decision the wait is for, read from the retained record,
+// never from the caller: the asked approval's call, the paused allowance, or the retained
+// user_question event and its question.
+//
+// A union: exactly one member is set. An object is decoded by its "kind" member.
+type RunWaitPending struct {
+	// Approval is set where kind is "approval".
+	Approval *RunWaitPendingApproval
+	// Budget is set where kind is "budget".
+	Budget *RunWaitPendingBudget
+	// Question is set where kind is "question".
+	Question *RunWaitPendingQuestion
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunWaitPending) UnmarshalJSON(data []byte) error {
+	*v = RunWaitPending{}
+	kind := jsonKind(data)
+	if kind == "object" {
+		tag, err := memberString(data, "kind")
+		if err != nil {
+			return errorf("RunWaitPending: %w", err)
+		}
+		switch tag {
+		case "approval":
+			v.Approval = new(RunWaitPendingApproval)
+			return json.Unmarshal(data, v.Approval)
+		case "budget":
+			v.Budget = new(RunWaitPendingBudget)
+			return json.Unmarshal(data, v.Budget)
+		case "question":
+			v.Question = new(RunWaitPendingQuestion)
+			return json.Unmarshal(data, v.Question)
+		}
+		return errorf("RunWaitPending: no member has kind %q", tag)
+	}
+	return errorf("RunWaitPending: the value is none of the union's members")
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunWaitPending) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Approval != nil {
+		set = append(set, v.Approval)
+	}
+	if v.Budget != nil {
+		set = append(set, v.Budget)
+	}
+	if v.Question != nil {
+		set = append(set, v.Question)
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunWaitPending: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From run-wait.json#/$defs/pendingApproval. The checkpoint's asked approval: its call id, the
+// wire name and the tool's own name. Its arguments stay in the checkpoint.
+type RunWaitPendingApproval struct {
+	Kind   string `json:"kind"`
+	CallID string `json:"callId"`
+	Name   string `json:"name"`
+	Tool   string `json:"tool"`
+}
+
+var runWaitPendingApprovalMembers = []string{"kind", "callId", "name", "tool"}
+
+// UnmarshalJSON decodes a RunWaitPendingApproval object and refuses a member the closed schema does not name.
+func (v *RunWaitPendingApproval) UnmarshalJSON(data []byte) error {
+	type plain RunWaitPendingApproval
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitPendingApprovalMembers, true)
+	if err != nil {
+		return errorf("RunWaitPendingApproval: %w", err)
+	}
+	*v = RunWaitPendingApproval(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitPendingApproval object.
+func (v RunWaitPendingApproval) MarshalJSON() ([]byte, error) {
+	type plain RunWaitPendingApproval
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/pendingBudget. The paused checkpoint's allowance.
+type RunWaitPendingBudget struct {
+	Kind  string `json:"kind"`
+	Unit  string `json:"unit"`
+	Used  int64  `json:"used"`
+	Limit int64  `json:"limit"`
+}
+
+var runWaitPendingBudgetMembers = []string{"kind", "unit", "used", "limit"}
+
+// UnmarshalJSON decodes a RunWaitPendingBudget object and refuses a member the closed schema does not name.
+func (v *RunWaitPendingBudget) UnmarshalJSON(data []byte) error {
+	type plain RunWaitPendingBudget
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitPendingBudgetMembers, true)
+	if err != nil {
+		return errorf("RunWaitPendingBudget: %w", err)
+	}
+	*v = RunWaitPendingBudget(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitPendingBudget object.
+func (v RunWaitPendingBudget) MarshalJSON() ([]byte, error) {
+	type plain RunWaitPendingBudget
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/pendingQuestion. The retained question with its options and
+// recommendation. A recommendation is never an answer.
+type RunWaitPendingQuestion struct {
+	Kind           string    `json:"kind"`
+	Event          string    `json:"event"`
+	QuestionDigest string    `json:"questionDigest"`
+	Question       *Question `json:"question,omitzero"`
+}
+
+var runWaitPendingQuestionMembers = []string{"kind", "event", "questionDigest", "question"}
+
+// UnmarshalJSON decodes a RunWaitPendingQuestion object and refuses a member the closed schema does not name.
+func (v *RunWaitPendingQuestion) UnmarshalJSON(data []byte) error {
+	type plain RunWaitPendingQuestion
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitPendingQuestionMembers, true)
+	if err != nil {
+		return errorf("RunWaitPendingQuestion: %w", err)
+	}
+	*v = RunWaitPendingQuestion(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitPendingQuestion object.
+func (v RunWaitPendingQuestion) MarshalJSON() ([]byte, error) {
+	type plain RunWaitPendingQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/refusal. A named wait refusal. Nothing changed.
+type RunWaitRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runWaitRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunWaitRefusal object and refuses a member the closed schema does not name.
+func (v *RunWaitRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunWaitRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitRefusalMembers, true)
+	if err != nil {
+		return errorf("RunWaitRefusal: %w", err)
+	}
+	*v = RunWaitRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitRefusal object.
+func (v RunWaitRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunWaitRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/release. One provider resource the run held: released before the park,
+// not held, or uncertain.
+type RunWaitRelease struct {
+	Resource string `json:"resource"`
+	Outcome  string `json:"outcome"`
+}
+
+var runWaitReleaseMembers = []string{"resource", "outcome"}
+
+// UnmarshalJSON decodes a RunWaitRelease object and refuses a member the closed schema does not name.
+func (v *RunWaitRelease) UnmarshalJSON(data []byte) error {
+	type plain RunWaitRelease
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitReleaseMembers, true)
+	if err != nil {
+		return errorf("RunWaitRelease: %w", err)
+	}
+	*v = RunWaitRelease(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitRelease object.
+func (v RunWaitRelease) MarshalJSON() ([]byte, error) {
+	type plain RunWaitRelease
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/report. The park and wake report of one run, read from the retained
+// waits and never from a prompt. It carries no key, fence or decision and grants no resume.
+type RunWaitReport struct {
+	Version  int64                `json:"version"`
+	Resource string               `json:"resource"`
+	Entries  []RunWaitReportEntry `json:"entries"`
+}
+
+var runWaitReportMembers = []string{"version", "resource", "entries"}
+
+// UnmarshalJSON decodes a RunWaitReport object and refuses a member the closed schema does not name.
+func (v *RunWaitReport) UnmarshalJSON(data []byte) error {
+	type plain RunWaitReport
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitReportMembers, true)
+	if err != nil {
+		return errorf("RunWaitReport: %w", err)
+	}
+	*v = RunWaitReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitReport object.
+func (v RunWaitReport) MarshalJSON() ([]byte, error) {
+	type plain RunWaitReport
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/reportEntry. One decision, read from the retained wait: a park with
+// its owner, epoch, condition, deadline and release outcome; a wake or a timeout with its
+// evidence; a question's answer with its actor or its unanswered end; a resume with its owner and
+// epoch.
+type RunWaitReportEntry struct {
+	Wait      string            `json:"wait"`
+	Decision  string            `json:"decision"`
+	Reason    string            `json:"reason"`
+	At        string            `json:"at"`
+	Owner     *string           `json:"owner,omitzero"`
+	Epoch     *string           `json:"epoch,omitzero"`
+	Evidence  *string           `json:"evidence,omitzero"`
+	Wake      *string           `json:"wake,omitzero"`
+	Actor     *string           `json:"actor,omitzero"`
+	Subject   *string           `json:"subject,omitzero"`
+	Condition *RunWaitCondition `json:"condition,omitzero"`
+	TimeoutAt *string           `json:"timeoutAt,omitzero"`
+	Release   *string           `json:"release,omitzero"`
+	Content   *RunWaitContent   `json:"content,omitzero"`
+}
+
+var runWaitReportEntryMembers = []string{"wait", "decision", "reason", "at", "owner", "epoch", "evidence", "wake", "actor", "subject", "condition", "timeoutAt", "release", "content"}
+
+// UnmarshalJSON decodes a RunWaitReportEntry object and refuses a member the closed schema does not name.
+func (v *RunWaitReportEntry) UnmarshalJSON(data []byte) error {
+	type plain RunWaitReportEntry
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitReportEntryMembers, true)
+	if err != nil {
+		return errorf("RunWaitReportEntry: %w", err)
+	}
+	*v = RunWaitReportEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitReportEntry object.
+func (v RunWaitReportEntry) MarshalJSON() ([]byte, error) {
+	type plain RunWaitReportEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/resolution. A question's resolution. answered: a real chosen option or
+// free text, its actor and its digest (the answer itself unless redacted). unanswered: the timeout
+// ended it; nothing is chosen.
+type RunWaitResolution struct {
+	Kind         string         `json:"kind"`
+	At           string         `json:"at"`
+	Actor        *string        `json:"actor,omitzero"`
+	AnswerDigest *string        `json:"answerDigest,omitzero"`
+	Answer       *QuestionDraft `json:"answer,omitzero"`
+}
+
+var runWaitResolutionMembers = []string{"kind", "at", "actor", "answerDigest", "answer"}
+
+// UnmarshalJSON decodes a RunWaitResolution object and refuses a member the closed schema does not name.
+func (v *RunWaitResolution) UnmarshalJSON(data []byte) error {
+	type plain RunWaitResolution
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitResolutionMembers, true)
+	if err != nil {
+		return errorf("RunWaitResolution: %w", err)
+	}
+	*v = RunWaitResolution(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitResolution object.
+func (v RunWaitResolution) MarshalJSON() ([]byte, error) {
+	type plain RunWaitResolution
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/wakeEvidence. Bounded, authenticated, run-bound wake evidence the host
+// delivers. Rules the reader holds that JSON Schema does not state: event exactly for kind event;
+// answer and actor together and only with an event.
+type RunWaitWakeEvidence struct {
+	Version  int64                  `json:"version"`
+	Resource string                 `json:"resource"`
+	Wait     string                 `json:"wait"`
+	Evidence string                 `json:"evidence"`
+	Kind     string                 `json:"kind"`
+	Event    *RunWaitEventCondition `json:"event,omitzero"`
+	Answer   *QuestionDraft         `json:"answer,omitzero"`
+	Actor    *string                `json:"actor,omitzero"`
+	Key      string                 `json:"key"`
+}
+
+var runWaitWakeEvidenceMembers = []string{"version", "resource", "wait", "evidence", "kind", "event", "answer", "actor", "key"}
+
+// UnmarshalJSON decodes a RunWaitWakeEvidence object and refuses a member the closed schema does not name.
+func (v *RunWaitWakeEvidence) UnmarshalJSON(data []byte) error {
+	type plain RunWaitWakeEvidence
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitWakeEvidenceMembers, true)
+	if err != nil {
+		return errorf("RunWaitWakeEvidence: %w", err)
+	}
+	*v = RunWaitWakeEvidence(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitWakeEvidence object.
+func (v RunWaitWakeEvidence) MarshalJSON() ([]byte, error) {
+	type plain RunWaitWakeEvidence
 	return encodeObject(plain(v), nil)
 }
 

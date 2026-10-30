@@ -1,0 +1,772 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-wait.json",
+  "title": "Run wait",
+  "description": "Version 1 durable wait of one run (ADR-0025 decisions 2 and 6, #224 and #228): its run-scoped identity, its reason and the pending decision read from the retained checkpoint or event log, its wake condition (an expected event and/or a wake time), an optional timeout, its continuation identity, the parked checkpoint it binds, the digest of the host's wake key, the provider release evidence, who parked it and when, and what became of it. The store commits the wait and its one needs_attention event, and releases the run's lease, in one transaction. Rules the reader holds that JSON Schema does not state: pending.kind is the reason; a question wait's condition names an event and no wake time, and a question is carried unless the wait is redacted; parked carries no disposition, resolution or resumed; woken and timed-out carry a disposition (timeout exactly for timed-out) and resumed carries a disposition and resumed; a question wait that is woken carries an answered resolution and one that timed out an unanswered one, and no other wait carries a resolution; reconciled only with resumed; release resources are unique; times are the store clock's.",
+  "type": "object",
+  "required": [
+    "version",
+    "resource",
+    "wait",
+    "reason",
+    "pending",
+    "condition",
+    "continuation",
+    "checkpoint",
+    "wakeKeyDigest",
+    "release",
+    "parked",
+    "attention",
+    "state"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "resource": {
+      "$ref": "#/$defs/identifier",
+      "description": "The run id: the resource the run's lease and checkpoint are keyed by."
+    },
+    "wait": {
+      "$ref": "#/$defs/identifier",
+      "description": "The wait's identity, unique within its run."
+    },
+    "reason": {
+      "$ref": "#/$defs/reason"
+    },
+    "pending": {
+      "$ref": "#/$defs/pending"
+    },
+    "condition": {
+      "$ref": "#/$defs/condition"
+    },
+    "timeoutAt": {
+      "$ref": "#/$defs/time",
+      "description": "When the wait ends without its event, by the store clock. A question that times out is unanswered; the recommended option is never chosen."
+    },
+    "continuation": {
+      "$ref": "#/$defs/identifier",
+      "description": "The continuation identity the host resumes; claimed once."
+    },
+    "checkpoint": {
+      "$ref": "#/$defs/checkpointBinding"
+    },
+    "chat": {
+      "$ref": "#/$defs/chatBinding"
+    },
+    "wakeKeyDigest": {
+      "$ref": "#/$defs/digest",
+      "description": "The SHA-256 of the host's wake key. The key itself is never stored, reported or exported; a wake presents it."
+    },
+    "release": {
+      "description": "The host's evidence about each provider resource the paused run held: released, not-held or uncertain. Any uncertain entry means the park is not clean: it is retained, reported as an unknown outcome, and resume requires its reconciliation.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/release"
+      }
+    },
+    "parked": {
+      "$ref": "#/$defs/actor",
+      "description": "The lease owner and epoch that parked the wait, at the store's time."
+    },
+    "attention": {
+      "$ref": "#/$defs/digest",
+      "description": "The identity of the wait's one needs_attention event."
+    },
+    "retainUntil": {
+      "$ref": "#/$defs/time",
+      "description": "Optional host retention: from this time the question and answer content is reported as expired."
+    },
+    "state": {
+      "description": "parked: waiting. woken: an event or time wake won. timed-out: the timeout won. resumed: the continuation was claimed under a new lease.",
+      "enum": [
+        "parked",
+        "woken",
+        "timed-out",
+        "resumed"
+      ]
+    },
+    "disposition": {
+      "$ref": "#/$defs/disposition"
+    },
+    "resolution": {
+      "$ref": "#/$defs/resolution"
+    },
+    "resumed": {
+      "$ref": "#/$defs/actor",
+      "description": "The lease owner and epoch that claimed the continuation, at the store's time."
+    },
+    "reconciled": {
+      "description": "The host's reconciliation of uncertain release evidence, recorded when the continuation is claimed.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/$defs/release"
+      }
+    },
+    "redacted": {
+      "description": "The question and answer content was removed; its digests and every identity are kept.",
+      "const": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "description": "An opaque storage identifier: 1 to 256 UTF-8 bytes, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "time": {
+      "description": "A store-clock time: UTC with exactly millisecond precision.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "epoch": {
+      "description": "A lease epoch (run-lease.json#/$defs/epoch).",
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,17}$"
+    },
+    "reason": {
+      "description": "Why the run waits. approval: an act call's approval is asked (ADR-0008). budget: the run paused at its request allowance. question: ask_user put a question to the person. They stay distinct: a wake is never an approval, a grant or an answer of another reason.",
+      "enum": [
+        "approval",
+        "budget",
+        "question"
+      ]
+    },
+    "pending": {
+      "description": "The decision the wait is for, read from the retained record, never from the caller: the asked approval's call, the paused allowance, or the retained user_question event and its question.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/pendingApproval"
+        },
+        {
+          "$ref": "#/$defs/pendingBudget"
+        },
+        {
+          "$ref": "#/$defs/pendingQuestion"
+        }
+      ]
+    },
+    "pendingApproval": {
+      "type": "object",
+      "description": "The checkpoint's asked approval: its call id, the wire name and the tool's own name. Its arguments stay in the checkpoint.",
+      "required": [
+        "kind",
+        "callId",
+        "name",
+        "tool"
+      ],
+      "properties": {
+        "kind": {
+          "const": "approval"
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "additionalProperties": false
+    },
+    "pendingBudget": {
+      "type": "object",
+      "description": "The paused checkpoint's allowance.",
+      "required": [
+        "kind",
+        "unit",
+        "used",
+        "limit"
+      ],
+      "properties": {
+        "kind": {
+          "const": "budget"
+        },
+        "unit": {
+          "enum": [
+            "model-requests",
+            "provider-managed"
+          ]
+        },
+        "used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "pendingQuestion": {
+      "type": "object",
+      "description": "The retained question with its options and recommendation. A recommendation is never an answer.",
+      "required": [
+        "kind",
+        "event",
+        "questionDigest"
+      ],
+      "properties": {
+        "kind": {
+          "const": "question"
+        },
+        "event": {
+          "$ref": "#/$defs/identifier",
+          "description": "The retained user_question event's id."
+        },
+        "questionDigest": {
+          "$ref": "#/$defs/digest",
+          "description": "The SHA-256 of the question's canonical JSON."
+        },
+        "question": {
+          "$ref": "question.json"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventCondition": {
+      "type": "object",
+      "description": "An exact expected host event: its kind and subject.",
+      "required": [
+        "kind",
+        "subject"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/identifier"
+        },
+        "subject": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "condition": {
+      "description": "What wakes the wait: an exact event, a wake time, or both, whichever valid wake commits first.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/eventCondition"
+        },
+        "wakeAt": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "checkpointBinding": {
+      "type": "object",
+      "description": "The parked run head: its store revision and the SHA-256 of its checkpoint bytes.",
+      "required": [
+        "revision",
+        "digest"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/identifier"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "chatBinding": {
+      "type": "object",
+      "description": "A stored chat scope's chat and its revision at park, revalidated through the ChatStore on resume.",
+      "required": [
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "revision": {
+          "$ref": "#/$defs/identifier"
+        }
+      },
+      "additionalProperties": false
+    },
+    "release": {
+      "type": "object",
+      "description": "One provider resource the run held: released before the park, not held, or uncertain.",
+      "required": [
+        "resource",
+        "outcome"
+      ],
+      "properties": {
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "outcome": {
+          "enum": [
+            "released",
+            "not-held",
+            "uncertain"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "owner",
+        "epoch",
+        "at"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/identifier"
+        },
+        "epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "disposition": {
+      "type": "object",
+      "description": "The wake that won: retained, returned to a duplicate delivery, and never replaced.",
+      "required": [
+        "evidence",
+        "kind",
+        "at",
+        "digest"
+      ],
+      "properties": {
+        "evidence": {
+          "$ref": "#/$defs/identifier"
+        },
+        "kind": {
+          "enum": [
+            "event",
+            "time",
+            "timeout"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest",
+          "description": "The SHA-256 of the evidence's canonical JSON without its key; a duplicate is the same evidence id with this digest."
+        }
+      },
+      "additionalProperties": false
+    },
+    "resolution": {
+      "type": "object",
+      "description": "A question's resolution. answered: a real chosen option or free text, its actor and its digest (the answer itself unless redacted). unanswered: the timeout ended it; nothing is chosen.",
+      "required": [
+        "kind",
+        "at"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "answered",
+            "unanswered"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier",
+          "description": "The host-attested person who answered."
+        },
+        "answerDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "answer": {
+          "$ref": "question.json#/$defs/draft"
+        }
+      },
+      "additionalProperties": false
+    },
+    "wakeEvidence": {
+      "type": "object",
+      "description": "Bounded, authenticated, run-bound wake evidence the host delivers. Rules the reader holds that JSON Schema does not state: event exactly for kind event; answer and actor together and only with an event.",
+      "required": [
+        "version",
+        "resource",
+        "wait",
+        "evidence",
+        "kind",
+        "key"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "wait": {
+          "$ref": "#/$defs/identifier"
+        },
+        "evidence": {
+          "$ref": "#/$defs/identifier",
+          "description": "The host's identity of this evidence; a repeat with the same content is a duplicate."
+        },
+        "kind": {
+          "enum": [
+            "event",
+            "time",
+            "timeout"
+          ]
+        },
+        "event": {
+          "$ref": "#/$defs/eventCondition"
+        },
+        "answer": {
+          "$ref": "question.json#/$defs/draft"
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier"
+        },
+        "key": {
+          "description": "The host's wake key for this wait, checked against wakeKeyDigest. A model-supplied event name, job id or time is not evidence.",
+          "type": "string",
+          "pattern": "^[!-~]{16,512}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attention": {
+      "type": "object",
+      "description": "The one needs_attention event a committed park records. Recorded, never sent: the host delivers it.",
+      "required": [
+        "version",
+        "type",
+        "id",
+        "resource",
+        "wait",
+        "reason",
+        "needs",
+        "condition",
+        "releaseUncertain",
+        "at"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "type": {
+          "const": "needs_attention"
+        },
+        "id": {
+          "$ref": "#/$defs/digest",
+          "description": "The SHA-256 of the canonical JSON of {resource, wait}: the identity a notifier deduplicates by."
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "wait": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        },
+        "needs": {
+          "description": "The bounded action that lets the run proceed.",
+          "enum": [
+            "approval-decision",
+            "budget-grant",
+            "question-answer"
+          ]
+        },
+        "subject": {
+          "$ref": "#/$defs/identifier",
+          "description": "The call id or the question event id the action is about."
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "timeoutAt": {
+          "$ref": "#/$defs/time"
+        },
+        "releaseUncertain": {
+          "type": "boolean"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "delivery": {
+      "type": "object",
+      "description": "A host's delivery attempt of an attention event, kept apart from the event: a repeat creates no event and a failure rolls back no park.",
+      "required": [
+        "version",
+        "attention",
+        "delivery",
+        "outcome",
+        "at"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "attention": {
+          "$ref": "#/$defs/digest"
+        },
+        "delivery": {
+          "$ref": "#/$defs/identifier"
+        },
+        "outcome": {
+          "enum": [
+            "sent",
+            "failed"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "description": "Retained content in a report: available with its value, or explicitly unavailable with only its digest.",
+      "required": [
+        "state",
+        "digest"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "available",
+            "redacted",
+            "expired"
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "question": {
+          "$ref": "question.json"
+        },
+        "answer": {
+          "$ref": "question.json#/$defs/draft"
+        }
+      },
+      "additionalProperties": false
+    },
+    "reportEntry": {
+      "type": "object",
+      "description": "One decision, read from the retained wait: a park with its owner, epoch, condition, deadline and release outcome; a wake or a timeout with its evidence; a question's answer with its actor or its unanswered end; a resume with its owner and epoch.",
+      "required": [
+        "wait",
+        "decision",
+        "reason",
+        "at"
+      ],
+      "properties": {
+        "wait": {
+          "$ref": "#/$defs/identifier"
+        },
+        "decision": {
+          "enum": [
+            "park",
+            "wake",
+            "timeout",
+            "answer",
+            "unanswered",
+            "resume"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/reason"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "owner": {
+          "$ref": "#/$defs/identifier"
+        },
+        "epoch": {
+          "$ref": "#/$defs/epoch"
+        },
+        "evidence": {
+          "$ref": "#/$defs/identifier"
+        },
+        "wake": {
+          "enum": [
+            "event",
+            "time",
+            "timeout"
+          ]
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier"
+        },
+        "subject": {
+          "$ref": "#/$defs/identifier"
+        },
+        "condition": {
+          "$ref": "#/$defs/condition"
+        },
+        "timeoutAt": {
+          "$ref": "#/$defs/time"
+        },
+        "release": {
+          "enum": [
+            "clean",
+            "uncertain"
+          ]
+        },
+        "content": {
+          "$ref": "#/$defs/content"
+        }
+      },
+      "additionalProperties": false
+    },
+    "report": {
+      "type": "object",
+      "description": "The park and wake report of one run, read from the retained waits and never from a prompt. It carries no key, fence or decision and grants no resume.",
+      "required": [
+        "version",
+        "resource",
+        "entries"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/reportEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "export": {
+      "type": "object",
+      "description": "The retained wait records of one run, exactly as stored: the source of its report.",
+      "required": [
+        "version",
+        "resource",
+        "waits",
+        "attention",
+        "deliveries"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "waits": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#"
+          }
+        },
+        "attention": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/attention"
+          }
+        },
+        "deliveries": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "$ref": "#/$defs/delivery"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "A named wait refusal. Nothing changed.",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "invalid",
+            "nothing-pending",
+            "wait-pending",
+            "conflict",
+            "checkpoint-changed",
+            "no-wait",
+            "unauthenticated",
+            "mismatch",
+            "not-due",
+            "stale",
+            "unacknowledged",
+            "already-resumed",
+            "decision-required",
+            "timed-out",
+            "release-uncertain",
+            "chat-changed"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityRefusal": {
+      "type": "object",
+      "description": "A store that cannot keep the wait guarantee refuses by name. store-unsupported: no wait or lease port. store-lifetime: its waits end with its process. chat-store-unsupported: the chat store is a single-writer legacy adapter.",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "store-unsupported",
+            "store-lifetime",
+            "chat-store-unsupported"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

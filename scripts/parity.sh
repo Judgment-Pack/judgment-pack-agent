@@ -379,6 +379,8 @@ $pkg/receiptQuarantine.test.ts
 $pkg/storage/lease.ts
 $pkg/storage/lease.test.ts
 $pkg/storage/delegateChatScope.test.ts
+$pkg/storage/wait.ts
+$pkg/storage/wait.test.ts
 EOF
 }
 

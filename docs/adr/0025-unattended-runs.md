@@ -4,7 +4,9 @@ Status: accepted for v0.11.0. Issue #206, including its job, goal and question
 additions. This is a design decision and implementation split; it does not claim
 these facilities exist in v0.11.0. It builds on ADR-0008, ADR-0018, ADR-0019 and
 ADR-0024. Decision 1 (one driver and fencing) is built in v0.12.0 (#223, #253; see
-its amendment); decisions 2–8 (#224–#230) are not built and are assigned to v0.13.0.
+its amendment). Decision 2 (durable waits and questions, #224) and decision 6 (attention
+and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3, 4, 5, 7
+and 8 (#225–#227, #229, #230) are not built and are assigned to v0.13.0.
 
 ## Boundary and compatibility
 
@@ -109,6 +111,69 @@ and answer time. A timeout ends the question **unanswered**. It never chooses th
 recommended option, manufactures consent or treats a request for help as an
 answer. Question answers remain distinct from tool approval. Reports and exports
 retain both the question and its resolution; retention/redaction remains explicit.
+
+### Amendment (#224, #228): waits, attention and the report as built
+
+Status: built for v0.13.0 (#224, #228). The records are `contract/schemas/run-wait.json`
+(version 1) with handwritten shared vectors in `contract/vectors/wait/`; TypeScript is
+`packages/harness/storage/wait.ts`, Go is `go/context/run_wait.go`. The host-facing contract is in
+`docs/design/storage.md` (Durable waits, attention and the report).
+
+The wait is a record of its own, kept by the store beside the run: the run's checkpoint and event
+formats are unchanged, and the park writes nothing into them. The wait's members are its run-scoped
+identity, `reason` (`approval`, `budget` or `question`), the `pending` decision read from the
+retained record (the checkpoint's asked approval, its paused allowance, or the retained
+`user_question` event with its question, options and recommendation; never from the caller), the
+`condition` (an exact `{kind, subject}` event, a `wakeAt` time, or both), an optional `timeoutAt`,
+the `continuation` identity, the parked head (`{revision, digest}` of its checkpoint bytes), an
+optional chat binding, the digest of the host's wake key, the host's provider `release` evidence
+(`released`, `not-held` or `uncertain`), `parked` (owner, epoch and store time), the `attention`
+event identity and `state` (`parked`, `woken`, `timed-out`, `resumed`). A question waits for an
+event and has no wake time.
+
+**Park.** One store transaction checks the fence and the run head, refuses a second parked wait,
+commits the wait and its one `needs_attention` event, and releases the lease. The paused checkpoint
+was committed under the same fence before; the park binds it by revision and digest rather than
+writing it again. A repeat of the same park returns it; uncertain release evidence is retained and
+the park is not clean: resuming requires the host's reconciliation of every uncertain entry.
+
+**Wake.** The host presents bounded evidence `{resource, wait, evidence, kind, event?, answer?,
+actor?, key}`; the key's SHA-256 must be the wait's, so a model-supplied name or another run's key
+is refused (`unauthenticated`). Time and timeout wakes are decided by the store clock, and equal
+time is due. The first valid wake commits the disposition `{evidence, kind, at, digest}` (the digest
+is the evidence's without its key); a duplicate returns it, the same evidence id with other content
+is `conflict`, any later wake is `stale`, and none of them changes anything. A question's event wake
+carries a real answer (an offered option or non-blank text) and its host-attested actor; its timeout
+records `unanswered` and never the recommended option. Approval and budget wakes carry no answer:
+a wake is never an approval or a grant.
+
+**Resume.** The host names the evidence whose acknowledgement it holds; a wake the store does not
+hold is `unacknowledged` and is reconciled by reading the wait, never by dispatching. The package
+requires the person's decision for the asked call (approval) or a grant from the paused limit
+(budget) before anything else (`decision-required`), takes a new lease against the parked revision
+(#223), and the store claims the continuation once under that fence after revalidating the head
+(`checkpoint-changed`), the release reconciliation (`release-uncertain`) and, for an approval or
+budget wait, that it did not time out (`timed-out`). A second claim is `already-resumed`. A chat
+binding is revalidated through the ChatStore (`chat-changed`); Go has no ChatStore and refuses a
+chat-bound resume as `chat-store-unsupported`. The host then continues the run through the fenced
+store with the returned decision, as ADR-0008 continues a pause.
+
+**Attention and the report.** The `needs_attention` event names the wait, its reason, the action
+needed (`approval-decision`, `budget-grant`, `question-answer`) with its subject, the condition and
+deadline, and whether release is uncertain; its identity is the SHA-256 of `{resource, wait}`. The
+store records it and never sends it; a host's delivery attempts are separate records, a repeat
+returns the first and a failed one rolls back nothing. The report (`$defs/report`) lists each park,
+wake, timeout, answer or unanswered end and resume with its owner, epoch, evidence, actor and store
+time, read from the retained waits (`$defs/export`) and never from a prompt; content past the host's
+`retainUntil` is `expired` and a redacted wait's content is `redacted`, each with its digest kept.
+The report carries no key, fence or decision and grants no resume.
+
+Refusals are `invalid`, `nothing-pending`, `wait-pending`, `conflict`, `checkpoint-changed`,
+`no-wait`, `unauthenticated`, `mismatch`, `not-due`, `stale`, `unacknowledged`, `already-resumed`,
+`decision-required`, `timed-out`, `release-uncertain` and `chat-changed`; capability refusals are
+`store-unsupported` (no wait or lease port), `store-lifetime` (waits or leases end with the
+store's process) and `chat-store-unsupported`. Deadlines on runs and approvals (decision 3) and the
+re-authorization, retired-model, changed-reference and deadline attention reasons remain #225–#227.
 
 ## 3. Deadlines and approval expiry
 

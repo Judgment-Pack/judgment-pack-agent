@@ -238,6 +238,16 @@ record store or deletion job.
 reference host or one certified by `CertifyEffectHost`), and `CheckRunStoreLeaseConformance` and
 `CheckEffectHostConformance` for a host store kind and an effect host. See `docs/design/storage.md`.
 
+### Durable waits, attention and the report (#224, #228)
+
+`context/run_wait.go` is the Go twin of the package's wait contract: the `WaitStore` port on
+`MemoryRunStore` (process lifetime), `ParkRun` (the pending decision read from the retained
+checkpoint or event log; the wait and its one `needs_attention` event committed and the lease
+released in one transaction), `WakeRun` (authenticated, run-bound evidence; the first valid wake
+wins), `ResumeParked` (the person's decision, a new lease against the parked revision, one claim),
+`ExportWaits`, `ReportFromExport` and `WaitReportOf`, and the readers of every record. Go has no
+ChatStore: a chat-bound wait is refused as `chat-store-unsupported`. See `docs/design/storage.md`.
+
 ### Proposal edit host binding
 
 Children and the critic never edit. Hosts supply accepted documents or the first

@@ -1,0 +1,298 @@
+{
+  "description": "Handwritten needs_attention events, one for each wait of wait.json in order (the attention each park records), and two delivery attempts of the first, a failed one and a sent one, kept apart from the event.",
+  "schema": "run-wait.json#/$defs/attention",
+  "items": [
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+      "resource": "run-approval",
+      "wait": "wait-1",
+      "reason": "approval",
+      "needs": "approval-decision",
+      "subject": "call-7",
+      "condition": {
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-7"
+        },
+        "wakeAt": "2026-01-02T09:00:00.000Z"
+      },
+      "timeoutAt": "2026-01-08T00:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:7d297a891423164fe79449d42329a7999df0f8c18f046dc80a8f31ac9034c551",
+      "resource": "run-budget",
+      "wait": "wait-1",
+      "reason": "budget",
+      "needs": "budget-grant",
+      "condition": {
+        "wakeAt": "2026-01-01T06:00:00.000Z"
+      },
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+      "resource": "run-question",
+      "wait": "wait-2",
+      "reason": "question",
+      "needs": "question-answer",
+      "subject": "question-event-4",
+      "condition": {
+        "event": {
+          "kind": "question-answer",
+          "subject": "question-event-4"
+        }
+      },
+      "timeoutAt": "2026-01-03T00:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:7ff3ceb71af0d81f568163a177ee7af402dbe31a3391a0ee25bbba0fa95c0038",
+      "resource": "run-silent",
+      "wait": "wait-1",
+      "reason": "question",
+      "needs": "question-answer",
+      "subject": "question-event-1",
+      "condition": {
+        "event": {
+          "kind": "question-answer",
+          "subject": "question-event-1"
+        }
+      },
+      "timeoutAt": "2026-01-02T00:00:00.000Z",
+      "releaseUncertain": true,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:d728bdd860b51769f04bd344a243df03cf4e022b209f82f6cc29d1c5677c7f6f",
+      "resource": "run-redacted",
+      "wait": "wait-1",
+      "reason": "question",
+      "needs": "question-answer",
+      "subject": "question-event-8",
+      "condition": {
+        "event": {
+          "kind": "question-answer",
+          "subject": "question-event-8"
+        }
+      },
+      "releaseUncertain": true,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:30f7e43c3fc60af9bc02621f8a73230dfbd6b394bc900edb04b9b930c74628d4",
+      "resource": "run-codex",
+      "wait": "wait-9",
+      "reason": "budget",
+      "needs": "budget-grant",
+      "condition": {
+        "event": {
+          "kind": "budget-grant",
+          "subject": "run-codex"
+        }
+      },
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "deliveries": [
+    {
+      "version": 1,
+      "attention": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+      "delivery": "mail-1",
+      "outcome": "failed",
+      "at": "2026-01-01T00:00:01.000Z"
+    },
+    {
+      "version": 1,
+      "attention": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+      "delivery": "mail-2",
+      "outcome": "sent",
+      "at": "2026-01-01T00:05:00.000Z"
+    }
+  ],
+  "refused": [
+    {
+      "problem": "type is needs_attention",
+      "event": {
+        "version": 1,
+        "type": "attention",
+        "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "approval-decision",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "needs names no other action",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "poll",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a delivery is not part of the event",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "approval-decision",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z",
+        "delivered": true
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "needs follows the reason",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "budget-grant",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "the id is the digest of resource and wait",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:d20e2456ec3dd6b9fd8d2316cd2731cbc15cdcc3495d0547f329259e6e63625e",
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "needs": "approval-decision",
+        "subject": "call-7",
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a budget attention names no subject",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:7d297a891423164fe79449d42329a7999df0f8c18f046dc80a8f31ac9034c551",
+        "resource": "run-budget",
+        "wait": "wait-1",
+        "reason": "budget",
+        "needs": "budget-grant",
+        "condition": {
+          "wakeAt": "2026-01-01T06:00:00.000Z"
+        },
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z",
+        "subject": "run-budget"
+      }
+    }
+  ],
+  "deliveriesRefused": [
+    {
+      "problem": "an unknown outcome",
+      "delivery": {
+        "version": 1,
+        "attention": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "delivery": "mail-1",
+        "outcome": "bounced",
+        "at": "2026-01-01T00:00:01.000Z"
+      }
+    },
+    {
+      "problem": "a delivery time without milliseconds",
+      "delivery": {
+        "version": 1,
+        "attention": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "delivery": "mail-1",
+        "outcome": "failed",
+        "at": "2026-01-01T00:00:01Z"
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/wait.ts (readRunWait, readWakeEvidence, readAttentionEvent, reportFromExport)"
+    ]
+  }
+}
