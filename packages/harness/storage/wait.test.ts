@@ -8,7 +8,9 @@ import {questionTool} from '../questions'
 import {MemoryRunStore,checkpointCallbackRunStore,type RunStore} from './run'
 import {MemoryChatStore} from './chat'
 import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseFence,type LeaseLifetime} from './lease'
-import {WAIT_CAPABILITY_REASONS,WAIT_REFUSAL_REASONS,WaitCapabilityRefused,WaitRefused,admitWaits,answerDigest,attentionFor,attentionId,checkpointBytesDigest,exportWaits,parkRun,questionDigest,readAttentionDelivery,readAttentionEvent,readRunWait,readWaitCapabilityRefusal,readWaitExport,readWaitRefusal,readWaitReport,readWakeEvidence,reportFromExport,resumeParked,wakeEvidenceDigest,wakeKeyDigest,waitReport,wakeRun,type WaitLifetime,type WakeEvidence} from './wait'
+import {approvalBinding,pinsFrom,revalidateResume} from './resume'
+import {readExecution} from '../execution/state'
+import {WAIT_CAPABILITY_REASONS,WAIT_REFUSAL_REASONS,WaitCapabilityRefused,WaitRefused,admitWaits,type WaitClaim,answerDigest,attentionFor,attentionId,checkpointBytesDigest,exportWaits,parkRun,questionDigest,readAttentionDelivery,readAttentionEvent,readRunWait,readWaitCapabilityRefusal,readWaitExport,readWaitRefusal,readWaitReport,readWakeEvidence,reportFromExport,resumeParked,wakeEvidenceDigest,wakeKeyDigest,waitReport,wakeRun,type WaitLifetime,type WakeEvidence} from './wait'
 import waitVector from '../../../contract/vectors/wait/wait.json'
 import evidenceVector from '../../../contract/vectors/wait/evidence.json'
 import attentionVector from '../../../contract/vectors/wait/attention.json'
@@ -88,6 +90,17 @@ async function drive(store:RunStore,id:string,tools:HostTool[],call:()=>Promise<
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
 }
 const evidenceFor=(over:Partial<WakeEvidence>&Pick<WakeEvidence,'evidence'|'kind'>):WakeEvidence=>({version:1,resource:'run-approval',wait:'wait-1',key:KEY,...over})
+/** The model the host admitted the test runs with, and an approval TTL long enough not to matter here (#225). */
+const MODEL={provider:'openai',model:'fixture'},TTL=7*24*HOUR
+const park=(input:Omit<Parameters<typeof parkRun>[0],'model'>&{model?:Parameters<typeof parkRun>[0]['model']})=>parkRun({model:MODEL,limits:{approvalTtlMs:TTL},...input})
+/** #227: the host's current evidence when nothing pinned changed: the wait's own pins, its model available. */
+async function unchanged(store:RunStore,resource:string,wait:string){
+ const held=await (store as MemoryRunStore).readWait(resource,wait)
+ if(!held)return undefined
+ const {model,...rest}=held.pins
+ return {version:1,resource,wait,...rest,model:{...model,status:'available'},policy:{digest:held.pins.policy}}
+}
+const resume=async(input:Parameters<typeof resumeParked>[0])=>resumeParked({...input,current:input.current??await unchanged(input.store,input.resource,input.wait)})
 
 describe('a durable approval wait across a real store restart (#224)',()=>{
  it('parks atomically with no held provider, wakes once, resumes under a new lease and runs the call once',async()=>{
@@ -100,9 +113,9 @@ describe('a durable approval wait across a real store restart (#224)',()=>{
   // No provider is held open for the person: the one request has returned and the engine has ended.
   expect(first.state).toEqual({requests:1,inFlight:0});expect(execute).not.toHaveBeenCalled()
   const paused=(await store.load('run-approval'))!,before=(await store.readEvents('run-approval',null,100)).items.map(e=>decode(e.bytes))
-  const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:asked.callId},wakeAt:iso(T0+6*HOUR)},timeoutAt:iso(T0+48*HOUR),wakeKeyDigest:wakeKeyDigest(KEY),release:[{resource:'provider-account',outcome:'released'}]})
+  const parked=await park({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:asked.callId},wakeAt:iso(T0+6*HOUR)},timeoutAt:iso(T0+48*HOUR),wakeKeyDigest:wakeKeyDigest(KEY),release:[{resource:'provider-account',outcome:'released'}]})
   expect(parked.wait).toMatchObject({state:'parked',reason:'approval',pending:{kind:'approval',callId:asked.callId,name:'tracker__create_issue',tool:'create_issue'},parked:{owner:'worker-a',epoch:'1',at:iso(T0)},checkpoint:{revision:paused.revision,digest:checkpointBytesDigest(paused.checkpoint!)}})
-  expect(parked.attention).toEqual({version:1,type:'needs_attention',id:attentionId('run-approval','wait-1'),resource:'run-approval',wait:'wait-1',reason:'approval',needs:'approval-decision',subject:asked.callId,condition:{event:{kind:'approval-decision',subject:asked.callId},wakeAt:iso(T0+6*HOUR)},timeoutAt:iso(T0+48*HOUR),releaseUncertain:false,at:iso(T0)})
+  expect(parked.attention).toEqual({version:1,type:'needs_attention',id:attentionId('run-approval','wait-1'),resource:'run-approval',wait:'wait-1',reason:'approval',needs:'approval-decision',subject:asked.callId,condition:{event:{kind:'approval-decision',subject:asked.callId},wakeAt:iso(T0+6*HOUR)},timeoutAt:iso(T0+48*HOUR),deadline:iso(T0+TTL),releaseUncertain:false,at:iso(T0)})
   // The lease was released in the park's transaction; the parking driver can commit nothing more.
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
   await expect(store.commitFenced({runId:'run-approval',expectedRevision:paused.revision,commitId:'late',checkpoint:paused.checkpoint,events:[]},fenceOf(a))).rejects.toEqual(leaseRefusal('released'))
@@ -120,16 +133,16 @@ describe('a durable approval wait across a real store restart (#224)',()=>{
   clock.at+=MINUTE
   expect(await wakeRun(store,wake)).toEqual(disposition)
   // A wake is not the approval: without the person's decision for this call nothing resumes.
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('decision-required'))
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'another-call',approved:true}})).rejects.toEqual(refusal('decision-required'))
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('decision-required'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'another-call',approved:true}})).rejects.toEqual(refusal('decision-required'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
   // An acknowledgement the store does not hold is reconciled by reading, never by dispatching.
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-unseen',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('unacknowledged'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-unseen',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('unacknowledged'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
-  const resumed=await resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,note:'Go ahead.'}})
+  const resumed=await resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,note:'Go ahead.'}})
   expect(resumed.lease).toMatchObject({owner:'worker-b',epoch:'2',state:'held'});expect(resumed.wait).toMatchObject({state:'resumed',resumed:{owner:'worker-b',epoch:'2',at:iso(T0+HOUR+MINUTE)}})
   expect(resumed.approval).toEqual({callId:asked.callId,approved:true,note:'Go ahead.'})
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-c',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('already-resumed'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-c',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('already-resumed'))
   const second=provider([{say:'The issue was filed.'}])
   const continued=await drive(fencedRunStore(store,resumed.fence,host),'run-approval',[await actTool(execute)],second.call,{resume:true,approval:resumed.approval})
   expect(continued.some(e=>e.type==='error')).toBe(false);expect(continued.at(-1)?.type).toBe('end')
@@ -146,7 +159,7 @@ describe('a durable approval wait across a real store restart (#224)',()=>{
   const {store}=clocked(),legacy=pauseVector.items[1]!.checkpoint as Record<string,unknown>,bytes=new TextEncoder().encode(canonicalJSON(legacy))
   const a=await store.acquireLease({resource:'run-legacy',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
   await store.commitFenced({runId:'run-legacy',expectedRevision:null,commitId:'legacy-pause',checkpoint:bytes,events:[]},fenceOf(a))
-  const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-legacy',continuation:'continue-legacy',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
+  const parked=await park({store,fence:fenceOf(a),wait:'wait-legacy',continuation:'continue-legacy',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
   expect(parked.wait.pending).toEqual({kind:'approval',callId:'call_2_1',name:'tracker__create_issue',tool:'create_issue'})
   expect(decode((await store.load('run-legacy'))!.checkpoint!)).toBe(canonicalJSON(legacy))
   expect(JSON.parse(decode((await store.load('run-legacy'))!.checkpoint!)).version).toBe(1)
@@ -156,15 +169,15 @@ describe('a durable approval wait across a real store restart (#224)',()=>{
   const a=await store.acquireLease({resource:'run-approval',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
   const budget={...structuredClone(pauseVector.items[1]!.checkpoint as Record<string,unknown>),approval:undefined,used:20,limit:20}
   await store.commitFenced({runId:'run-approval',expectedRevision:null,commitId:'budget-pause',checkpoint:new TextEncoder().encode(canonicalJSON(budget)),events:[]},fenceOf(a))
-  const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-budget',condition:{wakeAt:iso(T0+HOUR)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
+  const parked=await park({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-budget',condition:{wakeAt:iso(T0+HOUR)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
   expect(parked.wait.pending).toEqual({kind:'budget',unit:'model-requests',used:20,limit:20});expect(parked.attention).toMatchObject({needs:'budget-grant'});expect(parked.attention.subject).toBeUndefined()
   await expect(wakeRun(store,evidenceFor({evidence:'tick-early',kind:'time'}))).rejects.toEqual(refusal('not-due'))
   clock.at+=HOUR
   await wakeRun(store,evidenceFor({evidence:'tick-1',kind:'time'}))
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('decision-required'))
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,grant:{from:10,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'x',approved:true}})).rejects.toEqual(refusal('decision-required'))
-  const resumed=await resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0+HOUR)}})
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('decision-required'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,grant:{from:10,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'x',approved:true}})).rejects.toEqual(refusal('decision-required'))
+  const resumed=await resume({store,resource:'run-approval',wait:'wait-1',evidence:'tick-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0+HOUR)}})
   expect(resumed.grant).toEqual({from:20,to:30,at:iso(T0+HOUR)});expect(resumed.approval).toBeUndefined()
  })
 })
@@ -173,7 +186,7 @@ async function parkedApproval(timeoutAt?:number){
  const {clock,store}=clocked()
  const a=await store.acquireLease({resource:'run-approval',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
  await store.commitFenced({runId:'run-approval',expectedRevision:null,commitId:'pause',checkpoint:new TextEncoder().encode(canonicalJSON(pauseVector.items[1]!.checkpoint)),events:[]},fenceOf(a))
- const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:'call_2_1'},wakeAt:iso(T0+HOUR)},...(timeoutAt===undefined?{}:{timeoutAt:iso(timeoutAt)}),wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
+ const parked=await park({store,fence:fenceOf(a),wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:'call_2_1'},wakeAt:iso(T0+HOUR)},...(timeoutAt===undefined?{}:{timeoutAt:iso(timeoutAt)}),wakeKeyDigest:wakeKeyDigest(KEY),release:[]})
  return {clock,store,fence:fenceOf(a),parked}
 }
 const decisionEvent=evidenceFor({evidence:'decision-1',kind:'event',event:{kind:'approval-decision',subject:'call_2_1'}})
@@ -219,29 +232,30 @@ describe('wake evidence: one atomic winner; duplicate, stale, conflicting and cr
   clock.at=T0+3*HOUR
   expect((await wakeRun(store,evidenceFor({evidence:'deadline-1',kind:'timeout'}))).kind).toBe('timeout')
   // A timed-out approval is never approved by its timeout.
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'deadline-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:true}})).rejects.toEqual(refusal('timed-out'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'deadline-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:true}})).rejects.toEqual(refusal('timed-out'))
  })
  it('park refusals: one parked wait per run, an unchanged head, and no pending decision is none',async()=>{
   const {store,fence,parked}=await parkedApproval()
-  await expect(parkRun({store,fence,wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:'call_2_1'},wakeAt:iso(T0+HOUR)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).resolves.toEqual(parked)
-  await expect(parkRun({store,fence,wait:'wait-1',continuation:'continue-other',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('conflict'))
+  await expect(park({store,fence,wait:'wait-1',continuation:'continue-1',condition:{event:{kind:'approval-decision',subject:'call_2_1'},wakeAt:iso(T0+HOUR)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).resolves.toEqual(parked)
+  await expect(park({store,fence,wait:'wait-1',continuation:'continue-other',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('conflict'))
   // The parking driver's released fence parks nothing more.
-  await expect(parkRun({store,fence,wait:'wait-2',continuation:'continue-2',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(leaseRefusal('released'))
-  const b=await store.acquireLease({resource:'run-approval',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:HOUR})
-  await expect(parkRun({store,fence:fenceOf(b),wait:'wait-2',continuation:'continue-2',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('wait-pending'))
+  await expect(park({store,fence,wait:'wait-2',continuation:'continue-2',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(leaseRefusal('released'))
+  // #265 M2: the committed park closes the run; no fresh lease takes it, so nothing parks it again.
+  await expect(store.acquireLease({resource:'run-approval',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:HOUR})).rejects.toEqual(refusal('wait-pending'))
   const {store:empty}=clocked(),c=await empty.acquireLease({resource:'run-empty',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
-  await expect(parkRun({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
+  await expect(park({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
   const running={...structuredClone(pauseVector.items[1]!.checkpoint as Record<string,unknown>),status:'running',approval:undefined}
   await empty.commitFenced({runId:'run-empty',expectedRevision:null,commitId:'running',checkpoint:new TextEncoder().encode(canonicalJSON(running)),events:[]},fenceOf(c))
-  await expect(parkRun({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
-  await expect(parkRun({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{event:{kind:'answer',subject:'q'}},question:'q-unknown',wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
+  await expect(park({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
+  await expect(park({store:empty,fence:fenceOf(c),wait:'w',continuation:'k',condition:{event:{kind:'answer',subject:'q'}},question:'q-unknown',wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toEqual(refusal('nothing-pending'))
  })
  it('the store refuses a park whose head moved after it was read',async()=>{
   const {store}=clocked()
   const a=await store.acquireLease({resource:'run-moved',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
   const bytes=new TextEncoder().encode(canonicalJSON(pauseVector.items[1]!.checkpoint))
   const receipt=await store.commitFenced({runId:'run-moved',expectedRevision:null,commitId:'pause',checkpoint:bytes,events:[]},fenceOf(a))
-  const park={version:1 as const,resource:'run-moved',wait:'w',reason:'approval' as const,pending:{kind:'approval' as const,callId:'call_2_1',name:'tracker__create_issue',tool:'create_issue'},condition:{wakeAt:iso(T0)},continuation:'k',checkpoint:{revision:receipt.revision,digest:checkpointBytesDigest(bytes)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]}
+  const paused=readExecution(pauseVector.items[1]!.checkpoint)!
+  const park={version:1 as const,resource:'run-moved',wait:'w',reason:'approval' as const,pending:{kind:'approval' as const,callId:'call_2_1',name:'tracker__create_issue',tool:'create_issue'},condition:{wakeAt:iso(T0)},limits:{approvalTtlMs:TTL},approval:approvalBinding(paused.approval!),continuation:'k',checkpoint:{revision:receipt.revision,digest:checkpointBytesDigest(bytes)},pins:pinsFrom(paused,MODEL),wakeKeyDigest:wakeKeyDigest(KEY),release:[]}
   await store.commitFenced({runId:'run-moved',expectedRevision:receipt.revision,commitId:'moved',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]},fenceOf(a))
   await expect(store.parkWait({...park,checkpoint:{revision:(await store.load('run-moved'))!.revision,digest:checkpointBytesDigest(bytes)}},{...fenceOf(a),owner:'worker-x'})).rejects.toEqual(leaseRefusal('other-owner'))
   await expect(store.parkWait(park,fenceOf(a))).rejects.toEqual(refusal('checkpoint-changed'))
@@ -251,20 +265,22 @@ describe('wake evidence: one atomic winner; duplicate, stale, conflicting and cr
 })
 
 describe('the store claims a continuation once (#224)',()=>{
+ const claimFor=(evidence:string,owner:string,revision:string,over:Partial<WaitClaim>={})=>({resource:'run-approval',wait:'wait-1',evidence,lease:{resource:'run-approval',owner,expectedRevision:revision,durationMs:HOUR},reconciled:[],...over})
+ async function revalidated(store:RunStore){const held=(await (store as MemoryRunStore).readWait('run-approval','wait-1'))!;return revalidateResume(held,await unchanged(store,'run-approval','wait-1'))}
  it('a second claim is already-resumed and a timed-out approval is never claimed',async()=>{
   const {clock,store,parked}=await parkedApproval(T0+2*HOUR)
   clock.at=T0+2*HOUR
   await wakeRun(store,evidenceFor({evidence:'deadline-1',kind:'timeout'}))
-  const b=await store.acquireLease({resource:'run-approval',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:HOUR})
-  await expect(store.resumeWait('run-approval','wait-1','deadline-1',fenceOf(b),[])).rejects.toEqual(refusal('timed-out'))
+  await expect(store.resumeWait({...claimFor('deadline-1','worker-b',parked.wait.checkpoint.revision),revalidation:await revalidated(store)})).rejects.toEqual(refusal('timed-out'))
   const second=await parkedApproval()
-  const c=await second.store.acquireLease({resource:'run-approval',owner:'worker-c',expectedRevision:second.parked.wait.checkpoint.revision,durationMs:HOUR})
+  const claim=async(evidence:string)=>({...claimFor(evidence,'worker-c',second.parked.wait.checkpoint.revision),revalidation:await revalidated(second.store)})
   // The store claims nothing for a wake it does not hold: a parked wait, or another evidence id.
-  await expect(second.store.resumeWait('run-approval','wait-1','decision-1',fenceOf(c),[])).rejects.toEqual(refusal('unacknowledged'))
+  await expect(second.store.resumeWait(await claim('decision-1'))).rejects.toEqual(refusal('unacknowledged'))
   second.clock.at+=MINUTE;await wakeRun(second.store,decisionEvent)
-  await expect(second.store.resumeWait('run-approval','wait-1','decision-unseen',fenceOf(c),[])).rejects.toEqual(refusal('unacknowledged'))
-  expect((await second.store.resumeWait('run-approval','wait-1','decision-1',fenceOf(c),[])).state).toBe('resumed')
-  await expect(second.store.resumeWait('run-approval','wait-1','decision-1',fenceOf(c),[])).rejects.toEqual(refusal('already-resumed'))
+  await expect(second.store.resumeWait(await claim('decision-unseen'))).rejects.toEqual(refusal('unacknowledged'))
+  const claimed=await second.store.resumeWait(await claim('decision-1'))
+  expect(claimed.wait.state).toBe('resumed');expect(claimed.lease).toMatchObject({owner:'worker-c',epoch:'2',state:'held'})
+  await expect(second.store.resumeWait(await claim('decision-1'))).rejects.toEqual(refusal('already-resumed'))
  })
  it('only the run\'s latest retained question is pending',async()=>{
   const {store}=clocked()
@@ -274,8 +290,8 @@ describe('the store claims a continuation once (#224)',()=>{
   const complete={...structuredClone(pauseVector.items[1]!.checkpoint as Record<string,unknown>),status:'complete',approval:undefined}
   await store.commitFenced({runId:'run-q2',expectedRevision:null,commitId:'asked',checkpoint:new TextEncoder().encode(canonicalJSON(complete)),events:[envelope('q-0','Earlier'),envelope('q-1','Later')]},fenceOf(a))
   const input={store,fence:fenceOf(a),wait:'w',continuation:'k',condition:{event:{kind:'answer',subject:'q-1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[]}
-  await expect(parkRun({...input,question:'q-0'})).rejects.toEqual(refusal('nothing-pending'))
-  expect((await parkRun({...input,question:'q-1'})).wait.pending).toMatchObject({kind:'question',event:'q-1',question:{title:'Later'}})
+  await expect(park({...input,question:'q-0'})).rejects.toEqual(refusal('nothing-pending'))
+  expect((await park({...input,question:'q-1'})).wait.pending).toMatchObject({kind:'question',event:'q-1',question:{title:'Later'}})
  })
 })
 
@@ -288,7 +304,7 @@ describe('question waits: real answers with provenance; a timeout is unanswered 
   const events=await drive(fencedRunStore(store,fenceOf(a),host),'run-question',[questionTool],model.call,{interactive:true})
   const question=events.find(e=>e.type==='user_question') as Extract<AssistantEvent,{type:'user_question'}>
   expect(question).toBeDefined();expect(events.at(-1)?.type).toBe('end');expect(model.state).toEqual({requests:1,inFlight:0})
-  const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-q',continuation:'continue-q',condition:{event:{kind:'question-answer',subject:question.id}},timeoutAt:iso(T0+2*HOUR),wakeKeyDigest:wakeKeyDigest(KEY),release:[{resource:'provider-account',outcome:'uncertain'}],question:question.id,retainUntil:iso(T0+10*HOUR)})
+  const parked=await park({store,fence:fenceOf(a),wait:'wait-q',continuation:'continue-q',condition:{event:{kind:'question-answer',subject:question.id}},timeoutAt:iso(T0+2*HOUR),wakeKeyDigest:wakeKeyDigest(KEY),release:[{resource:'provider-account',outcome:'uncertain'}],question:question.id,retainUntil:iso(T0+10*HOUR)})
   return {clock,store,question,parked,interview}
  }
  const answer=(id:string,over:Partial<WakeEvidence>={}):WakeEvidence=>({version:1,resource:'run-question',wait:'wait-q',evidence:'answer-1',kind:'event',event:{kind:'question-answer',subject:id},answer:{selected:['risk'],text:''},actor:'person-reviewer',key:KEY,...over})
@@ -306,11 +322,11 @@ describe('question waits: real answers with provenance; a timeout is unanswered 
   const woken=(await store.readWait('run-question','wait-q'))!
   expect(woken.resolution).toEqual({kind:'answered',at:iso(T0+MINUTE),actor:'person-reviewer',answerDigest:answerDigest({selected:['risk'],text:''}),answer:{selected:['risk'],text:''}})
   // The uncertain release is retained: resuming needs the host's reconciliation of it.
-  await expect(resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('release-uncertain'))
+  await expect(resume({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('release-uncertain'))
   expect(await store.readLease('run-question')).toMatchObject({state:'released'})
-  await expect(resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'uncertain'}]})).rejects.toEqual(refusal('release-uncertain'))
-  await expect(resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,approval:{callId:question.id,approved:true},reconciled:[{resource:'provider-account',outcome:'released'}]})).rejects.toEqual(refusal('decision-required'))
-  const resumed=await resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'released'}]})
+  await expect(resume({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'uncertain'}]})).rejects.toEqual(refusal('release-uncertain'))
+  await expect(resume({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,approval:{callId:question.id,approved:true},reconciled:[{resource:'provider-account',outcome:'released'}]})).rejects.toEqual(refusal('decision-required'))
+  const resumed=await resume({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'released'}]})
   expect(resumed.resolution).toEqual(woken.resolution);expect(resumed.wait.reconciled).toEqual([{resource:'provider-account',outcome:'released'}])
  })
  it('a timeout ends the question unanswered and never picks the recommended option',async()=>{
@@ -320,7 +336,7 @@ describe('question waits: real answers with provenance; a timeout is unanswered 
   const timed=(await store.readWait('run-question','wait-q'))!
   expect(timed.state).toBe('timed-out');expect(timed.resolution).toEqual({kind:'unanswered',at:disposition.at})
   expect(JSON.stringify(timed.resolution)).not.toContain('operations')
-  const resumed=await resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'deadline-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'not-held'}]})
+  const resumed=await resume({store,resource:'run-question',wait:'wait-q',evidence:'deadline-1',owner:'worker-b',durationMs:HOUR,reconciled:[{resource:'provider-account',outcome:'not-held'}]})
   expect(resumed.resolution).toEqual({kind:'unanswered',at:disposition.at})
   const report=await waitReport(store,'run-question')
   expect(report.entries.map(e=>e.decision)).toEqual(['park','timeout','unanswered','resume'])
@@ -348,12 +364,12 @@ describe('attention, delivery and the report (#228)',()=>{
    const interview={title:'Region',question:'Which region first?',selection:'single',options:[{id:'north',label:'North',description:''},{id:'south',label:'South',description:''}],recommendedOptionId:'north',recommendation:'Most sites.'}
    const events=await drive(fencedRunStore(store,fenceOf(a),host),'run-question',[questionTool],provider([{call:{tool:'ask_user',arguments:interview}}]).call,{interactive:true})
    const question=events.find(e=>e.type==='user_question') as Extract<AssistantEvent,{type:'user_question'}>
-   const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-q',continuation:'continue-q',condition:{event:{kind:'question-answer',subject:question.id}},wakeKeyDigest:wakeKeyDigest(KEY),release:[],question:question.id,retainUntil:iso(T0+10*HOUR)})
+   const parked=await park({store,fence:fenceOf(a),wait:'wait-q',continuation:'continue-q',condition:{event:{kind:'question-answer',subject:question.id}},wakeKeyDigest:wakeKeyDigest(KEY),release:[],question:question.id,retainUntil:iso(T0+10*HOUR)})
    clock.at+=MINUTE
    await wakeRun(store,{version:1,resource:'run-question',wait:'wait-q',evidence:'answer-1',kind:'event',event:{kind:'question-answer',subject:question.id},answer:{selected:['south'],text:'Closer to the team.'},actor:'person-lead',key:KEY})
    return {clock,store,parked}
   })()
-  const resumed=await resumeParked({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR})
+  const resumed=await resume({store,resource:'run-question',wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR})
   const report=await waitReport(store,'run-question',new Date(T0+HOUR))
   expect(report.entries.map(e=>[e.decision,e.content?.state])).toEqual([['park','available'],['wake',undefined],['answer','available'],['resume',undefined]])
   expect(report.entries[2]).toMatchObject({actor:'person-lead',at:iso(T0+MINUTE),content:{answer:{selected:['south'],text:'Closer to the team.'}}})
@@ -369,7 +385,7 @@ describe('attention, delivery and the report (#228)',()=>{
   expect(JSON.stringify(report)).not.toContain(KEY);expect(text).not.toContain(KEY)
   for(const word of ['wakeKeyDigest','fence','approved','grant'])expect(JSON.stringify(report)).not.toContain(word)
   // A report cannot resume: the continuation was claimed, and its contents are no decision.
-  await expect(resumeParked({store,resource:'run-question',wait:'wait-q',evidence:report.entries[1]!.evidence!,owner:'worker-c',durationMs:HOUR})).rejects.toEqual(refusal('already-resumed'))
+  await expect(resume({store,resource:'run-question',wait:'wait-q',evidence:report.entries[1]!.evidence!,owner:'worker-c',durationMs:HOUR})).rejects.toEqual(refusal('already-resumed'))
   // Expired: from retainUntil, by the host's time; the digests and every identity are kept.
   clock.at=T0+10*HOUR
   const expired=await waitReport(store,'run-question',new Date(T0+10*HOUR))
@@ -397,7 +413,7 @@ describe('capability refusals and off-byte parity (#224)',()=>{
   const legacy={consistency:'single-writer-legacy' as const,get:async()=>undefined,list:async()=>({items:[],hasMore:false}),update:async()=>{throw Error('unused')}}
   expect(()=>admitWaits({store:durable,chatStore:legacy})).toThrow(capability('chat-store-unsupported'))
   expect(()=>admitWaits({store:durable,chatStore:new MemoryChatStore()})).not.toThrow()
-  for(const store of [memory,callback,plain])await expect(parkRun({store,fence,wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toBeInstanceOf(WaitCapabilityRefused)
+  for(const store of [memory,callback,plain])await expect(park({store,fence,wait:'w',continuation:'k',condition:{wakeAt:iso(T0)},wakeKeyDigest:wakeKeyDigest(KEY),release:[]})).rejects.toBeInstanceOf(WaitCapabilityRefused)
   await expect(wakeRun(memory,{version:1,resource:'r',wait:'w',evidence:'e',kind:'time',key:KEY})).rejects.toEqual(capability('store-lifetime'))
   await expect(exportWaits(plain,'r')).rejects.toEqual(capability('store-unsupported'))
  })
@@ -406,30 +422,35 @@ describe('capability refusals and off-byte parity (#224)',()=>{
   const a=await store.acquireLease({resource:'run-approval',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
   await store.commitFenced({runId:'run-approval',expectedRevision:null,commitId:'pause',checkpoint:new TextEncoder().encode(canonicalJSON(pauseVector.items[1]!.checkpoint)),events:[]},fenceOf(a))
   const head=(await chats.get('chat-1'))!
-  const parked=await parkRun({store,fence:fenceOf(a),wait:'wait-1',continuation:'k',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[],chat:{store:chats,id:'chat-1'}})
+  const parked=await park({store,fence:fenceOf(a),wait:'wait-1',continuation:'k',condition:{event:{kind:'approval-decision',subject:'call_2_1'}},wakeKeyDigest:wakeKeyDigest(KEY),release:[],chat:{store:chats,id:'chat-1'}})
   expect(parked.wait.chat).toEqual({id:'chat-1',revision:head.revision})
   clock.at+=MINUTE;await wakeRun(store,decisionEvent)
   const input={store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:false}}
-  await expect(resumeParked(input)).rejects.toEqual(capability('chat-store-unsupported'))
+  await expect(resume(input)).rejects.toEqual(capability('chat-store-unsupported'))
   await chats.update('chat-1',{interaction:'plan'},head.revision)
-  await expect(resumeParked({...input,chat:chats})).rejects.toEqual(refusal('chat-changed'))
+  await expect(resume({...input,chat:chats})).rejects.toEqual(refusal('chat-changed'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
  })
  it('a resume whose run moved while parked is refused and takes no lease',async()=>{
   const {clock,store,parked}=await parkedApproval()
   clock.at+=MINUTE;await wakeRun(store,decisionEvent)
   await store.commit({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'outside',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]})
-  await expect(resumeParked({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:true}})).rejects.toEqual(leaseRefusal('revision-changed'))
+  await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'call_2_1',approved:true}})).rejects.toEqual(refusal('checkpoint-changed'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'});expect((await store.readWait('run-approval','wait-1'))!.state).toBe('woken')
  })
- it('the store revalidates the head and the fence when it claims the continuation',async()=>{
+ it('the store revalidates the head, the lease and the pins when it claims the continuation',async()=>{
   const {clock,store,parked}=await parkedApproval()
   clock.at+=MINUTE;await wakeRun(store,decisionEvent)
-  const b=await store.acquireLease({resource:'run-approval',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:HOUR})
-  await expect(store.resumeWait('run-approval','wait-1','decision-1',{...fenceOf(b),owner:'worker-x'},[])).rejects.toEqual(leaseRefusal('other-owner'))
-  await store.commitFenced({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'moved',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]},fenceOf(b))
-  await expect(store.resumeWait('run-approval','wait-1','decision-1',fenceOf(b),[])).rejects.toEqual(refusal('checkpoint-changed'))
-  expect((await store.readWait('run-approval','wait-1'))!.state).toBe('woken')
+  const held=(await store.readWait('run-approval','wait-1'))!,revalidation=revalidateResume(held,await unchanged(store,'run-approval','wait-1'))
+  const claim={resource:'run-approval',wait:'wait-1',evidence:'decision-1',lease:{resource:'run-approval',owner:'worker-b',expectedRevision:parked.wait.checkpoint.revision,durationMs:HOUR},reconciled:[],revalidation}
+  // The lease the claim takes is checked in the claim's own transaction: another resource, or another revision.
+  await expect(store.resumeWait({...claim,lease:{...claim.lease,resource:'run-other'}})).rejects.toEqual(leaseRefusal('resource-mismatch'))
+  await expect(store.resumeWait({...claim,lease:{...claim.lease,expectedRevision:'rev-other'}})).rejects.toEqual(leaseRefusal('revision-changed'))
+  // A revalidation of other pins is no revalidation of this wait.
+  await expect(store.resumeWait({...claim,revalidation:{...revalidation,pins:'sha256:'+'0'.repeat(64)}})).rejects.toEqual(refusal('invalid'))
+  await store.commit({runId:'run-approval',expectedRevision:parked.wait.checkpoint.revision,commitId:'moved',checkpoint:null,events:[new TextEncoder().encode('{"version":1}')]})
+  await expect(store.resumeWait(claim)).rejects.toEqual(refusal('checkpoint-changed'))
+  expect((await store.readWait('run-approval','wait-1'))!.state).toBe('woken');expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
  })
  it('off-byte parity: with nothing configured a paused run stores the same bytes and the store keeps no wait',async()=>{
   const record=async()=>{

@@ -1,9 +1,12 @@
 package runcontext
 
 // Durable waits, attention and the park/wake report (ADR-0025 decisions 2 and 6, #224 and #228;
-// contract/schemas/run-wait.json). The package validates and records: a park reads the pending
-// decision from the run's retained checkpoint or event log, and the store commits the wait and its one
-// needs_attention event and releases the run's lease in one transaction. The host owns scheduling,
+// contract/schemas/run-wait.json), with the deadlines, approval expiry and resume revalidation of
+// decisions 3 and 5 (#225, #227; contract/schemas/run-resume.json). The package validates and records: a
+// park reads the pending decision and the pins from the run's retained checkpoint or event log, and the
+// store commits the wait and its one needs_attention event and releases the run's lease in one
+// transaction. Until the wait is resumed it holds the run: no lease of the run is granted but the
+// resume's own claim. The host owns scheduling,
 // clocks, wake delivery, keys, notifications and processes; nothing here polls, schedules or sends. A
 // wake is never an approval, a budget grant or an answer of another reason. The TypeScript twin is
 // packages/harness/storage/wait.ts. Go has no ChatStore: a wait bound to a chat is resumed through the
@@ -42,7 +45,7 @@ type WaitReport = contract.RunWaitReport
 type WaitReportEntry = contract.RunWaitReportEntry
 type WaitExport = contract.RunWaitExport
 
-var WaitRefusalReasons = []string{"invalid", "nothing-pending", "wait-pending", "conflict", "checkpoint-changed", "no-wait", "unauthenticated", "mismatch", "not-due", "stale", "unacknowledged", "already-resumed", "decision-required", "timed-out", "release-uncertain", "chat-changed"}
+var WaitRefusalReasons = []string{"invalid", "nothing-pending", "wait-pending", "conflict", "checkpoint-changed", "no-wait", "unauthenticated", "mismatch", "not-due", "stale", "unacknowledged", "already-resumed", "decision-required", "timed-out", "release-uncertain", "chat-changed", "deadline-passed", "closed", "approval-ttl-required"}
 var WaitCapabilityReasons = []string{"store-unsupported", "store-lifetime", "chat-store-unsupported"}
 
 // WaitRefused is a named wait refusal. Nothing changed.
@@ -489,7 +492,7 @@ func readWaitDisposition(raw json.RawMessage) (WakeDisposition, error) {
 	if d.Evidence, err = m.id("evidence"); err != nil {
 		return d, err
 	}
-	if d.Kind, err = m.enum("kind", "event", "time", "timeout"); err != nil {
+	if d.Kind, err = m.enum("kind", "event", "time", "timeout", "deadline"); err != nil {
 		return d, err
 	}
 	if d.At, err = m.time("at"); err != nil {
@@ -542,8 +545,8 @@ func readWaitResolution(raw json.RawMessage, question *contract.Question, redact
 	return resolution, nil
 }
 
-var waitParkRequired = []string{"version", "resource", "wait", "reason", "pending", "condition", "continuation", "checkpoint", "wakeKeyDigest", "release"}
-var waitParkOptional = []string{"timeoutAt", "chat", "retainUntil"}
+var waitParkRequired = []string{"version", "resource", "wait", "reason", "pending", "condition", "continuation", "checkpoint", "pins", "wakeKeyDigest", "release"}
+var waitParkOptional = []string{"timeoutAt", "limits", "approval", "chat", "retainUntil"}
 
 func readWaitParkMembers(m waitMembers, redacted bool) (RunWait, error) {
 	if err := m.version(); err != nil {
@@ -617,17 +620,50 @@ func readWaitParkMembers(m waitMembers, redacted bool) (RunWait, error) {
 		}
 		wait.RetainUntil = &at
 	}
+	if wait.Pins, err = ReadResumePins(m["pins"]); err != nil {
+		return RunWait{}, asWait(err)
+	}
+	if m.has("limits") {
+		limits, err := ReadWaitLimits(m["limits"])
+		if err != nil {
+			return RunWait{}, asWait(err)
+		}
+		wait.Limits = &limits
+	}
+	if m.has("approval") {
+		binding, err := readApprovalBinding(m["approval"])
+		if err != nil {
+			return RunWait{}, asWait(err)
+		}
+		wait.Approval = &binding
+	}
+	// #225: an approval wait is bound to its pending call and pinned source, and expires; no other wait
+	// carries either.
+	ttl := wait.Limits != nil && wait.Limits.ApprovalTtlMs != nil
+	if wait.Reason == "approval" {
+		if wait.Approval == nil || wait.Approval.CallID != wait.Pending.Approval.CallID || !ttl || !slices.ContainsFunc(wait.Pins.Sources, func(s SourcePin) bool { return s.Source == wait.Approval.Source }) {
+			return RunWait{}, waitInvalid()
+		}
+	} else if wait.Approval != nil || ttl {
+		return RunWait{}, waitInvalid()
+	}
 	return wait, nil
 }
 
 // readWaitPark reads the store's input: a park before the store stamps who parked it, when, and its
 // attention.
 func readWaitPark(park RunWait) (RunWait, error) {
-	if park.Parked != (contract.RunWaitActor{}) || park.Attention != "" || park.State != "" || park.Disposition != nil || park.Resolution != nil || park.Resumed != nil || park.Reconciled != nil || park.Redacted != nil {
+	if park.Parked != (contract.RunWaitActor{}) || park.Attention != "" || park.State != "" || park.Deadline != nil || park.Disposition != nil || park.Expired != nil || park.Resolution != nil || park.Resumed != nil || park.Revalidation != nil || park.Reconciled != nil || park.Redacted != nil {
 		return RunWait{}, waitInvalid()
 	}
 	if park.Release == nil {
 		park.Release = []WaitRelease{}
+	}
+	if park.Pins.Sources == nil {
+		park.Pins.Sources = []SourcePin{}
+	}
+	if park.Pins.Artifacts == nil {
+		park.Pins.Artifacts = []ArtifactPin{}
 	}
 	raw, err := json.Marshal(park)
 	if err != nil {
@@ -650,7 +686,7 @@ func readWaitPark(park RunWait) (RunWait, error) {
 
 // ReadRunWait reads a version 1 wait record and holds every rule the schema cannot state.
 func ReadRunWait(raw []byte) (RunWait, error) {
-	m, err := waitShape(raw, append(slices.Clone(waitParkRequired), "parked", "attention", "state"), append(slices.Clone(waitParkOptional), "disposition", "resolution", "resumed", "reconciled", "redacted"))
+	m, err := waitShape(raw, append(slices.Clone(waitParkRequired), "parked", "attention", "state"), append(slices.Clone(waitParkOptional), "deadline", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "redacted"))
 	if err != nil {
 		return RunWait{}, err
 	}
@@ -674,14 +710,48 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 	if wait.Attention, err = m.digest("attention"); err != nil || wait.Attention != WaitAttentionID(wait.Resource, wait.Wait) {
 		return RunWait{}, waitInvalid()
 	}
-	if wait.State, err = m.enum("state", "parked", "woken", "timed-out", "resumed"); err != nil {
+	if wait.State, err = m.enum("state", "parked", "woken", "timed-out", "resumed", "expired"); err != nil {
 		return RunWait{}, err
 	}
+	// #225: the stamped deadline follows the park's limits and time; any limit always stamps one.
+	if m.has("deadline") {
+		deadline, err := readWaitDeadline(m["deadline"], wait.Limits, wait.Parked.At)
+		if err != nil {
+			return RunWait{}, asWait(err)
+		}
+		wait.Deadline = &deadline
+	} else if wait.Limits != nil {
+		return RunWait{}, waitInvalid()
+	}
 	if wait.State == "parked" {
-		if m.has("disposition") || m.has("resolution") || m.has("resumed") {
+		if m.has("disposition") || m.has("expired") || m.has("resolution") || m.has("resumed") {
 			return RunWait{}, waitInvalid()
 		}
+	} else if wait.State == "expired" {
+		// A deadline ends the wait for good: it keeps the wake it was woken with, if any, and is never
+		// resumed.
+		expired, err := readWaitDisposition(m["expired"])
+		if err != nil {
+			return RunWait{}, err
+		}
+		if expired.Kind != "deadline" || wait.Deadline == nil || waitTimeMillis(expired.At) < waitTimeMillis(wait.Deadline.At) || m.has("resumed") {
+			return RunWait{}, waitInvalid()
+		}
+		wait.Expired = &expired
+		if m.has("disposition") {
+			disposition, err := readWaitDisposition(m["disposition"])
+			if err != nil {
+				return RunWait{}, err
+			}
+			if disposition.Kind == "deadline" || waitTimeMillis(disposition.At) < waitTimeMillis(wait.Parked.At) || waitTimeMillis(expired.At) < waitTimeMillis(disposition.At) {
+				return RunWait{}, waitInvalid()
+			}
+			wait.Disposition = &disposition
+		}
 	} else {
+		if m.has("expired") {
+			return RunWait{}, waitInvalid()
+		}
 		disposition, err := readWaitDisposition(m["disposition"])
 		if err != nil {
 			return RunWait{}, err
@@ -689,7 +759,7 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 		wait.Disposition = &disposition
 		// A timeout ends the wait timed-out; a resumed wait keeps the disposition it was resumed after (a
 		// timed-out approval or budget wait is never resumed).
-		if wait.State == "woken" && disposition.Kind == "timeout" || wait.State == "timed-out" && disposition.Kind != "timeout" || wait.State == "resumed" && disposition.Kind == "timeout" && wait.Reason != "question" {
+		if disposition.Kind == "deadline" || wait.State == "woken" && disposition.Kind == "timeout" || wait.State == "timed-out" && disposition.Kind != "timeout" || wait.State == "resumed" && disposition.Kind == "timeout" && wait.Reason != "question" {
 			return RunWait{}, waitInvalid()
 		}
 		if wait.State == "resumed" {
@@ -714,12 +784,35 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 		if err != nil {
 			return RunWait{}, err
 		}
-		// A timeout ends the question unanswered; only an event wake carries an answer.
-		if (wait.Disposition.Kind == "timeout") != (resolution.Kind == "unanswered") || resolution.At != wait.Disposition.At {
+		// A timeout ends the question unanswered, and so does a deadline that came before any wake; only an
+		// event wake carries an answer.
+		ended := wait.Disposition
+		if ended == nil {
+			ended = wait.Expired
+		}
+		if (ended.Kind == "timeout" || ended.Kind == "deadline") != (resolution.Kind == "unanswered") || resolution.At != ended.At {
 			return RunWait{}, waitInvalid()
 		}
 		wait.Resolution = &resolution
 	} else if m.has("resolution") {
+		return RunWait{}, waitInvalid()
+	}
+	// #227: a claimed continuation records the revalidation it was claimed after, for this wait and its
+	// pins.
+	if m.has("revalidation") {
+		if wait.State != "resumed" {
+			return RunWait{}, waitInvalid()
+		}
+		revalidation, err := ReadRevalidation(m["revalidation"])
+		if err != nil {
+			return RunWait{}, asWait(err)
+		}
+		pins, err := PinsDigest(wait.Pins)
+		if err != nil || revalidation.Resource != wait.Resource || revalidation.Wait != wait.Wait || revalidation.Pins != pins {
+			return RunWait{}, waitInvalid()
+		}
+		wait.Revalidation = &revalidation
+	} else if wait.State == "resumed" {
 		return RunWait{}, waitInvalid()
 	}
 	if m.has("reconciled") {
@@ -748,7 +841,7 @@ func ReadWakeEvidence(raw []byte) (WakeEvidence, error) {
 		return WakeEvidence{}, err
 	}
 	evidence := WakeEvidence{Version: WaitRecordVersion}
-	if evidence.Kind, err = m.enum("kind", "event", "time", "timeout"); err != nil {
+	if evidence.Kind, err = m.enum("kind", "event", "time", "timeout", "deadline"); err != nil {
 		return WakeEvidence{}, err
 	}
 	if (evidence.Kind == "event") != m.has("event") || m.has("answer") != m.has("actor") || m.has("answer") && evidence.Kind != "event" {
@@ -798,7 +891,7 @@ var waitNeeds = map[string]string{"approval": "approval-decision", "budget": "bu
 
 // ReadAttentionEvent reads a version 1 needs_attention event.
 func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
-	m, err := waitShape(raw, []string{"version", "type", "id", "resource", "wait", "reason", "needs", "condition", "releaseUncertain", "at"}, []string{"subject", "timeoutAt"})
+	m, err := waitShape(raw, []string{"version", "type", "id", "resource", "wait", "reason", "needs", "condition", "releaseUncertain", "at"}, []string{"subject", "timeoutAt", "deadline"})
 	if err != nil {
 		return AttentionEvent{}, err
 	}
@@ -841,6 +934,13 @@ func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
 			return AttentionEvent{}, err
 		}
 		event.TimeoutAt = &at
+	}
+	if m.has("deadline") {
+		at, err := m.time("deadline")
+		if err != nil || waitTimeMillis(at) <= waitTimeMillis(event.At) {
+			return AttentionEvent{}, waitInvalid()
+		}
+		event.Deadline = &at
 	}
 	if event.ID != WaitAttentionID(event.Resource, event.Wait) || event.Needs != waitNeeds[event.Reason] || (event.Reason == "budget") != (event.Subject == nil) {
 		return AttentionEvent{}, waitInvalid()
@@ -909,14 +1009,14 @@ func readWaitContent(raw json.RawMessage) (contract.RunWaitContent, error) {
 	return content, nil
 }
 
-var waitEntryMembers = map[string][]string{"park": {"owner", "epoch", "subject", "condition", "timeoutAt", "release", "content"}, "wake": {"evidence", "wake"}, "timeout": {"evidence", "wake"}, "answer": {"actor", "content"}, "unanswered": {"content"}, "resume": {"owner", "epoch"}}
+var waitEntryMembers = map[string][]string{"park": {"owner", "epoch", "subject", "condition", "timeoutAt", "deadline", "release", "content"}, "wake": {"evidence", "wake"}, "timeout": {"evidence", "wake"}, "answer": {"actor", "content"}, "unanswered": {"content"}, "resume": {"owner", "epoch"}, "deadline": {"evidence", "wake"}}
 
 func readWaitEntry(raw json.RawMessage) (WaitReportEntry, error) {
-	probe, err := waitShape(raw, []string{"wait", "decision", "reason", "at"}, []string{"owner", "epoch", "evidence", "wake", "actor", "subject", "condition", "timeoutAt", "release", "content"})
+	probe, err := waitShape(raw, []string{"wait", "decision", "reason", "at"}, []string{"owner", "epoch", "evidence", "wake", "actor", "subject", "condition", "timeoutAt", "deadline", "release", "content"})
 	if err != nil {
 		return WaitReportEntry{}, err
 	}
-	decision, err := probe.enum("decision", "park", "wake", "timeout", "answer", "unanswered", "resume")
+	decision, err := probe.enum("decision", "park", "wake", "timeout", "answer", "unanswered", "resume", "deadline")
 	if err != nil {
 		return WaitReportEntry{}, err
 	}
@@ -965,6 +1065,11 @@ func readWaitEntry(raw json.RawMessage) (WaitReportEntry, error) {
 				return entry, err
 			}
 		}
+		if m.has("deadline") {
+			if entry.Deadline, err = optional("deadline", m.time); err != nil {
+				return entry, err
+			}
+		}
 		if entry.Release, err = optional("release", func(name string) (string, error) { return m.enum(name, "clean", "uncertain") }); err != nil {
 			return entry, err
 		}
@@ -972,14 +1077,14 @@ func readWaitEntry(raw json.RawMessage) (WaitReportEntry, error) {
 			return entry, waitInvalid()
 		}
 	}
-	if decision == "wake" || decision == "timeout" {
+	if decision == "wake" || decision == "timeout" || decision == "deadline" {
 		if entry.Evidence, err = optional("evidence", m.id); err != nil {
 			return entry, err
 		}
-		if entry.Wake, err = optional("wake", func(name string) (string, error) { return m.enum(name, "event", "time", "timeout") }); err != nil {
+		if entry.Wake, err = optional("wake", func(name string) (string, error) { return m.enum(name, "event", "time", "timeout", "deadline") }); err != nil {
 			return entry, err
 		}
-		if (decision == "timeout") != (*entry.Wake == "timeout") {
+		if (decision == "timeout") != (*entry.Wake == "timeout") || (decision == "deadline") != (*entry.Wake == "deadline") {
 			return entry, waitInvalid()
 		}
 	}
@@ -1131,6 +1236,10 @@ func AttentionFor(wait RunWait) AttentionEvent {
 		at := *wait.TimeoutAt
 		event.TimeoutAt = &at
 	}
+	if wait.Deadline != nil {
+		at := wait.Deadline.At
+		event.Deadline = &at
+	}
 	for _, release := range wait.Release {
 		event.ReleaseUncertain = event.ReleaseUncertain || release.Outcome == "uncertain"
 	}
@@ -1165,23 +1274,47 @@ func cloneRunWait(wait RunWait) RunWait {
 	return out
 }
 
+// WaitClaim is a resume's claim: the wake whose acknowledgement the host holds, the lease the
+// continuation takes (against the parked revision), the host's reconciliation of each uncertain
+// release, and the revalidation it was claimed after.
+type WaitClaim struct {
+	Resource     string
+	Wait         string
+	Evidence     string
+	Lease        LeaseAcquire
+	Reconciled   []WaitRelease
+	Revalidation Revalidation
+}
+
 // WaitStore is the wait port a store kind implements beside its lease port. Every transition is atomic
-// with the store's commits and checked against its own clock.
+// with the store's commits and checked against its own clock. Until a wait is resumed it holds its run:
+// the store's AcquireLease refuses the run (wait-pending, or closed once a wait ended terminally) and
+// only ResumeWait leases it. From a run's deadline every lease of the run expires no later than that
+// deadline, and AcquireLease refuses deadline-passed.
 type WaitStore interface {
 	WaitVersion() int
 	// WaitLifetime is durable when waits and attention events survive the store's process, process when
 	// they end with it (the memory kind).
 	WaitLifetime() string
-	// ParkWait is one transaction: check the fence and the run head (checkpoint-changed), refuse a second
-	// parked wait (wait-pending), commit the wait and its one needs_attention event, and release the
-	// lease. A repeat of the same park returns it.
+	// ParkWait is one transaction: check the fence and the run head (checkpoint-changed), refuse while a
+	// wait not yet resumed holds the run (wait-pending; closed after a terminal one), stamp the deadline
+	// from the limits, the run's earliest deadline and the store clock (deadline-passed when it is not
+	// after the park), commit the wait and its one needs_attention event, and release the lease. A repeat
+	// of the same park returns it.
 	ParkWait(context.Context, RunWait, LeaseFence) (RunWait, AttentionEvent, error)
 	// WakeWait: the first valid wake wins; a duplicate returns the retained disposition; anything else
-	// changes nothing.
+	// changes nothing. At or after the wait's deadline only a deadline wake is accepted, and it ends the
+	// wait terminally (expired).
 	WakeWait(context.Context, WakeEvidence) (WakeDisposition, error)
-	// ResumeWait claims the continuation once, under a current fence, after the wake the caller saw
-	// acknowledged.
-	ResumeWait(ctx context.Context, resource, wait, evidence string, fence LeaseFence, reconciled []WaitRelease) (RunWait, error)
+	// ResumeWait is one transaction: check the acknowledged wake, the deadline, the head and the release
+	// reconciliation, then lease the run (the only lease a held run is granted) and claim the
+	// continuation once. From an approval wait's claim until its approved call settles, no lease of the
+	// run (the claim's, a takeover's or a re-acquired one) is granted, renewed or held past the approval's
+	// expiry, and every checkpoint the run commits must carry exactly the reviewed call.
+	ResumeWait(context.Context, WaitClaim) (RunWait, RunLease, error)
+	// LimitRun sets the run's deadline; the earliest one the store holds wins, and a held lease is
+	// shortened to it.
+	LimitRun(context.Context, RunLimit) (RunLimit, error)
 	ReadWait(ctx context.Context, resource, wait string) (*RunWait, error)
 	// ExportWaits is the run's waits in park order, with their attention events and deliveries: the
 	// report's source.
@@ -1199,6 +1332,13 @@ type WaitRunStore interface {
 	WaitStore
 }
 
+// waitApproval is an approved call not yet settled: its expiry bounds every lease of the run, and every
+// checkpoint the run commits must carry exactly its binding.
+type waitApproval struct {
+	at      int64
+	binding ApprovalBinding
+}
+
 // WaitTable holds the wait transitions in memory. MemoryRunStore calls it under its own lock; a host
 // store kind implements the same transitions against its own durable rows. It is not safe for
 // concurrent use on its own.
@@ -1206,14 +1346,17 @@ type WaitTable struct {
 	rows       map[string][]*RunWait
 	events     map[string][]AttentionEvent
 	deliveries map[string][]AttentionDelivery
-	now        func() time.Time
+	// #225: each run's earliest deadline, and the expiry and binding of an approved call not yet settled.
+	ceilings  map[string]int64
+	approvals map[string]waitApproval
+	now       func() time.Time
 }
 
 func NewWaitTable(now func() time.Time) *WaitTable {
 	if now == nil {
 		now = time.Now
 	}
-	return &WaitTable{rows: map[string][]*RunWait{}, events: map[string][]AttentionEvent{}, deliveries: map[string][]AttentionDelivery{}, now: now}
+	return &WaitTable{rows: map[string][]*RunWait{}, events: map[string][]AttentionEvent{}, deliveries: map[string][]AttentionDelivery{}, ceilings: map[string]int64{}, approvals: map[string]waitApproval{}, now: now}
 }
 func (t *WaitTable) stamp() (string, error) {
 	at := t.now()
@@ -1253,6 +1396,109 @@ func (t *WaitTable) attentionOf(resource, id string) AttentionEvent {
 	return AttentionEvent{}
 }
 
+// terminalWait: a terminal wait ends its run, a timed-out approval or budget wait, or one past its
+// deadline.
+func terminalWait(row *RunWait) bool {
+	return row.State == "expired" || row.State == "timed-out" && row.Reason != "question"
+}
+
+// holds refuses while a wait of the run is not yet resumed: closed for good after a terminal one.
+func (t *WaitTable) holds(resource string) error {
+	rows := t.rows[resource]
+	if slices.ContainsFunc(rows, terminalWait) {
+		return waitRefused("closed")
+	}
+	if slices.ContainsFunc(rows, func(row *RunWait) bool { return row.State != "resumed" }) {
+		return waitRefused("wait-pending")
+	}
+	return nil
+}
+
+// Ceiling is the latest any lease of the run may expire, in store-clock milliseconds, or nil for no
+// limit: its deadline and, until the approved call settles, the approval's expiry (#225 H1: every
+// lease, not only the claim's, so neither a takeover nor a re-acquired lease outlives the approval).
+func (t *WaitTable) Ceiling(resource string) *int64 {
+	var limit *int64
+	if held, ok := t.ceilings[resource]; ok {
+		limit = &held
+	}
+	if held, ok := t.approvals[resource]; ok && (limit == nil || held.at < *limit) {
+		at := held.at
+		limit = &at
+	}
+	return limit
+}
+
+// CommitApproval (#225 H1 and M3): while the run's approved call is unsettled, every checkpoint it
+// commits must carry exactly the call the person reviewed (its call id, the digest of the call and its
+// arguments, and its source), or the commit is refused approval-changed; nothing else can be claimed or
+// dispatched as that call. It reports whether the checkpoint records the call executed, refused or
+// answered: that commit settles it, and the approval's expiry stops bounding the run.
+func (t *WaitTable) CommitApproval(resource string, checkpoint []byte) (bool, error) {
+	held, ok := t.approvals[resource]
+	if !ok || checkpoint == nil {
+		return false, nil
+	}
+	var members struct {
+		Approval json.RawMessage `json:"approval"`
+	}
+	var approval contract.CheckpointApproval
+	if json.Unmarshal(checkpoint, &members) != nil || len(members.Approval) == 0 || json.Unmarshal(members.Approval, &approval) != nil {
+		return false, resumeRefused("approval-changed")
+	}
+	binding, err := ApprovalBindingOf(approval)
+	if err != nil || binding != held.binding {
+		return false, resumeRefused("approval-changed")
+	}
+	return approval.State == "executed" || approval.State == "refused" || approval.State == "answered", nil
+}
+
+// SettleApproval lifts a settled approval's expiry from the run.
+func (t *WaitTable) SettleApproval(resource string) { delete(t.approvals, resource) }
+
+// AdmitAcquire (#265 M2): a committed park closes the run. It refuses acquiring the run's lease while a
+// wait not yet resumed holds it, for good once a wait ended terminally, and from the run's deadline.
+func (t *WaitTable) AdmitAcquire(resource string) error {
+	rows := t.rows[resource]
+	if slices.ContainsFunc(rows, terminalWait) {
+		return waitRefused("closed")
+	}
+	// #225: from the run's deadline, or an unsettled approval's expiry, nothing leases the run; equal
+	// time is past.
+	if ceiling := t.Ceiling(resource); ceiling != nil {
+		now := t.now()
+		if now.IsZero() {
+			return waitInvalid()
+		}
+		if now.UnixMilli() >= *ceiling {
+			return waitRefused("deadline-passed")
+		}
+	}
+	if slices.ContainsFunc(rows, func(row *RunWait) bool { return row.State != "resumed" }) {
+		return waitRefused("wait-pending")
+	}
+	return nil
+}
+
+// Limit sets the run's deadline: the earliest one held wins.
+func (t *WaitTable) Limit(input RunLimit) (RunLimit, error) {
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return RunLimit{}, waitInvalid()
+	}
+	limit, err := ReadRunLimit(raw)
+	if err != nil {
+		return RunLimit{}, asWait(err)
+	}
+	next := waitTimeMillis(limit.Run)
+	if held, ok := t.ceilings[limit.Resource]; ok && held < next {
+		next = held
+	}
+	t.ceilings[limit.Resource] = next
+	run, _ := leaseExpiryAt(next)
+	return RunLimit{Version: ResumeRecordVersion, Resource: limit.Resource, Run: run}, nil
+}
+
 // Park commits the wait and its attention event and releases the lease, or changes nothing.
 func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases *LeaseTable) (RunWait, AttentionEvent, error) {
 	park, err := readWaitPark(input)
@@ -1268,7 +1514,7 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	if existing := t.find(park.Resource, park.Wait); existing != nil {
 		// A repeated park acknowledges the committed one: read, never parked twice.
 		prior := cloneRunWait(*existing)
-		prior.Parked, prior.Attention, prior.State, prior.Disposition, prior.Resolution, prior.Resumed, prior.Reconciled, prior.Redacted = contract.RunWaitActor{}, "", "", nil, nil, nil, nil, nil
+		prior.Parked, prior.Attention, prior.State, prior.Deadline, prior.Disposition, prior.Expired, prior.Resolution, prior.Resumed, prior.Revalidation, prior.Reconciled, prior.Redacted = contract.RunWaitActor{}, "", "", nil, nil, nil, nil, nil, nil, nil, nil
 		a, _ := canonicalRaw(prior)
 		b, _ := canonicalRaw(park)
 		if !bytes.Equal(a, b) || existing.Parked.Owner != fence.Owner || existing.Parked.Epoch != fence.Epoch {
@@ -1279,10 +1525,9 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	if _, err := leases.Check(fence); err != nil {
 		return RunWait{}, AttentionEvent{}, err
 	}
-	for _, row := range t.rows[park.Resource] {
-		if row.State == "parked" {
-			return RunWait{}, AttentionEvent{}, waitRefused("wait-pending")
-		}
+	// #265 M2: every wait not yet resumed holds the run, so one pause is never parked, and claimed, twice.
+	if err := t.holds(park.Resource); err != nil {
+		return RunWait{}, AttentionEvent{}, err
 	}
 	if !waitHeadMatches(head, park.Checkpoint) {
 		return RunWait{}, AttentionEvent{}, waitRefused("checkpoint-changed")
@@ -1291,7 +1536,21 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	if err != nil {
 		return RunWait{}, AttentionEvent{}, err
 	}
+	// #225: the earliest applicable deadline wins, and this park's run limit never extends the one the
+	// store holds.
+	var runCeiling *int64
+	if ceiling, ok := t.ceilings[park.Resource]; ok {
+		runCeiling = &ceiling
+	}
+	deadline, err := StampDeadline(park.Limits, waitTimeMillis(at), runCeiling)
+	if err != nil {
+		return RunWait{}, AttentionEvent{}, asWait(err)
+	}
+	if deadline != nil && waitTimeMillis(deadline.At) <= waitTimeMillis(at) {
+		return RunWait{}, AttentionEvent{}, waitRefused("deadline-passed")
+	}
 	wait := cloneRunWait(park)
+	wait.Deadline = deadline
 	wait.Parked = contract.RunWaitActor{Owner: fence.Owner, Epoch: fence.Epoch, At: at}
 	wait.Attention = WaitAttentionID(wait.Resource, wait.Wait)
 	wait.State = "parked"
@@ -1299,6 +1558,9 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	// #224: the lease is released in the same transaction that commits the wait and its attention event.
 	if _, err := leases.Release(fence); err != nil {
 		return RunWait{}, AttentionEvent{}, err
+	}
+	if deadline != nil && deadline.Run != nil {
+		t.ceilings[wait.Resource] = waitTimeMillis(*deadline.Run)
 	}
 	held := wait
 	t.rows[wait.Resource] = append(t.rows[wait.Resource], &held)
@@ -1323,6 +1585,41 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 	if err != nil {
 		return WakeDisposition{}, err
 	}
+	if evidence.Kind == "deadline" {
+		if row.Expired != nil {
+			if row.Expired.Evidence != evidence.Evidence {
+				return WakeDisposition{}, waitRefused("stale")
+			}
+			if row.Expired.Digest != digest {
+				return WakeDisposition{}, waitRefused("conflict")
+			}
+			return *row.Expired, nil
+		}
+		// A resumed wait, or one that already ended, has nothing left for its deadline to end.
+		if row.State == "resumed" || terminalWait(row) {
+			return WakeDisposition{}, waitRefused("stale")
+		}
+		if row.Deadline == nil {
+			return WakeDisposition{}, waitRefused("mismatch")
+		}
+		now, err := t.stamp()
+		if err != nil {
+			return WakeDisposition{}, err
+		}
+		// Equal time is due.
+		if waitTimeMillis(now) < waitTimeMillis(row.Deadline.At) {
+			return WakeDisposition{}, waitRefused("not-due")
+		}
+		expired := WakeDisposition{Evidence: evidence.Evidence, Kind: "deadline", At: now, Digest: digest}
+		row.Expired = &expired
+		row.State = "expired"
+		// A question its deadline ends before any answer is unanswered; the recommended option is never
+		// chosen.
+		if row.Reason == "question" && row.Resolution == nil {
+			row.Resolution = &contract.RunWaitResolution{Kind: "unanswered", At: now}
+		}
+		return expired, nil
+	}
 	if row.Disposition != nil {
 		if row.Disposition.Evidence != evidence.Evidence {
 			return WakeDisposition{}, waitRefused("stale")
@@ -1332,9 +1629,21 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 		}
 		return *row.Disposition, nil
 	}
+	if row.Expired != nil {
+		return WakeDisposition{}, waitRefused("stale")
+	}
 	now, err := t.stamp()
 	if err != nil {
 		return WakeDisposition{}, err
+	}
+	// #225: late evidence changes nothing. From the deadline only the deadline wake ends the wait; from
+	// the timeout only the timeout does: an answer or a decision delivered after either is refused, equal
+	// time included.
+	if row.Deadline != nil && waitTimeMillis(now) >= waitTimeMillis(row.Deadline.At) {
+		return WakeDisposition{}, waitRefused("deadline-passed")
+	}
+	if evidence.Kind != "timeout" && row.TimeoutAt != nil && waitTimeMillis(now) >= waitTimeMillis(*row.TimeoutAt) {
+		return WakeDisposition{}, waitRefused("timed-out")
 	}
 	var question *contract.Question
 	if row.Pending.Question != nil {
@@ -1387,45 +1696,53 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 	return disposition, nil
 }
 
-// Resume claims the continuation once under a current fence.
-func (t *WaitTable) Resume(resource, waitID, evidence string, fence LeaseFence, reconciled []WaitRelease, head *RunHead, leases *LeaseTable) (RunWait, error) {
-	if !validStorageID(resource) || !validStorageID(waitID) || !validStorageID(evidence) {
-		return RunWait{}, waitInvalid()
+// Resume checks the claim and, in the same transaction, leases the run and claims the continuation once.
+func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (RunWait, RunLease, error) {
+	if !validStorageID(claim.Resource) || !validStorageID(claim.Wait) || !validStorageID(claim.Evidence) {
+		return RunWait{}, RunLease{}, waitInvalid()
 	}
+	reconciled := claim.Reconciled
 	if reconciled == nil {
 		reconciled = []WaitRelease{}
 	}
 	raw, _ := json.Marshal(reconciled)
 	settled, err := readWaitReleaseList(raw)
 	if err != nil {
-		return RunWait{}, err
+		return RunWait{}, RunLease{}, err
 	}
-	row := t.find(resource, waitID)
+	revalidation, err := checkRevalidation(claim.Revalidation)
+	if err != nil {
+		return RunWait{}, RunLease{}, asWait(err)
+	}
+	row := t.find(claim.Resource, claim.Wait)
 	if row == nil {
-		return RunWait{}, waitRefused("no-wait")
+		return RunWait{}, RunLease{}, waitRefused("no-wait")
 	}
 	// An acknowledgement the store does not hold is reconciled by reading, never by dispatching the
 	// continuation.
-	if row.State == "parked" || row.Disposition.Evidence != evidence {
-		return RunWait{}, waitRefused("unacknowledged")
+	if row.Disposition == nil || row.Disposition.Evidence != claim.Evidence {
+		return RunWait{}, RunLease{}, waitRefused("unacknowledged")
 	}
 	if row.State == "resumed" {
-		return RunWait{}, waitRefused("already-resumed")
+		return RunWait{}, RunLease{}, waitRefused("already-resumed")
 	}
-	if !validLeaseFence(fence) {
-		return RunWait{}, leaseInvalid()
-	}
-	if fence.Resource != row.Resource {
-		return RunWait{}, &LeaseRefused{Reason: "resource-mismatch"}
-	}
-	if _, err := leases.Check(fence); err != nil {
-		return RunWait{}, err
+	if claim.Lease.Resource != row.Resource {
+		return RunWait{}, RunLease{}, &LeaseRefused{Reason: "resource-mismatch"}
 	}
 	if row.State == "timed-out" && row.Reason != "question" {
-		return RunWait{}, waitRefused("timed-out")
+		return RunWait{}, RunLease{}, waitRefused("timed-out")
+	}
+	now, err := t.stamp()
+	if err != nil {
+		return RunWait{}, RunLease{}, err
+	}
+	// #225: nothing continues past the wait's deadline, an approval's expiry or the run's deadline; equal
+	// time is past.
+	if row.State == "expired" || row.Deadline != nil && waitTimeMillis(now) >= waitTimeMillis(row.Deadline.At) {
+		return RunWait{}, RunLease{}, waitRefused("deadline-passed")
 	}
 	if !waitHeadMatches(head, row.Checkpoint) {
-		return RunWait{}, waitRefused("checkpoint-changed")
+		return RunWait{}, RunLease{}, waitRefused("checkpoint-changed")
 	}
 	uncertain := []string{}
 	for _, release := range row.Release {
@@ -1435,24 +1752,43 @@ func (t *WaitTable) Resume(resource, waitID, evidence string, fence LeaseFence, 
 	}
 	for _, resource := range uncertain {
 		if !slices.ContainsFunc(settled, func(s WaitRelease) bool { return s.Resource == resource && s.Outcome != "uncertain" }) {
-			return RunWait{}, waitRefused("release-uncertain")
+			return RunWait{}, RunLease{}, waitRefused("release-uncertain")
 		}
 	}
 	for _, s := range settled {
 		if !slices.Contains(uncertain, s.Resource) {
-			return RunWait{}, waitRefused("release-uncertain")
+			return RunWait{}, RunLease{}, waitRefused("release-uncertain")
 		}
 	}
-	at, err := t.stamp()
+	// #227: the claim records the revalidation of this wait's own pins.
+	pins, err := PinsDigest(row.Pins)
+	if err != nil || revalidation.Resource != row.Resource || revalidation.Wait != row.Wait || revalidation.Pins != pins {
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	// #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's
+	// expiry bounds it.
+	ceiling, approval := t.Ceiling(row.Resource), (*int64)(nil)
+	if row.Reason == "approval" && row.Deadline != nil && row.Deadline.Approval != nil {
+		at := waitTimeMillis(*row.Deadline.Approval)
+		approval = &at
+		if ceiling == nil || at < *ceiling {
+			ceiling = approval
+		}
+	}
+	lease, err := leases.acquireWithin(claim.Lease, head.Revision, ceiling)
 	if err != nil {
-		return RunWait{}, err
+		return RunWait{}, RunLease{}, err
+	}
+	if approval != nil {
+		t.approvals[row.Resource] = waitApproval{at: *approval, binding: *row.Approval}
 	}
 	row.State = "resumed"
-	row.Resumed = &contract.RunWaitActor{Owner: fence.Owner, Epoch: fence.Epoch, At: at}
+	row.Resumed = &contract.RunWaitActor{Owner: lease.Owner, Epoch: lease.Epoch, At: now}
+	row.Revalidation = &revalidation
 	if len(settled) > 0 {
 		row.Reconciled = settled
 	}
-	return cloneRunWait(*row), nil
+	return cloneRunWait(*row), lease, nil
 }
 func (t *WaitTable) Export(resource string) (WaitExport, error) {
 	if !validStorageID(resource) {
@@ -1538,9 +1874,18 @@ func (m *MemoryRunStore) WakeWait(ctx context.Context, evidence WakeEvidence) (d
 	err = m.leaseTransition(ctx, func() error { disposition, err = m.waits.Wake(evidence); return err })
 	return disposition, err
 }
-func (m *MemoryRunStore) ResumeWait(ctx context.Context, resource, wait, evidence string, fence LeaseFence, reconciled []WaitRelease) (held RunWait, err error) {
+func (m *MemoryRunStore) ResumeWait(ctx context.Context, claim WaitClaim) (held RunWait, lease RunLease, err error) {
 	err = m.leaseTransition(ctx, func() error {
-		held, err = m.waits.Resume(resource, wait, evidence, fence, reconciled, m.headOf(resource), m.leases)
+		held, lease, err = m.waits.Resume(claim, m.headOf(claim.Resource), m.leases)
+		return err
+	})
+	return held, lease, err
+}
+func (m *MemoryRunStore) LimitRun(ctx context.Context, limit RunLimit) (held RunLimit, err error) {
+	err = m.leaseTransition(ctx, func() error {
+		if held, err = m.waits.Limit(limit); err == nil {
+			m.leases.Lower(held.Resource, waitTimeMillis(held.Run))
+		}
 		return err
 	})
 	return held, err
@@ -1578,6 +1923,30 @@ func waitStoreOf(store RunStore) (WaitRunStore, error) {
 // refuses by name before a park.
 func AdmitWaits(store RunStore) error { _, err := waitStoreOf(store); return err }
 
+// LimitRun (#225) sets the run's deadline in its store. The earliest deadline the store holds wins; from
+// it every lease of the run expires no later than it, so no commit, claim or effect admission is
+// accepted at or after it.
+func LimitRun(ctx context.Context, store RunStore, limit RunLimit) (RunLimit, error) {
+	held, err := waitStoreOf(store)
+	if err != nil {
+		return RunLimit{}, err
+	}
+	raw, err := json.Marshal(limit)
+	if err != nil {
+		return RunLimit{}, waitInvalid()
+	}
+	if limit, err = ReadRunLimit(raw); err != nil {
+		return RunLimit{}, asWait(err)
+	}
+	out, err := held.LimitRun(ctx, limit)
+	if err != nil {
+		return RunLimit{}, err
+	}
+	raw, _ = json.Marshal(out)
+	out, err = ReadRunLimit(raw)
+	return out, asWait(err)
+}
+
 // ParkInput is a host's park request.
 type ParkInput struct {
 	Store        RunStore
@@ -1586,6 +1955,12 @@ type ParkInput struct {
 	Continuation string
 	Condition    WaitCondition
 	TimeoutAt    *string
+	// Model is the model the trusted host admitted the run with; pinned with the rest of the run's
+	// execution authority.
+	Model PinnedModel
+	// Limits (#225) is the host's deadline policy. An approval wait needs ApprovalTtlMs; it is left out of
+	// any other wait.
+	Limits *WaitLimits
 	// WakeKeyDigest is the SHA-256 of the host's wake key (WakeKeyDigest(key)); the key stays the host's.
 	WakeKeyDigest string
 	// Release is the host's evidence for each provider resource the paused run held. Uncertain evidence
@@ -1657,6 +2032,17 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		return RunWait{}, AttentionEvent{}, waitRefused("nothing-pending")
 	}
 	park := RunWait{Version: WaitRecordVersion, Resource: input.Fence.Resource, Wait: input.Wait, Condition: input.Condition, TimeoutAt: input.TimeoutAt, Continuation: input.Continuation, Checkpoint: contract.RunWaitCheckpointBinding{Revision: head.Revision, Digest: CheckpointBytesDigest(head.Checkpoint)}, WakeKeyDigest: input.WakeKeyDigest, Release: slices.Clone(input.Release), RetainUntil: input.RetainUntil}
+	if input.Limits != nil {
+		raw, err := json.Marshal(input.Limits)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, waitInvalid()
+		}
+		limits, err := ReadWaitLimits(raw)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, asWait(err)
+		}
+		park.Limits = &limits
+	}
 	if checkpoint.Status == "paused" {
 		if input.Question != "" {
 			return RunWait{}, AttentionEvent{}, waitInvalid()
@@ -1664,6 +2050,16 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		if approval := checkpoint.Approval; approval != nil && approval.State == "asked" {
 			park.Reason = "approval"
 			park.Pending = contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: approval.CallID, Name: approval.Name, Tool: approval.Tool}}
+			// #225: an unattended approval never waits indefinitely; it is bound to the exact call the
+			// person reviews.
+			if park.Limits == nil || park.Limits.ApprovalTtlMs == nil {
+				return RunWait{}, AttentionEvent{}, waitRefused("approval-ttl-required")
+			}
+			binding, err := ApprovalBindingOf(*approval)
+			if err != nil {
+				return RunWait{}, AttentionEvent{}, asWait(err)
+			}
+			park.Approval = &binding
 		} else {
 			park.Reason = "budget"
 			park.Pending = contract.RunWaitPending{Budget: &contract.RunWaitPendingBudget{Kind: "budget", Unit: checkpoint.Unit, Used: checkpoint.Used, Limit: checkpoint.Limit}}
@@ -1684,6 +2080,17 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		}
 		park.Reason = "question"
 		park.Pending = contract.RunWaitPending{Question: &contract.RunWaitPendingQuestion{Kind: "question", Event: input.Question, QuestionDigest: WaitQuestionDigest(*question), Question: question}}
+	}
+	if park.Approval == nil && park.Limits != nil && park.Limits.ApprovalTtlMs != nil {
+		limits := *park.Limits
+		limits.ApprovalTtlMs = nil
+		park.Limits = &limits
+		if limits.Run == nil && limits.WaitMs == nil {
+			park.Limits = nil
+		}
+	}
+	if park.Pins, err = PinsFrom(checkpoint, input.Model); err != nil {
+		return RunWait{}, AttentionEvent{}, asWait(err)
 	}
 	if park, err = readWaitPark(park); err != nil {
 		return RunWait{}, AttentionEvent{}, err
@@ -1721,17 +2128,21 @@ type ResumeInput struct {
 	Grant *contract.CheckpointGrant
 	// Reconciled is the host's reconciliation of each uncertain release.
 	Reconciled []WaitRelease
+	// Current (#227) is the host's current evidence: what the continuation would run under now, with any
+	// explicit admission of a changed model or reference. Without it nothing resumes.
+	Current *ResumeEvidence
 }
 
 // ResumedWait is what a resume hands the host: the new lease and fence, the claimed wait, and the
 // decision the run continues with.
 type ResumedWait struct {
-	Lease      RunLease
-	Fence      LeaseFence
-	Wait       RunWait
-	Approval   *contract.CheckpointApprovalDecision
-	Grant      *contract.CheckpointGrant
-	Resolution *contract.RunWaitResolution
+	Lease        RunLease
+	Fence        LeaseFence
+	Wait         RunWait
+	Revalidation Revalidation
+	Approval     *contract.CheckpointApprovalDecision
+	Grant        *contract.CheckpointGrant
+	Resolution   *contract.RunWaitResolution
 }
 
 func waitDecision(wait RunWait, input ResumeInput) error {
@@ -1758,9 +2169,11 @@ func waitDecision(wait RunWait, input ResumeInput) error {
 	return nil
 }
 
-// ResumeParked resumes a woken wait: it checks the host's decision, takes a new lease against the parked
-// revision, revalidates, and claims the continuation once. The host then continues the run through the
-// fenced store with the returned decision.
+// ResumeParked resumes a woken wait: it checks the host's decision, revalidates the pinned execution
+// authority against the host's current evidence (#227), then has the store check the deadline, the head
+// and the release reconciliation, lease the run and claim the continuation once, in one transaction. The
+// host then continues the run through the fenced store with the returned decision; nothing is dispatched
+// before that claim.
 func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	store, err := waitStoreOf(input.Store)
 	if err != nil {
@@ -1773,7 +2186,7 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if wait == nil {
 		return ResumedWait{}, waitRefused("no-wait")
 	}
-	if wait.State == "parked" || wait.Disposition.Evidence != input.Evidence {
+	if wait.Disposition == nil || wait.Disposition.Evidence != input.Evidence {
 		return ResumedWait{}, waitRefused("unacknowledged")
 	}
 	if wait.State == "resumed" {
@@ -1782,23 +2195,29 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if wait.State == "timed-out" && wait.Reason != "question" {
 		return ResumedWait{}, waitRefused("timed-out")
 	}
+	if wait.State == "expired" {
+		return ResumedWait{}, waitRefused("deadline-passed")
+	}
 	if err := waitDecision(*wait, input); err != nil {
 		return ResumedWait{}, err
 	}
 	if wait.Chat != nil {
 		return ResumedWait{}, &WaitCapabilityRefused{Reason: "chat-store-unsupported"}
 	}
-	lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs})
+	// #227: missing current evidence refuses; nothing of the continuation is claimed before the
+	// revalidation passes.
+	if input.Current == nil {
+		return ResumedWait{}, resumeRefused("evidence-missing")
+	}
+	revalidation, err := RevalidateResume(RevalidatedWait{Resource: wait.Resource, Wait: wait.Wait, Reason: wait.Reason, Pins: wait.Pins, Approval: wait.Approval}, *input.Current)
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	fence := FenceOf(lease)
-	resumed, err := store.ResumeWait(ctx, wait.Resource, wait.Wait, input.Evidence, fence, input.Reconciled)
+	resumed, lease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs}, Reconciled: input.Reconciled, Revalidation: revalidation})
 	if err != nil {
-		_, _ = store.ReleaseLease(context.WithoutCancel(ctx), fence)
 		return ResumedWait{}, err
 	}
-	out := ResumedWait{Lease: lease, Fence: fence, Wait: resumed, Approval: input.Approval, Grant: input.Grant}
+	out := ResumedWait{Lease: lease, Fence: FenceOf(lease), Wait: resumed, Revalidation: revalidation, Approval: input.Approval, Grant: input.Grant}
 	if resumed.Resolution != nil {
 		resolution := *cloneRunWait(resumed).Resolution
 		out.Resolution = &resolution
@@ -1839,6 +2258,9 @@ func ReportFromExport(source WaitExport, now time.Time) (WaitReport, error) {
 		}
 		condition := cloneWaitCondition(wait.Condition)
 		park := WaitReportEntry{Wait: wait.Wait, Decision: "park", Reason: wait.Reason, At: wait.Parked.At, Owner: str(wait.Parked.Owner), Epoch: str(wait.Parked.Epoch), Condition: &condition, TimeoutAt: wait.TimeoutAt, Release: &release}
+		if wait.Deadline != nil {
+			park.Deadline = str(wait.Deadline.At)
+		}
 		question := wait.Pending.Question
 		switch {
 		case wait.Pending.Approval != nil:
@@ -1855,12 +2277,25 @@ func ReportFromExport(source WaitExport, now time.Time) (WaitReport, error) {
 			}
 			report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: decision, Reason: wait.Reason, At: d.At, Evidence: str(d.Evidence), Wake: str(d.Kind)})
 		}
-		if r := wait.Resolution; r != nil && question != nil {
-			if r.Kind == "answered" {
-				report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "answer", Reason: wait.Reason, At: r.At, Actor: r.Actor, Content: content(nil, r.Answer, *r.AnswerDigest)})
-			} else {
-				report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "unanswered", Reason: wait.Reason, At: r.At, Content: content(question.Question, nil, question.QuestionDigest)})
+		resolution := func() {
+			if r := wait.Resolution; r != nil && question != nil {
+				if r.Kind == "answered" {
+					report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "answer", Reason: wait.Reason, At: r.At, Actor: r.Actor, Content: content(nil, r.Answer, *r.AnswerDigest)})
+				} else {
+					report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "unanswered", Reason: wait.Reason, At: r.At, Content: content(question.Question, nil, question.QuestionDigest)})
+				}
 			}
+		}
+		// #225: a deadline that ended the wait is reported after what woke it, and before the unanswered
+		// end it caused.
+		if wait.Disposition != nil {
+			resolution()
+		}
+		if e := wait.Expired; e != nil {
+			report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "deadline", Reason: wait.Reason, At: e.At, Evidence: str(e.Evidence), Wake: str("deadline")})
+		}
+		if wait.Disposition == nil {
+			resolution()
 		}
 		if r := wait.Resumed; r != nil {
 			report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "resume", Reason: wait.Reason, At: r.At, Owner: str(r.Owner), Epoch: str(r.Epoch)})

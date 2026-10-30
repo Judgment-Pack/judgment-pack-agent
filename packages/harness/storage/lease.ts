@@ -108,13 +108,15 @@ export class LeaseTable {
  constructor(private readonly clock:()=>Date=()=>new Date()){}
  private now():number{const at=this.clock();const ms=at instanceof Date?at.getTime():NaN;return Number.isSafeInteger(ms)?ms:invalid()}
  read(resource:string):RunLease|undefined{if(!storageId(resource))return invalid();const row=this.rows.get(resource);return row?{...row}:undefined}
- acquire(request:LeaseAcquire,currentRevision:StorageRevision|null):RunLease{
+ /** `ceiling` (#225, store-clock milliseconds): the latest the lease may expire, the run's deadline or an approval's
+  * expiry; the caller refuses before it when the ceiling is not after the store's time. */
+ acquire(request:LeaseAcquire,currentRevision:StorageRevision|null,ceiling?:number):RunLease{
   if(!object(request)||!exact(request,['resource','owner','expectedRevision','durationMs'])||!storageId(request.resource)||!storageId(request.owner)||request.expectedRevision!==null&&!storageId(request.expectedRevision))return invalid()
   const duration=requireDuration(request.durationMs),now=this.now()
   if(request.expectedRevision!==currentRevision)throw new LeaseRefused('revision-changed')
   const row=this.rows.get(request.resource)
   if(row&&row.state==='held'&&now<Date.parse(row.expiry))throw new LeaseRefused('held')
-  const lease:RunLease={version:1,resource:request.resource,owner:request.owner,epoch:nextLeaseEpoch(row?.epoch),expiry:expiryAt(now+duration),state:'held'}
+  const lease:RunLease={version:1,resource:request.resource,owner:request.owner,epoch:nextLeaseEpoch(row?.epoch),expiry:expiryAt(Math.min(now+duration,ceiling??Infinity)),state:'held'}
   this.rows.set(lease.resource,lease);return {...lease}
  }
  /** Throws the named reason unless the fence is current: this epoch, this owner, held and unexpired by the store clock.
@@ -128,7 +130,10 @@ export class LeaseTable {
   if(now>=Date.parse(row.expiry))throw new LeaseRefused('expired')
   return row
  }
- renew(fence:LeaseFence,durationMs:number):RunLease{const duration=requireDuration(durationMs),row=this.check(fence);row.expiry=expiryAt(this.now()+duration);return {...row}}
+ /** #225: a renewal never passes `ceiling`: renewing a lease renews neither the run's deadline nor an approval. */
+ renew(fence:LeaseFence,durationMs:number,ceiling?:number):RunLease{const duration=requireDuration(durationMs),row=this.check(fence);row.expiry=expiryAt(Math.min(this.now()+duration,ceiling??Infinity));return {...row}}
+ /** #225: a held lease is shortened to a deadline set while it is held; it is never lengthened. */
+ lower(resource:string,ceiling:number):void{const row=this.rows.get(resource);if(row&&row.state==='held'&&Date.parse(row.expiry)>ceiling)row.expiry=expiryAt(ceiling)}
  release(fence:LeaseFence):RunLease{const row=this.check(fence);row.state='released';return {...row}}
 }
 

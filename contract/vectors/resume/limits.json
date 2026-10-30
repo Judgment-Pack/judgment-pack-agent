@@ -1,0 +1,336 @@
+{
+  "description": "Handwritten deadline policies, run deadlines and the deadlines a park stamps (#225). items are host deadline policies for one park; runLimits are a run's deadline as the host sets it and the store answers it. stamps: the deadline the store stamps from a park's limits, its park time and the earliest run deadline the store already holds (ceiling), or none: the earliest wins, and on a tie the run's is named, then the wait's. deadlinesRefused are schema-valid stamped deadlines both readers refuse against their park's limits and time. refused fail the schema and both readers.",
+  "schema": "run-resume.json#/$defs/limits",
+  "items": [
+    {
+      "run": "2026-01-05T00:00:00.000Z",
+      "approvalTtlMs": 172800000
+    },
+    {
+      "run": "2026-01-01T08:00:00.000Z",
+      "waitMs": 43200000
+    },
+    {
+      "approvalTtlMs": 3600000
+    },
+    {
+      "approvalTtlMs": 86400000
+    },
+    {
+      "waitMs": 604800000
+    },
+    {
+      "waitMs": 1
+    },
+    {
+      "approvalTtlMs": 2592000000
+    }
+  ],
+  "refused": [
+    {
+      "problem": "an empty policy limits nothing",
+      "limits": {}
+    },
+    {
+      "problem": "a wait of zero milliseconds",
+      "limits": {
+        "waitMs": 0
+      }
+    },
+    {
+      "problem": "an approval TTL past thirty days",
+      "limits": {
+        "approvalTtlMs": 2592000001
+      }
+    },
+    {
+      "problem": "a fractional duration",
+      "limits": {
+        "waitMs": 1.5
+      }
+    },
+    {
+      "problem": "a run deadline without milliseconds",
+      "limits": {
+        "run": "2026-01-05T00:00:00Z"
+      }
+    },
+    {
+      "problem": "a policy member no schema names",
+      "limits": {
+        "approvalTtlMs": 3600000,
+        "leaseMs": 1000
+      }
+    }
+  ],
+  "runLimits": {
+    "schema": "run-resume.json#/$defs/runLimit",
+    "items": [
+      {
+        "version": 1,
+        "resource": "run-approval",
+        "run": "2026-01-05T00:00:00.000Z"
+      }
+    ],
+    "refused": [
+      {
+        "problem": "version 2 is not read",
+        "limit": {
+          "version": 2,
+          "resource": "run-approval",
+          "run": "2026-01-05T00:00:00.000Z"
+        }
+      },
+      {
+        "problem": "a run limit names its deadline",
+        "limit": {
+          "version": 1,
+          "resource": "run-approval"
+        }
+      }
+    ]
+  },
+  "stamps": [
+    {
+      "case": "the approval's expiry comes before the run's deadline",
+      "limits": {
+        "run": "2026-01-05T00:00:00.000Z",
+        "approvalTtlMs": 172800000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-03T00:00:00.000Z",
+        "by": "approval",
+        "run": "2026-01-05T00:00:00.000Z",
+        "approval": "2026-01-03T00:00:00.000Z"
+      }
+    },
+    {
+      "case": "the run's deadline comes before the wait's",
+      "limits": {
+        "run": "2026-01-01T08:00:00.000Z",
+        "waitMs": 43200000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T08:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T08:00:00.000Z",
+        "wait": "2026-01-01T12:00:00.000Z"
+      }
+    },
+    {
+      "case": "no policy: the run's deadline the store holds still applies",
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "ceiling": "2026-01-01T05:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T05:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T05:00:00.000Z"
+      }
+    },
+    {
+      "case": "a later run limit never extends the earlier one the store holds",
+      "limits": {
+        "run": "2026-01-05T00:00:00.000Z",
+        "approvalTtlMs": 172800000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "ceiling": "2026-01-02T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-02T00:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-02T00:00:00.000Z",
+        "approval": "2026-01-03T00:00:00.000Z"
+      }
+    },
+    {
+      "case": "an earlier run limit lowers the one the store holds",
+      "limits": {
+        "run": "2026-01-01T06:00:00.000Z"
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "ceiling": "2026-01-02T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T06:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T06:00:00.000Z"
+      }
+    },
+    {
+      "case": "a tie names the run's deadline",
+      "limits": {
+        "run": "2026-01-01T01:00:00.000Z",
+        "approvalTtlMs": 3600000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T01:00:00.000Z",
+        "approval": "2026-01-01T01:00:00.000Z"
+      }
+    },
+    {
+      "case": "the wait's limit comes first",
+      "limits": {
+        "waitMs": 1800000,
+        "approvalTtlMs": 3600000
+      },
+      "parkedAt": "2026-01-01T00:00:00.500Z",
+      "deadline": {
+        "at": "2026-01-01T00:30:00.500Z",
+        "by": "wait",
+        "wait": "2026-01-01T00:30:00.500Z",
+        "approval": "2026-01-01T01:00:00.500Z"
+      }
+    },
+    {
+      "case": "no policy and no run deadline: no deadline",
+      "parkedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "case": "a run deadline at the Unix epoch bounds like any other",
+      "parkedAt": "1969-12-31T23:59:00.000Z",
+      "ceiling": "1970-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "1970-01-01T00:00:00.000Z",
+        "by": "run",
+        "run": "1970-01-01T00:00:00.000Z"
+      }
+    }
+  ],
+  "deadlinesRefused": [
+    {
+      "problem": "at is the earliest time",
+      "limits": {
+        "run": "2026-01-05T00:00:00.000Z",
+        "approvalTtlMs": 172800000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-05T00:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-05T00:00:00.000Z",
+        "approval": "2026-01-03T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "by names the earliest time",
+      "limits": {
+        "run": "2026-01-05T00:00:00.000Z",
+        "approvalTtlMs": 172800000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-03T00:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-05T00:00:00.000Z",
+        "approval": "2026-01-03T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a tie is named for the run",
+      "limits": {
+        "run": "2026-01-01T01:00:00.000Z",
+        "approvalTtlMs": 3600000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "approval",
+        "run": "2026-01-01T01:00:00.000Z",
+        "approval": "2026-01-01T01:00:00.000Z"
+      }
+    },
+    {
+      "problem": "the wait's time is the park time plus waitMs",
+      "limits": {
+        "waitMs": 43200000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T12:00:00.001Z",
+        "by": "wait",
+        "wait": "2026-01-01T12:00:00.001Z"
+      }
+    },
+    {
+      "problem": "an approval's time needs approvalTtlMs",
+      "limits": {
+        "waitMs": 43200000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "approval",
+        "wait": "2026-01-01T12:00:00.000Z",
+        "approval": "2026-01-01T01:00:00.000Z"
+      }
+    },
+    {
+      "problem": "waitMs always stamps the wait's time",
+      "limits": {
+        "waitMs": 43200000,
+        "run": "2026-01-01T08:00:00.000Z"
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T08:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T08:00:00.000Z"
+      }
+    },
+    {
+      "problem": "the run's time is never later than the park's run limit",
+      "limits": {
+        "run": "2026-01-01T08:00:00.000Z"
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T09:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T09:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a run limit always stamps the run's time",
+      "limits": {
+        "run": "2026-01-01T08:00:00.000Z",
+        "waitMs": 3600000
+      },
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "wait",
+        "wait": "2026-01-01T01:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a deadline is after its park",
+      "parkedAt": "2026-01-01T05:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T05:00:00.000Z",
+        "by": "run",
+        "run": "2026-01-01T05:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a deadline names a time",
+      "parkedAt": "2026-01-01T00:00:00.000Z",
+      "deadline": {
+        "at": "2026-01-01T05:00:00.000Z",
+        "by": "run"
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/resume.ts (readResumePins, readResumeEvidence, readRevalidation, readWaitLimits, readRunLimit, readWaitDeadline, stampDeadline, pinsFrom, approvalBinding, revalidateResume)"
+    ]
+  }
+}

@@ -400,28 +400,46 @@ and processes. Nothing in the package polls, schedules, sends a notification or 
 `waitVersion` 1 and `waitLifetime` (`durable` only when waits outlive the store's process), and these
 transitions, each atomic under the same serialization as its commits and against the same run head:
 
-- `parkWait(park, fence)`: check the fence (the lease refusals of #223), refuse a second parked wait
-  of the run (`wait-pending`) and a head that is not the one the park binds (`checkpoint-changed`),
-  then commit the wait (stamped with the fence's owner and epoch and the store's time) and its one
-  `needs_attention` event, and release the lease, in one transaction. The same park again returns
-  it; another park under the same wait id is `conflict`.
+- `parkWait(park, fence)`: check the fence (the lease refusals of #223), refuse while any wait of the
+  run is not yet resumed (`wait-pending`; `closed` once one ended terminally) and a head that is not
+  the one the park binds (`checkpoint-changed`), stamp the deadline (below; `deadline-passed` when it
+  is not after the store's time), then commit the wait (stamped with the fence's owner and epoch and
+  the store's time) and its one `needs_attention` event, and release the lease, in one transaction.
+  The same park again returns it; another park under the same wait id is `conflict`.
 - `wakeWait(evidence)`: find the wait (`no-wait`), compare the SHA-256 of the presented key with
   the wait's `wakeKeyDigest` (`unauthenticated`), then: a duplicate (same evidence id and digest)
   returns the retained disposition; the same id with other content is `conflict`; another wake
   after the winner is `stale`; an event that is not the expected `{kind, subject}`, an answer on a
   wait that is not a question, a question event without a real answer to the retained question, a
   time wake with no `wakeAt` or a timeout with no `timeoutAt` is `mismatch`; a time or timeout
-  before its store time is `not-due` (equal time is due). Only then is the disposition and, for a
-  question, the resolution (`answered` with actor and answer digest, or `unanswered` on timeout)
-  written.
-- `resumeWait(resource, wait, evidence, fence, reconciled)`: the acknowledged wake must be the
-  retained one (`unacknowledged`), claimed once (`already-resumed`), under a current fence, not a
-  timed-out approval or budget wait (`timed-out`), over the unchanged head (`checkpoint-changed`),
-  and with every uncertain release reconciled to `released` or `not-held` (`release-uncertain`).
+  before its store time is `not-due` (equal time is due). An event or time wake at or after the
+  wait's timeout is `timed-out` and any wake at or after its deadline `deadline-passed`: only the
+  timeout, or the deadline wake, ends it then. Only then is the disposition and, for a question, the
+  resolution (`answered` with actor and answer digest, or `unanswered` on timeout) written. A
+  `deadline` wake is due at the wait's deadline and records `expired` (below).
+- `resumeWait(claim)` with `claim = {resource, wait, evidence, lease, reconciled, revalidation}`:
+  the acknowledged wake must be the retained one (`unacknowledged`), claimed once
+  (`already-resumed`), not a timed-out approval or budget wait (`timed-out`), not past its deadline
+  (`deadline-passed`), over the unchanged head (`checkpoint-changed`), with every uncertain release
+  reconciled to `released` or `not-held` (`release-uncertain`) and with a revalidation of this
+  wait's own pins (`invalid`). Then, in the same transaction, the store acquires the run's lease
+  from `claim.lease` against the parked revision (the lease refusals of #223) and claims the
+  continuation, returning `{wait, lease}`. This is the only lease a run held by a wait is granted.
+- `limitRun(limit)`: keep the run's deadline (the earliest one held wins) and shorten a held lease to
+  it.
 - `readWait`, `exportWaits` (the run's waits in park order with their attention events and
   deliveries), `recordDelivery` (a host's delivery attempt, kept apart from the event; a repeat
   returns the first record) and `redactWait` (the question and answer content removed, every
   identity and digest kept).
+
+A store kind's `acquireLease` refuses a run while any of its waits is not yet resumed (`wait-pending`),
+for good once one of them ended terminally (`closed`: a timed-out approval or budget wait, or an
+expired one), and from the run's deadline (`deadline-passed`); every lease it grants or renews
+expires no later than the run's deadline and, from an approval wait's claim until its approved call
+settles, no later than the approval's expiry. While that call is unsettled, every commit of the run
+carrying a checkpoint must carry exactly the reviewed call (its call id, the digest of its name, tool,
+arguments and Runtime binding, and its source), or it is refused `approval-changed`; the commit whose
+checkpoint records the call `executed`, `refused` or `answered` settles it.
 
 `MemoryRunStore` implements the port within its process (`waitLifetime` `process`), so `parkRun`
 on it refuses `store-lifetime`; the callback kind and a store without the port refuse
@@ -429,7 +447,8 @@ on it refuses `store-lifetime`; the callback kind and a store without the port r
 
 **Parking.** After a run ends paused (an asked approval or a budget pause) or after a
 `user_question`, the host calls `parkRun({store, fence, wait, continuation, condition, timeoutAt,
-wakeKeyDigest, release, question?, chat?, retainUntil?})` (Go `ParkRun`) with the fence it ran under.
+model, limits?, wakeKeyDigest, release, question?, chat?, retainUntil?})` (Go `ParkRun`) with the
+fence it ran under.
 The package loads the head, reads the checkpoint with the ordinary reader, and takes the pending
 decision from it: an asked approval is an approval wait, any other paused checkpoint a budget
 wait. A question wait names the `user_question` event: it must be the latest question in the
@@ -443,20 +462,23 @@ legacy (version 1 or 2) paused checkpoint parks without being rewritten.
 
 **Waking and resuming.** The host delivers `wakeRun(store, evidence)` (Go `WakeRun`); an error from
 the store leaves the outcome unknown, and the host reads the wait to learn it. `resumeParked({store,
-resource, wait, evidence, owner, durationMs, approval?, grant?, reconciled?, chat?})` (Go
-`ResumeParked`) refuses before taking any lease a wake it was not shown (`unacknowledged`), a
-claimed wait, a timed-out approval or budget wait, and a missing decision: an approval wait needs
-the person's decision for the asked call, a budget wait a grant from its paused limit, and a
-question takes neither (`decision-required`). It then acquires a lease against the parked revision
-(a moved run is the lease's `revision-changed`), revalidates a chat binding through the ChatStore
-(`chat-changed`; Go has no ChatStore and refuses a chat-bound resume as `chat-store-unsupported`),
-and has the store claim the continuation. It returns the new lease and fence, the claimed wait and
-the decision (or the question's resolution); the host continues the run through
+resource, wait, evidence, owner, durationMs, approval?, grant?, reconciled?, current?, chat?})` (Go
+`ResumeParked`) refuses a wake it was not shown (`unacknowledged`), a claimed wait, a timed-out
+approval or budget wait, an expired one (`deadline-passed`), and a missing decision: an approval
+wait needs the person's decision for the asked call, a budget wait a grant from its paused limit,
+and a question takes neither (`decision-required`). It revalidates a chat binding through the
+ChatStore (`chat-changed`; Go has no ChatStore and refuses a chat-bound resume as
+`chat-store-unsupported`; this check is the package's, before the claim, and a later chat CAS is the
+backstop), then the pinned execution authority against the host's `current` evidence (below; none
+is `evidence-missing`), and has the store check the deadline and the head and claim the continuation
+with its lease in one transaction (a moved run is `checkpoint-changed`). Nothing is leased or claimed
+before every check passes. It returns the new lease and fence, the claimed wait, the revalidation
+and the decision (or the question's resolution); the host continues the run through
 `fencedRunStore(store, fence, effectHost)` with `context.approval` (Go `Input.Approval`) or the
 grant, as ADR-0008 continues a pause. A wake is never the approval or the grant.
 
 **Attention.** Each committed park records one `needs_attention` event `{version, type, id,
-resource, wait, reason, needs, subject?, condition, timeoutAt?, releaseUncertain, at}`: `needs` is
+resource, wait, reason, needs, subject?, condition, timeoutAt?, deadline?, releaseUncertain, at}`: `needs` is
 `approval-decision`, `budget-grant` or `question-answer`, `subject` the asked call or the question
 event. Its `id` is the SHA-256 of the canonical JSON of `{resource, wait}`, the identity a notifier
 deduplicates by. The store records it and never sends it; `recordDelivery` keeps the host's
@@ -465,9 +487,82 @@ attempts apart from it, and a failed attempt changes no wait.
 **The report.** `waitReport(store, resource, now)` (Go `WaitReportOf`) reads `exportWaits` and
 lists, per wait in park order, the park (owner, epoch, subject, condition, deadline, `clean` or
 `uncertain` release, and a question's content), the winning wake or timeout (evidence id and
-kind), a question's `answer` (actor and answer) or `unanswered` end, and the resume (owner and
-epoch), each with the store's time. It reads retained waits only, so compacting or replacing the
+kind), a deadline that ended the wait (evidence id), a question's `answer` (actor and answer) or
+`unanswered` end, and the resume (owner and epoch), each with the store's time. It reads retained waits only, so compacting or replacing the
 run's checkpoint changes nothing in it, and an export written out and read back gives the same
 report (`reportFromExport`, Go `ReportFromExport`). Content of a wait whose host `retainUntil` is
 at or before `now` is `{state: expired, digest}`, and a redacted wait's is `{state: redacted,
 digest}`. The report carries no key, fence or decision, and nothing in it resumes a run.
+
+## Deadlines, approval expiry and resume revalidation (#225, #227, #265 M2)
+
+This section is for the same implementers. It implements ADR-0025 decisions 3 and 5 as their
+amendment fixes them. The new records are `contract/schemas/run-resume.json`, version 1, with
+handwritten shared vectors in `contract/vectors/resume/`; the wait record (`run-wait.json`, not yet
+released) gains the members that carry them. TypeScript is `packages/harness/storage/resume.ts`
+beside `wait.ts`; Go is `go/context/run_resume.go` beside `run_wait.go`. The package validates and
+records; every time is decided by the store's clock (the host's), and nothing schedules a deadline.
+
+**A committed park closes the run.** Until a wait is resumed it holds its run: the store refuses
+`acquireLease` (`wait-pending`), a second park (`wait-pending`, for a woken but unclaimed wait as for
+a parked one) and, once a wait ended terminally, both for good (`closed`). The parking driver's lease
+was released in the park. The resume's claim is therefore the only way back into the run: it needs
+the acknowledged wake, the person's decision, the revalidation below and the release
+reconciliation, and it takes the run's next lease in the same transaction that claims the
+continuation. A run that is never parked is leased as before.
+
+**Deadlines.** Deadlines are optional host policy, absent by default. `limitRun(store, {version,
+resource, run})` (Go `LimitRun`) sets a run's deadline at any time; the store keeps the earliest it
+is given, shortens a held lease to it, and from then on grants and renews no lease of the run past
+it. Because the durable writer commits each dispatch's claim through the fenced store before it
+dispatches (both languages), and the effect host admits every non-read effect under the fence, no
+model, agent, Runtime or tool dispatch of a run driven through `fencedRunStore` is made at or after
+its deadline (equal time is past); a lease acquired at or after it is refused `deadline-passed`. An effect already admitted stays unknown until its own
+host reconciles it; the deadline undoes nothing and never re-runs it. A park's `limits` (`run`,
+`waitMs`, `approvalTtlMs`; durations from 1 ms to 30 days) stamp its `deadline` from the store's
+time: the earliest of the run's deadline (this park's or the earlier one the store holds, so a new
+wait never extends a run limit), the park time plus `waitMs`, and for an approval wait the park time
+plus `approvalTtlMs`; `by` names it, the run's first on a tie. From the deadline no wake, answer or
+claim of the wait is accepted (`deadline-passed`); the host delivers a `deadline` wake, due at the
+deadline, which records `expired` and ends the wait, and its run, for good. A question its deadline
+ends before an answer is `unanswered`. A deadline is a terminal outcome; a question's timeout stays
+a resumable end, as before.
+
+**Approval expiry.** An approval wait is unattended approval: `parkRun` refuses one without
+`limits.approvalTtlMs` (`approval-ttl-required`) and records its binding, read from the checkpoint:
+the call id, the SHA-256 of the canonical JSON of `{name, tool, args, runtime?}` the person reviews,
+and its source, whose identity and descriptor are pinned with the Plan and policy identities. The
+approval expires at the park time plus the TTL. A decision delivered at or after that is refused, and
+so is a claim. From the claim until the approved call settles, the expiry bounds the run, not one
+lease: the claim's lease, a takeover's, a lease the claimer re-acquires and every renewal end at it,
+and no lease of the run is granted at or after it (`deadline-passed`). So every commit, every effect
+admission and every dispatch claim of the approved call is refused at the expiry, whoever holds the
+run, and renewing or re-acquiring a lease never renews the approval. Every checkpoint the run commits
+meanwhile must carry exactly the reviewed call, so a rewritten call, arguments or source is refused
+(`approval-changed`) before anything can dispatch it. The commit that records the call `executed`,
+`refused` or `answered` settles it, and the run is then leased as before. An approved call that does
+not settle before the expiry leaves its run closed until a new park. A changed descriptor of its source or a changed policy identity refuses the
+approval at the revalidation (`approval-changed`), even admitted; a changed source identity or Plan
+lineage refuses any resume first. Re-asking needs a newly retained request and a new decision.
+
+**Pins and revalidation.** Every park pins the execution authority its continuation will run under:
+the model the trusted host admitted the run with (`model`, which the host supplies), the identity of
+the resolved policy (the SHA-256 of the canonical JSON of the checkpoint's policy members, or of `{}`),
+the Plan lineage (revision and accepted revision), each source's identity digest and the asked
+approval's source with its descriptor digest, and the last observed digest of each artifact or
+dialect the run read or produced. `resumeParked` requires the host's `current` evidence
+(`run-resume.json#/$defs/evidence`) and revalidates it before anything is claimed, in this order:
+a pinned item with no current evidence is `evidence-missing`; a changed source identity is
+`identity-changed` and a changed Plan lineage `lineage-changed` (each needs a new admitted run,
+ADR-0019); a retired model is `model-retired`, whatever an admission says (the person decides; nothing
+is substituted); a changed model or reference (descriptor or artifact) needs an explicit admission of
+exactly that change, from the pin to the current value, with its actor and time (`model-changed`,
+`reference-changed`, or `admission-invalid` for an admission of another change); a changed policy
+identity needs the trusted host's new layer (`policy-changed`), whose identities are both kept;
+an approval whose source's descriptor or policy changed cannot run (`approval-changed`); and an
+admission that matches no change is `admission-invalid`. The claim records the revalidation (the pins
+and evidence digests and each change with its old and new value) in the resumed wait. A refusal
+claims nothing and the wait keeps holding the run. The host resolves a new policy's full layer order
+(`resolvePolicy`); the package never rewrites the checkpoint, so consumed allowance stays what it was.
+Pins other than the approval's source carry no descriptor: each later call still passes the existing
+per-call source pins (ADR-0006, ADR-0027), and in-run model failover keeps its own rules (ADR-0020).

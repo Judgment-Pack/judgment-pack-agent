@@ -223,6 +223,12 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	if held.head.Revision != frozen.ExpectedRevision {
 		return RunReceipt{}, RunHistoryReceipt{}, &StorageConflict{ExpectedRevision: frozen.ExpectedRevision, ActualRevision: held.head.Revision}
 	}
+	// #225 H1 and M3: an unsettled approved call is committed only as the person reviewed it; the commit
+	// that records it settled lifts its expiry from the run.
+	settles, err := m.waits.CommitApproval(frozen.RunID, frozen.Checkpoint)
+	if err != nil {
+		return RunReceipt{}, RunHistoryReceipt{}, err
+	}
 	receipt := RunReceipt{Revision: rand.Text(), CommitID: frozen.CommitID}
 	checkpoint := frozen.Checkpoint
 	if checkpoint == nil {
@@ -267,6 +273,9 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	// All validation/acknowledgement precedes the single publication under the store lock.
 	m.runs[frozen.RunID] = heldRun{head: RunHead{RunReceipt: receipt, RunID: frozen.RunID, Checkpoint: checkpoint}, events: events, commits: commits}
 	m.history.publish(prepared)
+	if settles {
+		m.waits.SettleApproval(frozen.RunID)
+	}
 	if m.options.AfterCommit != nil {
 		if err = m.options.AfterCommit(); err != nil {
 			return RunReceipt{}, RunHistoryReceipt{}, err
