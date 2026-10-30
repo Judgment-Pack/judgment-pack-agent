@@ -4,6 +4,7 @@ import {canonicalJSON} from '../context/chat'
 import {bytesCopy,requireId,requireLimit,sameBytes,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
 import type {StorageRevision,StorageCursor} from './common'
 import {LeaseRefused,LeaseTable,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
+import {WaitTable,type AttentionDelivery,type ReleaseEvidence,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
  runId:string;expectedRevision:StorageRevision|null;commitId:string
@@ -46,17 +47,21 @@ const identical=(a:RunCommit,b:RunCommit)=>a.expectedRevision===b.expectedRevisi
 const copyHead=(head:RunHead):RunHead=>({...head,checkpoint:head.checkpoint===null?null:new Uint8Array(head.checkpoint)})
 /** Conforms to the atomic port in one process; all data is ephemeral. Tokens are unique per instance.
  * Its leases follow the lease transitions within the same process only (leaseLifetime 'process'): it never qualifies for
- * unattended admission, and a new instance starts with no leases. */
-export class MemoryRunStore implements RunStore,LeaseRunStore {
+ * unattended admission, and a new instance starts with no leases. Its waits (#224) likewise end with its process
+ * (waitLifetime 'process'), so a park on it refuses store-lifetime. */
+export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  readonly durability:RunStoreDurability='memory'
  readonly historyVersion=1 as const
  readonly leaseVersion=1 as const
  readonly leaseLifetime:LeaseLifetime='process'
+ readonly waitVersion=1 as const
+ readonly waitLifetime:WaitLifetime='process'
  private readonly leases:LeaseTable
+ private readonly waits:WaitTable
  private readonly journal:MemoryHistoryJournal
  private runs=new Map<string,HeldRun>()
  private tail:Promise<unknown>=Promise.resolve()
- constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date())}
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date())}
  private serial<T>(signal:AbortSignal|undefined,run:()=>T):Promise<T>{
   try{signal?.throwIfAborted()}catch(error){return Promise.reject(error)}
   const result=this.tail.then(()=>{signal?.throwIfAborted();return run()})
@@ -67,6 +72,15 @@ export class MemoryRunStore implements RunStore,LeaseRunStore {
  releaseLease(fence:LeaseFence,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.release(fence))}
  readLease(resource:string,signal?:AbortSignal):Promise<RunLease|undefined>{return this.serial(signal,()=>this.leases.read(resource))}
  checkFence(fence:LeaseFence,signal?:AbortSignal):Promise<void>{return this.serial(signal,()=>{this.leases.check(fence)})}
+ // #224: every wait transition runs in the same serialized transaction order as the commits, against the same head.
+ private head(resource:string){return this.runs.get(resource)?.head}
+ parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.park(park,fence,park&&typeof park==='object'?this.head(park.resource):undefined,this.leases))}
+ wakeWait(evidence:WakeEvidence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.wake(evidence))}
+ resumeWait(resource:string,wait:string,evidence:string,fence:LeaseFence,reconciled:ReleaseEvidence[],signal?:AbortSignal){return this.serial(signal,()=>this.waits.resume(resource,wait,evidence,fence,reconciled,this.head(resource),this.leases))}
+ readWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.read(resource,wait))}
+ exportWaits(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.export(resource))}
+ recordDelivery(delivery:Omit<AttentionDelivery,'at'|'version'>,signal?:AbortSignal){return this.serial(signal,()=>this.waits.deliver(delivery))}
+ redactWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.redact(resource,wait))}
  commitFenced(input:RunCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunReceipt>{return this.commitTransaction(input,signal,undefined,fence).then(value=>value.receipt)}
  commitHistoryFenced(input:RunHistoryCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunHistoryReceipt>{
   if(!input||typeof input!=='object')return Promise.reject(new StorageInputError())

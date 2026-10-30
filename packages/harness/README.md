@@ -839,6 +839,18 @@ checkpoint commit presents the fence, and every non-read host or runtime effect 
 memory and callback kinds and an effect host that is neither the reference host nor certified by
 `certifyEffectHost`, by name. A tool with a source is an effect unless its effect class is read. See `docs/design/storage.md`.
 
+### Durable waits, attention and the report (#224, #228)
+
+`storage/wait.ts` implements ADR-0025 decisions 2 and 6. After a run ends paused or asks a
+question, `parkRun` reads the pending decision (an asked approval, a budget pause, or the latest
+retained `user_question`) from the store and has it commit the wait and its one `needs_attention`
+event and release the lease in one transaction (`WaitStore.parkWait`). `wakeRun` takes the host's
+evidence, bound to the run by its wake key; the first valid wake wins and a duplicate returns its
+disposition. `resumeParked` needs the person's decision or grant (a wake is neither), takes a new
+lease against the parked revision and claims the continuation once; a question's timeout is
+`unanswered`. `waitReport` reads the retained waits, never a prompt. The memory kind's waits end with
+its process, so `parkRun` on it refuses `store-lifetime`. See `docs/design/storage.md`.
+
 ### Proposal edit refusal details
 
 Proposal edit refusals omit `document` when the identifier is missing, non-string

@@ -8394,6 +8394,378 @@
   "status": "caught",
   "origin": "agent#248",
   "note": "Go twin: skip the UseAcknowledgedRoot block after c.inner.Run in coordinator.drive when c.parentFailed is set; ^TestDelegateFinalEndKeepsRetainedChatScope248/api$ fails at the failed turn's final checkpoint scope assertion (the host store refuses the stopped checkpoint in a fresh scope). Review of record F2."
+},
+{
+  "name": "wait W1 a park keeps the lease",
+  "file": "storage/wait.ts",
+  "find": "  leases.release(held)\n  this.rows.set",
+  "replace": "  this.rows.set",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the leases.Release(fence) call in WaitTable.Park; caught at ^TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+},
+{
+  "name": "wait W2 a park skips the fence check",
+  "file": "storage/wait.ts",
+  "find": "  leases.check(held)\n  if(this.rows.get(park.resource)",
+  "replace": "  if(this.rows.get(park.resource)",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the leases.Check(fence) call in WaitTable.Park; caught at ^TestWaitTheStoreRefusesAParkWhoseHeadMoved|TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+},
+{
+  "name": "wait W3 a second wait parks beside a parked one",
+  "file": "storage/wait.ts",
+  "find": "  if(this.rows.get(park.resource)?.some(row=>row.state==='parked'))throw new WaitRefused('wait-pending')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the wait-pending loop in WaitTable.Park; caught at ^TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+},
+{
+  "name": "wait W4 a park binds a moved head",
+  "file": "storage/wait.ts",
+  "find": "head.revision!==park.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==park.checkpoint.digest)throw new WaitRefused('checkpoint-changed')",
+  "replace": "false)throw new WaitRefused('checkpoint-changed')",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): replace !waitHeadMatches(head, park.Checkpoint) with head == nil in WaitTable.Park; caught at ^TestWaitTheStoreRefusesAParkWhoseHeadMoved$."
+},
+{
+  "name": "wait W5 a wake without the wait's key",
+  "file": "storage/wait.ts",
+  "find": "if(wakeKeyDigest(evidence.key)!==row.wakeKeyDigest)throw new WaitRefused('unauthenticated')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the WakeKeyDigest comparison in WaitTable.Wake; caught at ^TestWaitDuplicateStaleConflictingAndCrossRunWakesChangeNothing$."
+},
+{
+  "name": "wait W6 a later wake replaces the winner",
+  "file": "storage/wait.ts",
+  "find": "if(row.disposition.evidence!==evidence.evidence)throw new WaitRefused('stale')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the stale return in WaitTable.Wake; caught at ^TestWaitEventOrTimeOneAtomicWinner$."
+},
+{
+  "name": "wait W7 a duplicate with other content keeps the disposition silently",
+  "file": "storage/wait.ts",
+  "find": "if(row.disposition.digest!==digest)throw new WaitRefused('conflict')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the conflict return in WaitTable.Wake; caught at ^TestWaitDuplicateStaleConflictingAndCrossRunWakesChangeNothing$."
+},
+{
+  "name": "wait W8 an event wake ignores the expected event",
+  "file": "storage/wait.ts",
+  "find": "expected.kind!==evidence.event!.kind||expected.subject!==evidence.event!.subject",
+  "replace": "false",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): replace the kind/subject comparison with false in WaitTable.Wake; caught at ^TestWaitDuplicateStaleConflictingAndCrossRunWakesChangeNothing$."
+},
+{
+  "name": "wait W9 a time wake before it is due",
+  "file": "storage/wait.ts",
+  "find": "if(at(now)<at(due))throw new WaitRefused('not-due')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the not-due return in WaitTable.Wake; caught at ^TestWaitDuplicateStaleConflictingAndCrossRunWakesChangeNothing|TestWaitTimeoutAndMovedRunRefusals$."
+},
+{
+  "name": "wait W10 an empty or unoffered answer answers a question",
+  "file": "storage/wait.ts",
+  "find": "!validQuestionDraft(prompt,evidence.answer)||!realAnswer(evidence.answer)",
+  "replace": "false",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): replace !realAnswer(*evidence.Answer) with false and drop the readWaitAnswer check in WaitTable.Wake; caught at ^TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered$."
+},
+{
+  "name": "wait W11 an answer wakes an approval",
+  "file": "storage/wait.ts",
+  "find": "   else if(evidence.answer)throw new WaitRefused('mismatch')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the else-if evidence.Answer != nil branch in WaitTable.Wake; caught at ^TestWaitDuplicateStaleConflictingAndCrossRunWakesChangeNothing$."
+},
+{
+  "name": "wait W12 a question timeout records an answer",
+  "file": "storage/wait.ts",
+  "find": "evidence.kind==='timeout'?{kind:'unanswered',at:now}:",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): record the answered resolution for every kind in WaitTable.Wake; caught at ^TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered$."
+},
+{
+  "name": "wait W13 the store claims a continuation without the acknowledged wake",
+  "file": "storage/wait.ts",
+  "find": "  if(row.state==='parked'||row.disposition!.evidence!==ack)throw new WaitRefused('unacknowledged')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the unacknowledged return in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+},
+{
+  "name": "wait W14 the store claims a continuation twice",
+  "file": "storage/wait.ts",
+  "find": "  if(row.state==='resumed')throw new WaitRefused('already-resumed')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the already-resumed return in WaitTable.Resume; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+},
+{
+  "name": "wait W15 the store claims a continuation without a current fence",
+  "file": "storage/wait.ts",
+  "find": "  leases.check(held)\n  if(row.state==='timed-out'",
+  "replace": "  if(row.state==='timed-out'",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the leases.Check(fence) call in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+},
+{
+  "name": "wait W16 the store claims a timed-out approval",
+  "file": "storage/wait.ts",
+  "find": "  if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the timed-out return in WaitTable.Resume; caught at ^TestWaitTimeoutAndMovedRunRefusals$."
+},
+{
+  "name": "wait W17 the store claims a continuation over a moved head",
+  "file": "storage/wait.ts",
+  "find": "head.revision!==row.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==row.checkpoint.digest",
+  "replace": "false",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): replace !waitHeadMatches(head, row.Checkpoint) with head == nil in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+},
+{
+  "name": "wait W18 an uncertain release resumes unreconciled",
+  "file": "storage/wait.ts",
+  "find": "if(uncertain.some(r=>!settled.some(s=>s.resource===r&&s.outcome!=='uncertain'))||settled.some(s=>!uncertain.includes(s.resource)))throw new WaitRefused('release-uncertain')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop both release-uncertain loops in WaitTable.Resume; caught at ^TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered$."
+},
+{
+  "name": "wait W19 an approval decision for another call resumes",
+  "file": "storage/wait.ts",
+  "find": "decision.callId!==(wait.pending as {callId:string}).callId||",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop decision.CallID != wait.Pending.Approval.CallID from waitDecision; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+},
+{
+  "name": "wait W20 a resume takes a lease for a wake it was not shown",
+  "file": "storage/wait.ts",
+  "find": " if(wait.state==='parked'||wait.disposition!.evidence!==input.evidence)throw new WaitRefused('unacknowledged')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the unacknowledged return in ResumeParked; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+},
+{
+  "name": "wait W21 a resume ignores a changed chat",
+  "file": "storage/wait.ts",
+  "find": "  if(!entry||entry.revision!==wait.chat.revision)throw new WaitRefused('chat-changed')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "No Go twin: Go has no ChatStore and refuses a chat-bound resume as chat-store-unsupported before any lease."
+},
+{
+  "name": "wait W22 a process-lifetime store parks durable waits",
+  "file": "storage/wait.ts",
+  "find": "if(held.waitLifetime!=='durable'||held.leaseLifetime!=='durable')throw new WaitCapabilityRefused('store-lifetime')",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): drop the store-lifetime return in waitStoreOf; caught at ^TestWaitCapabilityRefusalsByName$."
+},
+{
+  "name": "wait W23 a park records two attention events",
+  "file": "storage/wait.ts",
+  "find": "this.events.set(wait.resource,[...(this.events.get(wait.resource)??[]),attention])",
+  "replace": "this.events.set(wait.resource,[...(this.events.get(wait.resource)??[]),attention,attention])",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): append the attention event twice in WaitTable.Park; caught at ^TestWaitAttentionDeliveryAndTheReportSources$."
+},
+{
+  "name": "wait W24 a repeated delivery is a new record",
+  "file": "storage/wait.ts",
+  "find": "  if(prior){if(prior.outcome!==outcome)throw new WaitRefused('conflict');return copy(prior)}\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop the prior-delivery loop in WaitTable.Deliver; caught at ^TestWaitAttentionDeliveryAndTheReportSources$."
+},
+{
+  "name": "wait W25 the report shows expired content",
+  "file": "storage/wait.ts",
+  "find": "const expired=time!==undefined&&",
+  "replace": "const expired=false&&",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): set expired to false in ReportFromExport; caught at ^TestWaitReportVectorsBothLanguages|TestWaitAttentionDeliveryAndTheReportSources$."
+},
+{
+  "name": "wait W26 a redaction keeps the answer",
+  "file": "storage/wait.ts",
+  "find": "  if(row.resolution?.answer)delete row.resolution.answer\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop row.Resolution.Answer = nil in WaitTable.Redact; caught at ^TestWaitAttentionDeliveryAndTheReportSources$."
+},
+{
+  "name": "wait W27 a redaction keeps the question",
+  "file": "storage/wait.ts",
+  "find": "  if(row.pending.kind==='question'&&row.pending.question)delete row.pending.question\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop row.Pending.Question.Question = nil in WaitTable.Redact; caught at ^TestWaitAttentionDeliveryAndTheReportSources$."
+},
+{
+  "name": "wait W28 an earlier question is pending",
+  "file": "storage/wait.ts",
+  "find": "return last===event?found:undefined",
+  "replace": "return found",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#224",
+  "note": "Go twin (by hand): return found without the last != event check in retainedQuestion; caught at ^TestWaitQuestionRetainsTheQuestionAndRecordsARealAnswerOrUnanswered$."
+},
+{
+  "name": "wait W29 a reader takes an answered timeout",
+  "file": "storage/wait.ts",
+  "find": "if((wait.disposition!.kind==='timeout')!==(resolution.kind==='unanswered')||resolution.at!==wait.disposition!.at)return invalid()",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop the timeout/unanswered comparison in ReadRunWait; caught at ^TestWaitSharedVectorsBothReaders$."
+},
+{
+  "name": "wait W30 a reader takes needs that do not follow the reason",
+  "file": "storage/wait.ts",
+  "find": "event.needs!==NEEDS[event.reason]||",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop event.Needs != waitNeeds[event.Reason] from ReadAttentionEvent; caught at ^TestWaitEvidenceAttentionAndRefusalVectors$."
+},
+{
+  "name": "wait W31 an export's attention does not follow its waits",
+  "file": "storage/wait.ts",
+  "find": "attention.length!==waits.length||",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#228",
+  "note": "Go twin (by hand): drop the len(attention) != len(out.Waits) return in ReadWaitExport; caught at ^TestWaitReportVectorsBothLanguages$."
 }
  ]
 }

@@ -1,0 +1,37 @@
+{
+  "description": "Handwritten capability refusals of durable waits, one per reason.",
+  "schema": "run-wait.json#/$defs/capabilityRefusal",
+  "items": [
+    {
+      "version": 1,
+      "reason": "store-unsupported"
+    },
+    {
+      "version": 1,
+      "reason": "store-lifetime"
+    },
+    {
+      "version": 1,
+      "reason": "chat-store-unsupported"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "effect-host-unfenced"
+    },
+    {
+      "version": 2,
+      "reason": "store-lifetime"
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/wait.ts (readRunWait, readWakeEvidence, readAttentionEvent, reportFromExport)"
+    ]
+  }
+}

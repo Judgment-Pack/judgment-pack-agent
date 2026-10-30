@@ -1,0 +1,234 @@
+{
+  "description": "Handwritten wake evidence: an approval decision event, a wake time, a question answered by a chosen option, a timeout, and a free-text answer. digests are each record's SHA-256 over its canonical JSON without the key, the disposition digest. A key is checked against the wait's wakeKeyDigest by the store, never stored.",
+  "schema": "run-wait.json#/$defs/wakeEvidence",
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-approval",
+      "wait": "wait-1",
+      "evidence": "decision-mail-17",
+      "kind": "event",
+      "event": {
+        "kind": "approval-decision",
+        "subject": "call-7"
+      },
+      "key": "host-wake-key-0001-alpha"
+    },
+    {
+      "version": 1,
+      "resource": "run-budget",
+      "wait": "wait-1",
+      "evidence": "clock-tick-3",
+      "kind": "time",
+      "key": "host-wake-key-0002-bravo"
+    },
+    {
+      "version": 1,
+      "resource": "run-question",
+      "wait": "wait-2",
+      "evidence": "answer-form-9",
+      "kind": "event",
+      "event": {
+        "kind": "question-answer",
+        "subject": "question-event-4"
+      },
+      "answer": {
+        "selected": [
+          "risk"
+        ],
+        "text": ""
+      },
+      "actor": "person-reviewer",
+      "key": "host-wake-key-0001-alpha"
+    },
+    {
+      "version": 1,
+      "resource": "run-silent",
+      "wait": "wait-1",
+      "evidence": "deadline-tick-1",
+      "kind": "timeout",
+      "key": "host-wake-key-0002-bravo"
+    },
+    {
+      "version": 1,
+      "resource": "run-redacted",
+      "wait": "wait-1",
+      "evidence": "answer-form-10",
+      "kind": "event",
+      "event": {
+        "kind": "question-answer",
+        "subject": "question-event-8"
+      },
+      "answer": {
+        "selected": [],
+        "text": "Start with the northern sites."
+      },
+      "actor": "person-lead",
+      "key": "host-wake-key-0001-alpha"
+    }
+  ],
+  "digests": [
+    "sha256:81fb241de9257e9398557bdaa16d93a5e951510dde492d989f4bbfb3c1bfe861",
+    "sha256:e539ddfd1556cfe028d9aa0c7589be14918e884b50513bca3dc18233783e50ff",
+    "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4",
+    "sha256:230bc790500118daa75825c14b00c99d054906f474ece6b8cf237d2291fb646e",
+    "sha256:b52500bd164180cf22b1d97e90a3f4dd9c57cdde063caab10945d218ea27dfdc"
+  ],
+  "keys": {
+    "digests": [
+      [
+        "host-wake-key-0001-alpha",
+        "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2"
+      ],
+      [
+        "host-wake-key-0002-bravo",
+        "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206"
+      ]
+    ]
+  },
+  "refused": [
+    {
+      "problem": "a key shorter than sixteen characters",
+      "evidence": {
+        "version": 1,
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "evidence": "decision-mail-17",
+        "kind": "event",
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-7"
+        },
+        "key": "short-key"
+      }
+    },
+    {
+      "problem": "a key with a space",
+      "evidence": {
+        "version": 1,
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "evidence": "decision-mail-17",
+        "kind": "event",
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-7"
+        },
+        "key": "host wake key 0001 alpha"
+      }
+    },
+    {
+      "problem": "no key",
+      "evidence": {
+        "version": 1,
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "evidence": "decision-mail-17",
+        "kind": "event",
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-7"
+        }
+      }
+    },
+    {
+      "problem": "an unknown kind",
+      "evidence": {
+        "version": 1,
+        "resource": "run-budget",
+        "wait": "wait-1",
+        "evidence": "clock-tick-3",
+        "kind": "poll",
+        "key": "host-wake-key-0002-bravo"
+      }
+    },
+    {
+      "problem": "a member no schema names",
+      "evidence": {
+        "version": 1,
+        "resource": "run-budget",
+        "wait": "wait-1",
+        "evidence": "clock-tick-3",
+        "kind": "time",
+        "at": "2026-01-01T06:00:00.000Z",
+        "key": "host-wake-key-0002-bravo"
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "an event wake names its event",
+      "evidence": {
+        "version": 1,
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "evidence": "decision-mail-17",
+        "kind": "event",
+        "key": "host-wake-key-0001-alpha"
+      }
+    },
+    {
+      "problem": "a time wake names no event",
+      "evidence": {
+        "version": 1,
+        "resource": "run-budget",
+        "wait": "wait-1",
+        "evidence": "clock-tick-3",
+        "kind": "time",
+        "event": {
+          "kind": "tick",
+          "subject": "run-budget"
+        },
+        "key": "host-wake-key-0002-bravo"
+      }
+    },
+    {
+      "problem": "an answer comes with its actor",
+      "evidence": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "evidence": "answer-form-9",
+        "kind": "event",
+        "event": {
+          "kind": "question-answer",
+          "subject": "question-event-4"
+        },
+        "answer": {
+          "selected": [
+            "risk"
+          ],
+          "text": ""
+        },
+        "key": "host-wake-key-0001-alpha"
+      }
+    },
+    {
+      "problem": "an answer comes only with an event",
+      "evidence": {
+        "version": 1,
+        "resource": "run-silent",
+        "wait": "wait-1",
+        "evidence": "deadline-tick-1",
+        "kind": "timeout",
+        "answer": {
+          "selected": [
+            "risk"
+          ],
+          "text": ""
+        },
+        "actor": "person-reviewer",
+        "key": "host-wake-key-0002-bravo"
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/wait.ts (readRunWait, readWakeEvidence, readAttentionEvent, reportFromExport)"
+    ]
+  }
+}

@@ -73,6 +73,7 @@ EXPECTED_SCHEMAS = {
     "run-capture.json",
     "turn-route.json",
     "run-lease.json",
+    "run-wait.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -1047,6 +1048,93 @@ class VectorTests(unittest.TestCase):
         admission = rows["lease/admission.json"]
         self.assertEqual(admission["canonical"], canonical(admission["items"][0]["operation"]))
         self.assertEqual(admission["items"][0]["idempotencyKey"], "sha256:" + sha256(admission["canonical"]))
+
+    def test_every_run_wait_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #224 and #228: every member of run-wait.json (root and definitions) and every enum value is
+        # carried by a handwritten wait vector, every refused record fails the schema, every
+        # reader-only refusal is schema-valid (the readers hold it), and every digest is the one an
+        # independent canonical JSON gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("wait/")}
+        self.assertEqual(set(rows), {"wait/wait.json", "wait/evidence.json", "wait/attention.json", "wait/report.json", "wait/refusal.json", "wait/capability.json"})
+        schema = self.schemas["run-wait.json"]
+        carried = [(row["schema"], row["items"]) for row in rows.values()]
+        carried += [("run-wait.json#/$defs/delivery", rows["wait/attention.json"]["deliveries"]), ("run-wait.json#/$defs/export", rows["wait/report.json"]["exports"])]
+
+        def invalid(changed):
+            return any(problems(validator(changed, reference), items) for reference, items in carried)
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-wait.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            with self.subTest(path=path):
+                self.assertTrue(invalid(changed), path)
+
+        def enums(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    yield from enums(value, path + [key])
+
+        for path in enums(schema, []):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-wait.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                with self.subTest(path=path, value=value):
+                    self.assertTrue(invalid(changed), (path, value))
+        for name, member in (("wait/wait.json", "record"), ("wait/evidence.json", "evidence"), ("wait/attention.json", "event")):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                with self.subTest(vector=name, problem=refused["problem"]):
+                    self.assertNotEqual(problems(check, [refused[member]]), [])
+            for refused in rows[name]["readerRefused"]:
+                with self.subTest(vector=name, reader=refused["problem"]):
+                    self.assertEqual(problems(check, [refused[member]]), [])
+        delivery = validator(self.schemas, "run-wait.json#/$defs/delivery")
+        for refused in rows["wait/attention.json"]["deliveriesRefused"]:
+            self.assertNotEqual(problems(delivery, [refused["delivery"]]), [])
+        report, export = validator(self.schemas, "run-wait.json#/$defs/report"), validator(self.schemas, "run-wait.json#/$defs/export")
+        for refused in rows["wait/report.json"]["refused"]:
+            self.assertNotEqual(problems(report, [refused["report"]]), [])
+        for refused in rows["wait/report.json"]["readerRefused"]:
+            self.assertEqual(problems(export if "export" in refused else report, [refused.get("export", refused.get("report"))]), [])
+        for name in ("wait/refusal.json", "wait/capability.json"):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                self.assertNotEqual(problems(check, [refused]), [])
+
+        def digest(value):
+            return "sha256:" + sha256(value if isinstance(value, str) else canonical(value))
+
+        for wait in rows["wait/wait.json"]["items"]:
+            self.assertEqual(wait["attention"], digest({"resource": wait["resource"], "wait": wait["wait"]}))
+            pending = wait["pending"]
+            if "question" in pending:
+                self.assertEqual(pending["questionDigest"], digest(pending["question"]))
+            answer = wait.get("resolution", {}).get("answer")
+            if answer is not None:
+                self.assertEqual(wait["resolution"]["answerDigest"], digest(answer))
+        evidence = rows["wait/evidence.json"]
+        for item, expected in zip(evidence["items"], evidence["digests"], strict=True):
+            self.assertEqual(expected, digest({key: value for key, value in item.items() if key != "key"}))
+        for key, expected in evidence["keys"]["digests"]:
+            self.assertEqual(expected, digest(key))
+        derivations = rows["wait/report.json"]["derivations"]
+        self.assertEqual([row["report"] for row in derivations], list(range(len(rows["wait/report.json"]["items"]))))
 
     def test_every_member_the_release_review_named_is_carried_by_a_vector(self):
         # The members of the $defs added or changed between v0.1.0 and the v0.2.0 review, and the
