@@ -851,6 +851,22 @@ lease against the parked revision and claims the continuation once; a question's
 `unanswered`. `waitReport` reads the retained waits, never a prompt. The memory kind's waits end with
 its process, so `parkRun` on it refuses `store-lifetime`. See `docs/design/storage.md`.
 
+### Deadlines, approval expiry and resume revalidation (#225, #227)
+
+`storage/resume.ts` implements ADR-0025 decisions 3 and 5 with `storage/wait.ts`. A committed park
+closes its run: until the wait is resumed the store leases it to nobody (`wait-pending`, or `closed`
+after a terminal wait), and `resumeParked`'s claim takes the run's next lease in the same transaction
+(#265 M2). `limitRun` sets a run's deadline, past which no lease of the run is granted, renewed or
+held; a park's `limits` stamp the wait's deadline (the earliest of the run's, the wait's and an
+approval's TTL), and only a `deadline` wake ends the wait then. An approval wait needs
+`limits.approvalTtlMs`, is bound to the reviewed call, its source and the pinned identities, and its
+claim's lease ends at the approval's expiry. Every park pins the host's admitted `model` and what the
+checkpoint holds (policy identity, Plan lineage, source and artifact pins); `resumeParked` needs the
+host's `current` evidence and refuses missing evidence, a changed identity or lineage, a retired
+model, a changed model or reference without its explicit admission, a changed policy without the
+host's new layer, and an approval under a changed identity, before anything is claimed. See
+`docs/design/storage.md`.
+
 ### Proposal edit refusal details
 
 Proposal edit refusals omit `document` when the identifier is missing, non-string

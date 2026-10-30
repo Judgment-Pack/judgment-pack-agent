@@ -248,6 +248,15 @@ wins), `ResumeParked` (the person's decision, a new lease against the parked rev
 `ExportWaits`, `ReportFromExport` and `WaitReportOf`, and the readers of every record. Go has no
 ChatStore: a chat-bound wait is refused as `chat-store-unsupported`. See `docs/design/storage.md`.
 
+### Deadlines, approval expiry and resume revalidation (#225, #227)
+
+`context/run_resume.go` is the Go twin of `storage/resume.ts`: `LimitRun` (a run's deadline; no lease
+of the run past it), the deadline a park stamps (`StampDeadline`), `PinsFrom` and `ApprovalBindingOf`
+(read from the retained checkpoint), `RevalidateResume` and the readers of every `run-resume.json`
+record. `MemoryRunStore.AcquireLease` refuses a run a wait holds (#265 M2), and `ResumeWait` takes the
+claim's lease in the claim's own transaction; `ParkInput` takes the host's `Model` and `Limits`, and
+`ResumeInput` the host's `Current` evidence. See `docs/design/storage.md`.
+
 ### Proposal edit host binding
 
 Children and the critic never edit. Hosts supply accepted documents or the first

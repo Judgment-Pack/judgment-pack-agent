@@ -380,6 +380,13 @@ func (t *LeaseTable) Read(resource string) (*RunLease, error) {
 	return &row, nil
 }
 func (t *LeaseTable) Acquire(request LeaseAcquire, currentRevision string) (RunLease, error) {
+	return t.acquireWithin(request, currentRevision, 0)
+}
+
+// acquireWithin is Acquire with a ceiling (#225, store-clock milliseconds, 0 for none): the latest the
+// lease may expire, the run's deadline or an approval's expiry. The caller refuses before it when the
+// ceiling is not after the store's time.
+func (t *LeaseTable) acquireWithin(request LeaseAcquire, currentRevision string, ceiling int64) (RunLease, error) {
 	if !validStorageID(request.Resource) || !validStorageID(request.Owner) || request.ExpectedRevision != "" && !validStorageID(request.ExpectedRevision) || request.DurationMs < 1 || request.DurationMs > LeaseDurationMaxMs {
 		return RunLease{}, leaseInvalid()
 	}
@@ -400,7 +407,7 @@ func (t *LeaseTable) Acquire(request LeaseAcquire, currentRevision string) (RunL
 	if err != nil {
 		return RunLease{}, err
 	}
-	expiry, err := leaseExpiryAt(now + request.DurationMs)
+	expiry, err := leaseExpiryAt(within(now+request.DurationMs, ceiling))
 	if err != nil {
 		return RunLease{}, err
 	}
@@ -435,6 +442,20 @@ func (t *LeaseTable) Check(fence LeaseFence) (RunLease, error) {
 	return row, nil
 }
 func (t *LeaseTable) Renew(fence LeaseFence, durationMs int64) (RunLease, error) {
+	return t.RenewWithin(fence, durationMs, 0)
+}
+
+// within is at, bounded by a ceiling (0 for none).
+func within(at, ceiling int64) int64 {
+	if ceiling != 0 && ceiling < at {
+		return ceiling
+	}
+	return at
+}
+
+// RenewWithin (#225): a renewal never passes the ceiling (store-clock milliseconds, 0 for none):
+// renewing a lease renews neither the run's deadline nor an approval.
+func (t *LeaseTable) RenewWithin(fence LeaseFence, durationMs, ceiling int64) (RunLease, error) {
 	if durationMs < 1 || durationMs > LeaseDurationMaxMs {
 		return RunLease{}, leaseInvalid()
 	}
@@ -446,11 +467,22 @@ func (t *LeaseTable) Renew(fence LeaseFence, durationMs int64) (RunLease, error)
 	if err != nil {
 		return RunLease{}, err
 	}
-	if row.Expiry, err = leaseExpiryAt(now + durationMs); err != nil {
+	if row.Expiry, err = leaseExpiryAt(within(now+durationMs, ceiling)); err != nil {
 		return RunLease{}, err
 	}
 	t.rows[row.Resource] = row
 	return row, nil
+}
+
+// Lower (#225) shortens a held lease to a deadline set while it is held; it never lengthens one.
+func (t *LeaseTable) Lower(resource string, ceiling int64) {
+	row, ok := t.rows[resource]
+	if expiry, _ := leaseExpiryMillis(row.Expiry); ok && row.State == "held" && expiry > ceiling {
+		if text, err := leaseExpiryAt(ceiling); err == nil {
+			row.Expiry = text
+			t.rows[resource] = row
+		}
+	}
 }
 func (t *LeaseTable) Release(fence LeaseFence) (RunLease, error) {
 	row, err := t.Check(fence)
@@ -478,15 +510,26 @@ func (m *MemoryRunStore) leaseTransition(ctx context.Context, run func() error) 
 // so it never qualifies for unattended admission and a new instance starts with no leases.
 func (m *MemoryRunStore) LeaseVersion() int     { return LeaseRecordVersion }
 func (m *MemoryRunStore) LeaseLifetime() string { return LeaseLifetimeProcess }
+
+// AcquireLease: #265 M2 and #225, a run a wait holds is leased only by its resume's claim, and no lease
+// outlives the run's deadline.
 func (m *MemoryRunStore) AcquireLease(ctx context.Context, request LeaseAcquire) (lease RunLease, err error) {
 	err = m.leaseTransition(ctx, func() error {
-		lease, err = m.leases.Acquire(request, m.runs[request.Resource].head.Revision)
+		if validStorageID(request.Resource) {
+			if err := m.waits.AdmitAcquire(request.Resource); err != nil {
+				return err
+			}
+		}
+		lease, err = m.leases.acquireWithin(request, m.runs[request.Resource].head.Revision, m.waits.Ceiling(request.Resource, ""))
 		return err
 	})
 	return lease, err
 }
 func (m *MemoryRunStore) RenewLease(ctx context.Context, fence LeaseFence, durationMs int64) (lease RunLease, err error) {
-	err = m.leaseTransition(ctx, func() error { lease, err = m.leases.Renew(fence, durationMs); return err })
+	err = m.leaseTransition(ctx, func() error {
+		lease, err = m.leases.RenewWithin(fence, durationMs, m.waits.Ceiling(fence.Resource, fence.Epoch))
+		return err
+	})
 	return lease, err
 }
 func (m *MemoryRunStore) ReleaseLease(ctx context.Context, fence LeaseFence) (lease RunLease, err error) {

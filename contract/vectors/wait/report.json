@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten park/wake reports, and the wait exports each derives from at a host time (derivations: export index, host time, report index): a run whose answered question was resumed and whose second wait (an approval) is still parked with uncertain release, before and after the first wait's retention; a question that timed out unanswered; a redacted question; a budget wait woken by time. The report reads the retained waits only; content past retainUntil is expired and a redacted wait's content is redacted, each with its digest kept.",
+  "description": "Handwritten park/wake reports, and the wait exports each derives from at a host time (derivations: export index, host time, report index): a run whose answered question was resumed and whose second wait (an approval) is still parked with uncertain release, before and after the first wait's retention; a question that timed out unanswered; a redacted question; a budget wait woken by time; an approval its deadline ended after a decision came a millisecond before it; a question its run deadline ended unwoken. The report reads the retained waits only; content past retainUntil is expired and a redacted wait's content is redacted, each with its digest kept. A park entry names the wait's deadline; a deadline entry follows what woke the wait and comes before the unanswered end it caused.",
   "schema": "run-wait.json#/$defs/report",
   "items": [
     {
@@ -95,6 +95,7 @@
             "wakeAt": "2026-01-02T09:00:00.000Z"
           },
           "timeoutAt": "2026-01-01T02:00:00.000Z",
+          "deadline": "2026-01-01T02:45:00.000Z",
           "release": "uncertain"
         }
       ]
@@ -167,6 +168,7 @@
             "wakeAt": "2026-01-02T09:00:00.000Z"
           },
           "timeoutAt": "2026-01-01T02:00:00.000Z",
+          "deadline": "2026-01-01T02:45:00.000Z",
           "release": "uncertain"
         }
       ]
@@ -310,6 +312,106 @@
           "wake": "time"
         }
       ]
+    },
+    {
+      "version": 1,
+      "resource": "run-late",
+      "entries": [
+        {
+          "wait": "wait-1",
+          "decision": "park",
+          "reason": "approval",
+          "at": "2026-01-01T00:00:00.000Z",
+          "owner": "worker-a",
+          "epoch": "2",
+          "subject": "call-12",
+          "condition": {
+            "event": {
+              "kind": "approval-decision",
+              "subject": "call-12"
+            }
+          },
+          "deadline": "2026-01-01T01:00:00.000Z",
+          "release": "clean"
+        },
+        {
+          "wait": "wait-1",
+          "decision": "wake",
+          "reason": "approval",
+          "at": "2026-01-01T00:59:59.999Z",
+          "evidence": "decision-late-1",
+          "wake": "event"
+        },
+        {
+          "wait": "wait-1",
+          "decision": "deadline",
+          "reason": "approval",
+          "at": "2026-01-01T01:00:00.000Z",
+          "evidence": "deadline-late-1",
+          "wake": "deadline"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "resource": "run-quiet",
+      "entries": [
+        {
+          "wait": "wait-1",
+          "decision": "park",
+          "reason": "question",
+          "at": "2026-01-01T00:00:00.000Z",
+          "owner": "worker-c",
+          "epoch": "1",
+          "subject": "question-event-3",
+          "condition": {
+            "event": {
+              "kind": "question-answer",
+              "subject": "question-event-3"
+            }
+          },
+          "deadline": "2026-01-01T08:00:00.000Z",
+          "release": "clean",
+          "content": {
+            "state": "available",
+            "digest": "sha256:1c09fc9da474ccfb6f99f2870f790aeca4bbba18ed2798cc3782e1f66c653ecd",
+            "question": {
+              "title": "Region",
+              "question": "Which region should the pilot cover first?",
+              "selection": "multiple",
+              "options": [],
+              "recommendedOptionId": null,
+              "recommendation": null
+            }
+          }
+        },
+        {
+          "wait": "wait-1",
+          "decision": "deadline",
+          "reason": "question",
+          "at": "2026-01-01T08:00:00.000Z",
+          "evidence": "deadline-quiet-1",
+          "wake": "deadline"
+        },
+        {
+          "wait": "wait-1",
+          "decision": "unanswered",
+          "reason": "question",
+          "at": "2026-01-01T08:00:00.000Z",
+          "content": {
+            "state": "available",
+            "digest": "sha256:1c09fc9da474ccfb6f99f2870f790aeca4bbba18ed2798cc3782e1f66c653ecd",
+            "question": {
+              "title": "Region",
+              "question": "Which region should the pilot cover first?",
+              "selection": "multiple",
+              "options": [],
+              "recommendedOptionId": null,
+              "recommendation": null
+            }
+          }
+        }
+      ]
     }
   ],
   "exports": [
@@ -358,6 +460,40 @@
             "revision": "rev-30",
             "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
           },
+          "pins": {
+            "model": {
+              "provider": "openai",
+              "model": "model-a"
+            },
+            "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+            "plan": {
+              "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "accepted": "plan-rev-2"
+            },
+            "sources": [
+              {
+                "source": "gateway",
+                "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+              },
+              {
+                "source": "tracker",
+                "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+              }
+            ],
+            "artifacts": [
+              {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+              },
+              {
+                "kind": "dialect",
+                "id": "tax-rules",
+                "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+              }
+            ]
+          },
           "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
           "release": [
             {
@@ -371,6 +507,7 @@
             "at": "2026-01-01T00:00:00.000Z"
           },
           "attention": "sha256:ca67412356c5cc3be39fa7f3c90219a7d22602ee8401146a6b5bab120a894b2c",
+          "retainUntil": "2026-01-01T12:00:00.000Z",
           "state": "resumed",
           "disposition": {
             "evidence": "answer-form-9",
@@ -395,7 +532,14 @@
             "epoch": "7",
             "at": "2026-01-01T01:30:01.000Z"
           },
-          "retainUntil": "2026-01-01T12:00:00.000Z"
+          "revalidation": {
+            "version": 1,
+            "resource": "run-two",
+            "wait": "wait-2",
+            "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+            "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+            "changes": []
+          }
         },
         {
           "version": 1,
@@ -416,10 +560,37 @@
             "wakeAt": "2026-01-02T09:00:00.000Z"
           },
           "timeoutAt": "2026-01-01T02:00:00.000Z",
+          "limits": {
+            "approvalTtlMs": 3600000
+          },
+          "deadline": {
+            "at": "2026-01-01T02:45:00.000Z",
+            "by": "approval",
+            "approval": "2026-01-01T02:45:00.000Z"
+          },
+          "approval": {
+            "callId": "call-7",
+            "callDigest": "sha256:c885f48a1c56dda4f97d6aaac41c803a690c981e3804b3dcba4f1d481cc4c62d",
+            "source": "tracker"
+          },
           "continuation": "continue-approval-1",
           "checkpoint": {
             "revision": "rev-12",
             "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "pins": {
+            "model": {
+              "provider": "anthropic",
+              "model": "model-b"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [
+              {
+                "source": "tracker",
+                "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+              }
+            ],
+            "artifacts": []
           },
           "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
           "release": [
@@ -474,6 +645,7 @@
             "wakeAt": "2026-01-02T09:00:00.000Z"
           },
           "timeoutAt": "2026-01-01T02:00:00.000Z",
+          "deadline": "2026-01-01T02:45:00.000Z",
           "releaseUncertain": true,
           "at": "2026-01-01T01:45:00.000Z"
         }
@@ -521,6 +693,15 @@
           "checkpoint": {
             "revision": "rev-2",
             "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "pins": {
+            "model": {
+              "provider": "openai",
+              "model": "model-a"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [],
+            "artifacts": []
           },
           "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
           "release": [
@@ -596,6 +777,15 @@
             "revision": "rev-8",
             "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
           },
+          "pins": {
+            "model": {
+              "provider": "openai",
+              "model": "model-a"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [],
+            "artifacts": []
+          },
           "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
           "release": [
             {
@@ -626,6 +816,22 @@
             "owner": "worker-b",
             "epoch": "5",
             "at": "2026-01-01T02:00:01.000Z"
+          },
+          "revalidation": {
+            "version": 1,
+            "resource": "run-redacted",
+            "wait": "wait-1",
+            "pins": "sha256:a4c8bc9586e2afa7ab69534a1946afee39e22f91863eddf7b64592032c7e3a74",
+            "evidence": "sha256:9a0bf5d6769e05e391d62c9cd212a619f1deb4b08763b00b4b45c7df5645d865",
+            "changes": [
+              {
+                "kind": "policy",
+                "subject": "policy",
+                "from": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+                "to": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              }
+            ]
           },
           "reconciled": [
             {
@@ -681,6 +887,15 @@
             "revision": "rev-4",
             "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
           },
+          "pins": {
+            "model": {
+              "provider": "openai",
+              "model": "model-a"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [],
+            "artifacts": []
+          },
           "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
           "release": [],
           "parked": {
@@ -715,6 +930,207 @@
         }
       ],
       "deliveries": []
+    },
+    {
+      "version": 1,
+      "resource": "run-late",
+      "waits": [
+        {
+          "version": 1,
+          "resource": "run-late",
+          "wait": "wait-1",
+          "reason": "approval",
+          "pending": {
+            "kind": "approval",
+            "callId": "call-12",
+            "name": "ledger__post_entry",
+            "tool": "post_entry"
+          },
+          "condition": {
+            "event": {
+              "kind": "approval-decision",
+              "subject": "call-12"
+            }
+          },
+          "limits": {
+            "approvalTtlMs": 3600000
+          },
+          "deadline": {
+            "at": "2026-01-01T01:00:00.000Z",
+            "by": "approval",
+            "approval": "2026-01-01T01:00:00.000Z"
+          },
+          "approval": {
+            "callId": "call-12",
+            "callDigest": "sha256:0076193b2d19a86cdfd18fe4daa10b8caa21a01d72416be5ac1d1696f41e37a6",
+            "source": "ledger"
+          },
+          "continuation": "continue-late-1",
+          "checkpoint": {
+            "revision": "rev-6",
+            "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "pins": {
+            "model": {
+              "provider": "anthropic",
+              "model": "model-b"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [
+              {
+                "source": "ledger",
+                "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+                "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+              }
+            ],
+            "artifacts": []
+          },
+          "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+          "release": [
+            {
+              "resource": "provider-account",
+              "outcome": "released"
+            }
+          ],
+          "parked": {
+            "owner": "worker-a",
+            "epoch": "2",
+            "at": "2026-01-01T00:00:00.000Z"
+          },
+          "attention": "sha256:92798b6e046aed4abb7ee53672741c569fcc0354574d9cf175f82503e8074f3a",
+          "state": "expired",
+          "disposition": {
+            "evidence": "decision-late-1",
+            "kind": "event",
+            "at": "2026-01-01T00:59:59.999Z",
+            "digest": "sha256:4d875fb1321ccf688362a92d40572a7a96b0325095daabf956392d10172bddd7"
+          },
+          "expired": {
+            "evidence": "deadline-late-1",
+            "kind": "deadline",
+            "at": "2026-01-01T01:00:00.000Z",
+            "digest": "sha256:1235cdfe6ebe0e2f86c86fbeffc37f54af747ba9963c1dbdd1145d8f4ed90876"
+          }
+        }
+      ],
+      "attention": [
+        {
+          "version": 1,
+          "type": "needs_attention",
+          "id": "sha256:92798b6e046aed4abb7ee53672741c569fcc0354574d9cf175f82503e8074f3a",
+          "resource": "run-late",
+          "wait": "wait-1",
+          "reason": "approval",
+          "needs": "approval-decision",
+          "subject": "call-12",
+          "condition": {
+            "event": {
+              "kind": "approval-decision",
+              "subject": "call-12"
+            }
+          },
+          "deadline": "2026-01-01T01:00:00.000Z",
+          "releaseUncertain": false,
+          "at": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "deliveries": []
+    },
+    {
+      "version": 1,
+      "resource": "run-quiet",
+      "waits": [
+        {
+          "version": 1,
+          "resource": "run-quiet",
+          "wait": "wait-1",
+          "reason": "question",
+          "pending": {
+            "kind": "question",
+            "event": "question-event-3",
+            "questionDigest": "sha256:1c09fc9da474ccfb6f99f2870f790aeca4bbba18ed2798cc3782e1f66c653ecd",
+            "question": {
+              "title": "Region",
+              "question": "Which region should the pilot cover first?",
+              "selection": "multiple",
+              "options": [],
+              "recommendedOptionId": null,
+              "recommendation": null
+            }
+          },
+          "condition": {
+            "event": {
+              "kind": "question-answer",
+              "subject": "question-event-3"
+            }
+          },
+          "limits": {
+            "run": "2026-01-01T08:00:00.000Z",
+            "waitMs": 43200000
+          },
+          "deadline": {
+            "at": "2026-01-01T08:00:00.000Z",
+            "by": "run",
+            "run": "2026-01-01T08:00:00.000Z",
+            "wait": "2026-01-01T12:00:00.000Z"
+          },
+          "continuation": "continue-quiet-1",
+          "checkpoint": {
+            "revision": "rev-3",
+            "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "pins": {
+            "model": {
+              "provider": "openai",
+              "model": "model-a"
+            },
+            "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "sources": [],
+            "artifacts": []
+          },
+          "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+          "release": [],
+          "parked": {
+            "owner": "worker-c",
+            "epoch": "1",
+            "at": "2026-01-01T00:00:00.000Z"
+          },
+          "attention": "sha256:76092e1210e4d15267d881f0507352fc02578bc46fc52314efc73fce73c49b05",
+          "state": "expired",
+          "expired": {
+            "evidence": "deadline-quiet-1",
+            "kind": "deadline",
+            "at": "2026-01-01T08:00:00.000Z",
+            "digest": "sha256:619d7bef573e8615989487906619c76bd21ac27982f0ce141c45c3507a0d4a0b"
+          },
+          "resolution": {
+            "kind": "unanswered",
+            "at": "2026-01-01T08:00:00.000Z"
+          }
+        }
+      ],
+      "attention": [
+        {
+          "version": 1,
+          "type": "needs_attention",
+          "id": "sha256:76092e1210e4d15267d881f0507352fc02578bc46fc52314efc73fce73c49b05",
+          "resource": "run-quiet",
+          "wait": "wait-1",
+          "reason": "question",
+          "needs": "question-answer",
+          "subject": "question-event-3",
+          "condition": {
+            "event": {
+              "kind": "question-answer",
+              "subject": "question-event-3"
+            }
+          },
+          "deadline": "2026-01-01T08:00:00.000Z",
+          "releaseUncertain": false,
+          "at": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "deliveries": []
     }
   ],
   "derivations": [
@@ -742,6 +1158,16 @@
       "export": 3,
       "now": "2026-01-01T07:00:00.000Z",
       "report": 4
+    },
+    {
+      "export": 4,
+      "now": "2026-01-01T02:00:00.000Z",
+      "report": 5
+    },
+    {
+      "export": 5,
+      "now": "2026-01-01T09:00:00.000Z",
+      "report": 6
     }
   ],
   "refused": [
@@ -813,6 +1239,23 @@
           }
         ]
       }
+    },
+    {
+      "problem": "a deadline entry's wake is a deadline",
+      "report": {
+        "version": 1,
+        "resource": "run-late",
+        "entries": [
+          {
+            "wait": "wait-1",
+            "decision": "deadline",
+            "reason": "approval",
+            "at": "2026-01-01T01:00:00.000Z",
+            "evidence": "deadline-late-1",
+            "wake": "expired"
+          }
+        ]
+      }
     }
   ],
   "readerRefused": [
@@ -863,6 +1306,40 @@
               "revision": "rev-30",
               "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
             },
+            "pins": {
+              "model": {
+                "provider": "openai",
+                "model": "model-a"
+              },
+              "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+              "plan": {
+                "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+                "accepted": "plan-rev-2"
+              },
+              "sources": [
+                {
+                  "source": "gateway",
+                  "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                  "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+                },
+                {
+                  "source": "tracker",
+                  "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+                }
+              ],
+              "artifacts": [
+                {
+                  "kind": "artifact",
+                  "id": "report.md",
+                  "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+                },
+                {
+                  "kind": "dialect",
+                  "id": "tax-rules",
+                  "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+                }
+              ]
+            },
             "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
             "release": [
               {
@@ -876,6 +1353,7 @@
               "at": "2026-01-01T00:00:00.000Z"
             },
             "attention": "sha256:ca67412356c5cc3be39fa7f3c90219a7d22602ee8401146a6b5bab120a894b2c",
+            "retainUntil": "2026-01-01T12:00:00.000Z",
             "state": "resumed",
             "disposition": {
               "evidence": "answer-form-9",
@@ -900,7 +1378,14 @@
               "epoch": "7",
               "at": "2026-01-01T01:30:01.000Z"
             },
-            "retainUntil": "2026-01-01T12:00:00.000Z"
+            "revalidation": {
+              "version": 1,
+              "resource": "run-two",
+              "wait": "wait-2",
+              "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+              "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+              "changes": []
+            }
           },
           {
             "version": 1,
@@ -921,10 +1406,37 @@
               "wakeAt": "2026-01-02T09:00:00.000Z"
             },
             "timeoutAt": "2026-01-01T02:00:00.000Z",
+            "limits": {
+              "approvalTtlMs": 3600000
+            },
+            "deadline": {
+              "at": "2026-01-01T02:45:00.000Z",
+              "by": "approval",
+              "approval": "2026-01-01T02:45:00.000Z"
+            },
+            "approval": {
+              "callId": "call-7",
+              "callDigest": "sha256:c885f48a1c56dda4f97d6aaac41c803a690c981e3804b3dcba4f1d481cc4c62d",
+              "source": "tracker"
+            },
             "continuation": "continue-approval-1",
             "checkpoint": {
               "revision": "rev-12",
               "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "pins": {
+              "model": {
+                "provider": "anthropic",
+                "model": "model-b"
+              },
+              "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+              "sources": [
+                {
+                  "source": "tracker",
+                  "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+                }
+              ],
+              "artifacts": []
             },
             "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
             "release": [
@@ -1013,6 +1525,40 @@
               "revision": "rev-30",
               "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
             },
+            "pins": {
+              "model": {
+                "provider": "openai",
+                "model": "model-a"
+              },
+              "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+              "plan": {
+                "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+                "accepted": "plan-rev-2"
+              },
+              "sources": [
+                {
+                  "source": "gateway",
+                  "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                  "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+                },
+                {
+                  "source": "tracker",
+                  "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+                }
+              ],
+              "artifacts": [
+                {
+                  "kind": "artifact",
+                  "id": "report.md",
+                  "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+                },
+                {
+                  "kind": "dialect",
+                  "id": "tax-rules",
+                  "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+                }
+              ]
+            },
             "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
             "release": [
               {
@@ -1065,10 +1611,37 @@
               "wakeAt": "2026-01-02T09:00:00.000Z"
             },
             "timeoutAt": "2026-01-01T02:00:00.000Z",
+            "limits": {
+              "approvalTtlMs": 3600000
+            },
+            "deadline": {
+              "at": "2026-01-01T02:45:00.000Z",
+              "by": "approval",
+              "approval": "2026-01-01T02:45:00.000Z"
+            },
+            "approval": {
+              "callId": "call-7",
+              "callDigest": "sha256:c885f48a1c56dda4f97d6aaac41c803a690c981e3804b3dcba4f1d481cc4c62d",
+              "source": "tracker"
+            },
             "continuation": "continue-approval-1",
             "checkpoint": {
               "revision": "rev-12",
               "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "pins": {
+              "model": {
+                "provider": "anthropic",
+                "model": "model-b"
+              },
+              "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+              "sources": [
+                {
+                  "source": "tracker",
+                  "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+                }
+              ],
+              "artifacts": []
             },
             "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
             "release": [
@@ -1090,8 +1663,8 @@
           {
             "version": 1,
             "type": "needs_attention",
-            "id": "sha256:ca67412356c5cc3be39fa7f3c90219a7d22602ee8401146a6b5bab120a894b2c",
-            "resource": "run-two",
+            "id": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+            "resource": "run-question",
             "wait": "wait-2",
             "reason": "question",
             "needs": "question-answer",
@@ -1123,6 +1696,7 @@
               "wakeAt": "2026-01-02T09:00:00.000Z"
             },
             "timeoutAt": "2026-01-01T02:00:00.000Z",
+            "deadline": "2026-01-01T02:45:00.000Z",
             "releaseUncertain": true,
             "at": "2026-01-01T01:45:00.000Z"
           }
@@ -1202,6 +1776,23 @@
               "state": "redacted",
               "digest": "sha256:2084f170d2892291ec8a6c436360638d7d4709e3c87bd67b3e71de3227a69554"
             }
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a deadline entry is a deadline wake",
+      "report": {
+        "version": 1,
+        "resource": "run-late",
+        "entries": [
+          {
+            "wait": "wait-1",
+            "decision": "deadline",
+            "reason": "approval",
+            "at": "2026-01-01T01:00:00.000Z",
+            "evidence": "deadline-late-1",
+            "wake": "timeout"
           }
         ]
       }

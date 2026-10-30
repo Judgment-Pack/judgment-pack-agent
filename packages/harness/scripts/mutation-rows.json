@@ -7898,14 +7898,14 @@
 {
   "name": "lease fence L6 renewal revives an expired lease",
   "file": "storage/lease.ts",
-  "find": "renew(fence:LeaseFence,durationMs:number):RunLease{const duration=requireDuration(durationMs),row=this.check(fence);",
-  "replace": "renew(fence:LeaseFence,durationMs:number):RunLease{const duration=requireDuration(durationMs),row=this.rows.get(readLeaseFence(fence).resource)!;",
+  "find": "renew(fence:LeaseFence,durationMs:number,ceiling?:number):RunLease{const duration=requireDuration(durationMs),row=this.check(fence);",
+  "replace": "renew(fence:LeaseFence,durationMs:number,ceiling?:number):RunLease{const duration=requireDuration(durationMs),row=this.rows.get(readLeaseFence(fence).resource)!;",
   "tests": [
     "storage/lease.test.ts"
   ],
   "status": "caught",
   "origin": "agent#223",
-  "note": "Caught at lease.test.ts: the lease conformance (lease.renew.no-revival) and restore. Go twin (by hand, LeaseTable.Renew reading the row without Check): caught at TestMemoryRunStoreLeaseConformance and TestLeaseRestoreDoesNotReviveAnExpiredLease."
+  "note": "Caught at lease.test.ts: the lease conformance (lease.renew.no-revival) and restore. Go twin (by hand, LeaseTable.Renew reading the row without Check): caught at TestMemoryRunStoreLeaseConformance and TestLeaseRestoreDoesNotReviveAnExpiredLease. Re-anchored for #225: renew takes the deadline ceiling (Go: RenewWithin)."
 },
 {
   "name": "lease fence L7 a takeover reuses the epoch",
@@ -8398,38 +8398,39 @@
 {
   "name": "wait W1 a park keeps the lease",
   "file": "storage/wait.ts",
-  "find": "  leases.release(held)\n  this.rows.set",
-  "replace": "  this.rows.set",
+  "find": "  leases.release(held)\n  if(deadline?.run",
+  "replace": "  if(deadline?.run",
   "tests": [
     "storage/wait.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the leases.Release(fence) call in WaitTable.Park; caught at ^TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+  "note": "Go twin (by hand): drop the leases.Release(fence) call in WaitTable.Park; caught at ^TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$. Re-anchored for #225: the park also keeps the run's deadline."
 },
 {
   "name": "wait W2 a park skips the fence check",
   "file": "storage/wait.ts",
-  "find": "  leases.check(held)\n  if(this.rows.get(park.resource)",
-  "replace": "  if(this.rows.get(park.resource)",
+  "find": "  leases.check(held)\n  // #265 M2: every wait not yet resumed holds the run",
+  "replace": "  // #265 M2: every wait not yet resumed holds the run",
   "tests": [
     "storage/wait.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the leases.Check(fence) call in WaitTable.Park; caught at ^TestWaitTheStoreRefusesAParkWhoseHeadMoved|TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+  "note": "Go twin (by hand): drop the leases.Check(fence) call in WaitTable.Park; caught at ^TestWaitTheStoreRefusesAParkWhoseHeadMoved|TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$. Re-anchored for #265 M2: the wait-pending check below it changed."
 },
 {
   "name": "wait W3 a second wait parks beside a parked one",
   "file": "storage/wait.ts",
-  "find": "  if(this.rows.get(park.resource)?.some(row=>row.state==='parked'))throw new WaitRefused('wait-pending')\n",
-  "replace": "",
+  "find": "  if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')\n  if(!head",
+  "replace": "  if(!head",
   "tests": [
-    "storage/wait.test.ts"
+    "storage/wait.test.ts",
+    "storage/resume.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the wait-pending loop in WaitTable.Park; caught at ^TestWaitParkReleasesTheLeaseAndLeavesTheRunBytes$."
+  "note": "Re-anchored for #265 M2: every wait not yet resumed holds the run. Caught at resume.test.ts (the wait transitions driven directly). Go twin (by hand): drop the t.holds(park.Resource) check in WaitTable.Park; caught at ^TestResumeEveryUnresumedWaitHoldsTheRunInTheTableItself$."
 },
 {
   "name": "wait W4 a park binds a moved head",
@@ -8542,14 +8543,14 @@
 {
   "name": "wait W13 the store claims a continuation without the acknowledged wake",
   "file": "storage/wait.ts",
-  "find": "  if(row.state==='parked'||row.disposition!.evidence!==ack)throw new WaitRefused('unacknowledged')\n",
+  "find": "  if(!row.disposition||row.disposition.evidence!==claim.evidence)throw new WaitRefused('unacknowledged')\n",
   "replace": "",
   "tests": [
     "storage/wait.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the unacknowledged return in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+  "note": "Go twin (by hand): drop the unacknowledged return in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim$. Re-anchored for #265 M2: the claim takes its lease itself."
 },
 {
   "name": "wait W14 the store claims a continuation twice",
@@ -8566,14 +8567,14 @@
 {
   "name": "wait W15 the store claims a continuation without a current fence",
   "file": "storage/wait.ts",
-  "find": "  leases.check(held)\n  if(row.state==='timed-out'",
-  "replace": "  if(row.state==='timed-out'",
+  "find": "  const lease=leases.acquire(claim.lease,head.revision,ceiling.length?Math.min(...ceiling):undefined)\n",
+  "replace": "  const lease={version:1 as const,resource:row.resource,owner:claim.lease.owner,epoch:'1',expiry:this.now(),state:'held' as const}\n",
   "tests": [
     "storage/wait.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the leases.Check(fence) call in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+  "note": "Re-anchored for #265 M2: the claim no longer checks a fence taken before it; it takes the run's lease in its own transaction, against the parked revision, and this row claims without taking it. Go twin (by hand): a RunLease made up in place of leases.acquireWithin in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim$."
 },
 {
   "name": "wait W16 the store claims a timed-out approval",
@@ -8597,7 +8598,7 @@
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): replace !waitHeadMatches(head, row.Checkpoint) with head == nil in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadAndTheFenceAtTheClaim$."
+  "note": "Go twin (by hand): replace !waitHeadMatches(head, row.Checkpoint) with head == nil in WaitTable.Resume; caught at ^TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim$."
 },
 {
   "name": "wait W18 an uncertain release resumes unreconciled",
@@ -8626,14 +8627,15 @@
 {
   "name": "wait W20 a resume takes a lease for a wake it was not shown",
   "file": "storage/wait.ts",
-  "find": " if(wait.state==='parked'||wait.disposition!.evidence!==input.evidence)throw new WaitRefused('unacknowledged')\n",
+  "find": " if(!wait.disposition||wait.disposition.evidence!==input.evidence)throw new WaitRefused('unacknowledged')\n",
   "replace": "",
   "tests": [
-    "storage/wait.test.ts"
+    "storage/wait.test.ts",
+    "storage/resume.test.ts"
   ],
   "status": "caught",
   "origin": "agent#224",
-  "note": "Go twin (by hand): drop the unacknowledged return in ResumeParked; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+  "note": "Go twin (by hand): drop the unacknowledged return in ResumeParked; caught at ^TestResumeAnUnseenWakeIsUnacknowledgedBeforeTheDecision$. Re-anchored for #265 M2: the store's claim and its lease are one transaction, so this row is caught by the order of the refusals: a wake the store does not hold is unacknowledged before any decision is asked for."
 },
 {
   "name": "wait W21 a resume ignores a changed chat",
@@ -8734,14 +8736,14 @@
 {
   "name": "wait W29 a reader takes an answered timeout",
   "file": "storage/wait.ts",
-  "find": "if((wait.disposition!.kind==='timeout')!==(resolution.kind==='unanswered')||resolution.at!==wait.disposition!.at)return invalid()",
+  "find": "if((ended.kind==='timeout'||ended.kind==='deadline')!==(resolution.kind==='unanswered')||resolution.at!==ended.at)return invalid()",
   "replace": "",
   "tests": [
     "storage/wait.test.ts"
   ],
   "status": "caught",
   "origin": "agent#228",
-  "note": "Go twin (by hand): drop the timeout/unanswered comparison in ReadRunWait; caught at ^TestWaitSharedVectorsBothReaders$."
+  "note": "Go twin (by hand): drop the timeout/unanswered comparison in ReadRunWait; caught at ^TestWaitSharedVectorsBothReaders$. Re-anchored for #225: a deadline also ends a question unanswered."
 },
 {
   "name": "wait W30 a reader takes needs that do not follow the reason",
@@ -8766,6 +8768,487 @@
   "status": "caught",
   "origin": "agent#228",
   "note": "Go twin (by hand): drop the len(attention) != len(out.Waits) return in ReadWaitExport; caught at ^TestWaitReportVectorsBothLanguages$."
+},
+{
+  "name": "closure C1 a parked run is leased like any other",
+  "file": "storage/run.ts",
+  "find": "  if(resource!==undefined)this.waits.admitAcquire(resource)\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts",
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#265",
+  "note": "Go twin (by hand): the same break in go/context/run_lease.go; caught at ^TestResumeAParkedRunIsClosedAndTheResumeIsTheOnlyContinuation$."
+},
+{
+  "name": "closure C2 wait-pending counts only parked waits",
+  "file": "storage/wait.ts",
+  "find": "  if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')\n  if(!head",
+  "replace": "  if(rows.some(row=>row.state==='parked'))throw new WaitRefused('wait-pending')\n  if(!head",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#265",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeEveryUnresumedWaitHoldsTheRunInTheTableItself$."
+},
+{
+  "name": "closure C3 a terminal wait does not close its run",
+  "file": "storage/wait.ts",
+  "find": "  if(rows.some(terminal))throw new WaitRefused('closed')\n  const ceiling",
+  "replace": "  const ceiling",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#265",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D1 an approval parks without a TTL",
+  "file": "storage/wait.ts",
+  "find": "if(asked){if(limits?.approvalTtlMs===undefined)throw new WaitRefused('approval-ttl-required');approval=",
+  "replace": "if(asked){approval=",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeApprovalTTLIsRequiredAndBounded$."
+},
+{
+  "name": "deadline D2 the reader takes any approval binding",
+  "file": "storage/wait.ts",
+  "find": "if(!park.approval||park.approval.callId!==pending.callId||!park.pins.sources.some(s=>s.source===park.approval!.source)||park.limits?.approvalTtlMs===undefined)return invalid()",
+  "replace": "if(!park.approval)return invalid()",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestWaitSharedVectorsBothReaders$."
+},
+{
+  "name": "deadline D3 the latest deadline wins",
+  "file": "storage/resume.ts",
+  "find": " const at=Math.min(...present.map(by=>times[by]!))\n",
+  "replace": " const at=Math.max(...present.map(by=>times[by]!))\n",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeLimitsVectorsBothReaders$."
+},
+{
+  "name": "deadline D4 a park's run limit extends the store's",
+  "file": "storage/resume.ts",
+  "find": "const run=[limits?.run===undefined?undefined:millis(limits.run),runCeiling]",
+  "replace": "const run=[limits?.run===undefined?runCeiling:millis(limits.run)]",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeLimitsVectorsBothReaders$."
+},
+{
+  "name": "deadline D5 a park past its run deadline commits",
+  "file": "storage/wait.ts",
+  "find": "  if(deadline&&at(deadline.at)<=at(now))throw new WaitRefused('deadline-passed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeParkPastTheRunDeadline$."
+},
+{
+  "name": "deadline D6 a park's run limit is not kept",
+  "file": "storage/wait.ts",
+  "find": "  if(deadline?.run!==undefined)this.ceilings.set(wait.resource,at(deadline.run))\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
+},
+{
+  "name": "deadline D7 a late wake wins after the deadline",
+  "file": "storage/wait.ts",
+  "find": "  if(row.deadline&&at(now)>=at(row.deadline.at))throw new WaitRefused('deadline-passed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D8 a wake at the deadline is still on time",
+  "file": "storage/wait.ts",
+  "find": "if(row.deadline&&at(now)>=at(row.deadline.at))throw new WaitRefused('deadline-passed')",
+  "replace": "if(row.deadline&&at(now)>at(row.deadline.at))throw new WaitRefused('deadline-passed')",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D9 a decision after the timeout wins",
+  "file": "storage/wait.ts",
+  "find": "  if(evidence.kind!=='timeout'&&row.timeoutAt!==undefined&&at(now)>=at(row.timeoutAt))throw new WaitRefused('timed-out')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D10 a deadline wake before the deadline",
+  "file": "storage/wait.ts",
+  "find": "   if(at(now)<at(row.deadline.at))throw new WaitRefused('not-due')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D11 the store claims past the deadline",
+  "file": "storage/wait.ts",
+  "find": "if(row.state==='expired'||row.deadline&&at(this.now())>=at(row.deadline.at))throw new WaitRefused('deadline-passed')",
+  "replace": "if(row.state==='expired')throw new WaitRefused('deadline-passed')",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeApprovalExpiryAtTheExactBoundary$."
+},
+{
+  "name": "deadline D12 the claim's lease outlives the approval",
+  "file": "storage/wait.ts",
+  "find": "const ceiling=[this.ceilings.get(row.resource),approval].filter",
+  "replace": "const ceiling=[this.ceilings.get(row.resource)].filter",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeApprovalExpiryAtTheExactBoundary$."
+},
+{
+  "name": "deadline D13 renewing the claim's lease renews the approval",
+  "file": "storage/run.ts",
+  "find": "this.leases.renew(fence,durationMs,fence&&typeof fence==='object'?this.waits.ceiling(fence.resource,fence.epoch):undefined)",
+  "replace": "this.leases.renew(fence,durationMs)",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_lease.go; caught at ^TestResumeApprovalExpiryAtTheExactBoundary$."
+},
+{
+  "name": "deadline D14 a run deadline leaves the held lease long",
+  "file": "storage/run.ts",
+  "find": "const held=this.waits.limit(limit);this.leases.lower(held.resource,Date.parse(held.run));return held",
+  "replace": "return this.waits.limit(limit)",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeRunDeadlineBoundsEveryLease$."
+},
+{
+  "name": "deadline D15 a later run deadline extends the run",
+  "file": "storage/wait.ts",
+  "find": "next=Math.min(held??Infinity,at(limit.run))",
+  "replace": "next=at(limit.run)",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeRunDeadlineBoundsEveryLease$."
+},
+{
+  "name": "deadline D16 a lease is taken past the run deadline",
+  "file": "storage/wait.ts",
+  "find": "  if(ceiling!==undefined&&at(this.now())>=ceiling)throw new WaitRefused('deadline-passed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeRunDeadlineBoundsEveryLease$."
+},
+{
+  "name": "deadline D17 an expired wait does not end its run",
+  "file": "storage/wait.ts",
+  "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'",
+  "replace": "const terminal=(row:RunWait)=>row.state==='timed-out'&&row.reason!=='question'",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeLateEvidenceAndTheTerminalDeadline$."
+},
+{
+  "name": "deadline D18 a deadline ends a resumed wait",
+  "file": "storage/wait.ts",
+  "find": "   if(row.state==='resumed'||terminal(row))throw new WaitRefused('stale')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
+},
+{
+  "name": "deadline D19 a question its deadline ends keeps no resolution",
+  "file": "storage/wait.ts",
+  "find": "   if(row.reason==='question'&&!row.resolution)row.resolution={kind:'unanswered',at:now}\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeAQuestionItsDeadlineEndsIsUnanswered$."
+},
+{
+  "name": "deadline D20 a lease is taken past its ceiling",
+  "file": "storage/lease.ts",
+  "find": "expiry:expiryAt(Math.min(now+duration,ceiling??Infinity))",
+  "replace": "expiry:expiryAt(now+duration)",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_lease.go; caught at ^TestResumeApprovalExpiryAtTheExactBoundary$."
+},
+{
+  "name": "deadline D21 a renewal passes its ceiling",
+  "file": "storage/lease.ts",
+  "find": "row.expiry=expiryAt(Math.min(this.now()+duration,ceiling??Infinity))",
+  "replace": "row.expiry=expiryAt(this.now()+duration)",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_lease.go; caught at ^TestResumeApprovalExpiryAtTheExactBoundary$."
+},
+{
+  "name": "deadline D22 the reader takes any wait time",
+  "file": "storage/resume.ts",
+  "find": "deadline.wait!==undefined&&millis(deadline.wait)!==parked+limits!.waitMs!",
+  "replace": "false",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeLimitsVectorsBothReaders$."
+},
+{
+  "name": "deadline D23 the reader takes any deadline time",
+  "file": "storage/resume.ts",
+  "find": "if(millis(deadline.at)!==at||present.find(by=>millis(deadline[by]!)===at)!==deadline.by||at<=parked)return invalid()",
+  "replace": "if(at<=parked)return invalid()",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#225",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeLimitsVectorsBothReaders$."
+},
+{
+  "name": "resume V1 a resume without current evidence",
+  "file": "storage/wait.ts",
+  "find": " if(input.current===undefined)throw new ResumeRefused('evidence-missing')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeRevalidatesThePinnedAuthorityBeforeAnythingIsClaimed$."
+},
+{
+  "name": "resume V2 a pinned identity or descriptor without evidence",
+  "file": "storage/resume.ts",
+  "find": "if(!now||pin.identityDigest!==undefined&&now.identityDigest===undefined||pin.descriptorDigest!==undefined&&now.descriptorDigest===undefined)throw new ResumeRefused('evidence-missing')",
+  "replace": "if(!now)throw new ResumeRefused('evidence-missing')",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V3 a changed identity resumes",
+  "file": "storage/resume.ts",
+  "find": " for(const pin of pins.sources)if(pin.identityDigest!==undefined&&sources.get(pin.source)!.identityDigest!==pin.identityDigest)throw new ResumeRefused('identity-changed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V4 a changed Plan lineage resumes",
+  "file": "storage/resume.ts",
+  "find": " if((pins.plan===undefined)!==(current.plan===undefined)||pins.plan&&(pins.plan.revision!==current.plan!.revision||pins.plan.accepted!==current.plan!.accepted))throw new ResumeRefused('lineage-changed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V5 a retired model resumes",
+  "file": "storage/resume.ts",
+  "find": " if(current.model.status==='retired')throw new ResumeRefused('model-retired')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V6 a changed model goes unnoticed",
+  "file": "storage/resume.ts",
+  "find": " if(pinnedModel!==currentModel){\n",
+  "replace": " if(false){\n",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V7 an admission of another change",
+  "file": "storage/resume.ts",
+  "find": "  if(admission.from!==from||admission.to!==to)throw new ResumeRefused('admission-invalid')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V8 a changed reference without an admission",
+  "file": "storage/resume.ts",
+  "find": "  if(!admission)throw new ResumeRefused('reference-changed')\n",
+  "replace": "  if(!admission)return\n",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V9 a changed policy without a trusted layer",
+  "file": "storage/resume.ts",
+  "find": "  if(current.policy.layer===undefined)throw new ResumeRefused('policy-changed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V10 an approval runs under a changed source or policy",
+  "file": "storage/resume.ts",
+  "find": "  if(changes.some(c=>c.kind==='policy'||c.kind==='reference'&&c.subject===`source:${binding.source}`))throw new ResumeRefused('approval-changed')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V11 an admission matching no change",
+  "file": "storage/resume.ts",
+  "find": " if(admissions.some((_,at)=>!used.has(at)))throw new ResumeRefused('admission-invalid')\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
+},
+{
+  "name": "resume V12 the store claims under another wait's revalidation",
+  "file": "storage/wait.ts",
+  "find": "  if(claim.revalidation.resource!==row.resource||claim.revalidation.wait!==row.wait||claim.revalidation.pins!==pinsDigest(row.pins))throw new WaitRefused('invalid')\n",
+  "replace": "",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim$."
+},
+{
+  "name": "resume V13 a resumed wait without its revalidation",
+  "file": "storage/wait.ts",
+  "find": " }else if(state==='resumed')return invalid()\n",
+  "replace": " }\n",
+  "tests": [
+    "storage/wait.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestWaitSharedVectorsBothReaders$."
+},
+{
+  "name": "resume V14 an approval's descriptor is not pinned",
+  "file": "storage/resume.ts",
+  "find": "  if(record.toolListDigest!==undefined)pin.descriptorDigest=record.toolListDigest\n",
+  "replace": "",
+  "tests": [
+    "storage/resume.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#227",
+  "note": "Go twin (by hand): the same break in go/context/run_resume.go; caught at ^TestResumePinsVectorsBothReaders$."
 }
  ]
 }

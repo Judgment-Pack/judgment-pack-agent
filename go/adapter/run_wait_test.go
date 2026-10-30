@@ -53,7 +53,15 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 				t.Fatal("the paused call was dispatched")
 			}
 			keyDigest, _ := runcontext.WakeKeyDigest(key)
-			wait, attention, err := runcontext.ParkRun(ctx, runcontext.ParkInput{Store: store, Fence: runcontext.FenceOf(a), Wait: "wait-1", Continuation: "continue-1", Condition: runcontext.WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: asked.CallID}}, WakeKeyDigest: keyDigest, Release: []runcontext.WaitRelease{{Resource: "provider-account", Outcome: "released"}}})
+			park := runcontext.ParkInput{Store: store, Fence: runcontext.FenceOf(a), Wait: "wait-1", Continuation: "continue-1", Condition: runcontext.WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: asked.CallID}}, Model: runcontext.PinnedModel{Provider: "openai", Model: "fixture"}, WakeKeyDigest: keyDigest, Release: []runcontext.WaitRelease{{Resource: "provider-account", Outcome: "released"}}}
+			// #225: an unattended approval never waits without a bounded TTL.
+			var refused *runcontext.WaitRefused
+			if _, _, err := runcontext.ParkRun(ctx, park); !errors.As(err, &refused) || refused.Reason != "approval-ttl-required" {
+				t.Fatalf("an approval without a TTL: %v", err)
+			}
+			ttl := int64(3_600_000)
+			park.Limits = &runcontext.WaitLimits{ApprovalTtlMs: &ttl}
+			wait, attention, err := runcontext.ParkRun(ctx, park)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,6 +70,10 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 			}
 			if lease, _ := store.ReadLease(ctx, "runtime-action-run"); lease.State != "released" {
 				t.Fatalf("lease %+v", lease)
+			}
+			// #265 M2: the parked run is closed; no fresh lease continues it.
+			if _, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-x", ExpectedRevision: wait.Checkpoint.Revision, DurationMs: 3_600_000}); !errors.As(err, &refused) || refused.Reason != "wait-pending" {
+				t.Fatalf("a fresh lease on a parked run: %v", err)
 			}
 			// A new process: wake with the host's evidence, then resume with the person's decision.
 			clock.at.Add(60_000)
@@ -73,8 +85,9 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 			if again, err := runcontext.WakeRun(ctx, store, wake); err != nil || again != first {
 				t.Fatalf("duplicate wake: %v", err)
 			}
-			input := runcontext.ResumeInput{Store: store, Resource: "runtime-action-run", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: 3_600_000}
-			var refused *runcontext.WaitRefused
+			// #227: the host's current evidence: nothing pinned changed.
+			current := runcontext.ResumeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-1", Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: wait.Pins.Policy}, Plan: wait.Pins.Plan, Sources: wait.Pins.Sources, Artifacts: wait.Pins.Artifacts}
+			input := runcontext.ResumeInput{Store: store, Resource: "runtime-action-run", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: 3_600_000, Current: &current}
 			if _, err := runcontext.ResumeParked(ctx, input); !errors.As(err, &refused) || refused.Reason != "decision-required" {
 				t.Fatalf("a wake is not the approval: %v", err)
 			}
@@ -83,7 +96,8 @@ func TestDurableApprovalWaitAcrossAStoreRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if resumed.Lease.Epoch != "2" {
+			// The approval's expiry bounds the claim's lease.
+			if resumed.Lease.Epoch != "2" || resumed.Lease.Expiry != wait.Deadline.At {
 				t.Fatalf("lease %+v", resumed.Lease)
 			}
 			continued, err := runcontext.FencedRunStore(store, resumed.Fence, host)

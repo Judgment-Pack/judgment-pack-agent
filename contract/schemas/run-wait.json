@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-wait.json",
   "title": "Run wait",
-  "description": "Version 1 durable wait of one run (ADR-0025 decisions 2 and 6, #224 and #228): its run-scoped identity, its reason and the pending decision read from the retained checkpoint or event log, its wake condition (an expected event and/or a wake time), an optional timeout, its continuation identity, the parked checkpoint it binds, the digest of the host's wake key, the provider release evidence, who parked it and when, and what became of it. The store commits the wait and its one needs_attention event, and releases the run's lease, in one transaction. Rules the reader holds that JSON Schema does not state: pending.kind is the reason; a question wait's condition names an event and no wake time, and a question is carried unless the wait is redacted; parked carries no disposition, resolution or resumed; woken and timed-out carry a disposition (timeout exactly for timed-out) and resumed carries a disposition and resumed; a question wait that is woken carries an answered resolution and one that timed out an unanswered one, and no other wait carries a resolution; reconciled only with resumed; release resources are unique; times are the store clock's.",
+  "description": "Version 1 durable wait of one run (ADR-0025 decisions 2, 3, 5 and 6, #224, #225, #227 and #228): its run-scoped identity, its reason and the pending decision read from the retained checkpoint or event log, its wake condition (an expected event and/or a wake time), an optional timeout, the host's optional deadline policy and the deadline the store stamped from it, an approval wait's binding, the execution authority it pins, its continuation identity, the parked checkpoint it binds, the digest of the host's wake key, the provider release evidence, who parked it and when, and what became of it. The store commits the wait and its one needs_attention event, and releases the run's lease, in one transaction; until the wait is resumed it holds the run, and no lease of the run is granted except the resume's own claim. Rules the reader holds that JSON Schema does not state: pending.kind is the reason; a question wait's condition names an event and no wake time, and a question is carried unless the wait is redacted; an approval wait carries an approval binding for its pending call, whose source is pinned, and limits with approvalTtlMs, and no other wait carries either; limits with waitMs or approvalTtlMs carry a deadline whose wait or approval time is the park time plus that duration, a deadline's run time is no later than limits.run, and its at is after the park time; parked carries no disposition, resolution, resumed or expired; woken and timed-out carry a disposition (timeout exactly for timed-out) and resumed carries a disposition, resumed and revalidation; expired carries expired (kind deadline, at or after its deadline) and the disposition it was woken with, if any; a question wait that is woken carries an answered resolution and one that timed out an unanswered one, a question that expired unwoken an unanswered one at its expiry, and no other wait carries a resolution; reconciled and revalidation only with resumed; release resources are unique; times are the store clock's.",
   "type": "object",
   "required": [
     "version",
@@ -13,6 +13,7 @@
     "condition",
     "continuation",
     "checkpoint",
+    "pins",
     "wakeKeyDigest",
     "release",
     "parked",
@@ -44,12 +45,28 @@
       "$ref": "#/$defs/time",
       "description": "When the wait ends without its event, by the store clock. A question that times out is unanswered; the recommended option is never chosen."
     },
+    "limits": {
+      "$ref": "run-resume.json#/$defs/limits",
+      "description": "The host's deadline policy for this park (#225). Absent: no wait or approval deadline (a run deadline the store holds still applies)."
+    },
+    "deadline": {
+      "$ref": "run-resume.json#/$defs/deadline",
+      "description": "The deadline the store stamped at the park: the earliest of the run's deadline, the wait's and an approval's expiry. Absent when none applies."
+    },
+    "approval": {
+      "$ref": "run-resume.json#/$defs/approval",
+      "description": "An approval wait's binding: the exact reviewed call, its arguments and its source. Its expiry is the deadline's approval time."
+    },
     "continuation": {
       "$ref": "#/$defs/identifier",
       "description": "The continuation identity the host resumes; claimed once."
     },
     "checkpoint": {
       "$ref": "#/$defs/checkpointBinding"
+    },
+    "pins": {
+      "$ref": "run-resume.json#/$defs/pins",
+      "description": "The execution authority the continuation is revalidated against on resume (#227)."
     },
     "chat": {
       "$ref": "#/$defs/chatBinding"
@@ -79,16 +96,21 @@
       "description": "Optional host retention: from this time the question and answer content is reported as expired."
     },
     "state": {
-      "description": "parked: waiting. woken: an event or time wake won. timed-out: the timeout won. resumed: the continuation was claimed under a new lease.",
+      "description": "parked: waiting. woken: an event or time wake won. timed-out: the timeout won. resumed: the continuation was claimed under a new lease. expired: the deadline passed and a deadline wake ended the wait; terminal, as a timed-out approval or budget wait is.",
       "enum": [
         "parked",
         "woken",
         "timed-out",
-        "resumed"
+        "resumed",
+        "expired"
       ]
     },
     "disposition": {
       "$ref": "#/$defs/disposition"
+    },
+    "expired": {
+      "$ref": "#/$defs/disposition",
+      "description": "The deadline wake that ended the wait terminally (kind deadline). Nothing continues an expired wait."
     },
     "resolution": {
       "$ref": "#/$defs/resolution"
@@ -96,6 +118,10 @@
     "resumed": {
       "$ref": "#/$defs/actor",
       "description": "The lease owner and epoch that claimed the continuation, at the store's time."
+    },
+    "revalidation": {
+      "$ref": "run-resume.json",
+      "description": "The revalidation the resume recorded before it claimed the continuation: the pins and evidence digests and every change it took."
     },
     "reconciled": {
       "description": "The host's reconciliation of uncertain release evidence, recorded when the continuation is claimed.",
@@ -350,7 +376,7 @@
     },
     "disposition": {
       "type": "object",
-      "description": "The wake that won: retained, returned to a duplicate delivery, and never replaced.",
+      "description": "The wake that won: retained, returned to a duplicate delivery, and never replaced. A deadline wake is recorded apart from it, as expired.",
       "required": [
         "evidence",
         "kind",
@@ -365,7 +391,8 @@
           "enum": [
             "event",
             "time",
-            "timeout"
+            "timeout",
+            "deadline"
           ]
         },
         "at": {
@@ -410,7 +437,7 @@
     },
     "wakeEvidence": {
       "type": "object",
-      "description": "Bounded, authenticated, run-bound wake evidence the host delivers. Rules the reader holds that JSON Schema does not state: event exactly for kind event; answer and actor together and only with an event.",
+      "description": "Bounded, authenticated, run-bound wake evidence the host delivers. Rules the reader holds that JSON Schema does not state: event exactly for kind event; answer and actor together and only with an event. A deadline wake is due at the wait's deadline by the store clock; at or after it every other wake is refused.",
       "required": [
         "version",
         "resource",
@@ -437,7 +464,8 @@
           "enum": [
             "event",
             "time",
-            "timeout"
+            "timeout",
+            "deadline"
           ]
         },
         "event": {
@@ -510,6 +538,10 @@
         "timeoutAt": {
           "$ref": "#/$defs/time"
         },
+        "deadline": {
+          "$ref": "#/$defs/time",
+          "description": "The wait's deadline: at or after it nothing continues the wait."
+        },
         "releaseUncertain": {
           "type": "boolean"
         },
@@ -580,7 +612,7 @@
     },
     "reportEntry": {
       "type": "object",
-      "description": "One decision, read from the retained wait: a park with its owner, epoch, condition, deadline and release outcome; a wake or a timeout with its evidence; a question's answer with its actor or its unanswered end; a resume with its owner and epoch.",
+      "description": "One decision, read from the retained wait: a park with its owner, epoch, condition, timeout, deadline and release outcome; a wake or a timeout with its evidence; a question's answer with its actor or its unanswered end; a resume with its owner and epoch; a deadline that ended the wait with its evidence.",
       "required": [
         "wait",
         "decision",
@@ -598,7 +630,8 @@
             "timeout",
             "answer",
             "unanswered",
-            "resume"
+            "resume",
+            "deadline"
           ]
         },
         "reason": {
@@ -620,7 +653,8 @@
           "enum": [
             "event",
             "time",
-            "timeout"
+            "timeout",
+            "deadline"
           ]
         },
         "actor": {
@@ -633,6 +667,9 @@
           "$ref": "#/$defs/condition"
         },
         "timeoutAt": {
+          "$ref": "#/$defs/time"
+        },
+        "deadline": {
           "$ref": "#/$defs/time"
         },
         "release": {
@@ -715,7 +752,7 @@
     },
     "refusal": {
       "type": "object",
-      "description": "A named wait refusal. Nothing changed.",
+      "description": "A named wait refusal. Nothing changed. deadline-passed: the run's, the wait's or the approval's deadline is at or before the store's time. closed: the run ended at a terminal wait (timed-out approval or budget, or expired); nothing continues it. approval-ttl-required: an approval wait needs the host's approval TTL. wait-pending: a wait not yet resumed holds the run, so nothing else parks it or leases it.",
       "required": [
         "version",
         "reason"
@@ -741,7 +778,10 @@
             "decision-required",
             "timed-out",
             "release-uncertain",
-            "chat-changed"
+            "chat-changed",
+            "deadline-passed",
+            "closed",
+            "approval-ttl-required"
           ]
         }
       },

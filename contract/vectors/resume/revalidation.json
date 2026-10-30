@@ -1,0 +1,2426 @@
+{
+  "description": "Handwritten revalidations (#227): what a resume recorded when it claimed a woken wait, the digests of the wait's pins and of the host's current evidence, and every change with the admission or trusted layer that allowed it. cases: a wait (its run, identity, reason, pins and an approval wait's binding) and the host's current evidence, with the revalidation both languages derive (an index into items) or the refusal they give: missing evidence; a changed identity or Plan lineage (a new run is needed); a retired model (an explicit decision is needed, nothing is substituted); a changed model or reference without its exact admission; a changed policy without a trusted layer; an approval whose source, descriptor or policy changed; an admission that matches no change. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state.",
+  "schema": "run-resume.json",
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-switch",
+      "wait": "wait-2",
+      "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+      "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+      "changes": [
+        {
+          "kind": "model",
+          "subject": "model",
+          "from": "openai/model-a",
+          "to": "openai/model-c",
+          "actor": "person-owner",
+          "at": "2026-01-01T02:59:00.000Z"
+        },
+        {
+          "kind": "reference",
+          "subject": "artifact:brief.md",
+          "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "actor": "person-owner",
+          "at": "2026-01-01T02:59:00.000Z"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "resource": "run-redacted",
+      "wait": "wait-1",
+      "pins": "sha256:a4c8bc9586e2afa7ab69534a1946afee39e22f91863eddf7b64592032c7e3a74",
+      "evidence": "sha256:9a0bf5d6769e05e391d62c9cd212a619f1deb4b08763b00b4b45c7df5645d865",
+      "changes": [
+        {
+          "kind": "policy",
+          "subject": "policy",
+          "from": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "to": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "resource": "run-two",
+      "wait": "wait-2",
+      "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+      "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+      "changes": []
+    }
+  ],
+  "cases": [
+    {
+      "case": "nothing pinned changed; an unpinned source is no authority",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "revalidation": 2
+      }
+    },
+    {
+      "case": "a changed model and a changed artifact, each explicitly admitted",
+      "wait": {
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "reason": "approval",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "plan": {
+            "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "brief.md",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "approval": {
+          "callId": "call-21",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "plan": {
+          "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "sources": [
+          {
+            "source": "tracker",
+            "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "brief.md",
+            "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          },
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "revalidation": 0
+      }
+    },
+    {
+      "case": "a new policy layer from the trusted host keeps both identities",
+      "wait": {
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "sources": [],
+        "artifacts": []
+      },
+      "outcome": {
+        "revalidation": 1
+      }
+    },
+    {
+      "case": "a pinned source has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a pinned identity has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a pinned descriptor has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a pinned artifact has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a pinned Plan has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a pinned accepted Plan has no current evidence",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "a changed source identity needs a new run, whatever is admitted",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "reference",
+            "subject": "source:tracker",
+            "from": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "to": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "identity-changed"
+      }
+    },
+    {
+      "case": "a changed Plan revision",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "lineage-changed"
+      }
+    },
+    {
+      "case": "a changed accepted Plan",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-3"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "lineage-changed"
+      }
+    },
+    {
+      "case": "a Plan where none was pinned",
+      "wait": {
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "sources": [],
+        "artifacts": [],
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+        }
+      },
+      "outcome": {
+        "refused": "lineage-changed"
+      }
+    },
+    {
+      "case": "the pinned model was retired",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "retired"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "model-retired"
+      }
+    },
+    {
+      "case": "a retired model is never replaced, even admitted",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "retired"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "model-retired"
+      }
+    },
+    {
+      "case": "a changed model without an admission",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "model-changed"
+      }
+    },
+    {
+      "case": "a changed provider without an admission",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "anthropic",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "model-changed"
+      }
+    },
+    {
+      "case": "an admission that is not the change",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-x",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "admission-invalid"
+      }
+    },
+    {
+      "case": "a changed descriptor without an admission",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "reference-changed"
+      }
+    },
+    {
+      "case": "a changed artifact without an admission",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "reference-changed"
+      }
+    },
+    {
+      "case": "a changed policy without a trusted layer",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "policy-changed"
+      }
+    },
+    {
+      "case": "an approval under a new policy layer cannot run",
+      "wait": {
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "reason": "approval",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "plan": {
+            "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "brief.md",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "approval": {
+          "callId": "call-21",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "plan": {
+          "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "sources": [
+          {
+            "source": "tracker",
+            "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "brief.md",
+            "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          },
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "approval-changed"
+      }
+    },
+    {
+      "case": "an approval whose source's descriptor changed cannot run, even admitted",
+      "wait": {
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "reason": "approval",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "plan": {
+            "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "brief.md",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "approval": {
+          "callId": "call-21",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-c",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "plan": {
+          "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "sources": [
+          {
+            "source": "tracker",
+            "descriptorDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "brief.md",
+            "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          },
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          },
+          {
+            "kind": "reference",
+            "subject": "source:tracker",
+            "from": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "to": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "approval-changed"
+      }
+    },
+    {
+      "case": "an admission that matches no change",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ],
+        "admissions": [
+          {
+            "kind": "reference",
+            "subject": "artifact:report.md",
+            "from": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "to": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "admission-invalid"
+      }
+    },
+    {
+      "case": "evidence for another wait",
+      "wait": {
+        "resource": "run-two",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-9",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "search"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "outcome": {
+        "refused": "invalid"
+      }
+    }
+  ],
+  "refused": [
+    {
+      "problem": "version 2 is not read",
+      "revalidation": {
+        "version": 2,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+        "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+        "changes": []
+      }
+    },
+    {
+      "problem": "a change is of a model, a reference or a policy",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "identity",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "the pins digest has its sha256 prefix",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "pins": "36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+        "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+        "changes": []
+      }
+    },
+    {
+      "problem": "a revalidation names its changes",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+        "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c"
+      }
+    },
+    {
+      "problem": "a revalidation member no schema names",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-two",
+        "wait": "wait-2",
+        "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+        "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+        "changes": [],
+        "decision": "approved"
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "a policy change names its layer, not an actor",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "pins": "sha256:a4c8bc9586e2afa7ab69534a1946afee39e22f91863eddf7b64592032c7e3a74",
+        "evidence": "sha256:9a0bf5d6769e05e391d62c9cd212a619f1deb4b08763b00b4b45c7df5645d865",
+        "changes": [
+          {
+            "kind": "policy",
+            "subject": "policy",
+            "from": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "to": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a model change names its actor and time",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "model",
+            "subject": "model",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a model change's subject is model",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "model",
+            "subject": "author",
+            "from": "openai/model-a",
+            "to": "openai/model-c",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a reference change names a source, artifact or dialect",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "reference",
+            "subject": "brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a reference change's values are digests",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "brief-v2",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a policy change's values are digests",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-redacted",
+        "wait": "wait-1",
+        "pins": "sha256:a4c8bc9586e2afa7ab69534a1946afee39e22f91863eddf7b64592032c7e3a74",
+        "evidence": "sha256:9a0bf5d6769e05e391d62c9cd212a619f1deb4b08763b00b4b45c7df5645d865",
+        "changes": [
+          {
+            "kind": "policy",
+            "subject": "policy",
+            "from": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "to": "policy-2",
+            "layer": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a change changes something",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "one change per kind and subject",
+      "revalidation": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+        "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+        "changes": [
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          },
+          {
+            "kind": "reference",
+            "subject": "artifact:brief.md",
+            "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "to": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "actor": "person-owner",
+            "at": "2026-01-01T02:59:00.000Z"
+          }
+        ]
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/resume.ts (readResumePins, readResumeEvidence, readRevalidation, readWaitLimits, readRunLimit, readWaitDeadline, stampDeadline, pinsFrom, approvalBinding, revalidateResume)"
+    ]
+  }
+}

@@ -1,10 +1,11 @@
 import {MemoryHistoryJournal,freezeHistoryInput,type RunHistoryCommit,type RunHistoryReceipt,type HistoryResource,type ContextSnapshotUpdate,type HistoryObjectPage} from './history'
 import type {HistoryObject} from '../history/codec'
 import {canonicalJSON} from '../context/chat'
-import {bytesCopy,requireId,requireLimit,sameBytes,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
+import {bytesCopy,requireId,requireLimit,sameBytes,storageId,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
 import type {StorageRevision,StorageCursor} from './common'
 import {LeaseRefused,LeaseTable,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
-import {WaitTable,type AttentionDelivery,type ReleaseEvidence,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
+import {WaitTable,type AttentionDelivery,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
+import type {RunLimit} from './resume'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
  runId:string;expectedRevision:StorageRevision|null;commitId:string
@@ -67,8 +68,13 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
   const result=this.tail.then(()=>{signal?.throwIfAborted();return run()})
   this.tail=result.catch(()=>undefined);return result
  }
- acquireLease(request:LeaseAcquire,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.acquire(request,request&&typeof request==='object'?this.runs.get(request.resource)?.head.revision??null:null))}
- renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.renew(fence,durationMs))}
+ // #265 M2 and #225: a run a wait holds is leased only by its resume's claim, and no lease outlives the run's deadline.
+ acquireLease(request:LeaseAcquire,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>{
+  const resource=request&&typeof request==='object'&&storageId(request.resource)?request.resource:undefined
+  if(resource!==undefined)this.waits.admitAcquire(resource)
+  return this.leases.acquire(request,resource===undefined?null:this.runs.get(resource)?.head.revision??null,resource===undefined?undefined:this.waits.ceiling(resource))
+ })}
+ renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.renew(fence,durationMs,fence&&typeof fence==='object'?this.waits.ceiling(fence.resource,fence.epoch):undefined))}
  releaseLease(fence:LeaseFence,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.release(fence))}
  readLease(resource:string,signal?:AbortSignal):Promise<RunLease|undefined>{return this.serial(signal,()=>this.leases.read(resource))}
  checkFence(fence:LeaseFence,signal?:AbortSignal):Promise<void>{return this.serial(signal,()=>{this.leases.check(fence)})}
@@ -76,7 +82,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  private head(resource:string){return this.runs.get(resource)?.head}
  parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.park(park,fence,park&&typeof park==='object'?this.head(park.resource):undefined,this.leases))}
  wakeWait(evidence:WakeEvidence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.wake(evidence))}
- resumeWait(resource:string,wait:string,evidence:string,fence:LeaseFence,reconciled:ReleaseEvidence[],signal?:AbortSignal){return this.serial(signal,()=>this.waits.resume(resource,wait,evidence,fence,reconciled,this.head(resource),this.leases))}
+ resumeWait(claim:WaitClaim,signal?:AbortSignal){return this.serial(signal,()=>this.waits.resume(claim,claim&&typeof claim==='object'&&storageId(claim.resource)?this.head(claim.resource):undefined,this.leases))}
+ limitRun(limit:RunLimit,signal?:AbortSignal){return this.serial(signal,()=>{const held=this.waits.limit(limit);this.leases.lower(held.resource,Date.parse(held.run));return held})}
  readWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.read(resource,wait))}
  exportWaits(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.export(resource))}
  recordDelivery(delivery:Omit<AttentionDelivery,'at'|'version'>,signal?:AbortSignal){return this.serial(signal,()=>this.waits.deliver(delivery))}

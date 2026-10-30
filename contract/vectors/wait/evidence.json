@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten wake evidence: an approval decision event, a wake time, a question answered by a chosen option, a timeout, and a free-text answer. digests are each record's SHA-256 over its canonical JSON without the key, the disposition digest. A key is checked against the wait's wakeKeyDigest by the store, never stored.",
+  "description": "Handwritten wake evidence: an approval decision event, a wake time, a question answered by a chosen option, a timeout, a free-text answer, and the new waits' decisions and deadline wakes (a deadline wake is due at the wait's deadline and ends it). digests are each record's SHA-256 over its canonical JSON without the key, the disposition digest. A key is checked against the wait's wakeKeyDigest by the store, never stored.",
   "schema": "run-wait.json#/$defs/wakeEvidence",
   "items": [
     {
@@ -65,6 +65,46 @@
       },
       "actor": "person-lead",
       "key": "host-wake-key-0001-alpha"
+    },
+    {
+      "version": 1,
+      "resource": "run-late",
+      "wait": "wait-1",
+      "evidence": "decision-late-1",
+      "kind": "event",
+      "event": {
+        "kind": "approval-decision",
+        "subject": "call-12"
+      },
+      "key": "host-wake-key-0003-charlie"
+    },
+    {
+      "version": 1,
+      "resource": "run-late",
+      "wait": "wait-1",
+      "evidence": "deadline-late-1",
+      "kind": "deadline",
+      "key": "host-wake-key-0003-charlie"
+    },
+    {
+      "version": 1,
+      "resource": "run-quiet",
+      "wait": "wait-1",
+      "evidence": "deadline-quiet-1",
+      "kind": "deadline",
+      "key": "host-wake-key-0003-charlie"
+    },
+    {
+      "version": 1,
+      "resource": "run-switch",
+      "wait": "wait-2",
+      "evidence": "decision-switch-1",
+      "kind": "event",
+      "event": {
+        "kind": "approval-decision",
+        "subject": "call-21"
+      },
+      "key": "host-wake-key-0003-charlie"
     }
   ],
   "digests": [
@@ -72,7 +112,11 @@
     "sha256:e539ddfd1556cfe028d9aa0c7589be14918e884b50513bca3dc18233783e50ff",
     "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4",
     "sha256:230bc790500118daa75825c14b00c99d054906f474ece6b8cf237d2291fb646e",
-    "sha256:b52500bd164180cf22b1d97e90a3f4dd9c57cdde063caab10945d218ea27dfdc"
+    "sha256:b52500bd164180cf22b1d97e90a3f4dd9c57cdde063caab10945d218ea27dfdc",
+    "sha256:4d875fb1321ccf688362a92d40572a7a96b0325095daabf956392d10172bddd7",
+    "sha256:1235cdfe6ebe0e2f86c86fbeffc37f54af747ba9963c1dbdd1145d8f4ed90876",
+    "sha256:619d7bef573e8615989487906619c76bd21ac27982f0ce141c45c3507a0d4a0b",
+    "sha256:ca4eeb4b52f0ee8b5dc30c4209076eb2fc6f1b94384c58a3d61b7d8954a89b79"
   ],
   "keys": {
     "digests": [
@@ -83,6 +127,10 @@
       [
         "host-wake-key-0002-bravo",
         "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206"
+      ],
+      [
+        "host-wake-key-0003-charlie",
+        "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1"
       ]
     ]
   },
@@ -219,6 +267,21 @@
         },
         "actor": "person-reviewer",
         "key": "host-wake-key-0002-bravo"
+      }
+    },
+    {
+      "problem": "a deadline wake names no event",
+      "evidence": {
+        "version": 1,
+        "resource": "run-late",
+        "wait": "wait-1",
+        "evidence": "deadline-late-1",
+        "kind": "deadline",
+        "key": "host-wake-key-0003-charlie",
+        "event": {
+          "kind": "deadline",
+          "subject": "run-late"
+        }
       }
     }
   ],

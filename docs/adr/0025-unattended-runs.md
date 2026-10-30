@@ -5,8 +5,10 @@ additions. This is a design decision and implementation split; it does not claim
 these facilities exist in v0.11.0. It builds on ADR-0008, ADR-0018, ADR-0019 and
 ADR-0024. Decision 1 (one driver and fencing) is built in v0.12.0 (#223, #253; see
 its amendment). Decision 2 (durable waits and questions, #224) and decision 6 (attention
-and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3, 4, 5, 7
-and 8 (#225–#227, #229, #230) are not built and are assigned to v0.13.0.
+and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3 and 5
+(deadlines and approval expiry, #225; revalidation on every resume, #227), with the run
+closure of #265 (M2), are built for v0.13.0 (see their amendment); decisions 4, 7 and 8
+(#226, #229, #230) are not built and are assigned to v0.13.0.
 
 ## Boundary and compatibility
 
@@ -131,7 +133,8 @@ optional chat binding, the digest of the host's wake key, the host's provider `r
 event identity and `state` (`parked`, `woken`, `timed-out`, `resumed`). A question waits for an
 event and has no wake time.
 
-**Park.** One store transaction checks the fence and the run head, refuses a second parked wait,
+**Park.** One store transaction checks the fence and the run head, refuses a second parked wait
+(every wait not yet resumed, since #265 M2: see the amendment of decisions 3 and 5),
 commits the wait and its one `needs_attention` event, and releases the lease. The paused checkpoint
 was committed under the same fence before; the park binds it by revision and digest rather than
 writing it again. A repeat of the same park returns it; uncertain release evidence is retained and
@@ -150,12 +153,13 @@ a wake is never an approval or a grant.
 **Resume.** The host names the evidence whose acknowledgement it holds; a wake the store does not
 hold is `unacknowledged` and is reconciled by reading the wait, never by dispatching. The package
 requires the person's decision for the asked call (approval) or a grant from the paused limit
-(budget) before anything else (`decision-required`), takes a new lease against the parked revision
-(#223), and the store claims the continuation once under that fence after revalidating the head
-(`checkpoint-changed`), the release reconciliation (`release-uncertain`) and, for an approval or
-budget wait, that it did not time out (`timed-out`). A second claim is `already-resumed`. A chat
-binding is revalidated through the ChatStore (`chat-changed`); Go has no ChatStore and refuses a
-chat-bound resume as `chat-store-unsupported`. The host then continues the run through the fenced
+(budget) before anything else (`decision-required`), and the store claims the continuation once
+after revalidating the head (`checkpoint-changed`), the release reconciliation
+(`release-uncertain`) and, for an approval or budget wait, that it did not time out (`timed-out`),
+taking a new lease against the parked revision (#223); since #265 M2 the claim takes that lease in
+its own transaction. A second claim is `already-resumed`. A chat binding is revalidated through the
+ChatStore before the claim (`chat-changed`); Go has no ChatStore and refuses a chat-bound resume as
+`chat-store-unsupported`. The host then continues the run through the fenced
 store with the returned decision, as ADR-0008 continues a pause.
 
 **Attention and the report.** The `needs_attention` event names the wait, its reason, the action
@@ -172,8 +176,11 @@ Refusals are `invalid`, `nothing-pending`, `wait-pending`, `conflict`, `checkpoi
 `no-wait`, `unauthenticated`, `mismatch`, `not-due`, `stale`, `unacknowledged`, `already-resumed`,
 `decision-required`, `timed-out`, `release-uncertain` and `chat-changed`; capability refusals are
 `store-unsupported` (no wait or lease port), `store-lifetime` (waits or leases end with the
-store's process) and `chat-store-unsupported`. Deadlines on runs and approvals (decision 3) and the
-re-authorization, retired-model, changed-reference and deadline attention reasons remain #225–#227.
+store's process) and `chat-store-unsupported`. Deadlines on runs and approvals (decision 3) and
+resume revalidation (decision 5) are built since (their amendment below). The re-authorization,
+retired-model, changed-reference and deadline attention reasons are not built: a retired model or a
+changed reference is a named revalidation refusal the host reports, and a deadline ends a wait with a
+recorded deadline wake.
 
 ## 3. Deadlines and approval expiry
 
@@ -227,6 +234,61 @@ pending operations. A new layer is not an implicit source/tool/budget grant or a
 way to erase consumed usage. Incompatible changes require a fresh admitted run.
 Pre-bootstrap decisions use the package-owned acknowledgement seam from #219;
 metadata enrollment from #218 cannot stand in for that durable transition.
+
+### Amendment (#225, #227, #265 M2): deadlines, approval expiry, revalidation and run closure as built
+
+Status: built for v0.13.0 (#225, #227, and #265's M2). The records are
+`contract/schemas/run-resume.json` (version 1) with handwritten shared vectors in
+`contract/vectors/resume/`, and members of the not yet released `run-wait.json` (version 1):
+`limits`, `deadline`, `approval`, `pins`, `expired` and `revalidation`, the state `expired`, the wake
+kind `deadline`, the report decision `deadline`, the attention member `deadline` and the refusals
+`deadline-passed`, `closed` and `approval-ttl-required`. TypeScript is
+`packages/harness/storage/resume.ts` with `wait.ts`; Go is `go/context/run_resume.go` with
+`run_wait.go`. The host-facing contract is in `docs/design/storage.md` (Deadlines, approval expiry
+and resume revalidation). No checkpoint, event, lease or published report format changes, and with
+nothing configured the run's bytes are unchanged.
+
+**Run closure (M2).** A committed park closes the run: until its wait is resumed, the store refuses
+to lease the run (`wait-pending`) or park it again (every wait not yet resumed counts, woken ones
+included), and a terminal wait (a timed-out approval or budget wait, or an expired one) closes it for
+good (`closed`). The resume's claim is the one way back: one store transaction checks the
+acknowledged wake, the deadline, the head, the release reconciliation and a revalidation of the
+wait's own pins, then acquires the run's lease against the parked revision and claims the
+continuation. The package checks the decision and revalidates before that claim; nothing is leased
+or claimed before every check passes.
+
+**Deadlines (decision 3).** A run's deadline (`limitRun`) is kept by the store, the earliest wins, and
+no lease of the run is granted, renewed or left held past it, so no claim commit, dispatch or effect
+admission of a fenced run is accepted at or after it (equal time is past). A park's `limits` stamp
+its deadline from the store's time: the earliest of the run's (a new wait never extends it), the
+wait's own limit and, for an approval, its TTL. From the deadline no wake, late answer or decision
+and no claim is accepted (`deadline-passed`); only a host `deadline` wake, due at the deadline, ends
+the wait, terminally (`expired`; a question ends `unanswered`). An admitted effect keeps its unknown
+outcome and is never re-run (the effect host's `already-admitted` holds across leases).
+
+**Approval expiry (decision 3).** An approval wait is unattended approval and needs a bounded
+positive TTL (1 ms to 30 days; absent is `approval-ttl-required`). Its binding (the call id, the
+digest of the reviewed call and arguments, its source) and the pinned source, descriptor, Plan and
+policy identities are what the person reviewed; the approval expires at the park time plus the TTL.
+The claim's lease expires no later than that, and renewing it never extends it, so the approved call
+cannot be admitted at or after the expiry. A changed descriptor of its source or a changed policy
+identity refuses it (`approval-changed`), and a changed source identity or Plan lineage refuses any
+resume.
+
+**Revalidation (decision 5).** Each park pins the trusted host's admitted model, the resolved policy
+identity, the Plan lineage, source identity and approval-source descriptor digests and the last
+artifact revisions, read from the checkpoint. Every resume needs the host's current evidence
+(`evidence-missing` without it, or without a counterpart for a pinned item) and refuses a changed
+identity or lineage (a new run is needed), a retired model (an explicit decision; nothing is
+substituted), a changed model or reference without its exact explicit admission, a changed policy
+without the trusted host's new layer, and an approval under a changed identity. The resumed wait
+records the revalidation, with every change's old and new value.
+
+Not built here: a reauthorization wait (decision 4, #226), attention events for a retired model, a
+changed reference or a deadline (they are named refusals and a recorded deadline wake), a package
+transition that ends a wait a revalidation refuses for good, a Go ChatStore, and host store kinds:
+the deadline, closure and claim rules live in each host store's own wait and lease ports, and no
+conformance kit for them exists yet (#265 M6).
 
 ## 6. Attention and reporting
 

@@ -1,0 +1,1154 @@
+{
+  "description": "Handwritten pins (#227): the execution authority a park pins, and digests, each record's SHA-256 over its canonical JSON. checkpoints: the pins (and an approval wait's binding) a park reads from a retained checkpoint with the model the host admitted the run with; a source's identity from sourceIdentities, the asked approval's source with its descriptor (tool-list) digest, the last observation of each artifact, the Plan revision and accepted revision, and the identity of the resolved policy members. checkpointsRefused: a checkpoint whose asked approval names another identity for a pinned source. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state.",
+  "schema": "run-resume.json#/$defs/pins",
+  "items": [
+    {
+      "model": {
+        "provider": "anthropic",
+        "model": "model-b"
+      },
+      "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "sources": [
+        {
+          "source": "tracker",
+          "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "sources": [],
+      "artifacts": []
+    },
+    {
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+      "plan": {
+        "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        "accepted": "plan-rev-2"
+      },
+      "sources": [
+        {
+          "source": "gateway",
+          "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        {
+          "source": "tracker",
+          "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "artifacts": [
+        {
+          "kind": "artifact",
+          "id": "report.md",
+          "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        {
+          "kind": "dialect",
+          "id": "tax-rules",
+          "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ]
+    },
+    {
+      "model": {
+        "provider": "anthropic",
+        "model": "model-b"
+      },
+      "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "sources": [
+        {
+          "source": "ledger",
+          "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "plan": {
+        "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      },
+      "sources": [
+        {
+          "source": "tracker",
+          "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+        }
+      ],
+      "artifacts": [
+        {
+          "kind": "artifact",
+          "id": "brief.md",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    }
+  ],
+  "digests": [
+    "sha256:2f9e285599fe73d11b60836d9f29f1e4a3081b9768bddfb4b1436305b2dc5b2d",
+    "sha256:a4c8bc9586e2afa7ab69534a1946afee39e22f91863eddf7b64592032c7e3a74",
+    "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
+    "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+    "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f"
+  ],
+  "policies": [
+    [
+      {},
+      "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    ],
+    [
+      {
+        "budget.requests": {
+          "value": 20,
+          "layer": "run",
+          "source": "layer"
+        },
+        "critic.default": {
+          "value": "off",
+          "layer": "table",
+          "source": "layer"
+        }
+      },
+      "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+    ]
+  ],
+  "checkpoints": [
+    {
+      "case": "an asked approval pins its source's descriptor",
+      "model": {
+        "provider": "anthropic",
+        "model": "model-b"
+      },
+      "checkpoint": {
+        "version": 1,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "approval": {
+          "callId": "call_2_1",
+          "name": "tracker__create_issue",
+          "tool": "create_issue",
+          "source": {
+            "kind": "mcp",
+            "id": "tracker",
+            "trust": "public",
+            "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "tool": "create_issue"
+          },
+          "args": {
+            "repository": "expense",
+            "title": "Missing mileage rate"
+          },
+          "state": "asked",
+          "marker": "5b0e7a94c1d3482fa6e90b17d2c83f4e"
+        }
+      },
+      "pins": {
+        "model": {
+          "provider": "anthropic",
+          "model": "model-b"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "tracker",
+            "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+          }
+        ],
+        "artifacts": []
+      },
+      "approval": {
+        "callId": "call_2_1",
+        "callDigest": "sha256:2727bb39b25554a351ae0abf47981acef0af66e15bbe6d9de638f7ff603d1719",
+        "source": "tracker"
+      }
+    },
+    {
+      "case": "identities, the Plan lineage, the policy and the last revision of each artifact",
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "checkpoint": {
+        "version": 3,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "sourceIdentities": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "withheld": false,
+            "serviceAsked": false
+          },
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "withheld": false,
+            "serviceAsked": true
+          }
+        ],
+        "policy": {
+          "budget.requests": {
+            "value": 20,
+            "layer": "run",
+            "source": "layer"
+          },
+          "critic.default": {
+            "value": "off",
+            "layer": "table",
+            "source": "layer"
+          }
+        },
+        "planState": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "sequence": 0,
+          "nextId": 1,
+          "discarded": 0,
+          "history": [],
+          "accepted": {
+            "id": "plan-1",
+            "revision": "plan-rev-2",
+            "sourceRevision": 0,
+            "objective": "File the mileage issue.",
+            "steps": [],
+            "references": [],
+            "validatedReferences": [],
+            "acceptedAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "durable": {
+          "dispatches": [],
+          "children": [],
+          "observations": [
+            {
+              "id": "obs-1",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-1",
+              "commitId": "c-1",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "access": "read"
+              }
+            },
+            {
+              "id": "obs-2",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "operation",
+              "source": "runtime",
+              "dispatchId": "d-2",
+              "commitId": "c-2"
+            },
+            {
+              "id": "obs-3",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-3",
+              "commitId": "c-3",
+              "artifact": {
+                "kind": "dialect",
+                "id": "tax-rules",
+                "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+              }
+            },
+            {
+              "id": "obs-4",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-produced",
+              "source": "runtime",
+              "dispatchId": "d-4",
+              "commitId": "c-4",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                "access": "produced"
+              }
+            }
+          ]
+        }
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      }
+    },
+    {
+      "case": "the approval's source joins its identity pin",
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "checkpoint": {
+        "version": 3,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "sourceIdentities": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "withheld": false,
+            "serviceAsked": false
+          },
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "withheld": false,
+            "serviceAsked": true
+          }
+        ],
+        "policy": {
+          "budget.requests": {
+            "value": 20,
+            "layer": "run",
+            "source": "layer"
+          },
+          "critic.default": {
+            "value": "off",
+            "layer": "table",
+            "source": "layer"
+          }
+        },
+        "planState": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "sequence": 0,
+          "nextId": 1,
+          "discarded": 0,
+          "history": [],
+          "accepted": {
+            "id": "plan-1",
+            "revision": "plan-rev-2",
+            "sourceRevision": 0,
+            "objective": "File the mileage issue.",
+            "steps": [],
+            "references": [],
+            "validatedReferences": [],
+            "acceptedAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "durable": {
+          "dispatches": [],
+          "children": [],
+          "observations": [
+            {
+              "id": "obs-1",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-1",
+              "commitId": "c-1",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "access": "read"
+              }
+            },
+            {
+              "id": "obs-2",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "operation",
+              "source": "runtime",
+              "dispatchId": "d-2",
+              "commitId": "c-2"
+            },
+            {
+              "id": "obs-3",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-3",
+              "commitId": "c-3",
+              "artifact": {
+                "kind": "dialect",
+                "id": "tax-rules",
+                "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+              }
+            },
+            {
+              "id": "obs-4",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-produced",
+              "source": "runtime",
+              "dispatchId": "d-4",
+              "commitId": "c-4",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                "access": "produced"
+              }
+            }
+          ]
+        },
+        "approval": {
+          "callId": "call_2_1",
+          "name": "tracker__create_issue",
+          "tool": "create_issue",
+          "source": {
+            "kind": "mcp",
+            "id": "tracker",
+            "trust": "public",
+            "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "tool": "create_issue",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "args": {
+            "repository": "expense",
+            "title": "Missing mileage rate"
+          },
+          "state": "asked",
+          "marker": "5b0e7a94c1d3482fa6e90b17d2c83f4e"
+        }
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      },
+      "approval": {
+        "callId": "call_2_1",
+        "callDigest": "sha256:2727bb39b25554a351ae0abf47981acef0af66e15bbe6d9de638f7ff603d1719",
+        "source": "tracker"
+      }
+    }
+  ],
+  "checkpointsRefused": [
+    {
+      "problem": "an asked approval names another identity for a pinned source",
+      "model": {
+        "provider": "openai",
+        "model": "model-a"
+      },
+      "checkpoint": {
+        "version": 3,
+        "id": "3c9e1a7b-5d2f-4e8a-9b6c-0d1e2f3a4b5c",
+        "requestKey": "7e4f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5061728394a5b6c7d",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 2,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [
+          {
+            "id": "0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e",
+            "name": "load_tool",
+            "args": {
+              "name": "tracker__create_issue"
+            },
+            "status": "complete",
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": "{\"name\":\"tracker__create_issue\"}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "name": "tracker__create_issue",
+            "args": {
+              "repository": "expense",
+              "title": "Mileage rate for the UK"
+            },
+            "status": "failed",
+            "result": {
+              "isError": true,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "tracker__create_issue acts on tracker, and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."
+                }
+              ]
+            }
+          }
+        ],
+        "context": {
+          "scope": "run-8",
+          "entries": []
+        },
+        "sources": [
+          {
+            "source": "runtime",
+            "kind": "runtime",
+            "calls": 0,
+            "refused": 0,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          },
+          {
+            "source": "tracker",
+            "kind": "mcp",
+            "calls": 0,
+            "refused": 1,
+            "proposed": 0,
+            "bytes": 0,
+            "milliseconds": 0
+          }
+        ],
+        "sourceIdentities": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+            "withheld": false,
+            "serviceAsked": false
+          },
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "withheld": false,
+            "serviceAsked": true
+          }
+        ],
+        "policy": {
+          "budget.requests": {
+            "value": 20,
+            "layer": "run",
+            "source": "layer"
+          },
+          "critic.default": {
+            "value": "off",
+            "layer": "table",
+            "source": "layer"
+          }
+        },
+        "planState": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "sequence": 0,
+          "nextId": 1,
+          "discarded": 0,
+          "history": [],
+          "accepted": {
+            "id": "plan-1",
+            "revision": "plan-rev-2",
+            "sourceRevision": 0,
+            "objective": "File the mileage issue.",
+            "steps": [],
+            "references": [],
+            "validatedReferences": [],
+            "acceptedAt": "2026-01-01T00:00:00.000Z"
+          }
+        },
+        "durable": {
+          "dispatches": [],
+          "children": [],
+          "observations": [
+            {
+              "id": "obs-1",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-1",
+              "commitId": "c-1",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "access": "read"
+              }
+            },
+            {
+              "id": "obs-2",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "operation",
+              "source": "runtime",
+              "dispatchId": "d-2",
+              "commitId": "c-2"
+            },
+            {
+              "id": "obs-3",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-read",
+              "source": "runtime",
+              "dispatchId": "d-3",
+              "commitId": "c-3",
+              "artifact": {
+                "kind": "dialect",
+                "id": "tax-rules",
+                "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+              }
+            },
+            {
+              "id": "obs-4",
+              "scope": {
+                "execution": "run-rich",
+                "role": "author"
+              },
+              "kind": "artifact-produced",
+              "source": "runtime",
+              "dispatchId": "d-4",
+              "commitId": "c-4",
+              "artifact": {
+                "kind": "artifact",
+                "id": "report.md",
+                "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                "access": "produced"
+              }
+            }
+          ]
+        },
+        "approval": {
+          "callId": "call_2_1",
+          "name": "tracker__create_issue",
+          "tool": "create_issue",
+          "source": {
+            "kind": "mcp",
+            "id": "tracker",
+            "trust": "public",
+            "toolListDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820",
+            "tool": "create_issue",
+            "identityDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          },
+          "args": {
+            "repository": "expense",
+            "title": "Missing mileage rate"
+          },
+          "state": "asked",
+          "marker": "5b0e7a94c1d3482fa6e90b17d2c83f4e"
+        }
+      }
+    }
+  ],
+  "refused": [
+    {
+      "problem": "pins name the model",
+      "pins": {
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": []
+      }
+    },
+    {
+      "problem": "a provider is lower-case",
+      "pins": {
+        "model": {
+          "provider": "OpenAI",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": []
+      }
+    },
+    {
+      "problem": "a source id starts with a letter",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "_tracker"
+          }
+        ],
+        "artifacts": []
+      }
+    },
+    {
+      "problem": "an artifact is an artifact or a dialect",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": [
+          {
+            "kind": "file",
+            "id": "a",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a Plan pin names its revision",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": [],
+        "plan": {
+          "accepted": "plan-rev-2"
+        }
+      }
+    },
+    {
+      "problem": "a pin member no schema names",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": [],
+        "lease": "1"
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "sources are sorted by source",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a source is pinned once",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "tracker"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": []
+      }
+    },
+    {
+      "problem": "artifacts come before dialects",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+        "plan": {
+          "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "accepted": "plan-rev-2"
+        },
+        "sources": [
+          {
+            "source": "gateway",
+            "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          },
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        ],
+        "artifacts": [
+          {
+            "kind": "dialect",
+            "id": "tax-rules",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          },
+          {
+            "kind": "artifact",
+            "id": "report.md",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "an artifact is pinned once",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": [
+          {
+            "kind": "artifact",
+            "id": "a",
+            "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+          },
+          {
+            "kind": "artifact",
+            "id": "a",
+            "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          }
+        ]
+      }
+    },
+    {
+      "problem": "a model id has no control character",
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model\u0007a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": []
+      }
+    }
+  ],
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/resume.ts (readResumePins, readResumeEvidence, readRevalidation, readWaitLimits, readRunLimit, readWaitDeadline, stampDeadline, pinsFrom, approvalBinding, revalidateResume)"
+    ]
+  }
+}
