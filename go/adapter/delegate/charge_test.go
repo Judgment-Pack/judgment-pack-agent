@@ -52,3 +52,43 @@ func TestChildChargeWaitsForTheRootCheckpointInProgress(t *testing.T) {
 		t.Fatalf("root count %d after the wrapped charge, want 2", used)
 	}
 }
+
+// agent#249: a wrapped charge holds usageMu until its root checkpoint is delivered, not only while
+// the count advances. Released earlier, a sibling's charge and save could commit a higher count
+// before this delivery commits the lower one. The host's handling of the delivery is held open by
+// channels, and usageMu must still be held at that point.
+func TestChildChargeHoldsTheLockUntilItsCheckpointIsDelivered(t *testing.T) {
+	delivering := make(chan int64, 1)
+	release := make(chan struct{})
+	emit := func(event contract.RunEvent) {
+		if event.ExecutionCheckpoint != nil {
+			delivering <- event.ExecutionCheckpoint.Checkpoint.Used
+			<-release
+		}
+	}
+	c := &coordinator{run: &adapter.Run{ModelName: "fixture", Emit: emit}, shared: allowance{limitHere: 10}, parentCheckpoint: &contract.Checkpoint{}}
+	done := make(chan error, 1)
+	go func() {
+		done <- c.chargeChild(&contract.DelegatedTask{ID: "wrapped"}, turn.TaskBudget{ModelRequests: 4})
+	}()
+	var used int64
+	select {
+	case used = <-delivering:
+	case err := <-done:
+		t.Fatalf("the charge returned without delivering its root checkpoint (err %v)", err)
+	}
+	held := !c.usageMu.TryLock()
+	if !held {
+		c.usageMu.Unlock()
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !held {
+		t.Fatal("usageMu was released before the charge's root checkpoint was delivered")
+	}
+	if used != 1 || c.shared.used() != 1 {
+		t.Fatalf("delivered root count %d, root count %d, want 1 and 1", used, c.shared.used())
+	}
+}
