@@ -230,14 +230,17 @@ credential check configured the run's bytes are unchanged.
 
 **The trusted disposition.** The effect host's admission boundary is where never-admitted is known: the
 reference effect host's optional credential check runs after the fence and the idempotency identity and
-before it records the admission, and a refusal (`expired` or `revoked`, a bounded connection
+before it records the admission, with the abort and the fence checked again after it, and a refusal (`expired` or `revoked`, a bounded connection
 reference, the principal's SHA-256, the scope labels held and required) is minted against the exact
 admission in flight; nothing is admitted or performed. The package trusts it only when minted once,
 for that live admission, before anything was performed, well formed, returned by the dispatch, from an
 effect host proven for the run's store (#253); anything else, and any error after admission, is an
-ordinary failure whose outcome stays unknown. The writer records the typed failure (`authentication`,
-`tool`, `not-started`) and, for a trusted refusal, closes dispatch, so the head holds the refused
-operation as its last dispatch and the model is not asked again.
+ordinary failure whose outcome stays unknown. A late `perform` runs nothing and takes the trust back. A
+credential check's own error is replaced by one fixed failure. The writer records the typed failure
+(`authentication`, `tool`, `not-started`) only for a refusal trusted for that very dispatch, and then
+closes dispatch, so the head holds the refused operation as its last dispatch and the model is not asked
+again. Any other failure of that shape is recorded as `authentication`, `tool`, `unknown`, so the typed
+failure on a row can only mean that refusal: the park's head check and the re-send's grant both read it.
 
 **Park and resume.** A trusted proof parks one `reauthorization` wait under the lease it was minted
 under, over that head (`stale`, `unbound`, `used`, `untrusted` otherwise), waiting for the host's or
@@ -250,14 +253,24 @@ and records the refresh, and its lease is bounded by every ceiling of the run.
 
 **No retry.** The continuation's fenced view (`reauthorizedRunStore`) carries one grant: the writer
 sends again only the never-admitted operation the wait names, once, under its own identity, and only if
-the run asks for exactly that request; nothing that may have been admitted is ever sent again. A model
-adapter that asks with a new call id makes a new operation. ADR-0008 still restores an approved call
-whose result was never written as executed with an unknown outcome; re-authorization does not re-send
-it.
+the run asks for exactly that request; its claim clears the typed failure before the dispatch, and
+nothing that may have been admitted is ever sent again. A host tool's request is its arguments, so it
+keeps its identity on every adapter. A Runtime call's request carries its call id, so a new call id is a
+new operation on any adapter. ADR-0008 still restores an approved call whose result was never written as
+executed with an unknown outcome; re-authorization does not re-send it, and a new decision in the same
+run with the same arguments sends nothing.
 
-The wait conformance kit gains the `reauth.*` properties: the fence and head binding at the park, the
-claim's refresh (required, the parked principal, covering permissions, its time), the attached approval,
-and each across restarts.
+**A refused re-send does not wait again.** It is trusted and stops the run, but its row is no longer the
+head's last dispatch, so the park answers `unbound`; the view's grant is spent, and another view of the
+claim may send it once while the lease is held. Otherwise it stays unknown. We keep this limit rather
+than read "last dispatch" as "last host or Runtime dispatch": it fails safe, and the wider head check
+would apply to every park and every store.
+
+The wait conformance kit gains the `reauth.*` properties: the fence (owner and epoch) and each way a head
+can fail at the park, the claim's refresh (required, the parked principal, covering permissions, its
+time), the attached approval, its expiry and the claim's bound, `limitRun` keeping that time, the timeout
+and deadline wakes, and these across restarts. It does not exercise a repeated reauthorization park or
+`reauthorized` on another wait's claim.
 
 ## 5. Revalidation on every resume
 

@@ -62,10 +62,12 @@ func kitCheckpoint(change func(map[string]any)) []byte {
 // claim, a later run limit reaching a parked wait, the deadline wake), the commit-time approval binding
 // and its settlement (#266 N3), and every one of them across restarts of the store. #226 adds the
 // re-authorization properties (reauth.*): the disposition bound to the lease that parks it and to the
-// head's never-admitted dispatch (a stale or unbound one refused, nothing changed), the claim's refresh
-// (required; the parked principal; permissions after the refresh that cover the operation; taken after the
-// park and not after the store's time), the run's unsettled approval binding and expiry the store attaches,
-// and each across restarts. It returns a StorageConformanceFailure naming the first property broken.
+// head's never-admitted dispatch (a stale fence, and a head failing each way, refused with nothing changed),
+// the claim's refresh (required; the parked principal; permissions after the refresh that cover the operation;
+// taken after the park and not after the store's time), the run's unsettled approval binding and expiry the
+// store attaches (the claim's lease bounded by it, refused from it, and LimitRun keeping it), the timeout and
+// the deadline wake of a reauthorization wait (each terminal), and each across restarts. It returns a
+// StorageConformanceFailure naming the first property broken.
 func CheckRunStoreWaitConformance(ctx context.Context, create WaitStoreFactory) (err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -387,17 +389,45 @@ func reauthConformance(ctx context.Context, create WaitStoreFactory) error {
 	operation := func(run string) EffectOperation {
 		return EffectOperation{Run: run, Operation: "op-1", Source: source, Tool: "create_issue", RequestDigest: request}
 	}
-	head := func(state string, approval map[string]any) []byte {
-		row := map[string]any{"id": "op-1", "kind": "host", "read": false, "state": state, "source": source, "tool": "create_issue", "requestDigest": request}
-		if state == "unknown" {
-			row["failure"] = map[string]any{"version": 1, "code": "authentication", "source": "tool", "outcome": "not-started"}
-		}
-		checkpoint := map[string]any{"kit": "reauth-conformance", "durable": map[string]any{"dispatches": []any{row}}}
+	neverAdmitted := func() map[string]any {
+		return map[string]any{"id": "op-1", "kind": "host", "read": false, "state": "unknown", "source": source, "tool": "create_issue", "requestDigest": request, "failure": map[string]any{"version": 1, "code": "authentication", "source": "tool", "outcome": "not-started"}}
+	}
+	headOf := func(approval map[string]any, rows ...map[string]any) []byte {
+		checkpoint := map[string]any{"kit": "reauth-conformance", "durable": map[string]any{"dispatches": rows}}
 		if approval != nil {
 			checkpoint["approval"] = approval
 		}
 		raw, _ := canonicalRaw(checkpoint)
 		return raw
+	}
+	head := func(approval map[string]any) []byte { return headOf(approval, neverAdmitted()) }
+	// Every way a head fails to hold the operation as the never-admitted dispatch.
+	changedRow := func(change func(map[string]any)) []map[string]any {
+		row := neverAdmitted()
+		change(row)
+		return []map[string]any{row}
+	}
+	failureWith := func(member, value string) map[string]any {
+		failed := map[string]any{"version": 1, "code": "authentication", "source": "tool", "outcome": "not-started"}
+		failed[member] = value
+		return failed
+	}
+	unboundHeads := []struct {
+		name string
+		rows []map[string]any
+	}{
+		{"result", changedRow(func(r map[string]any) { r["state"] = "result"; delete(r, "failure") })},
+		{"claimed", changedRow(func(r map[string]any) { r["state"] = "claimed"; delete(r, "failure") })},
+		{"not-last", []map[string]any{neverAdmitted(), {"id": "model-2", "kind": "model", "read": true, "state": "result", "source": "model", "tool": "chat", "requestDigest": "sha256:" + strings.Repeat("9", 64)}}},
+		{"outcome", changedRow(func(r map[string]any) { r["failure"] = failureWith("outcome", "unknown") })},
+		{"code", changedRow(func(r map[string]any) { r["failure"] = failureWith("code", "unknown") })},
+		{"no-failure", changedRow(func(r map[string]any) { delete(r, "failure") })},
+		{"read", changedRow(func(r map[string]any) { r["read"] = true })},
+		{"kind", changedRow(func(r map[string]any) { r["kind"] = "model" })},
+		{"id", changedRow(func(r map[string]any) { r["id"] = "op-2" })},
+		{"source", changedRow(func(r map[string]any) { r["source"] = "sha256:" + strings.Repeat("4", 64) })},
+		{"tool", changedRow(func(r map[string]any) { r["tool"] = "close_issue" })},
+		{"request", changedRow(func(r map[string]any) { r["requestDigest"] = "sha256:" + strings.Repeat("3", 64) })},
 	}
 	type opened struct {
 		revision   string
@@ -440,24 +470,32 @@ func reauthConformance(ctx context.Context, create WaitStoreFactory) error {
 	wake := func(run, key string) WakeEvidence {
 		return WakeEvidence{Version: 1, Resource: run, Wait: "wait-r", Evidence: "refreshed-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "reauthorized", Subject: "kit-conn"}, Key: key}
 	}
-	keys := map[string]string{"r": "kit.reauth-r.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "s": "kit.reauth-s.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "t": "kit.reauth-t.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "a": "kit.reauth-a.Zx4Cv7Bn1Mq8Wp3Lk6Jh9Gf2"}
+	keys := map[string]string{"r": "kit.reauth-r.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "s": "kit.reauth-s.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2"}
+	keyOf := func(name string) string { return "kit." + name + ".Zx4Cv7Bn1Mq8Wp3Lk6Jh9Gf2" }
 	readWait := func(run string) *RunWait { held, _ := store.ReadWait(ctx, run, "wait-r"); return held }
 	readLease := func(run string) *RunLease { held, _ := store.ReadLease(ctx, run); return held }
 
 	// Binding the evidence to the invocation: the disposition parks only under the lease it was minted
 	// under, over a head that holds its operation as the never-admitted dispatch. A refused park changes
 	// nothing and leaves the lease held.
-	r := open("reauth-r", head("unknown", nil))
+	r := open("reauth-r", head(nil))
 	proof := disposition("reauth-r", r.fence)
 	stale := proof
 	stale.Fence.Epoch = "9"
 	_, _, err = store.ParkWait(ctx, parkOf("reauth-r", r, stale, keys["r"]), r.fence)
 	refuses("reauth.park.stale", err, "stale")
+	stale = proof
+	stale.Fence.Owner = "worker-x"
+	_, _, err = store.ParkWait(ctx, parkOf("reauth-r", r, stale, keys["r"]), r.fence)
+	refuses("reauth.park.stale-owner", err, "stale")
 	check("reauth.park.stale-unchanged", readWait("reauth-r") == nil && readLease("reauth-r") != nil && readLease("reauth-r").State == "held")
-	s := open("reauth-s", head("result", nil))
-	_, _, err = store.ParkWait(ctx, parkOf("reauth-s", s, disposition("reauth-s", s.fence), keys["s"]), s.fence)
-	refuses("reauth.park.unbound", err, "unbound")
-	check("reauth.park.unbound-unchanged", readWait("reauth-s") == nil && readLease("reauth-s") != nil && readLease("reauth-s").State == "held")
+	for _, unbound := range unboundHeads {
+		run := "reauth-u-" + unbound.name
+		held := open(run, headOf(nil, unbound.rows...))
+		_, _, err = store.ParkWait(ctx, parkOf(run, held, disposition(run, held.fence), keys["s"]), held.fence)
+		refuses("reauth.park.unbound."+unbound.name, err, "unbound")
+		check("reauth.park.unbound-unchanged", readWait(run) == nil && readLease(run) != nil && readLease(run).State == "held")
+	}
 	parked, attention, err := store.ParkWait(ctx, parkOf("reauth-r", r, proof, keys["r"]), r.fence)
 	check("reauth.park.committed", err == nil && parked.Reason == "reauthorization" && same(parked.Reauthorization, proof) && parked.Approval == nil && attention.Needs == "reauthorization" && attention.Subject != nil && *attention.Subject == "kit-conn" && readLease("reauth-r") != nil && readLease("reauth-r").State == "released")
 	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-r", Owner: "worker-x", ExpectedRevision: r.revision, DurationMs: hour})
@@ -488,40 +526,120 @@ func reauthConformance(ctx context.Context, create WaitStoreFactory) error {
 	refuses("reauth.claim.once", err, "already-resumed")
 	restart("reauth.restart.claimed")
 	check("reauth.restart.claimed", readWait("reauth-r") != nil && same(readWait("reauth-r").Reauthorized, refreshed(func(x *Reauthorized) { x.At = iso(t0.Add(time.Minute)) })) && readLease("reauth-r") != nil && readLease("reauth-r").Epoch == "2")
+	check("reauth.restart.disposition", readWait("reauth-r") != nil && same(readWait("reauth-r").Reauthorization, proof))
 
 	// The approval: a reauthorization wait parked while the run's approved call is unsettled carries that
-	// approval's binding and expiry, the store's own, and its claim is refused from the expiry.
-	at = t0.Add(2 * time.Minute)
+	// approval's binding and expiry, the store's own, and they survive a restart; its claim is bounded by the
+	// expiry and refused from it; and a later run limit keeps the approval time.
 	asked := kitCheckpoint(nil)
-	openedA, err := store.Commit(ctx, RunCommit{RunID: "reauth-a", CommitID: "reauth-a-open", Checkpoint: asked})
-	check("reauth.approval.open", err == nil)
-	leased, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-a", Owner: "worker-a", ExpectedRevision: openedA.Revision, DurationMs: hour})
-	check("reauth.approval.open", err == nil)
-	keyDigest, _ := WakeKeyDigest(keys["t"])
-	held := binding
-	_, _, err = store.ParkWait(ctx, RunWait{Version: WaitRecordVersion, Resource: "reauth-a", Wait: "wait-1", Reason: "approval", Pending: contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: "call-1", Name: approval.Name, Tool: approval.Tool}}, Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call-1"}}, Limits: &WaitLimits{ApprovalTtlMs: &hour}, Approval: &held, Continuation: "reauth-a-approve", Checkpoint: contract.RunWaitCheckpointBinding{Revision: openedA.Revision, Digest: CheckpointBytesDigest(asked)}, Pins: pins, WakeKeyDigest: keyDigest, Release: []WaitRelease{}}, FenceOf(leased))
-	check("reauth.approval.parked", err == nil)
-	_, err = store.WakeWait(ctx, WakeEvidence{Version: 1, Resource: "reauth-a", Wait: "wait-1", Evidence: "decision-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call-1"}, Key: keys["t"]})
-	check("reauth.approval.woken", err == nil)
-	_, approved, err := store.ResumeWait(ctx, WaitClaim{Resource: "reauth-a", Wait: "wait-1", Evidence: "decision-1", Lease: LeaseAcquire{Resource: "reauth-a", Owner: "worker-b", ExpectedRevision: openedA.Revision, DurationMs: 24 * hour}, Reconciled: []WaitRelease{}, Revalidation: Revalidation{Version: 1, Resource: "reauth-a", Wait: "wait-1", Pins: pinsDigest, Evidence: "sha256:" + strings.Repeat("e", 64), Changes: []ResumeChange{}}})
-	check("reauth.approval.claimed", err == nil)
-	var approvedRecord map[string]any
-	_ = json.Unmarshal([]byte(kitApproval), &approvedRecord)
-	approvedRecord["state"] = "approved"
-	refusedHead := head("unknown", approvedRecord)
-	committed, err := store.CommitFenced(ctx, RunCommit{RunID: "reauth-a", ExpectedRevision: openedA.Revision, CommitID: "approved-refused", Checkpoint: refusedHead}, FenceOf(approved))
-	check("reauth.approval.committed", err == nil)
-	expiry := iso(t0.Add(2*time.Minute + time.Hour))
-	bound, _, err := store.ParkWait(ctx, parkOf("reauth-a", opened{committed.Revision, refusedHead, FenceOf(approved)}, disposition("reauth-a", FenceOf(approved)), keys["a"]), FenceOf(approved))
-	check("reauth.approval.bound", err == nil && same(bound.Approval, binding) && bound.Deadline != nil && bound.Deadline.Approval != nil && *bound.Deadline.Approval == expiry && bound.Deadline.At == expiry)
+	type boundWait struct {
+		revision, expiry string
+		fence            LeaseFence
+	}
+	bound := func(run string) boundWait {
+		openedRun, err := store.Commit(ctx, RunCommit{RunID: run, CommitID: run + "-open", Checkpoint: asked})
+		check("reauth.approval.open", err == nil)
+		leased, err := store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: "worker-a", ExpectedRevision: openedRun.Revision, DurationMs: hour})
+		check("reauth.approval.open", err == nil)
+		keyDigest, _ := WakeKeyDigest(keyOf(run + "-1"))
+		held := binding
+		_, _, err = store.ParkWait(ctx, RunWait{Version: WaitRecordVersion, Resource: run, Wait: "wait-1", Reason: "approval", Pending: contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: "call-1", Name: approval.Name, Tool: approval.Tool}}, Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call-1"}}, Limits: &WaitLimits{ApprovalTtlMs: &hour}, Approval: &held, Continuation: run + "-approve", Checkpoint: contract.RunWaitCheckpointBinding{Revision: openedRun.Revision, Digest: CheckpointBytesDigest(asked)}, Pins: pins, WakeKeyDigest: keyDigest, Release: []WaitRelease{}}, FenceOf(leased))
+		check("reauth.approval.parked", err == nil)
+		_, err = store.WakeWait(ctx, WakeEvidence{Version: 1, Resource: run, Wait: "wait-1", Evidence: "decision-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "approval-decision", Subject: "call-1"}, Key: keyOf(run + "-1")})
+		check("reauth.approval.woken", err == nil)
+		_, approved, err := store.ResumeWait(ctx, WaitClaim{Resource: run, Wait: "wait-1", Evidence: "decision-1", Lease: LeaseAcquire{Resource: run, Owner: "worker-b", ExpectedRevision: openedRun.Revision, DurationMs: 24 * hour}, Reconciled: []WaitRelease{}, Revalidation: Revalidation{Version: 1, Resource: run, Wait: "wait-1", Pins: pinsDigest, Evidence: "sha256:" + strings.Repeat("e", 64), Changes: []ResumeChange{}}})
+		check("reauth.approval.claimed", err == nil)
+		var approvedRecord map[string]any
+		_ = json.Unmarshal([]byte(kitApproval), &approvedRecord)
+		approvedRecord["state"] = "approved"
+		refusedHead := head(approvedRecord)
+		committed, err := store.CommitFenced(ctx, RunCommit{RunID: run, ExpectedRevision: openedRun.Revision, CommitID: "approved-refused", Checkpoint: refusedHead}, FenceOf(approved))
+		check("reauth.approval.committed", err == nil)
+		expiry := iso(at.Add(time.Hour))
+		parked, _, err := store.ParkWait(ctx, parkOf(run, opened{committed.Revision, refusedHead, FenceOf(approved)}, disposition(run, FenceOf(approved)), keyOf(run+"-2")), FenceOf(approved))
+		check("reauth.approval.bound", err == nil && same(parked.Approval, binding) && parked.Deadline != nil && parked.Deadline.Approval != nil && *parked.Deadline.Approval == expiry && parked.Deadline.At == expiry)
+		return boundWait{committed.Revision, expiry, FenceOf(approved)}
+	}
+	at = t0.Add(2 * time.Minute)
+	a := bound("reauth-a")
 	at = t0.Add(3 * time.Minute)
-	_, err = store.WakeWait(ctx, wake("reauth-a", keys["a"]))
+	_, err = store.WakeWait(ctx, wake("reauth-a", keyOf("reauth-a-2")))
 	check("reauth.approval.wake", err == nil)
 	restart("reauth.restart.bound")
-	at = t0.Add(2*time.Minute + time.Hour)
-	expired := claim("reauth-a", committed.Revision, refreshed(func(x *Reauthorized) { x.At = iso(t0.Add(3 * time.Minute)) }))
+	carried := readWait("reauth-a")
+	check("reauth.restart.bound", carried != nil && carried.State == "woken" && same(carried.Approval, binding) && carried.Deadline != nil && carried.Deadline.Approval != nil && *carried.Deadline.Approval == a.expiry && same(carried.Reauthorization, disposition("reauth-a", a.fence)))
+	expiryAt := time.UnixMilli(waitTimeMillis(a.expiry)).UTC()
+	at = expiryAt
+	expired := claim("reauth-a", a.revision, refreshed(func(x *Reauthorized) { x.At = iso(t0.Add(3 * time.Minute)) }))
 	expired.Lease.Owner = "worker-c"
 	_, _, err = store.ResumeWait(ctx, expired)
 	refuses("reauth.approval.expiry", err, "deadline-passed")
+	b := bound("reauth-b")
+	at = at.Add(time.Minute)
+	_, err = store.WakeWait(ctx, wake("reauth-b", keyOf("reauth-b-2")))
+	check("reauth.approval.wake", err == nil)
+	boundClaim := claim("reauth-b", b.revision, refreshed(nil))
+	boundClaim.Lease.Owner = "worker-c"
+	_, boundLease, err := store.ResumeWait(ctx, boundClaim)
+	check("reauth.approval.claim-bounded", err == nil && boundLease.Expiry == b.expiry)
+	c := bound("reauth-c")
+	cExpiry := time.UnixMilli(waitTimeMillis(c.expiry)).UTC()
+	_, err = store.LimitRun(ctx, RunLimit{Version: 1, Resource: "reauth-c", Run: iso(cExpiry.Add(time.Hour))})
+	check("reauth.limit.later", err == nil)
+	later := readWait("reauth-c")
+	check("reauth.limit.later", later != nil && later.Deadline != nil && later.Deadline.Approval != nil && *later.Deadline.Approval == c.expiry && later.Deadline.At == c.expiry && later.Deadline.By == "approval")
+	earlier := iso(cExpiry.Add(-10 * time.Minute))
+	_, err = store.LimitRun(ctx, RunLimit{Version: 1, Resource: "reauth-c", Run: earlier})
+	check("reauth.limit.earlier", err == nil)
+	limited := readWait("reauth-c")
+	if limited != nil {
+		_, readErr := readStoreWait(*limited)
+		check("reauth.limit.earlier", readErr == nil && limited.Deadline != nil && limited.Deadline.Approval != nil && *limited.Deadline.Approval == c.expiry && limited.Deadline.At == earlier && limited.Deadline.By == "run")
+	} else {
+		check("reauth.limit.earlier", false)
+	}
+
+	// The timeout: an event after it is refused, and its wake ends the wait; a timed-out reauthorization wait
+	// is terminal, as a timed-out approval wait is: not claimed, and its run closed for good, also after a
+	// restart.
+	timed := open("reauth-t", head(nil))
+	timeoutAt := at.Add(time.Hour)
+	timeoutText := iso(timeoutAt)
+	timedPark := parkOf("reauth-t", timed, disposition("reauth-t", timed.fence), keyOf("reauth-t"))
+	timedPark.TimeoutAt = &timeoutText
+	_, _, err = store.ParkWait(ctx, timedPark, timed.fence)
+	check("reauth.timeout.parked", err == nil)
+	at = timeoutAt
+	_, err = store.WakeWait(ctx, wake("reauth-t", keyOf("reauth-t")))
+	refuses("reauth.timeout.late", err, "timed-out")
+	timedOut, err := store.WakeWait(ctx, WakeEvidence{Version: 1, Resource: "reauth-t", Wait: "wait-r", Evidence: "timeout-1", Kind: "timeout", Key: keyOf("reauth-t")})
+	check("reauth.timeout.wake", err == nil && timedOut.Kind == "timeout" && readWait("reauth-t") != nil && readWait("reauth-t").State == "timed-out")
+	timedClaim := claim("reauth-t", timed.revision, refreshed(nil))
+	timedClaim.Evidence = "timeout-1"
+	_, _, err = store.ResumeWait(ctx, timedClaim)
+	refuses("reauth.timeout.claim", err, "timed-out")
+	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-t", Owner: "worker-x", ExpectedRevision: timed.revision, DurationMs: hour})
+	refuses("reauth.timeout.closed", err, "closed")
+	restart("reauth.restart.timeout")
+	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-t", Owner: "worker-x", ExpectedRevision: timed.revision, DurationMs: hour})
+	refuses("reauth.restart.timeout", err, "closed")
+
+	// The deadline: from it no event wake is accepted, and its deadline wake ends the wait and closes the run
+	// for good.
+	dated := open("reauth-d", head(nil))
+	datedPark := parkOf("reauth-d", dated, disposition("reauth-d", dated.fence), keyOf("reauth-d"))
+	datedPark.Limits = &WaitLimits{WaitMs: &hour}
+	parkedDated, _, err := store.ParkWait(ctx, datedPark, dated.fence)
+	check("reauth.deadline.stamped", err == nil && parkedDated.Deadline != nil && parkedDated.Deadline.At == iso(at.Add(time.Hour)) && parkedDated.Deadline.By == "wait")
+	at = at.Add(time.Hour)
+	_, err = store.WakeWait(ctx, wake("reauth-d", keyOf("reauth-d")))
+	refuses("reauth.deadline.late", err, "deadline-passed")
+	ended, err := store.WakeWait(ctx, WakeEvidence{Version: 1, Resource: "reauth-d", Wait: "wait-r", Evidence: "deadline-1", Kind: "deadline", Key: keyOf("reauth-d")})
+	check("reauth.deadline.wake", err == nil && ended.Kind == "deadline" && readWait("reauth-d") != nil && readWait("reauth-d").State == "expired")
+	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-d", Owner: "worker-x", ExpectedRevision: dated.revision, DurationMs: hour})
+	refuses("reauth.deadline.closed", err, "closed")
+	restart("reauth.restart.deadline")
+	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-d", Owner: "worker-x", ExpectedRevision: dated.revision, DurationMs: hour})
+	refuses("reauth.restart.deadline", err, "closed")
 	return nil
 }

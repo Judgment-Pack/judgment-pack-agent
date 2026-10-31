@@ -1451,6 +1451,18 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		usagewitness.Close(usageTicketHeld.nativeWitness)
 		admitted = usagewitness.Admitted(usageTicketHeld.nativeWitness, w, usageTicketHeld)
 	}
+	// #226: the typed never-admitted failure means a refusal the package trusted for this very dispatch, and
+	// it is what lets a resumed re-authorization wait send the row again. Any other failure of that shape (a
+	// tool's, after admission) is recorded and reported as an unknown outcome, with nothing said about
+	// admission.
+	refused := false
+	if kind == "host" || kind == "runtime" {
+		if refused = takeFreshReauthorization(runErr); !refused && runErr != nil {
+			if held := failure.Normalize(runErr, "tool", time.Now()); isNeverAdmittedFailure(&held) {
+				runErr = failure.Err("authentication", "tool", "unknown")
+			}
+		}
+	}
 	w.mu.Lock()
 	if routeClaim != nil {
 		routeClaim.live = false
@@ -1607,7 +1619,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 
 	if kind == "model" && runErr != nil || failure.IsCancelled(runErr) && !(kind == "agent" && (w.book.PendingHandoff != nil || nativePlanPauseAcknowledgedLocked(ctx, binding, claim))) {
 		w.dispatchClosed.Store(true)
-	} else if (kind == "host" || kind == "runtime") && trustedReauthorization(runErr) {
+	} else if refused {
 		// #226: a trusted re-authorization refusal stops the run at the operation it refused: nothing after it
 		// is committed and nothing more is dispatched, so the run's head holds it as the never-admitted
 		// dispatch a park binds.

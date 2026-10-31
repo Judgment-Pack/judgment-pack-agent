@@ -81,6 +81,11 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
     },
+    "actor": {
+      "description": "A host-attested actor: a bounded reference with the connection's form (1 to 64 characters, a letter or digit then letters, digits, '.', '_', ':' or '-'). It is never free text, an address or a credential.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
     "label": {
       "description": "A permission scope label: 1 to 128 characters, a letter or digit then letters, digits, '.', '_', ':', '/' or '-'.",
       "type": "string",
@@ -137,8 +142,8 @@
           "description": "The scope labels the connection holds now."
         },
         "actor": {
-          "$ref": "#/$defs/identifier",
-          "description": "The host-attested person or host component that took the action."
+          "$ref": "#/$defs/actor",
+          "description": "The host-attested reference to the person or host component that took the action."
         },
         "at": {
           "$ref": "#/$defs/time"
@@ -158,7 +163,7 @@
       ],
       "properties": {
         "actor": {
-          "$ref": "#/$defs/identifier"
+          "$ref": "#/$defs/actor"
         },
         "at": {
           "$ref": "#/$defs/time"

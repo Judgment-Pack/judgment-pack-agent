@@ -240,6 +240,54 @@
         "actor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "at": "2026-01-01T00:01:30.000Z"
       }
+    },
+    {
+      "problem": "an actor with a bearer token and an address in it",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "Bearer SENTINEL-ACCESS-TOKEN person@example.invalid",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor that is an address",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person@example.invalid",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor of 65 characters",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
     }
   ],
   "readerRefused": [
@@ -327,6 +375,18 @@
       {
         "problem": "an empty record",
         "reauthorized": {}
+      },
+      {
+        "problem": "an actor with a bearer token and an address in it",
+        "reauthorized": {
+          "actor": "Bearer SENTINEL-ACCESS-TOKEN person@example.invalid",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
       }
     ],
     "readerRefused": [

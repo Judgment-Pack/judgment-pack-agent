@@ -850,12 +850,16 @@ func (h *ReferenceEffectHost) admit(ctx context.Context, admission EffectAdmissi
 		err = &LeaseRefused{Reason: "already-admitted"}
 	}
 	// #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing.
+	// It can take longer than the lease has left, so the abort and the fence are looked at again before
+	// anything is admitted.
 	if err == nil && h.credentials != nil {
 		refusal, checkErr := h.credentials(ctx, admission.Operation)
-		if checkErr != nil {
-			err = checkErr
-		} else if refusal != nil {
-			err = NewReauthorizationRequired(ctx, admission, *refusal)
+		if err = ctx.Err(); err == nil {
+			if checkErr != nil {
+				err = &CredentialCheckFailed{}
+			} else if err = h.authority.CheckFence(ctx, admission.Fence); err == nil && refusal != nil {
+				err = NewReauthorizationRequired(ctx, admission, *refusal)
+			}
 		}
 	}
 	if err == nil {
@@ -999,6 +1003,17 @@ func fencedEffect(ctx context.Context, store RunStore, op EffectOperation, perfo
 	attempt := &dispatchAttempt{admission: admission, live: true}
 	err = view.host.Dispatch(context.WithValue(ctx, dispatchAttemptKey{}, attempt), admission, func(ctx context.Context) error {
 		attempt.mu.Lock()
+		// #226: a perform after the dispatch ended never runs, and a refusal followed by one is no proof: the
+		// host that minted it did not stand by it.
+		if !attempt.live {
+			minted := attempt.minted
+			attempt.invalid = true
+			attempt.mu.Unlock()
+			if minted != nil {
+				minted.revoke()
+			}
+			return &LeaseRefused{Reason: "invalid"}
+		}
 		attempt.performed = true
 		attempt.mu.Unlock()
 		return perform(ctx)

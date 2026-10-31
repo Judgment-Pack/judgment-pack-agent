@@ -8,6 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
 // The Go twin of packages/harness/storage/reauth.test.ts (#226): the shared re-authorization vectors and
@@ -25,6 +28,18 @@ func readReauthVector(t *testing.T, name string) map[string]json.RawMessage {
 	}
 	return file
 }
+
+// trustedReauthorization is whether a refusal is one the package trusts, used or not.
+func trustedReauthorization(err error) bool {
+	refused, ok := err.(*ReauthorizationRequired)
+	if !ok || refused == nil {
+		return false
+	}
+	refused.mu.Lock()
+	defer refused.mu.Unlock()
+	return refused.disposition != nil
+}
+
 func reauthReasonOf(err error) string {
 	var refused *ReauthorizationRefused
 	if errors.As(err, &refused) {
@@ -300,4 +315,130 @@ func (h *mintHost) Dispatch(ctx context.Context, admission EffectAdmission, perf
 		return h.reference.Dispatch(ctx, admission, perform)
 	}
 	return h.mint(ctx, admission, perform)
+}
+
+// M1: the credential check does not reopen the fence. The lease lost or the run aborted during the check
+// admits and performs nothing, and the identity stays free.
+func TestReauthTheCredentialCheckDoesNotReopenTheFence(t *testing.T) {
+	ctx := context.Background()
+	refusal := &CredentialRefusal{Cause: "expired", Connection: "tracker-conn", Principal: "sha256:" + strings.Repeat("7", 64), Permissions: []string{}, Requires: []string{}}
+	op := EffectOperation{Run: "run-t", Operation: "op-1", Source: "tracker", Tool: "create_issue", RequestDigest: "sha256:" + strings.Repeat("2", 64)}
+	for _, answer := range []*CredentialRefusal{nil, refusal} {
+		clock := newLeaseClock()
+		store := durableWaitStore{NewMemoryRunStore(MemoryRunStoreOptions{Now: clock.now})}
+		lose := true
+		host := NewReferenceEffectHostWith(store, ReferenceEffectHostOptions{Credentials: func(context.Context, EffectOperation) (*CredentialRefusal, error) {
+			if lose {
+				lose = false
+				clock.advance(2 * waitHour)
+				if _, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-t", Owner: "worker-b", DurationMs: waitHour}); err != nil {
+					t.Fatal(err)
+				}
+				return answer, nil
+			}
+			return nil, nil
+		}})
+		lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-t", Owner: "worker-a", DurationMs: waitHour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		admission, _ := NewEffectAdmission(FenceOf(lease), op)
+		performed := 0
+		perform := func(context.Context) error { performed++; return nil }
+		if err := host.Dispatch(ctx, admission, perform); leaseReason(err) != "stale-epoch" || performed != 0 {
+			t.Fatalf("the lease lost during the check: %v, performed %d", err, performed)
+		}
+		if refusals := host.Refusals(); len(refusals) != 1 || refusals[0].Reason != "stale-epoch" {
+			t.Fatalf("refusals %+v", refusals)
+		}
+		// Nothing was admitted: the takeover's own dispatch of the identity is its first.
+		taken := FenceOf(lease)
+		taken.Owner, taken.Epoch = "worker-b", "2"
+		admission, _ = NewEffectAdmission(taken, op)
+		if err := host.Dispatch(ctx, admission, perform); err != nil || performed != 1 {
+			t.Fatalf("the takeover's dispatch: %v, performed %d", err, performed)
+		}
+	}
+	// The host looks for itself, whatever its authority looks at.
+	for _, answer := range []*CredentialRefusal{nil, refusal} {
+		for _, blind := range []bool{false, true} {
+			store := durableWaitStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+			running, cancel := context.WithCancel(ctx)
+			var authority LeaseAuthority = store
+			if blind {
+				authority = contextBlindAuthority{store}
+			}
+			host := NewReferenceEffectHostWith(authority, ReferenceEffectHostOptions{Credentials: func(context.Context, EffectOperation) (*CredentialRefusal, error) {
+				cancel()
+				return answer, nil
+			}})
+			lease, _ := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-t", Owner: "worker-a", DurationMs: waitHour})
+			admission, _ := NewEffectAdmission(FenceOf(lease), op)
+			performed := 0
+			if err := host.Dispatch(running, admission, func(context.Context) error { performed++; return nil }); !errors.Is(err, context.Canceled) || performed != 0 {
+				t.Fatalf("aborted during the check (blind %v): %v, performed %d", blind, err, performed)
+			}
+		}
+	}
+	// Aborted while the check fails too: the answer is the abort.
+	store := durableWaitStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	running, cancel := context.WithCancel(ctx)
+	host := NewReferenceEffectHostWith(store, ReferenceEffectHostOptions{Credentials: func(context.Context, EffectOperation) (*CredentialRefusal, error) {
+		cancel()
+		return nil, errors.New("the check failed too")
+	}})
+	lease, _ := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-t", Owner: "worker-a", DurationMs: waitHour})
+	admission, _ := NewEffectAdmission(FenceOf(lease), op)
+	if err := host.Dispatch(running, admission, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("aborted while the check failed: %v", err)
+	}
+}
+
+// contextBlindAuthority answers for the fence and does not look at the context.
+type contextBlindAuthority struct{ store LeaseAuthority }
+
+func (b contextBlindAuthority) CheckFence(_ context.Context, fence LeaseFence) error {
+	return b.store.CheckFence(context.Background(), fence)
+}
+
+// An admitted identity is already-admitted before the credential check is asked: an admitted operation gets
+// no refusal.
+func TestReauthAnAdmittedOperationGetsNoRefusal(t *testing.T) {
+	ctx := context.Background()
+	store := durableWaitStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	var refusal *CredentialRefusal
+	asked := 0
+	host := NewReferenceEffectHostWith(store, ReferenceEffectHostOptions{Credentials: func(context.Context, EffectOperation) (*CredentialRefusal, error) {
+		asked++
+		return refusal, nil
+	}})
+	lease, _ := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-a", Owner: "worker-a", DurationMs: waitHour})
+	admission, _ := NewEffectAdmission(FenceOf(lease), EffectOperation{Run: "run-a", Operation: "op-1", Source: "tracker", Tool: "create_issue", RequestDigest: "sha256:" + strings.Repeat("2", 64)})
+	if err := host.Dispatch(ctx, admission, func(context.Context) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	refusal = &CredentialRefusal{Cause: "expired", Connection: "tracker-conn", Principal: "sha256:" + strings.Repeat("7", 64), Permissions: []string{}, Requires: []string{}}
+	if err := host.Dispatch(ctx, admission, func(context.Context) error { return nil }); leaseReason(err) != "already-admitted" || asked != 1 {
+		t.Fatalf("again: %v, asked %d", err, asked)
+	}
+}
+
+// M9: whatever the credential check returned stays with the host: the failure is fixed.
+func TestReauthACheckErrorIsAFixedFailure(t *testing.T) {
+	ctx := context.Background()
+	store := durableWaitStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	const secret = "SENTINEL-CHECK-DETAIL"
+	host := NewReferenceEffectHostWith(store, ReferenceEffectHostOptions{Credentials: func(context.Context, EffectOperation) (*CredentialRefusal, error) {
+		return nil, failure.Authored("authentication", secret, "tool")
+	}})
+	lease, _ := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-a", Owner: "worker-a", DurationMs: waitHour})
+	admission, _ := NewEffectAdmission(FenceOf(lease), EffectOperation{Run: "run-a", Operation: "op-1", Source: "tracker", Tool: "create_issue", RequestDigest: "sha256:" + strings.Repeat("2", 64)})
+	err := host.Dispatch(ctx, admission, func(context.Context) error { return nil })
+	var failed *CredentialCheckFailed
+	if !errors.As(err, &failed) || strings.Contains(err.Error(), secret) {
+		t.Fatalf("the check's error: %v", err)
+	}
+	if held := failure.Normalize(err, "tool", time.Now()); held.Code != "unknown" || held.Outcome != "unknown" || held.Detail == nil || strings.Contains(*held.Detail, secret) {
+		t.Fatalf("the failure: %+v", held)
+	}
 }

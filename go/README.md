@@ -265,11 +265,12 @@ lease in the claim's own transaction, which `ResumeParked` reads back through th
 ### Re-authorization waits (#226)
 
 `context/run_reauth.go` is the Go twin of `storage/reauth.ts`: `NewReferenceEffectHostWith` with a
-`CredentialCheck`, `NewReauthorizationRequired` (a refusal at the effect host's admission boundary,
-minted with the dispatch's own context), `ReauthorizationOf` (the trusted refusal on the fenced view),
+`CredentialCheck`, `CredentialCheckFailed` (the fixed failure that replaces a check's own error),
+`NewReauthorizationRequired` (a refusal at the effect host's admission boundary, minted with the
+dispatch's own context), `ReauthorizationOf` (the trusted refusal on the fenced view),
 `ParkInput.Reauthorization`, `ResumeInput.Reauthorization` (the host's or the person's action),
-`Reauthorize`, `HoldsNeverAdmitted`, `ReauthorizedRunStore` (the continuation's view and its one grant)
-and the readers of every `run-reauth.json` record. `CheckRunStoreWaitConformance` gains the `reauth.*`
+`Reauthorize`, `HoldsNeverAdmitted`, `ReauthorizedRunStore` (the continuation's view and its one grant),
+`ValidActorReference` and the readers of every `run-reauth.json` record. `CheckRunStoreWaitConformance` gains the `reauth.*`
 properties. See `docs/design/storage.md`.
 
 ### Proposal edit host binding

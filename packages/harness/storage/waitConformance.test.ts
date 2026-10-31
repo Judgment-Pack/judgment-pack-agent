@@ -6,7 +6,8 @@ import {toolListDigest} from '../toolSources'
 import {StorageConformanceFailure} from './conformance'
 import {MemoryRunStore,type RunStore} from './run'
 import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseAcquire,type LeaseFence,type LeaseLifetime} from './lease'
-import {parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
+import {ReauthorizationRefused} from './reauth'
+import {WaitRefused,checkpointBytesDigest,parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import {runStoreWaitConformance} from './waitConformance'
 
 /* #265 M6: the wait conformance kit over the memory kind, a real restart over a fresh store instance, and stores that
@@ -64,6 +65,48 @@ describe('the wait conformance kit (#265 M6)',()=>{
   const losesRefresh=(now:()=>Date,from?:WaitRunStore)=>{const next=memoryKind()(now,from);if(from)for(const list of (next as unknown as {waits:{rows:Map<string,{reauthorized?:unknown}[]>}}).waits.rows.values())for(const row of list)delete row.reauthorized;return next}
   await expect(runStoreWaitConformance(losesRefresh)).rejects.toEqual(fails('reauth.restart.claimed'))
  })
+ it('#226 M4: a store that skips a documented re-authorization obligation fails the property that names it',async()=>{
+  const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
+  type Row={reason:string;state:string;approval?:unknown;reauthorization?:unknown;deadline?:{approval?:string}}
+  const rowsOf=(store:unknown)=>[...(store as {waits:{rows:Map<string,Row[]>}}).waits.rows.values()].flat()
+  // The head check: any unknown row will do, whatever its failure, its place or its operation.
+  class SomeUnknownRow extends DurableWaitStore {override async parkWait(park:WaitPark,fence:LeaseFence){
+   if(!park.reauthorization)return super.parkWait(park,fence)
+   const run=(this as unknown as {runs:Map<string,{head:{checkpoint:Uint8Array}}>}).runs.get(park.resource)!,bytes=run.head.checkpoint
+   if(!new TextDecoder().decode(bytes).includes('"state":"unknown"'))throw new ReauthorizationRefused('unbound')
+   const op=park.reauthorization.operation,stand=new TextEncoder().encode(JSON.stringify({durable:{dispatches:[{id:op.operation,kind:'host',read:false,state:'unknown',source:op.source,tool:op.tool,requestDigest:op.requestDigest,failure:{code:'authentication',source:'tool',outcome:'not-started'}}]}}))
+   run.head.checkpoint=stand
+   try{return await super.parkWait({...park,checkpoint:{...park.checkpoint,digest:checkpointBytesDigest(stand)}},fence)}finally{run.head.checkpoint=bytes}
+  }}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new SomeUnknownRow({now})))).rejects.toEqual(fails('reauth.park.unbound.not-last'))
+  // The stale check compares the epoch only.
+  class EpochOnly extends DurableWaitStore {override parkWait(park:WaitPark,fence:LeaseFence){return super.parkWait(park.reauthorization&&park.reauthorization.fence.epoch===fence.epoch?{...park,reauthorization:{...park.reauthorization,fence}}:park,fence)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new EpochOnly({now})))).rejects.toEqual(fails('reauth.park.stale-owner'))
+  // A restart that loses the attached approval, or a resumed wait's disposition.
+  const restarting=(lose:(row:Row)=>void)=>(now:()=>Date,from?:WaitRunStore)=>{const next=memoryKind()(now,from);if(from)for(const row of rowsOf(next))lose(row);return next}
+  await expect(runStoreWaitConformance(restarting(row=>{if(row.reason==='reauthorization')delete row.approval}))).rejects.toEqual(fails('reauth.restart.bound'))
+  await expect(runStoreWaitConformance(restarting(row=>{if(row.reason==='reauthorization'&&row.state==='resumed')delete row.reauthorization}))).rejects.toEqual(fails('reauth.restart.disposition'))
+  // The claim's lease is not bounded by the attached approval.
+  class Unbounded extends DurableWaitStore {override async resumeWait(claim:WaitClaim){
+   const approvals=(this as unknown as {waits:{approvals:Map<string,unknown>}}).waits.approvals,saved=approvals.get(claim.resource)
+   if(claim.reauthorized)approvals.delete(claim.resource)
+   try{return await super.resumeWait(claim)}finally{if(saved)approvals.set(claim.resource,saved)}
+  }}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new Unbounded({now})))).rejects.toEqual(fails('reauth.approval.claim-bounded'))
+  // limitRun drops the attached approval time.
+  class DropsApproval extends DurableWaitStore {override async limitRun(limit:Parameters<MemoryRunStore['limitRun']>[0]){const out=await super.limitRun(limit);for(const row of rowsOf(this))if(row.reason==='reauthorization'&&row.state!=='resumed'&&row.deadline)delete row.deadline.approval;return out}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new DropsApproval({now})))).rejects.toEqual(fails('reauth.limit.later'))
+  // A timed-out or expired reauthorization wait does not close its run.
+  const notTerminal=(state:string)=>class extends DurableWaitStore {override async acquireLease(request:LeaseAcquire){try{return await super.acquireLease(request)}catch(error){if((error as {reason?:string}).reason==='closed'&&(await this.exportWaits(request.resource)).waits.some(w=>w.reason==='reauthorization'&&w.state===state))throw new WaitRefused('wait-pending');throw error}}}
+  const TimedOut=notTerminal('timed-out'),Expired=notTerminal('expired')
+  await expect(runStoreWaitConformance(memoryKind([],now=>new TimedOut({now})))).rejects.toEqual(fails('reauth.timeout.closed'))
+  await expect(runStoreWaitConformance(memoryKind([],now=>new Expired({now})))).rejects.toEqual(fails('reauth.deadline.closed'))
+  // An event after the timeout, or after the deadline, still wakes the wait.
+  const late=(reason:string)=>class extends DurableWaitStore {override async wakeWait(evidence:WakeEvidence){try{return await super.wakeWait(evidence)}catch(error){if((error as {reason?:string}).reason===reason&&(await this.readWait(evidence.resource,evidence.wait))?.reason==='reauthorization')return {evidence:evidence.evidence,kind:evidence.kind,at:new Date().toISOString(),digest:'sha256:'+'0'.repeat(64)};throw error}}}
+  const LateTimeout=late('timed-out'),LateDeadline=late('deadline-passed')
+  await expect(runStoreWaitConformance(memoryKind([],now=>new LateTimeout({now})))).rejects.toEqual(fails('reauth.timeout.late'))
+  await expect(runStoreWaitConformance(memoryKind([],now=>new LateDeadline({now})))).rejects.toEqual(fails('reauth.deadline.late'))
+ },120_000)
 })
 
 // A paused act call through the real vercel engine.

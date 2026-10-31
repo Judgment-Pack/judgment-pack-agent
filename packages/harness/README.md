@@ -888,15 +888,18 @@ reference effect host takes an optional credential check (`new ReferenceEffectHo
 expired or revoked, a bounded connection reference, the principal's digest, scope labels) admits and
 performs nothing. Only a refusal the package trusts (minted once for the live admission, before
 anything was performed, from an effect host proven for the run's store) stops the run at that
-operation; the host reads it with `reauthorizationOf(view)` and hands it to `parkRun({...,
-reauthorization})`, which parks a `reauthorization` wait under the same lease over a head that holds
+operation; the typed failure on a row means that refusal and nothing else. On every engine the host reads
+it with `reauthorizationOf(view)` when the run ends (how the run ends differs by engine) and hands it to
+`parkRun({..., reauthorization})`, which parks a `reauthorization` wait under the same lease over a head that holds
 the operation as never admitted. `resumeParked` needs the host's or the person's action
 (`reauthorization`, `run-reauth.json#/$defs/action`): a replacement or another principal is
 `identity-changed`, an action before the park `stale`, permissions that no longer cover the operation
 `permission-insufficient`. `reauthorizedRunStore` is the continuation's view: the writer sends the
 never-admitted operation again once, under its own identity, if the run asks for that request; nothing
-that may have been admitted is sent again. No credential, token or provider error is recorded. The wait
-conformance kit certifies the store's part (`reauth.*`). See `docs/design/storage.md`.
+that may have been admitted is sent again. A check's error, a tool's error and a refusal with any other
+member are not recorded; a secret that fits a bounded reference's pattern would be, so keeping those out
+is the host's. The wait conformance kit certifies the store's part (`reauth.*`), except a repeated park
+and `reauthorized` on another wait's claim. See `docs/design/storage.md`.
 
 ### Proposal edit refusal details
 

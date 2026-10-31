@@ -295,6 +295,7 @@ var Registry = map[string]func() any{
 	"run-reauth.json#/$defs/digest":                 func() any { return new(string) },
 	"run-reauth.json#/$defs/time":                   func() any { return new(string) },
 	"run-reauth.json#/$defs/connection":             func() any { return new(string) },
+	"run-reauth.json#/$defs/actor":                  func() any { return new(string) },
 	"run-reauth.json#/$defs/label":                  func() any { return new(string) },
 	"run-reauth.json#/$defs/labels":                 func() any { return new([]string) },
 	"run-reauth.json#/$defs/action":                 func() any { return new(RunReauthAction) },

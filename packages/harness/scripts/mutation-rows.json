@@ -7874,8 +7874,8 @@
 {
   "name": "lease fence L4 the effect host admits without checking the fence",
   "file": "storage/lease.ts",
-  "find": "    await this.#authority.checkFence(held.fence,signal)\n",
-  "replace": "",
+  "find": "    await this.#authority.checkFence(held.fence,signal)\n    if(this.#admitted.has(held.idempotencyKey))",
+  "replace": "    if(this.#admitted.has(held.idempotencyKey))",
   "tests": [
     "storage/lease.test.ts"
   ],
@@ -8174,8 +8174,8 @@
 {
   "name": "lease batch C2 the reference host reads a replaceable authority",
   "file": "storage/lease.ts",
-  "find": "    await this.#authority.checkFence(held.fence,signal)",
-  "replace": "    await ((this as unknown as Record<string,LeaseAuthority|undefined>).authority??this.#authority).checkFence(held.fence,signal)",
+  "find": "    await this.#authority.checkFence(held.fence,signal)\n    if(this.#admitted.has(held.idempotencyKey))",
+  "replace": "    await ((this as unknown as Record<string,LeaseAuthority|undefined>).authority??this.#authority).checkFence(held.fence,signal)\n    if(this.#admitted.has(held.idempotencyKey))",
   "tests": [
     "storage/lease.test.ts"
   ],
@@ -9817,8 +9817,8 @@
   {
    "name": "reauth A5 the reference host admits the operation before its credential check",
    "file": "storage/lease.ts",
-   "find": "    if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n    this.#admitted.add(held.idempotencyKey)",
-   "replace": "    this.#admitted.add(held.idempotencyKey)\n    if(refused!==undefined)throw reauthorizationRequired(admission,refused)",
+   "find": "    if(this.#credentials){\n     let refused:CredentialRefusal|undefined",
+   "replace": "    this.#admitted.add(held.idempotencyKey)\n    if(this.#credentials){\n     let refused:CredentialRefusal|undefined",
    "tests": [
     "storage/reauth.test.ts"
    ],
@@ -9841,7 +9841,7 @@
   {
    "name": "reauth A7 the writer goes on past a trusted refusal",
    "file": "storage/writer.ts",
-   "find": "   else if((kind==='host'||kind==='runtime')&&trustedReauthorization(error)){this.dispatchClosed=true;this.closure=error}\n",
+   "find": "   else if(refused){this.dispatchClosed=true;this.closure=error}\n",
    "replace": "",
    "tests": [
     "storage/reauth.test.ts"
@@ -10041,6 +10041,306 @@
    "status": "caught",
    "origin": "agent#226",
    "note": "Go twin (by hand): drop the pending-operation comparisons in readWaitParkMembers; caught at ^TestWaitSharedVectorsBothReaders$ (a pending operation that is not the disposition's)."
+  },
+  {
+   "name": "reauth H3 a failure of the typed shape is recorded as it says, whoever wrote it",
+   "file": "storage/writer.ts",
+   "find": "   const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown\n",
+   "replace": "   const error=thrown\n",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the runErr replacement in the writer's dispatch; caught at ^TestReauthorizationPerformedThenRefusedIsAnUnknownOutcome$ and ^TestReauthorizationNoLaterViewSendsAnAdmittedCall$. The #272 review's H1."
+  },
+  {
+   "name": "reauth H4 a proof kept from an earlier dispatch is trusted again",
+   "file": "storage/lease.ts",
+   "find": "error instanceof ReauthorizationRequired&&fresh.delete(error)",
+   "replace": "error instanceof ReauthorizationRequired&&fresh.has(error)",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): do not clear fresh in takeFreshReauthorization; caught at ^TestReauthorizationNoLaterViewSendsAnAdmittedCall$ (the run's own proof, kept and returned again)."
+  },
+  {
+   "name": "reauth G1 the grant is not spent",
+   "file": "storage/lease.ts",
+   "find": "if(!grant||grant.used||!isNeverAdmittedFailure(recorded)||",
+   "replace": "if(!grant||!isNeverAdmittedFailure(recorded)||",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop view.grant.used in takeReauthorizedDispatch; caught at ^TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent$. The #272 review's MR1."
+  },
+  {
+   "name": "reauth G2 the grant does not ask for the typed failure",
+   "file": "storage/lease.ts",
+   "find": "if(!grant||grant.used||!isNeverAdmittedFailure(recorded)||",
+   "replace": "if(!grant||grant.used||",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop isNeverAdmittedFailure in takeReauthorizedDispatch; caught at ^TestReauthorizationNoLaterViewSendsAnAdmittedCall$. The #272 review's MR2."
+  },
+  {
+   "name": "reauth G3 the re-send's claim keeps the typed failure",
+   "file": "storage/writer.ts",
+   "find": "claim=reused;reused=undefined;claim.state='claimed';delete claim.failure",
+   "replace": "claim=reused;reused=undefined;claim.state='claimed'",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop Failure = nil on the re-claimed row; caught at ^TestReauthorizationACrashAfterTheResendNeverRunsItTwice$. The #272 review's MR3: a crash then runs the effect twice."
+  },
+  {
+   "name": "reauth G4 a view for any held lease: a takeover gets the grant",
+   "file": "storage/wait.ts",
+   "find": "||wait.resource!==fence.resource||wait.resumed?.owner!==fence.owner||wait.resumed.epoch!==fence.epoch)return invalid()",
+   "replace": "||wait.resource!==fence.resource)return invalid()",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the resumed owner and epoch comparison in ReauthorizedRunStore; caught at ^TestReauthorizationATakeoverGetsNoGrant$. The #272 review's MR4."
+  },
+  {
+   "name": "reauth G5 the view does not check the lease is held",
+   "file": "storage/wait.ts",
+   "find": " if(!lease||lease.owner!==fence.owner||lease.epoch!==fence.epoch||lease.state!=='held')throw new LeaseRefused('stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the lease comparison in ReauthorizedRunStore; caught at ^TestReauthorizationTheViewNeedsTheClaimsLeaseHeld$. The #272 review's MR5."
+  },
+  {
+   "name": "reauth G6 the credential check comes before the idempotency identity",
+   "file": "storage/lease.ts",
+   "find": "    if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')\n    // #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing. It can take\n    // longer than the lease has left, so the abort and the fence are looked at again before anything is admitted.\n    if(this.#credentials){\n     let refused:CredentialRefusal|undefined\n     try{refused=await this.#credentials(structuredClone(held.operation),signal)}catch{signal?.throwIfAborted();throw new CredentialCheckFailed()}\n     signal?.throwIfAborted()\n     await this.#authority.checkFence(held.fence,signal)\n     if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n    }\n",
+   "replace": "    // #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing. It can take\n    // longer than the lease has left, so the abort and the fence are looked at again before anything is admitted.\n    if(this.#credentials){\n     let refused:CredentialRefusal|undefined\n     try{refused=await this.#credentials(structuredClone(held.operation),signal)}catch{signal?.throwIfAborted();throw new CredentialCheckFailed()}\n     signal?.throwIfAborted()\n     await this.#authority.checkFence(held.fence,signal)\n     if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n    }\n    if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')\n",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): move the already-admitted check after the credential check in ReferenceEffectHost.admit; caught at ^TestReauthAnAdmittedOperationGetsNoRefusal$. The #272 review's MR6."
+  },
+  {
+   "name": "reauth G7 an attached approval passes a changed policy or descriptor",
+   "file": "storage/resume.ts",
+   "find": "if(wait.reason==='approval'||wait.approval!==undefined){",
+   "replace": "if(wait.reason==='approval'){",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop wait.Approval != nil in RevalidateResume; caught at ^TestReauthorizationAnApprovedCallRefusedIsNotSentAgain$. The #272 review's MR7."
+  },
+  {
+   "name": "reauth G8 a reauthorization wait does not pin the approved call",
+   "file": "storage/resume.ts",
+   "find": "const asked=checkpoint.approval?.state==='asked'||reauthorization&&checkpoint.approval?.state==='approved'?checkpoint.approval:undefined",
+   "replace": "const asked=checkpoint.approval?.state==='asked'?checkpoint.approval:undefined",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop reauthorization && approved in pinsFromFor; caught at ^TestReauthorizationAnApprovedCallRefusedIsNotSentAgain$. The #272 review's MR8."
+  },
+  {
+   "name": "reauth G9 the claim's lease may outlive the attached approval",
+   "file": "storage/wait.ts",
+   "find": "||held.reason==='reauthorization'&&held.deadline?.approval!==undefined&&expiry>at(held.deadline.approval))return invalid()",
+   "replace": ")return invalid()",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the attached approval from the bounds in readClaimed; caught at ^TestReauthorizationAClaimMustEndByTheAttachedApproval$. The #272 review's MR9."
+  },
+  {
+   "name": "reauth G10 the claim need not record the refresh it was given",
+   "file": "storage/wait.ts",
+   "find": "||canonicalJSON(held.reauthorized??null)!==canonicalJSON(reauthorized??null)||held.reason==='reauthorization'",
+   "replace": "||held.reason==='reauthorization'",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the refresh comparison in readClaimed; caught at ^TestReauthorizationAClaimMustRecordTheRefresh$. The #272 review's MR10."
+  },
+  {
+   "name": "reauth K1 a timed-out reauthorization wait does not close its run",
+   "file": "storage/wait.ts",
+   "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'",
+   "replace": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'&&row.reason!=='reauthorization'",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): the same in terminalWait; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.timeout.closed). The #272 review's MR11."
+  },
+  {
+   "name": "reauth K2 limitRun drops the attached approval time",
+   "file": "storage/wait.ts",
+   "find": ",row.reason==='reauthorization'&&row.deadline?.approval!==undefined?at(row.deadline.approval):undefined)",
+   "replace": ")",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop approvalAt in WaitTable.Limit; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.limit.later). The #272 review's MR12."
+  },
+  {
+   "name": "reauth K3 the store's park takes any unknown row for the never-admitted dispatch",
+   "file": "storage/wait.ts",
+   "find": "   if(!holdsNeverAdmitted(head.checkpoint,disposition))throw new ReauthorizationRefused('unbound')\n   unsettled=",
+   "replace": "   if(!new TextDecoder().decode(head.checkpoint).includes('\"state\":\"unknown\"'))throw new ReauthorizationRefused('unbound')\n   unsettled=",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): the same in WaitTable.Park; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.park.unbound.not-last). The #272 review's KM1."
+  },
+  {
+   "name": "reauth K4 the store's stale check compares the epoch only",
+   "file": "storage/wait.ts",
+   "find": "if(disposition.fence.owner!==held.owner||disposition.fence.epoch!==held.epoch||disposition.fence.resource!==held.resource)throw new ReauthorizationRefused('stale')",
+   "replace": "if(disposition.fence.epoch!==held.epoch)throw new ReauthorizationRefused('stale')",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): the same in WaitTable.Park; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.park.stale-owner). The #272 review's KM2."
+  },
+  {
+   "name": "reauth K5 the store's reauthorization claim is not bounded by the attached approval",
+   "file": "storage/wait.ts",
+   "find": "  const ceiling=[this.ceiling(row.resource),approval].filter((t):t is number=>t!==undefined)\n",
+   "replace": "  const ceiling=(row.reason==='reauthorization'&&row.deadline?.approval!==undefined&&at(row.deadline.approval)>at(now)?[this.ceilings.get(row.resource)]:[this.ceiling(row.resource),approval]).filter((t):t is number=>t!==undefined)\n",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): take the run's ceiling alone for such a claim in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.approval.claim-bounded) and ^TestReauthorizationAnApprovedCallRefusedIsNotSentAgain$. The #272 review's KM3."
+  },
+  {
+   "name": "reauth M1 the fence is not looked at again after the credential check",
+   "file": "storage/lease.ts",
+   "find": "     signal?.throwIfAborted()\n     await this.#authority.checkFence(held.fence,signal)\n",
+   "replace": "     signal?.throwIfAborted()\n",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the second CheckFence in ReferenceEffectHost.admit; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$. The #272 review's M1."
+  },
+  {
+   "name": "reauth M1b the abort is not looked at again after the credential check",
+   "file": "storage/lease.ts",
+   "find": "throw new CredentialCheckFailed()}\n     signal?.throwIfAborted()\n",
+   "replace": "throw new CredentialCheckFailed()}\n",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the second ctx.Err in ReferenceEffectHost.admit; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$. The #272 review's M1."
+  },
+  {
+   "name": "reauth M2 a perform after the dispatch ended runs",
+   "file": "storage/lease.ts",
+   "find": "  if(!attempt.live){attempt.invalid=true;if(attempt.minted){trusted.delete(attempt.minted);fresh.delete(attempt.minted)}return Promise.reject(new LeaseRefused('invalid'))}\n",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the !attempt.live branch in fencedEffect's perform; caught at ^TestReauthorizationALatePerformRunsNothing$. The #272 review's M2."
+  },
+  {
+   "name": "reauth M2b a refusal followed by a late perform stays trusted",
+   "file": "storage/lease.ts",
+   "find": "if(!attempt.live){attempt.invalid=true;if(attempt.minted){trusted.delete(attempt.minted);fresh.delete(attempt.minted)}return",
+   "replace": "if(!attempt.live){attempt.invalid=true;return",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop minted.revoke() in fencedEffect's perform; caught at ^TestReauthorizationALatePerformRunsNothing$. The #272 review's M2."
+  },
+  {
+   "name": "reauth M9 a credential check's error reaches the records",
+   "file": "storage/lease.ts",
+   "find": "try{refused=await this.#credentials(structuredClone(held.operation),signal)}catch{signal?.throwIfAborted();throw new CredentialCheckFailed()}",
+   "replace": "refused=await this.#credentials(structuredClone(held.operation),signal)",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): err = checkErr in ReferenceEffectHost.admit; caught at ^TestReauthACheckErrorIsAFixedFailure$ and ^TestReauthorizationACheckErrorStaysWithTheHost$. The #272 review's M9(a)."
+  },
+  {
+   "name": "reauth M9b an actor may be free text",
+   "file": "storage/reauth.ts",
+   "find": "const actor=(v:unknown):string=>validActorReference(v)?v:invalid()",
+   "replace": "const actor=(v:unknown):string=>storageId(v)?v:invalid()",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): ValidActorReference returns validStorageID(actor); caught at ^TestReauthActionVectorsBothReaders$ and ^TestReauthorizationAnActorIsABoundedReference$. The #272 review's M9(b)."
+  },
+  {
+   "name": "reauth K1b the store's claim takes a timed-out reauthorization wait",
+   "file": "storage/wait.ts",
+   "find": "  if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')\n",
+   "replace": "  if(row.state==='timed-out'&&row.reason!=='question'&&row.reason!=='reauthorization')throw new WaitRefused('timed-out')\n",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): the same in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.timeout.claim). The #272 review's MR11, its second half."
+  },
+  {
+   "name": "reauth M1c a check's error wins over the abort",
+   "file": "storage/lease.ts",
+   "find": "catch{signal?.throwIfAborted();throw new CredentialCheckFailed()}",
+   "replace": "catch{throw new CredentialCheckFailed()}",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): the same mutant as reauth M1b, the one ctx.Err after the check; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$."
   }
  ]
 }

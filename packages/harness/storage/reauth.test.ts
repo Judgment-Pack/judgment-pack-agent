@@ -6,10 +6,11 @@ import {toolListDigest} from '../toolSources'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {MemoryRunStore,type RunStore} from './run'
-import {ReauthorizationRequired,ReferenceEffectHost,certifyEffectHost,effectAdmission,fenceOf,fencedRunStore,reauthorizationOf,reauthorizationRequired,unattendedRunStore,type CredentialRefusal,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
+import {AIFailureError,failure} from '../failures'
+import {ReauthorizationRequired,ReferenceEffectHost,certifyEffectHost,effectAdmission,fenceOf,fencedRunStore,reauthorizationOf,reauthorizationRequired,unattendedRunStore,type CredentialRefusal,type EffectAdmission,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
 import {ResumeRefused} from './resume'
 import {REAUTH_REFUSAL_REASONS,ReauthorizationRefused,readReauthAction,readReauthDisposition,readReauthRefusal,readReauthorized,reauthActionDigest,reauthDispositionDigest,reauthorize} from './reauth'
-import {exportWaits,holdsNeverAdmitted,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,waitReport,type WaitLifetime,type WakeEvidence} from './wait'
+import {exportWaits,holdsNeverAdmitted,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,waitReport,type WaitClaim,type WaitLifetime,type WakeEvidence} from './wait'
 import dispositionVector from '../../../contract/vectors/reauth/disposition.json'
 import actionVector from '../../../contract/vectors/reauth/action.json'
 import refusalVector from '../../../contract/vectors/reauth/refusal.json'
@@ -59,8 +60,8 @@ async function unchanged(store:RunStore,resource:string,wait:string){
 }
 const action=(over:Record<string,unknown>={})=>({version:1,resource:'run-r',wait:'wait-r',connection:'tracker-conn',action:'refresh',principal,permissions:['issues:write'],actor:'person-owner',at:iso(T0+2*MINUTE),...over})
 /** A run whose act call the effect host refused, never admitted, because the connection's credentials expired. */
-async function refused(){
- const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),{state,host}=credentialHost(store)
+async function refused(make:(now:()=>Date)=>DurableWaitStore=now=>new DurableWaitStore({now})){
+ const clock={at:T0},store=make(()=>new Date(clock.at)),{state,host}=credentialHost(store)
  const execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:host}),first=provider([CALL,{say:'Could not file it.'}])
@@ -69,6 +70,9 @@ async function refused(){
 }
 const parkInput=(store:RunStore,fence:LeaseFence,reauthorization:ReauthorizationRequired|undefined)=>({store,fence,wait:'wait-r',continuation:'k-r',condition:{event:{kind:'reauthorized',subject:'tracker-conn'}},model:MODEL,wakeKeyDigest:wakeKeyDigest(KEY),release:[],...(reauthorization?{reauthorization}:{})})
 const wake:WakeEvidence={version:1,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',kind:'event',event:{kind:'reauthorized',subject:'tracker-conn'},key:KEY}
+
+// These drive the real engine several times in one test, and a shared runner can take tens of seconds over that.
+vi.setConfig({testTimeout:120_000})
 
 describe('shared re-authorization vectors (#226)',()=>{
  it('dispositions: readers, digests, and the heads that hold their operation as never admitted',()=>{
@@ -298,8 +302,8 @@ describe('#226: credentials, tokens and raw provider errors are never published'
 
 describe('#226: an approved call refused for its credentials: the approval\'s ceiling and binding hold across the reauthorization wait',()=>{
  /** An act call asked, parked with a one-hour approval, approved and claimed; its dispatch then refused for credentials. */
- async function approvedThenRefused(){
-  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),{state,host}=credentialHost(store)
+ async function approvedThenRefused(make:(now:()=>Date)=>DurableWaitStore=now=>new DurableWaitStore({now})){
+  const clock={at:T0},store=make(()=>new Date(clock.at)),{state,host}=credentialHost(store)
   state.refusal=undefined
   const execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
   const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
@@ -336,6 +340,26 @@ describe('#226: an approved call refused for its credentials: the approval\'s ce
   expect(['executed','answered']).toContain(head.approval.state)
   expect(head.approval.result).toMatchObject({isError:true,structuredContent:{failure:{code:'unknown',outcome:'unknown'}}})
  })
+ it('the approved call\'s descriptor is pinned: changed, it needs an admission, and an admission of it cannot carry the reviewed call',async()=>{
+  const {clock,store,view,approved}=await approvedThenRefused()
+  const {wait}=await parkRun(parkInput(store,approved.fence,reauthorizationOf(view)!))
+  clock.at=T0+10*MINUTE;await wakeRun(store,wake)
+  const pin=wait.pins.sources.find(s=>s.source==='tracker')!,other='sha256:'+'d'.repeat(64)
+  expect(pin.descriptorDigest).toBeDefined()
+  const current=await unchanged(store,'run-r','wait-r')
+  const sources=current.sources.map(s=>s.source==='tracker'?{...s,descriptorDigest:other}:s)
+  const input={store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-c',durationMs:HOUR,reauthorization:action({at:iso(T0+9*MINUTE)})}
+  await expect(resumeParked({...input,current:{...current,sources}})).rejects.toEqual(resumeRefusal('reference-changed'))
+  await expect(resumeParked({...input,current:{...current,sources,admissions:[{kind:'reference',subject:'source:tracker',from:pin.descriptorDigest!,to:other,actor:'person-owner',at:iso(T0+9*MINUTE)}]}})).rejects.toEqual(resumeRefusal('approval-changed'))
+  expect((await store.readWait('run-r','wait-r'))!.state).toBe('woken')
+ })
+ it('a claim whose lease outlives the attached approval is refused invalid, nothing handed to the host',async()=>{
+  class Forged extends DurableWaitStore {override async resumeWait(claim:WaitClaim){const out=structuredClone(await super.resumeWait(claim));if(claim.reauthorized)out.lease.expiry=iso(T0+24*HOUR);return out}}
+  const {clock,store,view,approved}=await approvedThenRefused(now=>new Forged({now}))
+  await parkRun(parkInput(store,approved.fence,reauthorizationOf(view)!))
+  clock.at=T0+10*MINUTE;await wakeRun(store,wake)
+  await expect(resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-c',durationMs:HOUR,current:await unchanged(store,'run-r','wait-r'),reauthorization:action({at:iso(T0+9*MINUTE)})})).rejects.toEqual(waitRefusal('invalid'))
+ })
  it('at the approval\'s expiry the reauthorization wait is not claimed, and its deadline wake ends it',async()=>{
   const {clock,store,view,approved}=await approvedThenRefused()
   await parkRun(parkInput(store,approved.fence,reauthorizationOf(view)!))
@@ -345,5 +369,244 @@ describe('#226: an approved call refused for its credentials: the approval\'s ce
   expect(await wakeRun(store,{version:1,resource:'run-r',wait:'wait-r',evidence:'deadline-1',kind:'deadline',key:KEY})).toMatchObject({kind:'deadline',at:iso(T0+HOUR)})
   expect((await store.readWait('run-r','wait-r'))!.state).toBe('expired')
   await expect(store.acquireLease({resource:'run-r',owner:'worker-x',expectedRevision:(await store.load('run-r'))!.revision,durationMs:HOUR})).rejects.toEqual(waitRefusal('closed'))
+ })
+})
+
+/** A run refused, parked, woken and claimed: the credentials current again, the continuation not yet run. */
+async function claimed(make?:(now:()=>Date)=>DurableWaitStore,proofs:ReauthorizationRequired[]=[]){
+ const r=await refused(make)
+ proofs.push(reauthorizationOf(r.view)!)
+ await parkRun(parkInput(r.store,r.fence,proofs[0]!))
+ r.clock.at=T0+3*MINUTE;await wakeRun(r.store,wake)
+ const resumed=await resumeParked({store:r.store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current:await unchanged(r.store,'run-r','wait-r'),reauthorization:action()})
+ r.state.refusal=undefined
+ return {...r,resumed}
+}
+const hostRows=async(store:RunStore,id='run-r')=>JSON.parse(new TextDecoder().decode((await store.load(id))!.checkpoint!)).durable.dispatches.filter((row:{kind:string})=>row.kind==='host') as {id:string;state:string;failure?:Record<string,unknown>}[]
+const UNKNOWN_FAILURE={version:1,code:'authentication',source:'tool',outcome:'unknown'}
+/** A host certified for the store: the reference host's admission for the kit's operations (source host), the case's body for the run's. */
+const certifiedAs=(body:(admission:EffectAdmission,perform:()=>Promise<unknown>,inner:EffectHost)=>Promise<unknown>)=>(authority:import('./lease').LeaseAuthority):EffectHost=>{
+ const inner=new ReferenceEffectHost(authority)
+ return {effectFencing:'enforced',dispatch:<T,>(admission:EffectAdmission,perform:()=>Promise<T>)=>admission.operation.source!=='host'?body(admission,perform,inner) as Promise<T>:inner.dispatch(admission,perform)}
+}
+
+describe('#226 H1: the typed failure means a refusal the package trusted, so nothing admitted is sent again',()=>{
+ it('performed, then refused: the row and the model hear an unknown outcome, with nothing said about admission',async()=>{
+  const store=new DurableWaitStore(),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  const certified=await certifyEffectHost(certifiedAs(async(admission,perform)=>{await perform();throw reauthorizationRequired(admission,REFUSED)}),store)
+  const a=await store.acquireLease({resource:'run-m',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:certified}),model=provider([CALL,{say:'.'}])
+  const events=await drive(view,'run-m',[await actTool(execute)],model.call)
+  expect(execute).toHaveBeenCalledOnce();expect(reauthorizationOf(view)).toBeUndefined()
+  const rows=await hostRows(store,'run-m')
+  expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'unknown',failure:UNKNOWN_FAILURE});expect(rows[0]!.failure!.detail).toBeUndefined()
+  expect(events.find(e=>e.type==='tool_result')).toMatchObject({isError:true,structured:{failure:UNKNOWN_FAILURE}})
+  expect(model.state.requests).toBe(2);expect(model.state.bodies.join('\n').includes('not admitted')).toBe(false)
+  expect(holdsNeverAdmitted((await store.load('run-m'))!.checkpoint,dispositionVector.items[0] as never)).toBe(false)
+ })
+ const thrown:[string,(proof:ReauthorizationRequired)=>Error][]=[
+  ['the exported class',()=>new ReauthorizationRequired()],
+  ['a typed failure of the same shape',()=>new AIFailureError({...failure('authentication','tool','not-started'),detail:'SENTINEL-HOST-DETAIL the operation was not admitted'})],
+  ['the run\'s own proof, kept and thrown again',proof=>proof],
+ ]
+ for(const [name,fails] of thrown)it(`the re-send is admitted, then fails with ${name}: no later view sends it again, whatever the effect host remembers`,async()=>{
+  const proofs:ReauthorizationRequired[]=[]
+  const {store,host,execute,resumed}=await claimed(undefined,proofs)
+  // The park used the proof; the object stays in the host's hands.
+  execute.mockImplementationOnce(async()=>{throw fails(proofs[0]!)})
+  const v1=await reauthorizedRunStore({store,effectHost:host,resumed}),first=provider([CALL,{say:'.'}])
+  const events=await drive(v1,'run-r',[await actTool(execute)],first.call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce();expect(reauthorizationOf(v1)).toBeUndefined()
+  // Admitted: the row says only that its outcome is unknown, and the run went on to the model.
+  const row=(await hostRows(store)).at(-1)!
+  expect(row.state).toBe('unknown');expect(row.failure).toEqual(UNKNOWN_FAILURE)
+  expect(events.find(e=>e.type==='tool_result')).toMatchObject({isError:true,structured:{failure:UNKNOWN_FAILURE}})
+  expect(first.state.requests).toBe(2);expect(first.state.bodies.join('\n').includes('SENTINEL-HOST-DETAIL')).toBe(false)
+  // A second view of the claim, over the same host: not sent, so the host is not even asked.
+  await drive(await reauthorizedRunStore({store,effectHost:host,resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce();expect(host.refusals).toEqual([])
+  // Over a new reference host, as after a restart under the held lease: its admissions are gone, and it is still not sent.
+  await drive(await reauthorizedRunStore({store,effectHost:new ReferenceEffectHost(store),resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce()
+ })
+ it('a proof kept from another dispatch and thrown by a tool stops nothing and proves nothing',async()=>{
+  const kept=reauthorizationOf((await refused()).view)!
+  const store=new MemoryRunStore(),execute=vi.fn(async()=>{throw kept}),model=provider([CALL,{say:'It may have run.'}])
+  await drive(store,'run-n',[await actTool(execute)],model.call)
+  expect(model.state.requests).toBe(2)
+  expect((await hostRows(store,'run-n'))[0]).toMatchObject({state:'unknown',failure:UNKNOWN_FAILURE})
+ })
+ it('a crash after the re-send is claimed and performed: the head holds a claim with no failure, and no later view runs it',async()=>{
+  const {store,host,execute,resumed}=await claimed()
+  // The process dies as the head takes the re-send's claim: every commit after it is lost, the effect having been performed.
+  const commit=store.commitFenced.bind(store),history=store.commitHistoryFenced.bind(store)
+  let dead=false
+  const dying=(bytes:Uint8Array|null)=>{if(dead)throw new Error('the process died');if(bytes&&(JSON.parse(new TextDecoder().decode(bytes)).durable?.dispatches??[]).some((row:{kind:string;state:string})=>row.kind==='host'&&row.state==='claimed'))dead=true}
+  store.commitFenced=async(input,fence,signal)=>{dying(input.checkpoint);return commit(input,fence,signal)}
+  store.commitHistoryFenced=async(input,fence,signal)=>{dying(input.run.checkpoint);return history(input,fence,signal)}
+  await drive(await reauthorizedRunStore({store,effectHost:host,resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(dead).toBe(true);expect(execute).toHaveBeenCalledOnce()
+  const row=(await hostRows(store)).at(-1)!
+  expect(row.state).toBe('claimed');expect(row.failure).toBeUndefined()
+  store.commitFenced=commit;store.commitHistoryFenced=history
+  // A new process: a new reference host, whose admissions are gone, over the same claim.
+  await drive(await reauthorizedRunStore({store,effectHost:new ReferenceEffectHost(store),resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce()
+ })
+})
+
+describe('#226 M1: the credential check does not reopen the fence',()=>{
+ const operation={run:'run-t',operation:'op-1',source:'tracker',tool:'create_issue',requestDigest:'sha256:'+'2'.repeat(64)}
+ it('the lease is lost during the check: nothing is admitted or performed, through the real engine and at the host',async()=>{
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  const host=new ReferenceEffectHost(store,{credentials:async()=>{
+   clock.at=T0+2*HOUR
+   await store.acquireLease({resource:'run-t',owner:'worker-b',expectedRevision:(await store.load('run-t'))!.revision,durationMs:HOUR})
+   return undefined
+  }})
+  const a=await store.acquireLease({resource:'run-t',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  await drive(unattendedRunStore({store,fence:fenceOf(a),effectHost:host}),'run-t',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
+  expect(execute).not.toHaveBeenCalled()
+  expect(host.refusals).toEqual([{version:1,reason:'stale-epoch'}])
+ })
+ it('the identity stays free: the takeover\'s own dispatch of it is admitted',async()=>{
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)})
+  let lose=true
+  const host=new ReferenceEffectHost(store,{credentials:async()=>{if(lose){clock.at=T0+2*HOUR;await store.acquireLease({resource:'run-t',owner:'worker-b',expectedRevision:null,durationMs:HOUR});lose=false}return undefined}})
+  const a=await store.acquireLease({resource:'run-t',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  let performed=0
+  await expect(host.dispatch(effectAdmission(fenceOf(a),operation),async()=>{performed++})).rejects.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'stale-epoch'}))
+  expect(performed).toBe(0)
+  await host.dispatch(effectAdmission({...fenceOf(a),owner:'worker-b',epoch:'2'},operation),async()=>{performed++})
+  expect(performed).toBe(1)
+ })
+ it('the run aborts during the check: nothing is admitted or performed, and a refusal is not minted, whatever its authority looks at',async()=>{
+  const store=new DurableWaitStore(),blind={checkFence:(fence:Parameters<DurableWaitStore['checkFence']>[0])=>store.checkFence(fence)}
+  for(const authority of [store,blind])for(const answer of [undefined,REFUSED]){
+   const controller=new AbortController()
+   const host=new ReferenceEffectHost(authority,{credentials:async()=>{controller.abort();return answer}})
+   const a=await store.acquireLease({resource:'run-a',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+   let performed=0
+   await expect(host.dispatch(effectAdmission(fenceOf(a),{...operation,run:'run-a'}),async()=>{performed++},controller.signal)).rejects.toEqual(expect.objectContaining({name:'AbortError'}))
+   expect(performed).toBe(0)
+   await store.releaseLease(fenceOf(a))
+  }
+ })
+ it('the run aborts and the check throws: the answer is the abort',async()=>{
+  const store=new DurableWaitStore(),controller=new AbortController()
+  const host=new ReferenceEffectHost(store,{credentials:async()=>{controller.abort();throw new Error('the check failed too')}})
+  const a=await store.acquireLease({resource:'run-a',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  let performed=0
+  await expect(host.dispatch(effectAdmission(fenceOf(a),{...operation,run:'run-a'}),async()=>{performed++},controller.signal)).rejects.toEqual(expect.objectContaining({name:'AbortError'}))
+  expect(performed).toBe(0)
+ })
+})
+
+describe('#226 M2: a perform after the dispatch ended',()=>{
+ it('a refusal followed by a late perform: nothing runs, the refusal is no proof, and no re-send can run it twice',async()=>{
+  const store=new DurableWaitStore(),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  let late:Promise<unknown>|undefined
+  const certified=await certifyEffectHost(certifiedAs(async(admission,perform)=>{const error=reauthorizationRequired(admission,REFUSED);setTimeout(()=>{late=perform().catch(reason=>reason)},0);throw error}),store)
+  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:certified})
+  await drive(view,'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
+  await new Promise(resolve=>setTimeout(resolve,20))
+  await expect(late).resolves.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'invalid'}))
+  expect(execute).not.toHaveBeenCalled();expect(reauthorizationOf(view)).toBeUndefined()
+ })
+ it('after the park, a late perform still runs nothing: the re-send is the one run',async()=>{
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  let perform:(()=>Promise<unknown>)|undefined,refuse=true
+  const certified=await certifyEffectHost(certifiedAs(async(admission,given,inner)=>{if(!refuse)return inner.dispatch(admission,given);perform=given;throw reauthorizationRequired(admission,REFUSED)}),store)
+  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:certified})
+  await drive(view,'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
+  await parkRun(parkInput(store,fenceOf(a),reauthorizationOf(view)!))
+  await expect(perform!()).rejects.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'invalid'}))
+  expect(execute).not.toHaveBeenCalled()
+  clock.at=T0+3*MINUTE;await wakeRun(store,wake)
+  const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current:await unchanged(store,'run-r','wait-r'),reauthorization:action()})
+  refuse=false
+  await drive(await reauthorizedRunStore({store,effectHost:certified,resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce()
+ })
+})
+
+describe('#226 M6, M3: the re-send\'s own safeguards',()=>{
+ it('M3: a re-send refused again stops the run and cannot park; on the same view the grant is spent, and another view of the claim sends it once',async()=>{
+  const {store,state,host,execute,resumed}=await claimed()
+  state.refusal=REFUSED
+  const v1=await reauthorizedRunStore({store,effectHost:host,resumed}),second=provider([CALL,{say:'.'}])
+  await drive(v1,'run-r',[await actTool(execute)],second.call,{resume:true})
+  expect(execute).not.toHaveBeenCalled();expect(second.state.requests).toBe(1)
+  const proof=reauthorizationOf(v1)!
+  expect(proof).toBeDefined()
+  // The continuation's own model row follows the refused row, so the head no longer holds it as its last dispatch.
+  await expect(parkRun({...parkInput(store,resumed.fence,proof),wait:'wait-r2',wakeKeyDigest:wakeKeyDigest('wk.reauth.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ab7Q')})).rejects.toEqual(reauthRefusal('unbound'))
+  expect((await hostRows(store)).at(-1)).toMatchObject({state:'unknown',failure:{code:'authentication',source:'tool',outcome:'not-started'}})
+  state.refusal=undefined
+  await drive(v1,'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).not.toHaveBeenCalled()
+  await drive(await reauthorizedRunStore({store,effectHost:host,resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce()
+ })
+ it('a takeover gets no grant: its fence is not the claim\'s, and the old fence no longer holds the lease',async()=>{
+  const {clock,store,host,execute,resumed}=await claimed()
+  clock.at=T0+3*MINUTE+2*HOUR
+  const x=await store.acquireLease({resource:'run-r',owner:'worker-x',expectedRevision:(await store.load('run-r'))!.revision,durationMs:HOUR})
+  await expect(reauthorizedRunStore({store,effectHost:host,resumed:{fence:fenceOf(x),wait:{resource:'run-r',wait:'wait-r'}}})).rejects.toEqual(waitRefusal('invalid'))
+  await expect(reauthorizedRunStore({store,effectHost:host,resumed})).rejects.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'stale-epoch'}))
+  await drive(unattendedRunStore({store,fence:fenceOf(x),effectHost:host}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).not.toHaveBeenCalled()
+ })
+ it('the view needs the claim\'s lease held: released, it is refused',async()=>{
+  const {store,host,resumed}=await claimed()
+  await store.releaseLease(resumed.fence)
+  await expect(reauthorizedRunStore({store,effectHost:host,resumed})).rejects.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'stale-epoch'}))
+ })
+ it('an admitted identity is already-admitted before the credential check is asked: an admitted operation gets no refusal',async()=>{
+  const store=new DurableWaitStore(),state:{refusal:CredentialRefusal|undefined}={refusal:undefined}
+  const asked=vi.fn(async()=>state.refusal),host=new ReferenceEffectHost(store,{credentials:asked})
+  const a=await store.acquireLease({resource:'run-a',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const operation={run:'run-a',operation:'op-1',source:'tracker',tool:'create_issue',requestDigest:'sha256:'+'2'.repeat(64)}
+  await host.dispatch(effectAdmission(fenceOf(a),operation),async()=>'performed')
+  state.refusal=REFUSED
+  await expect(host.dispatch(effectAdmission(fenceOf(a),operation),async()=>'again')).rejects.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'already-admitted'}))
+  expect(asked).toHaveBeenCalledOnce()
+ })
+ it('a claim that did not record the refresh it was given is refused invalid',async()=>{
+  class Forged extends DurableWaitStore {override async resumeWait(claim:WaitClaim){const out=structuredClone(await super.resumeWait(claim));if(out.wait.reauthorized)out.wait.reauthorized={...out.wait.reauthorized,permissions:['issues:read','issues:write']};return out}}
+  const r=await refused(now=>new Forged({now}))
+  await parkRun(parkInput(r.store,r.fence,reauthorizationOf(r.view)!))
+  r.clock.at=T0+3*MINUTE;await wakeRun(r.store,wake)
+  await expect(resumeParked({store:r.store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current:await unchanged(r.store,'run-r','wait-r'),reauthorization:action()})).rejects.toEqual(waitRefusal('invalid'))
+ })
+})
+
+describe('#226 M9: host-authored text stays out of the records',()=>{
+ const SECRET='SENTINEL-CHECK-DETAIL-token-4f1c'
+ it('a credential check that throws, a typed failure with a detail included: nothing of it is recorded, sent or reported',async()=>{
+  for(const fails of [new Error(SECRET),new AIFailureError({...failure('authentication','tool','not-started'),detail:SECRET}),new AIFailureError({...failure('unavailable','tool','unknown'),detail:SECRET}),Object.assign(new Error(SECRET),{status:401,responseBody:SECRET})]){
+   const store=new DurableWaitStore(),host=new ReferenceEffectHost(store,{credentials:async()=>{throw fails}}),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+   const a=await store.acquireLease({resource:'run-s',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+   const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:host}),model=provider([CALL,{say:'.'}])
+   const events=await drive(view,'run-s',[await actTool(execute)],model.call)
+   expect(execute).not.toHaveBeenCalled();expect(reauthorizationOf(view)).toBeUndefined()
+   const row=(await hostRows(store,'run-s'))[0]!
+   expect(row.state).toBe('unknown');expect(row.failure).toMatchObject({code:'unknown',source:'tool',outcome:'unknown'})
+   const pages:string[]=[]
+   for(let after:string|null=null;;){const page=await store.readEvents('run-s',after,100);pages.push(...page.items.map(i=>new TextDecoder().decode(i.bytes)));if(!page.hasMore||page.nextCursor===null)break;after=page.nextCursor}
+   const published=[new TextDecoder().decode((await store.load('run-s'))!.checkpoint!),...pages,JSON.stringify(events),...model.state.bodies].join('\n')
+   expect(published.includes(SECRET)).toBe(false)
+  }
+ })
+ it('an actor that is free text, an address or a bearer string is refused: nothing is claimed or exported',async()=>{
+  const r=await refused()
+  await parkRun(parkInput(r.store,r.fence,reauthorizationOf(r.view)!))
+  r.clock.at=T0+3*MINUTE;await wakeRun(r.store,wake)
+  const input={store:r.store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current:await unchanged(r.store,'run-r','wait-r')}
+  for(const actor of [`Bearer ${TOKEN} ${PRINCIPAL}`,PRINCIPAL,'a'.repeat(65)])await expect(resumeParked({...input,reauthorization:action({actor})})).rejects.toEqual(reauthRefusal('invalid'))
+  expect(JSON.stringify(await exportWaits(r.store,'run-r')).includes(TOKEN)).toBe(false)
+  expect((await r.store.readWait('run-r','wait-r'))!.state).toBe('woken')
  })
 })

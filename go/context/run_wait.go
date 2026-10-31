@@ -1433,13 +1433,20 @@ type WaitStore interface {
 	// after the park), refuse a WakeKeyDigest any other wait of the store holds (key-reused), commit the
 	// wait and its one needs_attention event, and release the lease. A repeat of the same park under the
 	// same fence returns it; anything else under its wait id is conflict. A refused park changes nothing
-	// and leaves the lease held.
+	// and leaves the lease held. #226: a reauthorization park also refuses a disposition minted under
+	// another fence (stale) and a head that does not hold its operation as the never-admitted dispatch
+	// (unbound, as HoldsNeverAdmitted decides), and, when the run's approved call is unsettled, the store
+	// attaches that approval's binding to the wait and stamps its expiry as the deadline's approval time,
+	// from its own record and never from the park. It records the attention event needing reauthorization
+	// and naming the connection, and keeps the disposition and the attached approval across its restarts.
+	// The attached approval is no part of a repeated park's comparison.
 	ParkWait(context.Context, RunWait, LeaseFence) (RunWait, AttentionEvent, error)
 	// WakeWait: the first valid wake wins, decided against the named wait only; a duplicate returns the
 	// retained disposition; anything else changes nothing, and a resumed wait is never woken again. At or
 	// after the wait's deadline or the run's only a deadline wake is accepted, and it ends the wait
 	// terminally (expired). A resumed approval wait whose approved call has not settled is ended by a
-	// deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown.
+	// deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown. #226: a reauthorization
+	// wait's timeout or deadline wake is terminal, as an approval wait's is: its run is closed for good.
 	WakeWait(context.Context, WakeEvidence) (WakeDisposition, error)
 	// ResumeWait is one transaction: check the acknowledged wake, the deadline, the head and the release
 	// reconciliation, then lease the run (the only lease a held run is granted) and claim the
@@ -1449,10 +1456,16 @@ type WaitStore interface {
 	// takeover's or a re-acquired one) is granted, renewed or held past the approval's expiry, and every
 	// checkpoint the run commits, fenced or not, must carry exactly the reviewed call (approval-changed
 	// otherwise); the commit that records the call executed, refused or answered settles it in the same
-	// transaction. ResumeParked checks what this returns.
+	// transaction. ResumeParked checks what this returns. #226: a reauthorization wait's claim carries the
+	// refresh and no other claim does. It refuses a claim with none (decision-required), for another
+	// principal than the disposition's (identity-changed), taken before the park or after the store's time
+	// (stale), or whose permissions do not cover what the operation requires (permission-insufficient),
+	// changing nothing, and it records the refresh (Reauthorized) and keeps it across its restarts. The
+	// lease ends no later than the attached approval's expiry too.
 	ResumeWait(context.Context, WaitClaim) (RunWait, RunLease, error)
 	// LimitRun sets the run's deadline; the earliest one the store holds wins, a held lease is shortened
-	// to it, and every wait of the run not yet resumed or ended is stamped again with it (#266 M1).
+	// to it, and every wait of the run not yet resumed or ended is stamped again with it (#266 M1). #226:
+	// stamping a reauthorization wait again keeps its attached approval's time.
 	LimitRun(context.Context, RunLimit) (RunLimit, error)
 	ReadWait(ctx context.Context, resource, wait string) (*RunWait, error)
 	// ExportWaits is the run's waits in park order, with their attention events and deliveries: the

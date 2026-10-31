@@ -89,19 +89,29 @@ func ValidScopeLabels(labels []string) bool {
 func ValidConnectionReference(connection string) bool {
 	return reauthConnectionPattern.MatchString(connection)
 }
+
+// ValidActorReference: the host-attested actor of an action is a bounded reference (the connection's form),
+// never free text: no space and no address, so a raw identity or a bearer string is refused.
+func ValidActorReference(actor string) bool { return ValidConnectionReference(actor) }
 func validCredentialRefusal(r CredentialRefusal) bool {
 	return (r.Cause == "expired" || r.Cause == "revoked") && ValidConnectionReference(r.Connection) && leaseDigestPattern.MatchString(r.Principal) && ValidScopeLabels(r.Permissions) && ValidScopeLabels(r.Requires)
 }
 
 // ReauthorizationRequired is an effect host's refusal of one admission because the connection's
-// credentials expired or were revoked. The operation was not admitted and nothing was performed. Its
-// failure is typed (authentication, tool, not-started) and its detail fixed: it carries no credential,
-// token or provider error. It is a re-authorization proof only when the package trusts it
-// (ReauthorizationOf); otherwise it is an ordinary failure, and the operation's outcome stays unknown.
+// credentials expired or were revoked. Its failure is typed (authentication, tool, not-started) and its
+// detail fixed: it carries no credential, token or provider error. It is a re-authorization proof only
+// when the package trusts it (ReauthorizationOf). Otherwise it is an ordinary failure: the writer records
+// and reports it, like any failure of that shape, with outcome unknown and no detail, so the typed failure
+// on a dispatch row always means a refusal the package trusted.
 type ReauthorizationRequired struct {
 	mu          sync.Mutex
 	disposition *ReauthDisposition
 	used        bool
+	// fresh is set when the refusal is trusted, until the writer of the dispatch that minted it takes it: a
+	// proof kept and returned again by a later dispatch, or passed on by a nested one, is not that dispatch's.
+	fresh bool
+	// revoked: a perform came after the dispatch ended; the refusal is no proof.
+	revoked bool
 }
 
 func (e *ReauthorizationRequired) Error() string {
@@ -112,6 +122,26 @@ func (e *ReauthorizationRequired) Unwrap() error {
 	detail := e.Error()
 	f.Detail = &detail
 	return failure.NewError(f)
+}
+
+// CredentialCheckFailed is a reference effect host's credential check that returned an error. Nothing was
+// admitted and nothing is proven, so the failure says nothing else: whatever the check returned, a
+// host-authored detail included, stays with the host.
+type CredentialCheckFailed struct{}
+
+func (*CredentialCheckFailed) Error() string {
+	return "CredentialCheckFailed: the effect host could not check the credentials."
+}
+func (e *CredentialCheckFailed) Unwrap() error {
+	f := failure.New("unknown", "tool", "unknown")
+	detail := e.Error()
+	f.Detail = &detail
+	return failure.NewError(f)
+}
+
+// isNeverAdmittedFailure is the failure only a trusted refusal may record on a dispatch row.
+func isNeverAdmittedFailure(recorded *contract.Failure) bool {
+	return recorded != nil && recorded.Code == "authentication" && recorded.Source == "tool" && recorded.Outcome == "not-started"
 }
 
 // dispatchAttempt is one admission the package has in flight: the one fencedEffect handed an effect host,
@@ -153,23 +183,38 @@ func NewReauthorizationRequired(ctx context.Context, admission EffectAdmission, 
 	return minted
 }
 
-// trust makes a minted refusal a proof, with its disposition.
+// trust makes a minted refusal a proof, with its disposition, unless a late perform already took it back.
 func (e *ReauthorizationRequired) trust(disposition ReauthDisposition) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.revoked {
+		return
+	}
 	e.disposition = &disposition
+	e.fresh = true
 }
 
-// trustedReauthorization is whether the writer's dispatch ended in a trusted re-authorization refusal: the
-// run stops there.
-func trustedReauthorization(err error) bool {
+// revoke: a perform came after the dispatch ended; the refusal is no proof, whatever came first.
+func (e *ReauthorizationRequired) revoke() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.revoked = true
+	e.disposition = nil
+	e.fresh = false
+}
+
+// takeFreshReauthorization is whether the writer's dispatch ended in a refusal trusted for that very
+// dispatch: the row then records the typed failure and the run stops there. It answers once.
+func takeFreshReauthorization(err error) bool {
 	refused, ok := err.(*ReauthorizationRequired)
 	if !ok || refused == nil {
 		return false
 	}
 	refused.mu.Lock()
 	defer refused.mu.Unlock()
-	return refused.disposition != nil
+	fresh := refused.fresh
+	refused.fresh = false
+	return fresh
 }
 
 // reauthDispositionOf is the trusted disposition of a refusal not yet used by a park, as a copy, and
@@ -242,11 +287,11 @@ func attachReauthorizedDispatch(store RunStore, operation EffectOperation, fence
 
 // takeReauthorizedDispatch: the writer asks before it sends a dispatch again that its run holds as
 // unknown. Only the one operation a resumed re-authorization wait granted on this view, whose recorded
-// failure is the typed never-admitted refusal, and only once: anything else stays unknown and is never
-// sent again.
+// failure is the typed never-admitted refusal, which only a trusted refusal records, and only once:
+// anything else stays unknown and is never sent again.
 func takeReauthorizedDispatch(store RunStore, operation EffectOperation, recorded *contract.Failure) bool {
 	view := leaseViewOf(store)
-	if view == nil || recorded == nil || recorded.Code != "authentication" || recorded.Source != "tool" || recorded.Outcome != "not-started" {
+	if view == nil || !isNeverAdmittedFailure(recorded) {
 		return false
 	}
 	view.mu.Lock()
@@ -374,7 +419,7 @@ func ReadReauthAction(raw []byte) (ReauthAction, error) {
 	if a.Permissions, err = reauthLabels(m, "permissions"); err != nil {
 		return ReauthAction{}, err
 	}
-	if a.Actor, err = reauthString(m, "actor", validStorageID); err != nil {
+	if a.Actor, err = reauthString(m, "actor", ValidActorReference); err != nil {
 		return ReauthAction{}, err
 	}
 	if a.At, err = m.time("at"); err != nil {
@@ -390,7 +435,7 @@ func ReadReauthorized(raw []byte) (Reauthorized, error) {
 		return Reauthorized{}, err
 	}
 	r := Reauthorized{}
-	if r.Actor, err = reauthString(m, "actor", validStorageID); err != nil {
+	if r.Actor, err = reauthString(m, "actor", ValidActorReference); err != nil {
 		return Reauthorized{}, err
 	}
 	if r.At, err = m.time("at"); err != nil {

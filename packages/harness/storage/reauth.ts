@@ -36,6 +36,10 @@ function shape(v:unknown,required:readonly string[]):Record<string,unknown>{
 const id=(v:unknown):string=>storageId(v)?v:invalid()
 const digest=(v:unknown):string=>typeof v==='string'&&DIGEST.test(v)?v:invalid()
 const connection=(v:unknown):string=>validConnectionReference(v)?v:invalid()
+/** The host-attested actor of an action: a bounded reference (the connection's pattern), never free text: no space and no
+ * address, so a raw identity or a bearer string is refused. */
+export const validActorReference=(v:unknown):v is string=>validConnectionReference(v)
+const actor=(v:unknown):string=>validActorReference(v)?v:invalid()
 const labels=(v:unknown):string[]=>validScopeLabels(v)?[...v]:invalid()
 const validTime=(v:unknown):v is string=>{if(typeof v!=='string'||!TIME.test(v))return false;const ms=Date.parse(v);return Number.isSafeInteger(ms)&&new Date(ms).toISOString()===v}
 const time=(v:unknown):string=>validTime(v)?v:invalid()
@@ -55,11 +59,11 @@ export function readReauthDisposition(v:unknown):ReauthDisposition{
 export function readReauthAction(v:unknown):ReauthAction{
  const held=shape(v,['version','resource','wait','connection','action','principal','permissions','actor','at'])
  if(held.version!==1)return invalid()
- return {version:1,resource:id(held.resource),wait:id(held.wait),connection:connection(held.connection),action:held.action==='refresh'||held.action==='replacement'?held.action:invalid(),principal:digest(held.principal),permissions:labels(held.permissions),actor:id(held.actor),at:time(held.at)}
+ return {version:1,resource:id(held.resource),wait:id(held.wait),connection:connection(held.connection),action:held.action==='refresh'||held.action==='replacement'?held.action:invalid(),principal:digest(held.principal),permissions:labels(held.permissions),actor:actor(held.actor),at:time(held.at)}
 }
 export function readReauthorized(v:unknown):Reauthorized{
  const held=shape(v,['actor','at','principal','permissions','digest'])
- return {actor:id(held.actor),at:time(held.at),principal:digest(held.principal),permissions:labels(held.permissions),digest:digest(held.digest)}
+ return {actor:actor(held.actor),at:time(held.at),principal:digest(held.principal),permissions:labels(held.permissions),digest:digest(held.digest)}
 }
 export function readReauthRefusal(v:unknown):{version:1;reason:ReauthRefusalReason}{
  const held=shape(v,['version','reason'])

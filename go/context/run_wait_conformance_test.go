@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -217,6 +218,137 @@ func losesRefresh() WaitStoreFactory {
 	}
 }
 
+// #226 M4: store kinds that skip a documented re-authorization obligation.
+// someUnknownRow is a store kind whose park takes any unknown row for the never-admitted dispatch.
+type someUnknownRow struct{ durableWaitStore }
+
+func (s someUnknownRow) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	if park.Reauthorization == nil {
+		return s.durableWaitStore.ParkWait(ctx, park, fence)
+	}
+	s.mu.Lock()
+	run := s.runs[park.Resource]
+	bytesHeld := run.head.Checkpoint
+	if !strings.Contains(string(bytesHeld), `"state":"unknown"`) {
+		s.mu.Unlock()
+		return RunWait{}, AttentionEvent{}, reauthRefused("unbound")
+	}
+	op := park.Reauthorization.Operation
+	stand, _ := canonicalRaw(map[string]any{"durable": map[string]any{"dispatches": []any{map[string]any{"id": op.Operation, "kind": "host", "read": false, "state": "unknown", "source": op.Source, "tool": op.Tool, "requestDigest": op.RequestDigest, "failure": map[string]any{"code": "authentication", "source": "tool", "outcome": "not-started"}}}}})
+	run.head.Checkpoint = stand
+	s.runs[park.Resource] = run
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		held := s.runs[park.Resource]
+		held.head.Checkpoint = bytesHeld
+		s.runs[park.Resource] = held
+		s.mu.Unlock()
+	}()
+	park.Checkpoint.Digest = CheckpointBytesDigest(stand)
+	return s.durableWaitStore.ParkWait(ctx, park, fence)
+}
+
+// epochOnly is a store kind whose stale check compares the epoch only.
+type epochOnly struct{ durableWaitStore }
+
+func (s epochOnly) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	if park.Reauthorization != nil && park.Reauthorization.Fence.Epoch == fence.Epoch {
+		held := *park.Reauthorization
+		held.Fence = fence
+		park.Reauthorization = &held
+	}
+	return s.durableWaitStore.ParkWait(ctx, park, fence)
+}
+
+// unbounded is a store kind whose reauthorization claim is not bounded by the attached approval.
+type unbounded struct{ durableWaitStore }
+
+func (s unbounded) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if claim.Reauthorized == nil {
+		return s.durableWaitStore.ResumeWait(ctx, claim)
+	}
+	s.mu.Lock()
+	saved, held := s.waits.approvals[claim.Resource]
+	delete(s.waits.approvals, claim.Resource)
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if held {
+			s.waits.approvals[claim.Resource] = saved
+		}
+		s.mu.Unlock()
+	}()
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+// dropsApproval is a store kind whose LimitRun drops the attached approval time.
+type dropsApproval struct{ durableWaitStore }
+
+func (s dropsApproval) LimitRun(ctx context.Context, limit RunLimit) (RunLimit, error) {
+	out, err := s.durableWaitStore.LimitRun(ctx, limit)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, row := range s.waits.rows[limit.Resource] {
+		if row.Reason == "reauthorization" && row.State != "resumed" && row.Deadline != nil {
+			row.Deadline.Approval = nil
+		}
+	}
+	return out, err
+}
+
+// notTerminal is a store kind whose reauthorization wait in that state does not close its run.
+type notTerminal struct {
+	durableWaitStore
+	state string
+}
+
+func (s notTerminal) AcquireLease(ctx context.Context, request LeaseAcquire) (RunLease, error) {
+	lease, err := s.durableWaitStore.AcquireLease(ctx, request)
+	if waitReasonOf(err) == "closed" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		for _, row := range s.waits.rows[request.Resource] {
+			if row.Reason == "reauthorization" && row.State == s.state {
+				return lease, waitRefused("wait-pending")
+			}
+		}
+	}
+	return lease, err
+}
+
+// lateWake is a store kind that takes an event after the timeout or the deadline of a reauthorization wait.
+type lateWake struct {
+	durableWaitStore
+	reason string
+}
+
+func (s lateWake) WakeWait(ctx context.Context, evidence WakeEvidence) (WakeDisposition, error) {
+	out, err := s.durableWaitStore.WakeWait(ctx, evidence)
+	if waitReasonOf(err) == s.reason {
+		if held, _ := s.ReadWait(ctx, evidence.Resource, evidence.Wait); held != nil && held.Reason == "reauthorization" {
+			return WakeDisposition{Evidence: evidence.Evidence, Kind: evidence.Kind, At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("0", 64)}, nil
+		}
+	}
+	return out, err
+}
+
+// restarting is a factory whose restart loses what lose removes.
+func restarting(lose func(*RunWait)) WaitStoreFactory {
+	inner := memoryWaitKind(durableKind)
+	return func(now func() time.Time, from WaitRunStore) WaitRunStore {
+		next := inner(now, from)
+		if from != nil {
+			for _, rows := range next.(durableWaitStore).waits.rows {
+				for _, row := range rows {
+					lose(row)
+				}
+			}
+		}
+		return next
+	}
+}
+
 func TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy(t *testing.T) {
 	ctx := context.Background()
 	if err := CheckRunStoreWaitConformance(ctx, memoryWaitKind(durableKind)); err != nil {
@@ -246,6 +378,24 @@ func TestWaitConformanceKitNamesTheGuaranteeAStoreLeavesOut(t *testing.T) {
 		{"#226: a claim that takes the parked permissions", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return oldPermissions{durableWaitStore{store}} }), "reauth.claim.narrower"},
 		{"#226: a park that does not attach the unsettled approval", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return noApproval{durableWaitStore{store}} }), "reauth.approval.bound"},
 		{"#226: a restart that loses the claim's refresh", losesRefresh(), "reauth.restart.claimed"},
+		{"#226 M4: a park that takes any unknown row", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return someUnknownRow{durableWaitStore{store}} }), "reauth.park.unbound.not-last"},
+		{"#226 M4: a stale check of the epoch only", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return epochOnly{durableWaitStore{store}} }), "reauth.park.stale-owner"},
+		{"#226 M4: a restart that loses the attached approval", restarting(func(row *RunWait) {
+			if row.Reason == "reauthorization" {
+				row.Approval = nil
+			}
+		}), "reauth.restart.bound"},
+		{"#226 M4: a restart that loses a resumed wait's disposition", restarting(func(row *RunWait) {
+			if row.Reason == "reauthorization" && row.State == "resumed" {
+				row.Reauthorization = nil
+			}
+		}), "reauth.restart.disposition"},
+		{"#226 M4: a claim not bounded by the attached approval", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return unbounded{durableWaitStore{store}} }), "reauth.approval.claim-bounded"},
+		{"#226 M4: LimitRun drops the attached approval time", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return dropsApproval{durableWaitStore{store}} }), "reauth.limit.later"},
+		{"#226 M4: a timed-out wait does not close its run", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return notTerminal{durableWaitStore{store}, "timed-out"} }), "reauth.timeout.closed"},
+		{"#226 M4: an expired wait does not close its run", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return notTerminal{durableWaitStore{store}, "expired"} }), "reauth.deadline.closed"},
+		{"#226 M4: an event after the timeout wakes the wait", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return lateWake{durableWaitStore{store}, "timed-out"} }), "reauth.timeout.late"},
+		{"#226 M4: an event after the deadline wakes the wait", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return lateWake{durableWaitStore{store}, "deadline-passed"} }), "reauth.deadline.late"},
 	} {
 		var failure *StorageConformanceFailure
 		if err := CheckRunStoreWaitConformance(ctx, c.create); !errors.As(err, &failure) || failure.Property != c.property {

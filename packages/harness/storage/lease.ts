@@ -178,18 +178,29 @@ export function readCredentialRefusal(value:unknown):CredentialRefusal|undefined
 /** The trusted, invocation-bound disposition (contract/schemas/run-reauth.json): the exact admission an effect host
  * refused, never admitted, and why. */
 export interface ReauthDisposition {version:1;resource:string;operation:EffectOperation;idempotencyKey:string;fence:LeaseFence;cause:'expired'|'revoked';connection:string;principal:string;permissions:string[];requires:string[]}
-/** #226: an effect host's refusal of one admission because the connection's credentials expired or were revoked. The
- * operation was not admitted and nothing was performed. Its failure is typed (authentication, tool, not-started) and its
- * detail fixed: it carries no credential, token or provider error. It is a re-authorization proof only when the package
- * trusts it (reauthorizationOf); otherwise it is an ordinary failure, and the operation's outcome stays unknown. */
+/** #226: an effect host's refusal of one admission because the connection's credentials expired or were revoked. Its
+ * failure is typed (authentication, tool, not-started) and its detail fixed: it carries no credential, token or provider
+ * error. It is a re-authorization proof only when the package trusts it (reauthorizationOf). Otherwise it is an ordinary
+ * failure: the writer records and reports it, like any failure of that shape, with outcome unknown and no detail, so the
+ * typed failure on a dispatch row always means a refusal the package trusted. */
 export class ReauthorizationRequired extends AIFailureError {
  constructor(){super({...failure('authentication','tool','not-started'),detail:'ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted.'});this.name='ReauthorizationRequired'}
 }
+/** #226: a reference effect host's credential check threw. Nothing was admitted and nothing is proven, so the failure
+ * says nothing else: whatever the check threw, a host-authored detail included, stays with the host. */
+export class CredentialCheckFailed extends AIFailureError {
+ constructor(){super({...failure('unknown','tool','unknown'),detail:'CredentialCheckFailed: the effect host could not check the credentials.'});this.name='CredentialCheckFailed'}
+}
+/** The failure only a trusted refusal may record on a dispatch row. */
+export const isNeverAdmittedFailure=(recorded:unknown):boolean=>object(recorded)&&recorded.code==='authentication'&&recorded.source==='tool'&&recorded.outcome==='not-started'
 interface DispatchAttempt {live:boolean;performed:boolean;invalid:boolean;minted?:ReauthorizationRequired;refusal?:CredentialRefusal}
 /** The admissions the package has in flight: each object fencedEffect handed an effect host, while its dispatch runs. */
 const inflight=new WeakMap<object,DispatchAttempt>()
 /** The refusals the package trusts, with their disposition and whether a park used them. */
 const trusted=new WeakMap<ReauthorizationRequired,{disposition:ReauthDisposition;used:boolean}>()
+/** The refusals just trusted, each until the writer of the dispatch that minted it takes it: a proof kept and thrown again
+ * by a later dispatch, or passed on by a nested one, is not that dispatch's. */
+const fresh=new WeakSet<ReauthorizationRequired>()
 /** #226: an effect host refuses the exact admission it was handed, at its admission boundary and before it admits the
  * operation, because the connection's credentials expired or were revoked; it then throws what this returns and never
  * performs. The refusal is trusted only when it is minted once, for an admission the package has in flight, before
@@ -204,8 +215,11 @@ export function reauthorizationRequired(admission:EffectAdmission,refusal:Creden
  attempt.minted=error;attempt.refusal=held
  return error
 }
-/** @internal Whether the writer's dispatch ended in a trusted re-authorization refusal: the run stops there. */
+/** @internal Whether a refusal is one the package trusts, used or not. */
 export const trustedReauthorization=(error:unknown):boolean=>error instanceof ReauthorizationRequired&&trusted.has(error)
+/** @internal Whether the writer's dispatch ended in a refusal trusted for that very dispatch: the row then records the
+ * typed failure and the run stops there. It answers once. */
+export const takeFreshReauthorization=(error:unknown):boolean=>error instanceof ReauthorizationRequired&&fresh.delete(error)
 /** @internal The trusted disposition of a refusal not yet used by a park, as a copy. */
 export function reauthDispositionOf(error:unknown):ReauthDisposition|undefined{
  const held=error instanceof ReauthorizationRequired?trusted.get(error):undefined
@@ -259,9 +273,15 @@ export class ReferenceEffectHost implements EffectHost {
     if(held.fence.resource!==held.operation.run)throw new LeaseRefused('resource-mismatch')
     await this.#authority.checkFence(held.fence,signal)
     if(this.#admitted.has(held.idempotencyKey))throw new LeaseRefused('already-admitted')
-    // #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing.
-    const refused=this.#credentials?await this.#credentials(structuredClone(held.operation),signal):undefined
-    if(refused!==undefined)throw reauthorizationRequired(admission,refused)
+    // #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing. It can take
+    // longer than the lease has left, so the abort and the fence are looked at again before anything is admitted.
+    if(this.#credentials){
+     let refused:CredentialRefusal|undefined
+     try{refused=await this.#credentials(structuredClone(held.operation),signal)}catch{signal?.throwIfAborted();throw new CredentialCheckFailed()}
+     signal?.throwIfAborted()
+     await this.#authority.checkFence(held.fence,signal)
+     if(refused!==undefined)throw reauthorizationRequired(admission,refused)
+    }
     this.#admitted.add(held.idempotencyKey)
    }catch(error){if(error instanceof LeaseRefused)this.refusals.push(error.record());throw error}
   })
@@ -408,10 +428,16 @@ export function fencedEffect<T>(store:RunStore,operation:EffectOperation,perform
  try{admission=effectAdmission(lease.fence,operation)}catch(error){return Promise.reject(error)}
  const attempt:DispatchAttempt={live:true,performed:false,invalid:false},host=lease.effectHost
  inflight.set(admission,attempt)
- return host.dispatch(admission,()=>{attempt.performed=true;return perform()},signal).then(value=>{attempt.live=false;return value},error=>{
+ return host.dispatch(admission,()=>{
+  // #226: a perform after the dispatch ended never runs, and a refusal followed by one is no proof: the host that minted it
+  // did not stand by it.
+  if(!attempt.live){attempt.invalid=true;if(attempt.minted){trusted.delete(attempt.minted);fresh.delete(attempt.minted)}return Promise.reject(new LeaseRefused('invalid'))}
+  attempt.performed=true;return perform()
+ },signal).then(value=>{attempt.live=false;return value},error=>{
   attempt.live=false
   if(attempt.minted!==undefined&&error===attempt.minted&&!attempt.performed&&!attempt.invalid&&provenAuthority(host)===(lease.store as object)){
    const refusal=attempt.refusal!
+   fresh.add(error)
    trusted.set(error,{disposition:{version:1,resource:admission.fence.resource,operation:structuredClone(admission.operation),idempotencyKey:admission.idempotencyKey,fence:structuredClone(admission.fence),cause:refusal.cause,connection:refusal.connection,principal:refusal.principal,permissions:[...refusal.permissions],requires:[...refusal.requires]},used:false})
    lease.reauthorization=error
   }
@@ -426,12 +452,11 @@ export function attachReauthorizedDispatch(store:RunStore,operation:EffectOperat
  lease.grant={operation:held,used:false}
 }
 /** @internal #226: the writer asks before it sends a dispatch again that its run holds as unknown. Only the one operation
- * a resumed re-authorization wait granted on this view, whose recorded failure is the typed never-admitted refusal, and
- * only once: anything else stays unknown and is never sent again. */
+ * a resumed re-authorization wait granted on this view, whose recorded failure is the typed never-admitted refusal, which
+ * only a trusted refusal records, and only once: anything else stays unknown and is never sent again. */
 export function takeReauthorizedDispatch(store:RunStore,operation:EffectOperation,recorded:unknown):boolean{
  const grant=leased.get(store)?.grant
- const failed=object(recorded)&&recorded.code==='authentication'&&recorded.source==='tool'&&recorded.outcome==='not-started'
- if(!grant||grant.used||!failed||canonicalJSON(grant.operation)!==canonicalJSON(operation))return false
+ if(!grant||grant.used||!isNeverAdmittedFailure(recorded)||canonicalJSON(grant.operation)!==canonicalJSON(operation))return false
  grant.used=true
  return true
 }

@@ -3,7 +3,7 @@ import {StorageConformanceFailure} from './conformance'
 import {LeaseRefused,effectIdempotencyKey,fenceOf,type EffectOperation,type LeaseFence,type ReauthDisposition} from './lease'
 import {ResumeRefused,approvalBinding,pinsDigest,type ResumePins} from './resume'
 import {ReauthorizationRefused,type Reauthorized} from './reauth'
-import {WaitRefused,checkpointBytesDigest,wakeKeyDigest,type WaitClaim,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
+import {WaitRefused,checkpointBytesDigest,readRunWait,wakeKeyDigest,type RunWait,type WaitClaim,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 /* #265 M6: the wait conformance kit, for a host store kind's wait port beside its lease port (desk #609 and #670), as
  * #223's kit is for its lease port. Every guarantee of durable waits lives in the store's own transitions, and the
  * package re-checks none of them: the kit drives the port directly and names the first property a store breaks. The Go
@@ -165,12 +165,29 @@ const NEVER_ADMITTED={version:1,code:'authentication',source:'tool',outcome:'not
 const OPERATION=(run:string):EffectOperation=>({run,operation:'op-1',source:'sha256:'+'5'.repeat(64),tool:'create_issue',requestDigest:'sha256:'+'6'.repeat(64)})
 const dispatched=(run:string,state='unknown')=>({id:'op-1',kind:'host',read:false,state,source:OPERATION(run).source,tool:'create_issue',requestDigest:OPERATION(run).requestDigest,...(state==='unknown'?{failure:NEVER_ADMITTED}:{})})
 const PRINCIPAL='sha256:'+'7'.repeat(64)
+/** Every way a head fails to hold the operation as the never-admitted dispatch. */
+const UNBOUND_HEADS:Record<string,(row:Record<string,unknown>)=>Record<string,unknown>[]>={
+ result:row=>{const {failure:_,...rest}=row;return [{...rest,state:'result'}]},
+ claimed:row=>{const {failure:_,...rest}=row;return [{...rest,state:'claimed'}]},
+ 'not-last':row=>[row,{id:'model-2',kind:'model',read:true,state:'result',source:'model',tool:'chat',requestDigest:'sha256:'+'9'.repeat(64)}],
+ outcome:row=>[{...row,failure:{...NEVER_ADMITTED,outcome:'unknown'}}],
+ code:row=>[{...row,failure:{...NEVER_ADMITTED,code:'unknown'}}],
+ 'no-failure':row=>{const {failure:_,...rest}=row;return [rest]},
+ read:row=>[{...row,read:true}],
+ kind:row=>[{...row,kind:'model'}],
+ id:row=>[{...row,id:'op-2'}],
+ source:row=>[{...row,source:'sha256:'+'4'.repeat(64)}],
+ tool:row=>[{...row,tool:'close_issue'}],
+ request:row=>[{...row,requestDigest:'sha256:'+'3'.repeat(64)}],
+}
+const readable=(wait:RunWait)=>{try{readRunWait(structuredClone(wait));return true}catch{return false}}
 async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  let at=T0
  const now=()=>new Date(at)
  let store=await create(now)
  const restart=async(property:string)=>{const next=await create(now,store);check(property,next!==store);store=next}
  const head=(run:string,state='unknown',approval?:Record<string,unknown>)=>bytes(canonicalJSON({kit:'reauth-conformance',durable:{dispatches:[dispatched(run,state)]},...(approval?{approval}:{})}))
+ const headOf=(rows:Record<string,unknown>[])=>bytes(canonicalJSON({kit:'reauth-conformance',durable:{dispatches:rows}}))
  const open=async(run:string,checkpoint:Uint8Array)=>{
   const opened=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint,events:[]})
   return {revision:opened.revision,checkpoint,fence:fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR}))}
@@ -180,17 +197,21 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  const refreshed=(over:Partial<Reauthorized>={}):Reauthorized=>({actor:'person-owner',at:iso(at),principal:PRINCIPAL,permissions:['issues:write'],digest:'sha256:'+'8'.repeat(64),...over})
  const claim=(run:string,over:Partial<WaitClaim>={}):WaitClaim=>({resource:run,wait:'wait-r',evidence:'refreshed-1',lease:{resource:run,owner:'worker-b',expectedRevision:null,durationMs:24*HOUR},reconciled:[],revalidation:{version:1,resource:run,wait:'wait-r',pins:pinsDigest(PINS),evidence:'sha256:'+'e'.repeat(64),changes:[]},reauthorized:refreshed(),...over})
  const wake=(run:string,key:string):WakeEvidence=>({version:1,resource:run,wait:'wait-r',evidence:'refreshed-1',kind:'event',event:{kind:'reauthorized',subject:'kit-conn'},key})
- const keys={r:'kit.reauth-r.Q7z2Xm9LpV4cR8tNb3Yh6Df1',s:'kit.reauth-s.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2',t:'kit.reauth-t.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4',a:'kit.reauth-a.Zx4Cv7Bn1Mq8Wp3Lk6Jh9Gf2'}
+ const keys={r:'kit.reauth-r.Q7z2Xm9LpV4cR8tNb3Yh6Df1',s:'kit.reauth-s.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2'}
+ const keyOf=(name:string)=>`kit.${name}.Zx4Cv7Bn1Mq8Wp3Lk6Jh9Gf2`
 
  // Binding the evidence to the invocation: the disposition parks only under the lease it was minted under, over a head
  // that holds its operation as the never-admitted dispatch. A refused park changes nothing and leaves the lease held.
  const r=await open('reauth-r',head('reauth-r'))
  const proof=disposition('reauth-r',r.fence)
  await refuses('reauth.park.stale',()=>store.parkWait(parkOf('reauth-r',r,{...proof,fence:{...r.fence,epoch:'9'}},keys.r),r.fence),'stale')
+ await refuses('reauth.park.stale-owner',()=>store.parkWait(parkOf('reauth-r',r,{...proof,fence:{...r.fence,owner:'worker-x'}},keys.r),r.fence),'stale')
  check('reauth.park.stale-unchanged',await store.readWait('reauth-r','wait-r')===undefined&&(await store.readLease('reauth-r'))?.state==='held')
- const s=await open('reauth-s',head('reauth-s','result'))
- await refuses('reauth.park.unbound',()=>store.parkWait(parkOf('reauth-s',s,disposition('reauth-s',s.fence),keys.s),s.fence),'unbound')
- check('reauth.park.unbound-unchanged',await store.readWait('reauth-s','wait-r')===undefined&&(await store.readLease('reauth-s'))?.state==='held')
+ for(const [name,rows] of Object.entries(UNBOUND_HEADS)){
+  const run=`reauth-u-${name}`,held=await open(run,headOf(rows(dispatched(run))))
+  await refuses(`reauth.park.unbound.${name}`,()=>store.parkWait(parkOf(run,held,disposition(run,held.fence),keys.s),held.fence),'unbound')
+  check('reauth.park.unbound-unchanged',await store.readWait(run,'wait-r')===undefined&&(await store.readLease(run))?.state==='held')
+ }
  const parked=await store.parkWait(parkOf('reauth-r',r,proof,keys.r),r.fence)
  check('reauth.park.committed',parked.wait.reason==='reauthorization'&&canonicalJSON(parked.wait.reauthorization)===canonicalJSON(proof)&&parked.wait.approval===undefined&&parked.attention.needs==='reauthorization'&&parked.attention.subject==='kit-conn'&&(await store.readLease('reauth-r'))?.state==='released')
  await refuses('reauth.closure.lease',()=>store.acquireLease({resource:'reauth-r',owner:'worker-x',expectedRevision:r.revision,durationMs:HOUR}),'wait-pending')
@@ -213,26 +234,72 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  check('reauth.claim.committed',resumed.wait.state==='resumed'&&canonicalJSON(resumed.wait.reauthorized)===canonicalJSON(refreshed())&&resumed.lease.state==='held'&&resumed.lease.epoch==='2')
  await refuses('reauth.claim.once',()=>store.resumeWait(of({})),'already-resumed')
  await restart('reauth.restart.claimed')
- check('reauth.restart.claimed',canonicalJSON((await store.readWait('reauth-r','wait-r'))?.reauthorized)===canonicalJSON(refreshed())&&(await store.readLease('reauth-r'))?.epoch==='2')
+ const kept=await store.readWait('reauth-r','wait-r')
+ check('reauth.restart.claimed',canonicalJSON(kept?.reauthorized)===canonicalJSON(refreshed())&&(await store.readLease('reauth-r'))?.epoch==='2')
+ check('reauth.restart.disposition',canonicalJSON(kept?.reauthorization)===canonicalJSON(proof))
 
  // The approval: a reauthorization wait parked while the run's approved call is unsettled carries that approval's binding
- // and expiry, the store's own, and its claim is refused from the expiry.
- at=T0+2*MINUTE
+ // and expiry, the store's own, and they survive a restart; its claim is bounded by the expiry and refused from it; and a
+ // later run limit keeps the approval time.
  const asked=checkpointWith(APPROVAL),binding=approvalBinding(APPROVAL as never)
- const opened=await store.commit({runId:'reauth-a',expectedRevision:null,commitId:'reauth-a-open',checkpoint:asked,events:[]})
- const a=fenceOf(await store.acquireLease({resource:'reauth-a',owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR}))
- await store.parkWait({version:1,resource:'reauth-a',wait:'wait-1',reason:'approval',pending:{kind:'approval',callId:'call-1',name:APPROVAL.name,tool:APPROVAL.tool},condition:{event:{kind:'approval-decision',subject:'call-1'}},limits:{approvalTtlMs:HOUR},approval:binding,continuation:'reauth-a-approve',checkpoint:{revision:opened.revision,digest:checkpointBytesDigest(asked)},pins:PINS,wakeKeyDigest:wakeKeyDigest(keys.t),release:[]},a)
- await store.wakeWait({version:1,resource:'reauth-a',wait:'wait-1',evidence:'decision-1',kind:'event',event:{kind:'approval-decision',subject:'call-1'},key:keys.t})
- const approved=await store.resumeWait({resource:'reauth-a',wait:'wait-1',evidence:'decision-1',lease:{resource:'reauth-a',owner:'worker-b',expectedRevision:opened.revision,durationMs:24*HOUR},reconciled:[],revalidation:{version:1,resource:'reauth-a',wait:'wait-1',pins:pinsDigest(PINS),evidence:'sha256:'+'e'.repeat(64),changes:[]}})
- const expiry=iso(T0+2*MINUTE+HOUR),refusedHead=head('reauth-a','unknown',{...APPROVAL,state:'approved'})
- const committed=await store.commitFenced({runId:'reauth-a',expectedRevision:opened.revision,commitId:'approved-refused',checkpoint:refusedHead,events:[]},fenceOf(approved.lease))
- const bound=await store.parkWait(parkOf('reauth-a',{revision:committed.revision,checkpoint:refusedHead},disposition('reauth-a',fenceOf(approved.lease)),keys.a),fenceOf(approved.lease))
- check('reauth.approval.bound',canonicalJSON(bound.wait.approval)===canonicalJSON(binding)&&bound.wait.deadline?.approval===expiry&&bound.wait.deadline.at===expiry)
+ const bound=async(run:string)=>{
+  const opened=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint:asked,events:[]})
+  const leased=fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR}))
+  await store.parkWait({version:1,resource:run,wait:'wait-1',reason:'approval',pending:{kind:'approval',callId:'call-1',name:APPROVAL.name,tool:APPROVAL.tool},condition:{event:{kind:'approval-decision',subject:'call-1'}},limits:{approvalTtlMs:HOUR},approval:binding,continuation:`${run}-approve`,checkpoint:{revision:opened.revision,digest:checkpointBytesDigest(asked)},pins:PINS,wakeKeyDigest:wakeKeyDigest(keyOf(`${run}-1`)),release:[]},leased)
+  await store.wakeWait({version:1,resource:run,wait:'wait-1',evidence:'decision-1',kind:'event',event:{kind:'approval-decision',subject:'call-1'},key:keyOf(`${run}-1`)})
+  const approved=await store.resumeWait({resource:run,wait:'wait-1',evidence:'decision-1',lease:{resource:run,owner:'worker-b',expectedRevision:opened.revision,durationMs:24*HOUR},reconciled:[],revalidation:{version:1,resource:run,wait:'wait-1',pins:pinsDigest(PINS),evidence:'sha256:'+'e'.repeat(64),changes:[]}})
+  const expiry=iso(at+HOUR),refusedHead=head(run,'unknown',{...APPROVAL,state:'approved'})
+  const committed=await store.commitFenced({runId:run,expectedRevision:opened.revision,commitId:'approved-refused',checkpoint:refusedHead,events:[]},fenceOf(approved.lease))
+  const parkedBound=await store.parkWait(parkOf(run,{revision:committed.revision,checkpoint:refusedHead},disposition(run,fenceOf(approved.lease)),keyOf(`${run}-2`)),fenceOf(approved.lease))
+  check('reauth.approval.bound',canonicalJSON(parkedBound.wait.approval)===canonicalJSON(binding)&&parkedBound.wait.deadline?.approval===expiry&&parkedBound.wait.deadline.at===expiry)
+  return {revision:committed.revision,expiry,fence:fenceOf(approved.lease)}
+ }
+ at=T0+2*MINUTE
+ const a=await bound('reauth-a')
  at=T0+3*MINUTE
- await store.wakeWait(wake('reauth-a',keys.a))
+ await store.wakeWait(wake('reauth-a',keyOf('reauth-a-2')))
  await restart('reauth.restart.bound')
- at=Date.parse(expiry)
- await refuses('reauth.approval.expiry',()=>store.resumeWait(claim('reauth-a',{lease:{resource:'reauth-a',owner:'worker-c',expectedRevision:committed.revision,durationMs:HOUR},reauthorized:refreshed({at:iso(T0+3*MINUTE)})})),'deadline-passed')
+ const carried=await store.readWait('reauth-a','wait-r')
+ check('reauth.restart.bound',carried?.state==='woken'&&canonicalJSON(carried.approval)===canonicalJSON(binding)&&carried.deadline?.approval===a.expiry&&canonicalJSON(carried.reauthorization)===canonicalJSON(disposition('reauth-a',a.fence)))
+ at=Date.parse(a.expiry)
+ await refuses('reauth.approval.expiry',()=>store.resumeWait(claim('reauth-a',{lease:{resource:'reauth-a',owner:'worker-c',expectedRevision:a.revision,durationMs:HOUR},reauthorized:refreshed({at:iso(T0+3*MINUTE)})})),'deadline-passed')
+ const b=await bound('reauth-b')
+ at+=MINUTE
+ await store.wakeWait(wake('reauth-b',keyOf('reauth-b-2')))
+ const boundClaim=await store.resumeWait(claim('reauth-b',{lease:{resource:'reauth-b',owner:'worker-c',expectedRevision:b.revision,durationMs:24*HOUR},reauthorized:refreshed()}))
+ check('reauth.approval.claim-bounded',boundClaim.lease.expiry===b.expiry)
+ const c=await bound('reauth-c')
+ await store.limitRun({version:1,resource:'reauth-c',run:iso(Date.parse(c.expiry)+HOUR)})
+ const later=await store.readWait('reauth-c','wait-r')
+ check('reauth.limit.later',later?.deadline?.approval===c.expiry&&later.deadline.at===c.expiry&&later.deadline.by==='approval')
+ const earlier=iso(Date.parse(c.expiry)-10*MINUTE)
+ await store.limitRun({version:1,resource:'reauth-c',run:earlier})
+ const limited=await store.readWait('reauth-c','wait-r')
+ check('reauth.limit.earlier',limited?.deadline?.approval===c.expiry&&limited.deadline.at===earlier&&limited.deadline.by==='run'&&readable(limited))
+
+ // The timeout: an event after it is refused, and its wake ends the wait; a timed-out reauthorization wait is terminal, as a
+ // timed-out approval wait is: not claimed, and its run closed for good, also after a restart.
+ const t=await open('reauth-t',head('reauth-t'))
+ const timeoutAt=iso(at+HOUR)
+ await store.parkWait({...parkOf('reauth-t',t,disposition('reauth-t',t.fence),keyOf('reauth-t')),timeoutAt},t.fence)
+ at=Date.parse(timeoutAt)
+ await refuses('reauth.timeout.late',()=>store.wakeWait(wake('reauth-t',keyOf('reauth-t'))),'timed-out')
+ check('reauth.timeout.wake',(await store.wakeWait({version:1,resource:'reauth-t',wait:'wait-r',evidence:'timeout-1',kind:'timeout',key:keyOf('reauth-t')})).kind==='timeout'&&(await store.readWait('reauth-t','wait-r'))?.state==='timed-out')
+ await refuses('reauth.timeout.claim',()=>store.resumeWait(claim('reauth-t',{evidence:'timeout-1',lease:{resource:'reauth-t',owner:'worker-b',expectedRevision:t.revision,durationMs:HOUR},reauthorized:refreshed()})),'timed-out')
+ await refuses('reauth.timeout.closed',()=>store.acquireLease({resource:'reauth-t',owner:'worker-x',expectedRevision:t.revision,durationMs:HOUR}),'closed')
+ await restart('reauth.restart.timeout')
+ await refuses('reauth.restart.timeout',()=>store.acquireLease({resource:'reauth-t',owner:'worker-x',expectedRevision:t.revision,durationMs:HOUR}),'closed')
+
+ // The deadline: from it no event wake is accepted, and its deadline wake ends the wait and closes the run for good.
+ const d=await open('reauth-d',head('reauth-d'))
+ const parkedDeadline=await store.parkWait({...parkOf('reauth-d',d,disposition('reauth-d',d.fence),keyOf('reauth-d')),limits:{waitMs:HOUR}},d.fence)
+ check('reauth.deadline.stamped',parkedDeadline.wait.deadline?.at===iso(at+HOUR)&&parkedDeadline.wait.deadline.by==='wait')
+ at+=HOUR
+ await refuses('reauth.deadline.late',()=>store.wakeWait(wake('reauth-d',keyOf('reauth-d'))),'deadline-passed')
+ check('reauth.deadline.wake',(await store.wakeWait({version:1,resource:'reauth-d',wait:'wait-r',evidence:'deadline-1',kind:'deadline',key:keyOf('reauth-d')})).kind==='deadline'&&(await store.readWait('reauth-d','wait-r'))?.state==='expired')
+ await refuses('reauth.deadline.closed',()=>store.acquireLease({resource:'reauth-d',owner:'worker-x',expectedRevision:d.revision,durationMs:HOUR}),'closed')
+ await restart('reauth.restart.deadline')
+ await refuses('reauth.restart.deadline',()=>store.acquireLease({resource:'reauth-d',owner:'worker-x',expectedRevision:d.revision,durationMs:HOUR}),'closed')
 }
 
 /** #265 M6: certify a host store kind's wait port. Properties: the key check (a key belongs to one wait; a wake presents
@@ -241,10 +308,11 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  * (acquire, renew, the claim, a later run limit reaching a parked wait, the deadline wake), the commit-time approval
  * binding and its settlement (#266 N3), and every one of them across restarts of the store. #226 adds the
  * re-authorization properties (reauth.*): the disposition bound to the lease that parks it and to the head's
- * never-admitted dispatch (a stale or unbound one refused, nothing changed), the claim's refresh (required; the parked
- * principal; permissions after the refresh that cover the operation; taken after the park and not after the store's
- * time), the run's unsettled approval binding and expiry the store attaches, and each across restarts. Throws
- * StorageConformanceFailure naming the first property broken. */
+ * never-admitted dispatch (a stale fence, and a head failing each way, refused with nothing changed), the claim's refresh
+ * (required; the parked principal; permissions after the refresh that cover the operation; taken after the park and not
+ * after the store's time), the run's unsettled approval binding and expiry the store attaches (the claim's lease bounded
+ * by it, refused from it, and limitRun keeping it), the timeout and the deadline wake of a reauthorization wait (each
+ * terminal), and each across restarts. Throws StorageConformanceFailure naming the first property broken. */
 export async function runStoreWaitConformance(create:WaitStoreFactory):Promise<void>{
  try{await waitProperties(create);await reauthProperties(create)}catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('wait.operation')}
 }
