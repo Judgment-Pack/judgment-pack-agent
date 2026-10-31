@@ -10275,7 +10275,7 @@
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "No Go twin: this guard reads TypeScript's types at its request boundary, and Go has no such guard."
+   "note": "Go twin (by hand): Go's guard holds the same raw read by field, in fieldConversions (adapter/request_session_test.go), and Principal is admitted there function by function; removing an admission is caught at ^TestRawReasoningReadsStayInTheAdmissionConversion$."
   },
   {
    "name": "principal P41 a durable root's admission reads other raw members",
@@ -10287,7 +10287,7 @@
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "No Go twin: this guard reads TypeScript's types at its request boundary, and Go has no such guard."
+   "note": "Go twin (by hand): Go's guard holds the same raw read by field, in fieldConversions (adapter/request_session_test.go), and Principal is admitted there function by function; removing an admission is caught at ^TestRawReasoningReadsStayInTheAdmissionConversion$."
   },
   {
    "name": "principal P42 an acting Runtime call reaches its physical call with no final admission",
