@@ -1149,7 +1149,8 @@ class VectorTests(unittest.TestCase):
         def digest(statement):
             return "sha256:" + hashlib.sha256(json.dumps(statement, separators=(",", ":"), ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
-        self.assertEqual(chains["digests"], {"root": digest(root), "child": digest(child)})
+        reissued, other_actor, other_subject = chains["items"][2][0], chains["items"][3][0], chains["items"][4][0]
+        self.assertEqual(chains["digests"], {"root": digest(root), "child": digest(child), "reissued": digest(reissued), "otherActor": digest(other_actor), "otherSubject": digest(other_subject)})
         self.assertEqual(child["parent"], {"id": root["id"], "digest": digest(root)})
         reads = rows["principal/admission.json"]
         self.assertTrue(all(case["read"] is None or 0 <= case["read"] < len(reads["items"]) for case in reads["cases"]))
