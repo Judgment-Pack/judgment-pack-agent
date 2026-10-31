@@ -550,6 +550,12 @@ describe('#226 M6, M3: the re-send\'s own safeguards',()=>{
   await drive(await reauthorizedRunStore({store,effectHost:host,resumed}),'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call,{resume:true})
   expect(execute).toHaveBeenCalledOnce()
  })
+ it('a write with an immutable hint has no read cache (#271): the re-send runs once and a repeat is answered from its record',async()=>{
+  const {store,host,execute,resumed}=await claimed()
+  const view=await reauthorizedRunStore({store,effectHost:host,resumed})
+  await drive(view,'run-r',[{...await actTool(execute),contextPolicy:{immutable:true}} as HostTool],provider([CALL,CALL,{say:'.'}]).call,{resume:true})
+  expect(execute).toHaveBeenCalledOnce();expect((await hostRows(store)).map(row=>row.state)).toEqual(['result'])
+ })
  it('a takeover gets no grant: its fence is not the claim\'s, and the old fence no longer holds the lease',async()=>{
   const {clock,store,host,execute,resumed}=await claimed()
   clock.at=T0+3*MINUTE+2*HOUR

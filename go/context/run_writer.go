@@ -1295,8 +1295,10 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				// #226: a dispatch the run holds as unknown is never sent again, except the one operation a
 				// resumed re-authorization wait granted on this fenced view, whose recorded failure is the typed
 				// never-admitted refusal: it is claimed again under its own identity, once, and its effect host
-				// admits it for the first time.
-				if row.State == "unknown" && (kind == "host" || kind == "runtime") && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
+				// admits it for the first time. The fingerprint is of the parsed form (#275), and the effect host
+				// admits the row's digest while the tool runs these bytes, so the grant needs the very bytes that
+				// were refused: arguments that only read alike are another request, and it is not sent.
+				if row.State == "unknown" && (kind == "host" || kind == "runtime") && durableDigest(request) == row.RequestDigest && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
 					reclaimed = i
 					break
 				}

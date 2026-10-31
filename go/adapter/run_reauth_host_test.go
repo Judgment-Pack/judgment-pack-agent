@@ -199,6 +199,12 @@ func hostExecute(n *atomic.Int32, fails func(call int32) error) func(context.Con
 // hostRefused is a run whose act call the reference effect host refused for its credentials.
 func hostRefused(t *testing.T, engine string, wrap func(waitStore) hostStore, fails func(call int32) error) *hostSetup {
 	t.Helper()
+	return hostRefusedWith(t, engine, hostArgs, wrap, fails)
+}
+
+// hostRefusedWith is hostRefused for a call with these arguments, as written.
+func hostRefusedWith(t *testing.T, engine, args string, wrap func(waitStore) hostStore, fails func(call int32) error) *hostSetup {
+	t.Helper()
 	s := &hostSetup{ctx: context.Background(), clock: &waitClock{}, refuse: &atomic.Bool{}, executed: &atomic.Int32{}}
 	s.refuse.Store(true)
 	s.clock.at.Store(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli())
@@ -222,7 +228,7 @@ func hostRefused(t *testing.T, engine string, wrap func(waitStore) hostStore, fa
 		t.Fatal(err)
 	}
 	s.tool = hostTool(hostExecute(s.executed, fails), "allow")
-	s.first = runHostTool(t, s.view, "run-r", engine, false, nil, s.tool, []string{hostArgs})
+	s.first = runHostTool(t, s.view, "run-r", engine, false, nil, s.tool, []string{args})
 	return s
 }
 func (s *hostSetup) park(proof *runcontext.ReauthorizationRequired, wait, key string, fence runcontext.LeaseFence) (runcontext.RunWait, error) {
@@ -539,6 +545,78 @@ func TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent(t *testing.T)
 				t.Fatalf("another view of the claim: executed %d", s.executed.Load())
 			}
 		})
+	}
+}
+
+// The grant is for the request that was refused, byte for byte: the effect host admits that request's digest,
+// and the tool runs the bytes the call wrote. Arguments that only read alike (#271, #275) share the row's
+// fingerprint, and sending them would run another request under the refused one's identity. They send nothing,
+// the row keeps its typed failure, and the grant stays for the request itself.
+func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
+	cases := map[string][2]string{
+		"past what a float64 holds": {`{"id":9007199254740992}`, `{"id":9007199254740993}`},
+		"another spelling":          {`{"id":1}`, `{"id":1.0}`},
+		"a repeated name":           {`{"id":2}`, `{"id":1,"id":2}`},
+		"whitespace":                {`{"id":1}`, `{ "id": 1 }`},
+	}
+	for _, engine := range hostEngines {
+		for name, held := range cases {
+			t.Run(engine+"/"+name, func(t *testing.T) {
+				s := hostRefusedWith(t, engine, held[0], nil, nil)
+				ran := []string{}
+				inner := s.tool.Execute
+				s.tool.Execute = func(ctx context.Context, raw json.RawMessage) (runcontext.ToolResult, error) {
+					ran = append(ran, string(raw))
+					return inner(ctx, raw)
+				}
+				resumed := s.claimed(t)
+				view := s.viewOf(t, resumed, s.host)
+				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held[1]})
+				if len(ran) != 0 {
+					t.Fatalf("other bytes ran under the refused request's identity: %q", ran)
+				}
+				rows := hostRows(t, s.store, "run-r")
+				if len(rows) != 1 || rows[0].State != "unknown" || rows[0].Failure["outcome"] != "not-started" {
+					t.Fatalf("the refused row: %+v", rows)
+				}
+				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held[0]})
+				if len(ran) != 1 || ran[0] != held[0] {
+					t.Fatalf("the refused request itself: %q", ran)
+				}
+			})
+		}
+	}
+}
+
+// #271: no arguments at all run as {}, so they are the same request as {} on the credential path, either way
+// round, and it runs once with {}. A write's immutable hint gives it no read cache to be answered from.
+func TestReauthorizationNoArgumentsAreTheRequestForAnEmptyObject(t *testing.T) {
+	for _, engine := range hostEngines {
+		for _, held := range [][2]string{{`{}`, ``}, {``, `{}`}} {
+			t.Run(fmt.Sprintf("%s/%q then %q", engine, held[0], held[1]), func(t *testing.T) {
+				s := hostRefusedWith(t, engine, held[0], nil, nil)
+				if s.executed.Load() != 0 || runcontext.ReauthorizationOf(s.view) == nil {
+					t.Fatalf("the refusal: executed %d", s.executed.Load())
+				}
+				ran := []string{}
+				inner := s.tool.Execute
+				s.tool.Execute = func(ctx context.Context, raw json.RawMessage) (runcontext.ToolResult, error) {
+					ran = append(ran, string(raw))
+					return inner(ctx, raw)
+				}
+				s.tool.ContextPolicy = &runcontext.ToolContextPolicy{Immutable: true}
+				resumed := s.claimed(t)
+				view := s.viewOf(t, resumed, s.host)
+				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held[1], held[1]})
+				if len(ran) != 1 || ran[0] != `{}` {
+					t.Fatalf("the re-send ran %q", ran)
+				}
+				rows := hostRows(t, s.store, "run-r")
+				if len(rows) != 1 || rows[0].State != "result" {
+					t.Fatalf("the row: %+v", rows)
+				}
+			})
+		}
 	}
 }
 

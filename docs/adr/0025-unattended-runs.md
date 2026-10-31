@@ -253,8 +253,9 @@ and records the refresh, and its lease is bounded by every ceiling of the run.
 
 **No retry.** The continuation's fenced view (`reauthorizedRunStore`) carries one grant: the writer
 sends again only the never-admitted operation the wait names, once, under its own identity, and only if
-the run asks for exactly that request; its claim clears the typed failure before the dispatch, and
-nothing that may have been admitted is ever sent again. A host tool's request is its arguments, so it
+the run asks for exactly that request (in Go byte for byte, since a tool runs the bytes the call wrote and
+the row's fingerprint is of the parsed form, #275); its claim clears the typed failure before the dispatch,
+and nothing that may have been admitted is ever sent again. A host tool's request is its arguments, so it
 keeps its identity on every adapter. A Runtime call's request carries its call id, so a new call id is a
 new operation on any adapter. ADR-0008 still restores an approved call whose result was never written as
 executed with an unknown outcome; re-authorization does not re-send it, and a new decision in the same

@@ -723,7 +723,13 @@ fence (which must be the run's held lease), and one grant. The writer never send
 holds as unknown, except, once on that view, the operation the resumed wait names, whose recorded
 failure is the typed never-admitted refusal, when the run asks for exactly that request again: it is
 claimed again under its own identity and the effect host admits it for the first time. The claim clears
-the typed failure before the dispatch, so a crash after it leaves a row no view can send. Nothing that
+the typed failure before the dispatch, so a crash after it leaves a row no view can send. In Go, where a
+tool runs the bytes the call wrote, "exactly" means byte for byte. The row's fingerprint is of the parsed
+form (#275), so arguments that only read alike (another spelling of a number, a repeated name, whitespace)
+share it, but they are another request: nothing is sent, the call is answered `HostOutcomeUnknown`, the row
+keeps its typed failure and the grant stays for the refused bytes. In TypeScript a call's request is the
+canonical form of what the tool runs, so the two cannot differ. In both, no arguments at all are the request
+for `{}` (#271). Nothing that
 may have been admitted is ever sent again: re-authorization is never retry permission. Whether the
 continuation asks for exactly that request depends on the kind of call, not on the adapter. A host
 tool's request is its arguments, so it keeps its identity on every adapter when they are repeated. A
