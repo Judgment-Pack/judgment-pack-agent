@@ -92,12 +92,16 @@ summary block, and anything you stopped on or chose not to do.
 
 - The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list (scoped on a pull
   request, see below). Edit `dev.json` when a check is added, not the workflow.
-- A pull request's `check` job runs `scripts/dev/check.sh --all --changed origin/<base>`: only the
-  steps that `jpdev.json` maps its changed paths to, and the whole list when a changed path matches
-  no rule (the workflows, `.gitignore`, `.gitattributes`, the root `package.json` and
-  `package-lock.json`, a file in a new place) or when `jpdev.json`, `dev.json` or the runner
-  changed. A push to `main` and the release's call run the whole list, and only that run is what a
-  release is held to; the `contract` job keeps its fixed `--only` list. Run the same selection
+- The `contract` job runs `contract`, `local-paths`, `agent-docs` and `diff-check` on every event;
+  the `check` job runs every other step and skips those four. A pull request's `check` job runs
+  `scripts/dev/check.sh --all --changed origin/<base>`: only the steps that `jpdev.json` maps its
+  changed paths to, and the whole list when a changed path matches no rule (the workflows,
+  `.gitignore`, `.gitattributes`, the root `package.json` and `package-lock.json`, a file in a new
+  place) or when `jpdev.json`, `dev.json` or the runner changed. A push to `main` runs the whole
+  list, except the tree-only checks the merged pull request's own run passed, which it may reuse
+  (`docs/ci-evidence.md`); only main's evidence is what a release is held to. A new `dev.json`
+  check is also classified in `.github/ci-evidence.json` (reusable or not, and in which job), or
+  `tests/test_release_evidence.py` fails. Run the same selection
   locally with `scripts/dev/check.sh --changed origin/main` (or `jpdev check --changed`). The rules
   follow what each step reads, not its name: the Go certification steps (`go-test`, `go-race`,
   `harness-check`) start the TypeScript scripted server, so a harness change selects them; the
@@ -107,5 +111,9 @@ summary block, and anything you stopped on or chose not to do.
   new place is mapped in `jpdev.json`; when unsure, map it broader.
 - `scripts/parity.sh` needs the Desk checkout at the commit it pins (`desk_pin`); set `JPDEV_DESK`
   to it. After an intended change to a moved file, put the digest the failure prints in that file's row.
-- The full mutation table runs on every push to `main` and the release job requires it green on the
-  tagged commit (`docs/releasing.md`).
+- The full mutation table runs on every push to `main` and the release takes its four shards'
+  evidence at the tagged commit (`docs/releasing.md`, `docs/ci-evidence.md`).
+- `scripts/dev/check.sh`, `handover_check.sh`, `changed_checks.py` and `release_evidence.py` are the
+  devkit's, vendored unchanged at the release their line 2 names, with
+  `.github/runner-identity.json`; re-vendor them together, and update the digests
+  `tests/test_release_evidence.py` pins.

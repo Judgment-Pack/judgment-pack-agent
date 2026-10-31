@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# from judgment-pack-devkit v0.10.0 (templates/check.sh)
-# source patch: Judgment-Pack/judgment-pack-devkit@2f7f84922ee9131962d935b322889d289defb56f (unreleased commit; #57)
-# scripts/dev/check.sh [--setup] [--only a,b | --changed [BASE]] [--skip a,b] [--all] [--manifest FILE]
+# from judgment-pack-devkit v0.13.0 (templates/check.sh)
+# scripts/dev/check.sh [--setup] [--only a,b | --changed [BASE]] [--skip a,b] [--all] [--strict] [--manifest FILE]
 # Runs dev.json checks in order; exit counts failures, or is nonzero for infrastructure-unrun checks.
 # --changed runs only the checks jpdev.json maps the paths changed since the merge base of BASE
 # (default: the default branch) and HEAD to, with changed_checks.py vendored beside this script;
@@ -9,19 +8,23 @@
 # or changed_checks.py changed, when nothing changed, or with no mapping.
 # Stops at the first failure unless --all. --setup runs the manifest's setup steps instead.
 # A step whose requires_env variable is empty is skipped, and said to be; when CI is set that is a
-# failure unless the step is marked optional: true. Standard library python3 only. jpdev sets JPDEV_WRAP to add its caps around each step.
+# failure unless the step is marked optional: true. With --strict a skip is a failure, optional or not
+# (a release's fresh run of the list). Standard library python3 only. jpdev sets JPDEV_WRAP to add its caps around each step.
+# Where JPDEV_BIND_ENV is set (comma-separated variable names, possibly none), the summary block has
+# an environment: line, the SHA-256 of the manifest's bytes and of each named variable's value as
+# this runner ran the steps (unset when absent): what the release evidence gate binds for reuse.
 root=${JPDEV_ROOT:-$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)} || exit 2
 exec python3 -I - "$root" "$0" "$@" <<'PY'
 import json, os, re, shutil, signal, subprocess, sys, time
 from pathlib import Path
 root, script, args = sys.argv[1], sys.argv[2], sys.argv[3:]
-opt = {'only': set(), 'skip': set(), 'all': False, 'setup': False, 'manifest': root + '/dev.json', 'changed': None}
+opt = {'only': set(), 'skip': set(), 'all': False, 'setup': False, 'strict': False, 'manifest': root + '/dev.json', 'changed': None}
 def refuse(message): print('check.sh: ' + message, file=sys.stderr); sys.exit(2)
 while args:
     a = args.pop(0)
     if a in ('--only', '--skip'): opt[a[2:]] = set(args.pop(0).split(','))
     elif a == '--manifest': opt['manifest'] = args.pop(0)
-    elif a in ('--all', '--setup'): opt[a[2:]] = True
+    elif a in ('--all', '--setup', '--strict'): opt[a[2:]] = True
     elif a == '--changed': opt['changed'] = [args.pop(0)] if args and not args[0].startswith('-') else []
     else:
         try:
@@ -109,8 +112,9 @@ for c in steps:
     if infrastructure: rows.append((n, 'NOT RUN', '', [])); continue
     if failed and not opt['all']: rows.append((n, 'NOT RUN', '', [])); continue
     if c.get('requires_env') and not os.environ.get(c['requires_env']):
-        # A skip is a failure under CI (CI is set) unless the step says optional: true.
-        if os.environ.get('CI') and not c.get('optional'): failed += 1; rows.append((n, 'FAIL', 'needs %s, which CI must set (or mark the step optional)' % c['requires_env'], []))
+        # A skip is a failure under --strict, and under CI (CI is set) unless the step says optional: true.
+        if opt['strict']: failed += 1; rows.append((n, 'FAIL', 'needs %s; --strict counts a skip as a failure' % c['requires_env'], []))
+        elif os.environ.get('CI') and not c.get('optional'): failed += 1; rows.append((n, 'FAIL', 'needs %s, which CI must set (or mark the step optional)' % c['requires_env'], []))
         else: rows.append((n, 'SKIP', 'needs ' + c['requires_env'], []))
         continue
     cmd = ['bash', '-c', c['run']]
@@ -150,6 +154,12 @@ for c in steps:
                 pass
             infrastructure = 'cannot persist the completed check log %s: %s' % (log, error.strerror or log_probe_error or error)
 print('== %s summary (%s) ==' % ('setup' if opt['setup'] else 'check', os.path.basename(opt['manifest'])))
+if 'JPDEV_BIND_ENV' in os.environ:
+    import hashlib
+    bound = [n for n in os.environ['JPDEV_BIND_ENV'].split(',') if n]
+    with open(opt['manifest'], 'rb') as handle: line = ['manifest=' + hashlib.sha256(handle.read()).hexdigest()]
+    line += ['%s=%s' % (n, hashlib.sha256(run_env[n].encode()).hexdigest() if n in run_env else 'unset') for n in bound]
+    print('environment: ' + ' '.join(line))
 if not opt['setup'] and 'handover' in m:
     h = m['handover']
     print('handover: boundary %d paths, shared %d paths; see AGENTS.md "Before you hand over"' %

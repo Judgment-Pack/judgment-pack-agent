@@ -120,11 +120,13 @@ Every job works on the commit the run was started for, by its digest, not on the
    environment has a reviewer rule. Matching host upgrade guidance and its notes
    link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
-2. **Verifies trusted exact-source CI evidence.** The Agent-owned
-   [evidence gate](ci-evidence.md) requires complete successful `contract`/`check` and full
-   mutation-table coverage on the exact release commit from trusted main workflows, with
-   independently resolved current inputs. Tag-sensitive checks and fresh advisory review
-   remain separate. PRs and automatic main CI keep their full checklist and status names.
+2. **Verifies trusted exact-source CI evidence.** The devkit's
+   [release evidence gate](ci-evidence.md) (v0.13.0, vendored as `scripts/dev/release_evidence.py`)
+   requires complete successful `contract` and `check` jobs and the four full mutation shards of
+   trusted main runs at the exact release commit, on runners that reported the image the release
+   runner reports, with the inputs the commit holds. Checks main took from its merged pull
+   request's run are admitted again. The `Package` job proceeds only on the gate's `reuse`
+   decision. Tag-sensitive checks and fresh advisory review remain separate.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
    `package-lock.json`, equals the tag without `v`. Then `npm ci`, `npm run build`, `npm pack`
    into `judgment-pack-harness-<version>.tgz`, and `checksums.txt` written over it and checked.
@@ -159,30 +161,25 @@ fails: release a new version.
 
 ### The mutation table and exact-source CI evidence
 
-The full mutation table still runs on every main push, weekly and by dispatch;
-PRs run a sample. Release verifies all four full shards and `every row applies`
-through the [trusted CI evidence gate](ci-evidence.md), together with
-`contract` and `check`. It selects the latest applicable main run and its latest
-attempt without filtering for completion; a newer failed, canceled or running
-attempt blocks reuse. A PR sample and a partial rerun cannot qualify.
+The full mutation table still runs on every main push, weekly and by dispatch; pull requests run a
+sample. The release takes the four full shards of a push or dispatch run on main at the commit,
+with `contract` and `check`, through the [release evidence gate](ci-evidence.md). It selects the
+newest applicable attempt on main whatever its result; a newer failed, cancelled or running attempt
+(a weekly scheduled run included) refuses, and nothing searches back for an older green one. A
+pull request's sample and a partial re-run cannot qualify. That every row still applies is the
+`mutation-rows` step of `dev.json`, which the `check` job runs, or, on a push to main, may reuse
+from the merged pull request's run, which the release admits again.
 
-The source-controlled initial age limit is 48 hours. Changed runner/tool/input
-identity, stale/missing/inaccessible evidence or tag movement refuses reuse. One
-explicit full main dispatch (CI and mutation) followed by one release-verification
-retry is the bounded fresh route when main still names the target. There is no
-older-green fallback. Existing fresh advisory evidence/review and approved scoped
-exception decisions remain required; the optional audit's CI skip proves nothing
-about current advisories. Actual-tag upgrade, packaging, approval, publication and
-paired Go-tag gates stay in force. See the gate document for identities, API
-limits, observed baseline durations and candidate measurement limits.
+The age limit is 48 hours. A rolled hosted image, changed tools or inputs, stale, missing or
+unreadable evidence, a missing or unexpected runner identity, or tag movement refuses. The bounded
+fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the main
+run at the commit (or dispatch the workflow on main while main names the commit), then re-run the
+release's failed jobs once. Fresh advisory evidence and review and approved scoped exception
+decisions remain required; the optional audit's CI skip proves nothing about current advisories.
+Actual-tag upgrade, packaging, approval, publication and paired Go-tag gates stay in force.
 
-For v0.11.0 only, the [approved two-image exception](security/v011-runner-image-exception.md)
-permits the two recorded ImageVersions until 2026-11-07 00:00:00 UTC. Both actual
-producer and verifier must satisfy its exact scope/OS tuple and all configured
-tools must still match. Verification checks expiry again after collection; later
-versions and verification at/after expiry refuse. This accepts unknown host-image
-differences and does not establish image equivalence. New validated main evidence
-and independent review are required; every other gate above remains in force.
+The v0.11.0 [two-image exception](security/v011-runner-image-exception.md) applied to v0.11.0 only
+and is retired: the gate has no exception member.
 
 ### The window that remains
 
