@@ -878,6 +878,24 @@ model, a changed model or reference without its explicit admission, a changed po
 host's new layer, and an approval under a changed identity, before anything is claimed. See
 `docs/design/storage.md`.
 
+### Re-authorization waits (#226)
+
+`storage/reauth.ts` implements ADR-0025 decision 4 with `storage/lease.ts` and `storage/wait.ts`. The
+reference effect host takes an optional credential check (`new ReferenceEffectHost(store,
+{credentials})`); a refusal at its admission boundary (`reauthorizationRequired(admission, refusal)`:
+expired or revoked, a bounded connection reference, the principal's digest, scope labels) admits and
+performs nothing. Only a refusal the package trusts (minted once for the live admission, before
+anything was performed, from an effect host proven for the run's store) stops the run at that
+operation; the host reads it with `reauthorizationOf(view)` and hands it to `parkRun({...,
+reauthorization})`, which parks a `reauthorization` wait under the same lease over a head that holds
+the operation as never admitted. `resumeParked` needs the host's or the person's action
+(`reauthorization`, `run-reauth.json#/$defs/action`): a replacement or another principal is
+`identity-changed`, an action before the park `stale`, permissions that no longer cover the operation
+`permission-insufficient`. `reauthorizedRunStore` is the continuation's view: the writer sends the
+never-admitted operation again once, under its own identity, if the run asks for that request; nothing
+that may have been admitted is sent again. No credential, token or provider error is recorded. The wait
+conformance kit certifies the store's part (`reauth.*`). See `docs/design/storage.md`.
+
 ### Proposal edit refusal details
 
 Proposal edit refusals omit `document` when the identifier is missing, non-string

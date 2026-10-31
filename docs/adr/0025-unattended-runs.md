@@ -7,8 +7,9 @@ ADR-0024. Decision 1 (one driver and fencing) is built in v0.12.0 (#223, #253; s
 its amendment). Decision 2 (durable waits and questions, #224) and decision 6 (attention
 and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3 and 5
 (deadlines and approval expiry, #225; revalidation on every resume, #227), with the run
-closure of #265 (M2), are built for v0.13.0 (see their amendment); decisions 4, 7 and 8
-(#226, #229, #230) are not built and are assigned to v0.13.0.
+closure of #265 (M2), are built for v0.13.0 (see their amendment); decision 4 (re-authorization,
+#226) is built for v0.13.0 (see its amendment); decisions 7 and 8 (#229, #230) are not built and are
+assigned to v0.13.0.
 
 ## Boundary and compatibility
 
@@ -178,8 +179,9 @@ Refusals are `invalid`, `nothing-pending`, `wait-pending`, `conflict`, `checkpoi
 `decision-required`, `timed-out`, `release-uncertain` and `chat-changed`; capability refusals are
 `store-unsupported` (no wait or lease port), `store-lifetime` (waits or leases end with the
 store's process) and `chat-store-unsupported`. Deadlines on runs and approvals (decision 3) and
-resume revalidation (decision 5) are built since (their amendment below). The re-authorization,
-retired-model, changed-reference and deadline attention reasons are not built: a retired model or a
+resume revalidation (decision 5) are built since (their amendment below), and so is the
+re-authorization reason (decision 4, #226, its amendment above). The retired-model, changed-reference
+and deadline attention reasons are not built: a retired model or a
 changed reference is a named revalidation refusal the host reports, and a deadline ends a wait with a
 recorded deadline wake.
 
@@ -214,6 +216,48 @@ and pending operation. Refreshing credentials for the same admitted identity can
 continue only after those checks. A changed identity retains ADR-0019's withholding
 and new-run reapproval rule; it is not silently relabelled as a refresh. A narrower
 permission set can still make the pending operation inadmissible.
+
+### Amendment (#226): re-authorization as built
+
+Status: built for v0.13.0 (#226). The records are `contract/schemas/run-reauth.json` (version 1) with
+handwritten shared vectors in `contract/vectors/reauth/`, and members of the not yet released
+`run-wait.json` (version 1): the reason and attention need `reauthorization`, the pending
+`reauthorization` decision, and `reauthorization` and `reauthorized`. TypeScript is
+`packages/harness/storage/reauth.ts` with `lease.ts` and `wait.ts`; Go is `go/context/run_reauth.go`
+with `run_lease.go` and `run_wait.go`. The host-facing contract is in `docs/design/storage.md`
+(Re-authorization waits). No checkpoint, event, lease or published report format changes, and with no
+credential check configured the run's bytes are unchanged.
+
+**The trusted disposition.** The effect host's admission boundary is where never-admitted is known: the
+reference effect host's optional credential check runs after the fence and the idempotency identity and
+before it records the admission, and a refusal (`expired` or `revoked`, a bounded connection
+reference, the principal's SHA-256, the scope labels held and required) is minted against the exact
+admission in flight; nothing is admitted or performed. The package trusts it only when minted once,
+for that live admission, before anything was performed, well formed, returned by the dispatch, from an
+effect host proven for the run's store (#253); anything else, and any error after admission, is an
+ordinary failure whose outcome stays unknown. The writer records the typed failure (`authentication`,
+`tool`, `not-started`) and, for a trusted refusal, closes dispatch, so the head holds the refused
+operation as its last dispatch and the model is not asked again.
+
+**Park and resume.** A trusted proof parks one `reauthorization` wait under the lease it was minted
+under, over that head (`stale`, `unbound`, `used`, `untrusted` otherwise), waiting for the host's or
+the person's action as an event; the store attaches the binding and expiry of the run's unsettled
+approval, if any. Resume needs the action (`decision-required` without it), revalidates the pins
+(#227) and then the action: a replacement or another principal is `identity-changed` (a new admitted
+run, ADR-0019), an action from before the park is `stale`, permissions that no longer cover what the
+operation requires are `permission-insufficient`; the store's claim checks them again against its clock
+and records the refresh, and its lease is bounded by every ceiling of the run.
+
+**No retry.** The continuation's fenced view (`reauthorizedRunStore`) carries one grant: the writer
+sends again only the never-admitted operation the wait names, once, under its own identity, and only if
+the run asks for exactly that request; nothing that may have been admitted is ever sent again. A model
+adapter that asks with a new call id makes a new operation. ADR-0008 still restores an approved call
+whose result was never written as executed with an unknown outcome; re-authorization does not re-send
+it.
+
+The wait conformance kit gains the `reauth.*` properties: the fence and head binding at the park, the
+claim's refresh (required, the parked principal, covering permissions, its time), the attached approval,
+and each across restarts.
 
 ## 5. Revalidation on every resume
 
@@ -289,7 +333,7 @@ substituted), a changed model or reference without its exact explicit admission,
 without the trusted host's new layer, and an approval under a changed identity. The resumed wait
 records the revalidation, with every change's old and new value.
 
-Not built here: a reauthorization wait (decision 4, #226), attention events for a retired model, a
+Not built here: a reauthorization wait (decision 4, #226; built since, its amendment above), attention events for a retired model, a
 changed reference or a deadline (they are named refusals and a recorded deadline wake), a package
 transition that ends a wait a revalidation refuses for good, a Go ChatStore, and host store kinds:
 the deadline, closure and claim rules live in each host store's own wait and lease ports (their

@@ -176,6 +176,12 @@ func ReadRunLimit(raw []byte) (RunLimit, error) {
 // store holds and this park's), the park time plus waitMs and, for an approval wait, plus approvalTtlMs.
 // nil when none applies. ceiling is the store's run deadline in milliseconds, or nil for none.
 func StampDeadline(limits *WaitLimits, parkedAt int64, ceiling *int64) (*WaitDeadline, error) {
+	return stampDeadlineWithin(limits, parkedAt, ceiling, nil)
+}
+
+// stampDeadlineWithin is StampDeadline with, for a reauthorization wait parked while the run's approved
+// call is unsettled (#226), that approval's expiry as the approval time.
+func stampDeadlineWithin(limits *WaitLimits, parkedAt int64, ceiling *int64, approvalAt *int64) (*WaitDeadline, error) {
 	run := int64(math.MaxInt64)
 	if limits != nil && limits.Run != nil {
 		run = waitTimeMillis(*limits.Run)
@@ -190,7 +196,9 @@ func StampDeadline(limits *WaitLimits, parkedAt int64, ceiling *int64) (*WaitDea
 	if limits != nil && limits.WaitMs != nil {
 		times["wait"] = parkedAt + *limits.WaitMs
 	}
-	if limits != nil && limits.ApprovalTtlMs != nil {
+	if approvalAt != nil {
+		times["approval"] = *approvalAt
+	} else if limits != nil && limits.ApprovalTtlMs != nil {
 		times["approval"] = parkedAt + *limits.ApprovalTtlMs
 	}
 	if len(times) == 0 {
@@ -225,6 +233,12 @@ func StampDeadline(limits *WaitLimits, parkedAt int64, ceiling *int64) (*WaitDea
 
 // readWaitDeadline reads a stamped deadline and holds its rules against the park's limits and time.
 func readWaitDeadline(raw json.RawMessage, limits *WaitLimits, parkedAt string) (WaitDeadline, error) {
+	return readWaitDeadlineBound(raw, limits, parkedAt, false)
+}
+
+// readWaitDeadlineBound is readWaitDeadline with bound, for a reauthorization wait that carries the run's
+// unsettled approval binding (#226): its approval time is that approval's expiry, and present.
+func readWaitDeadlineBound(raw json.RawMessage, limits *WaitLimits, parkedAt string, bound bool) (WaitDeadline, error) {
 	m, err := resumeShape(raw, []string{"at", "by"}, []string{"run", "wait", "approval"})
 	if err != nil {
 		return WaitDeadline{}, err
@@ -267,7 +281,11 @@ func readWaitDeadline(raw json.RawMessage, limits *WaitLimits, parkedAt string) 
 	if (waitMs == nil) != (deadline.Wait == nil) || deadline.Wait != nil && waitTimeMillis(*deadline.Wait) != parked+*waitMs {
 		return WaitDeadline{}, resumeInvalid()
 	}
-	if (ttl == nil) != (deadline.Approval == nil) || deadline.Approval != nil && waitTimeMillis(*deadline.Approval) != parked+*ttl {
+	if bound {
+		if deadline.Approval == nil || ttl != nil {
+			return WaitDeadline{}, resumeInvalid()
+		}
+	} else if (ttl == nil) != (deadline.Approval == nil) || deadline.Approval != nil && waitTimeMillis(*deadline.Approval) != parked+*ttl {
 		return WaitDeadline{}, resumeInvalid()
 	}
 	if limits != nil && limits.Run != nil && (deadline.Run == nil || waitTimeMillis(*deadline.Run) > waitTimeMillis(*limits.Run)) {
@@ -698,12 +716,18 @@ func ApprovalBindingOf(approval contract.CheckpointApproval) (ApprovalBinding, e
 // identity digest (and the asked approval's source with its descriptor digest), and the last observed
 // revision of each artifact.
 func PinsFrom(checkpoint *contract.Checkpoint, model PinnedModel) (ResumePins, error) {
+	return pinsFromFor(checkpoint, model, false)
+}
+
+// pinsFromFor is PinsFrom; for a reauthorization wait (#226) it pins an approved call not yet settled as
+// an asked one: its source and descriptor.
+func pinsFromFor(checkpoint *contract.Checkpoint, model PinnedModel, reauthorization bool) (ResumePins, error) {
 	sources := map[string]SourcePin{}
 	for _, row := range checkpoint.SourceIdentities {
 		identity := row.IdentityDigest
 		sources[row.Source] = SourcePin{Source: row.Source, IdentityDigest: &identity}
 	}
-	if asked := checkpoint.Approval; asked != nil && asked.State == "asked" {
+	if asked := checkpoint.Approval; asked != nil && (asked.State == "asked" || reauthorization && asked.State == "approved") {
 		record := asked.Source
 		pin, ok := sources[record.ID]
 		if !ok {
@@ -893,8 +917,9 @@ func RevalidateResume(wait RevalidatedWait, input ResumeEvidence) (Revalidation,
 		changes = append(changes, ResumeChange{Kind: "policy", Subject: "policy", From: pins.Policy, To: current.Policy.Digest, Layer: &layer})
 	}
 	// #225: an approval is bound to the reviewed call's source, descriptor and policy identities; a
-	// changed one cannot run.
-	if wait.Reason == "approval" {
+	// changed one cannot run. #226: so is a reauthorization wait's operation under the run's unsettled
+	// approval.
+	if wait.Reason == "approval" || wait.Approval != nil {
 		if wait.Approval == nil {
 			return Revalidation{}, resumeInvalid()
 		}

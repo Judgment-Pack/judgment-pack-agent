@@ -220,11 +220,14 @@ type RunWriter struct {
 	nativePlanSuperseded   map[string]nativePlanDisposition
 	fatal                  error
 	dispatchClosed         atomic.Bool
-	stopped                bool
-	snapshot               func() (contract.Checkpoint, error)
-	policy                 RecordsPolicy
-	guard                  func() RecordGuard
-	Decorate               func(contract.Checkpoint) (contract.Checkpoint, error)
+	// closure is the trusted re-authorization refusal that closed dispatch (#226): nothing after it is
+	// committed or dispatched.
+	closure  error
+	stopped  bool
+	snapshot func() (contract.Checkpoint, error)
+	policy   RecordsPolicy
+	guard    func() RecordGuard
+	Decorate func(contract.Checkpoint) (contract.Checkpoint, error)
 }
 
 // retainedCheckpoint preserves exact lexical evidence before checkpoint canonicalization.
@@ -1041,7 +1044,7 @@ func (w *RunWriter) Save(ctx context.Context, binding RunBinding, state contract
 		return w.fatal
 	}
 	if w.dispatchClosed.Load() {
-		return failure.Cancelled
+		return w.closed()
 	}
 	_, err := w.saveLocked(ctx, binding, &state, nil, nil, nil)
 	return err
@@ -1053,7 +1056,7 @@ func (w *RunWriter) Event(ctx context.Context, binding RunBinding, event contrac
 		return contract.RunEvent{}, w.fatal
 	}
 	if w.dispatchClosed.Load() {
-		return contract.RunEvent{}, failure.Cancelled
+		return contract.RunEvent{}, w.closed()
 	}
 	if delivery, ok := w.planDelivery[planEventIdentity(event)]; ok {
 		delete(w.planDelivery, planEventIdentity(event))
@@ -1285,9 +1288,18 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	parsed, _ := ParseJSON(request)
 	scope, _ := canonicalRaw(binding.Scope)
 	fingerprint := durableDigest([]byte(CanonicalJSON(ObjectOf("kind", String(kind), "scope", MustParseJSON(string(scope)), "source", String(source), "tool", String(tool), "request", parsed))))
+	reclaimed := -1
 	if !read {
-		for _, row := range w.book.Dispatches {
+		for i, row := range w.book.Dispatches {
 			if !row.Read && row.Kind == kind && row.Fingerprint == fingerprint {
+				// #226: a dispatch the run holds as unknown is never sent again, except the one operation a
+				// resumed re-authorization wait granted on this fenced view, whose recorded failure is the typed
+				// never-admitted refusal: it is claimed again under its own identity, once, and its effect host
+				// admits it for the first time.
+				if row.State == "unknown" && (kind == "host" || kind == "runtime") && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
+					reclaimed = i
+					break
+				}
 				w.mu.Unlock()
 				if row.State != "result" || row.Result == nil {
 					return zero, &HostOutcomeUnknown{}
@@ -1307,62 +1319,69 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 			}
 		}
 	}
-	if len(w.book.Dispatches) >= 400 {
-		w.mu.Unlock()
-		return zero, &ContinuationNotRecoverable{}
-	}
-	claimID := newStorageIdentity()
+	var claim DurableDispatch
 	var usageTicketHeld *usageTicket
-	if w.budget != nil && (kind == "model" || kind == "agent") {
-		ticket, _ := ctx.Value(usageDispatchContextKey{}).(*usageTicket)
-		usageTicketHeld = ticket
-		var err error
-		claimID, err = w.budget.consume(ticket, usageDispatchFacts{DurableScope: binding.Scope, Source: source, Tool: tool, Descriptor: string(request), UsageBoundRequest: UsageBoundRequest{Kind: kind}})
-		if err != nil {
+	if reclaimed >= 0 {
+		w.book.Dispatches[reclaimed].State = "claimed"
+		w.book.Dispatches[reclaimed].Failure = nil
+		claim = w.book.Dispatches[reclaimed]
+	} else {
+		if len(w.book.Dispatches) >= 400 {
 			w.mu.Unlock()
-			return zero, err
+			return zero, &ContinuationNotRecoverable{}
 		}
-	}
-	claim := DurableDispatch{ID: claimID, Scope: binding.Scope, Kind: kind, Source: source, Tool: tool, Fingerprint: fingerprint, Request: string(request), RequestDigest: durableDigest(request), State: "claimed", Read: read}
-	if !w.taskSteps.Load() && kind == "model" && w.repeatStateLocked(binding.Scope.Execution) != nil && MustParseJSON(string(request)).Get("method").Str() != "GET" {
-		charge := w.repeatRequestCharges[binding.Scope.Execution]
-		if charge == nil {
-			w.mu.Unlock()
-			return zero, &ContinuationIdentityChanged{}
-		}
-		recovering := false
-		for _, prior := range w.book.Dispatches {
-			if w.recovered[prior.ID] && prior.Kind == "model" && prior.Scope == binding.Scope && prior.State == "unknown" {
-				recovering = true
-			}
-		}
-		if !recovering {
-			descriptor := MustParseJSON(string(request))
-			body := string(request)
-			if descriptor.Get("body").IsString() {
-				body = descriptor.Get("body").Str()
-			}
-			if err := charge(body); err != nil {
+		claimID := newStorageIdentity()
+		if w.budget != nil && (kind == "model" || kind == "agent") {
+			ticket, _ := ctx.Value(usageDispatchContextKey{}).(*usageTicket)
+			usageTicketHeld = ticket
+			var err error
+			claimID, err = w.budget.consume(ticket, usageDispatchFacts{DurableScope: binding.Scope, Source: source, Tool: tool, Descriptor: string(request), UsageBoundRequest: UsageBoundRequest{Kind: kind}})
+			if err != nil {
 				w.mu.Unlock()
 				return zero, err
 			}
 		}
-	}
-	if err := w.claimTaskDispatchLocked(ctx, *binding, claim); err != nil {
-		w.mu.Unlock()
-		return zero, err
-	}
-	if state := w.repeatStateLocked(binding.Scope.Execution); state != nil && state.Reminded && !state.ReminderDelivered && (kind == "model" || kind == "agent") && strings.Contains(claim.Request, RepeatReminder) {
-		state.ReminderDelivered = true
-	}
-	if kind == "agent" && w.capture != nil {
-		if slot, _ := ctx.Value(nativeCaptureKey{}).(*nativeCaptureSlot); slot != nil && slot.writer == w && slot.scope == binding.Scope && slot.bindings != nil {
-			w.capture.bindings[claim.ID] = usageCopy(slot.bindings)
-		} else {
-			w.capture.unavailable = true
+		claim = DurableDispatch{ID: claimID, Scope: binding.Scope, Kind: kind, Source: source, Tool: tool, Fingerprint: fingerprint, Request: string(request), RequestDigest: durableDigest(request), State: "claimed", Read: read}
+		if !w.taskSteps.Load() && kind == "model" && w.repeatStateLocked(binding.Scope.Execution) != nil && MustParseJSON(string(request)).Get("method").Str() != "GET" {
+			charge := w.repeatRequestCharges[binding.Scope.Execution]
+			if charge == nil {
+				w.mu.Unlock()
+				return zero, &ContinuationIdentityChanged{}
+			}
+			recovering := false
+			for _, prior := range w.book.Dispatches {
+				if w.recovered[prior.ID] && prior.Kind == "model" && prior.Scope == binding.Scope && prior.State == "unknown" {
+					recovering = true
+				}
+			}
+			if !recovering {
+				descriptor := MustParseJSON(string(request))
+				body := string(request)
+				if descriptor.Get("body").IsString() {
+					body = descriptor.Get("body").Str()
+				}
+				if err := charge(body); err != nil {
+					w.mu.Unlock()
+					return zero, err
+				}
+			}
 		}
+		if err := w.claimTaskDispatchLocked(ctx, *binding, claim); err != nil {
+			w.mu.Unlock()
+			return zero, err
+		}
+		if state := w.repeatStateLocked(binding.Scope.Execution); state != nil && state.Reminded && !state.ReminderDelivered && (kind == "model" || kind == "agent") && strings.Contains(claim.Request, RepeatReminder) {
+			state.ReminderDelivered = true
+		}
+		if kind == "agent" && w.capture != nil {
+			if slot, _ := ctx.Value(nativeCaptureKey{}).(*nativeCaptureSlot); slot != nil && slot.writer == w && slot.scope == binding.Scope && slot.bindings != nil {
+				w.capture.bindings[claim.ID] = usageCopy(slot.bindings)
+			} else {
+				w.capture.unavailable = true
+			}
+		}
+		w.book.Dispatches = append(w.book.Dispatches, claim)
 	}
-	w.book.Dispatches = append(w.book.Dispatches, claim)
 	claimEvent, claimErr := nativePlanClaimEventLocked(ctx, binding, claim)
 	if claimErr != nil {
 		w.mu.Unlock()
@@ -1588,8 +1607,23 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 
 	if kind == "model" && runErr != nil || failure.IsCancelled(runErr) && !(kind == "agent" && (w.book.PendingHandoff != nil || nativePlanPauseAcknowledgedLocked(ctx, binding, claim))) {
 		w.dispatchClosed.Store(true)
+	} else if (kind == "host" || kind == "runtime") && trustedReauthorization(runErr) {
+		// #226: a trusted re-authorization refusal stops the run at the operation it refused: nothing after it
+		// is committed and nothing more is dispatched, so the run's head holds it as the never-admitted
+		// dispatch a park binds.
+		w.closure = runErr
+		w.dispatchClosed.Store(true)
 	}
 	return value, runErr
+}
+
+// closed is what a commit after closed dispatch refuses with: the re-authorization refusal that closed it,
+// or cancellation.
+func (w *RunWriter) closed() error {
+	if w.closure != nil {
+		return w.closure
+	}
+	return failure.Cancelled
 }
 
 // PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload.

@@ -626,3 +626,89 @@ claims nothing and the wait keeps holding the run. The host resolves a new polic
 (`resolvePolicy`); the package never rewrites the checkpoint, so consumed allowance stays what it was.
 Pins other than the approval's source carry no descriptor: each later call still passes the existing
 per-call source pins (ADR-0006, ADR-0027), and in-run model failover keeps its own rules (ADR-0020).
+
+## Re-authorization waits (#226)
+
+This section is for the same implementers. It implements ADR-0025 decision 4 as its amendment fixes
+it. The new records are `contract/schemas/run-reauth.json`, version 1, with handwritten shared vectors
+in `contract/vectors/reauth/`; the wait record (`run-wait.json`, not yet released) gains the reason
+`reauthorization`, its pending decision and the members `reauthorization` and `reauthorized`.
+TypeScript is `packages/harness/storage/reauth.ts` with the effect-host boundary in `storage/lease.ts`
+and the wait transitions in `wait.ts`; Go is `go/context/run_reauth.go` with `run_lease.go` and
+`run_wait.go`. Nothing is configured by default: without a credential check at the effect host no
+refusal is minted, and every run's bytes are unchanged.
+
+**The boundary.** Only the effect host can tell an operation that was never admitted from one whose
+outcome is unknown, and only at its own admission boundary. The reference effect host takes an
+optional credential check (`new ReferenceEffectHost(store, {credentials})`, Go
+`NewReferenceEffectHostWith(store, ReferenceEffectHostOptions{Credentials})`), asked after the fence
+and the idempotency identity and before the host records the admission. A refusal (`{cause: expired |
+revoked, connection, principal, permissions, requires}`: a bounded connection reference, the SHA-256 of
+the principal identity, and the scope labels the credentials held and the operation needs) is returned
+as `reauthorizationRequired(admission, refusal)` (Go `NewReauthorizationRequired(ctx, admission,
+refusal)`): the key is not admitted and nothing is performed. A certified host mints the same way. The
+package trusts the refusal only when it was minted once, for the admission it has in flight (the exact
+object in TypeScript; the dispatch's own context and an equal admission in Go), before anything was
+performed, with a well-formed refusal, and the dispatch then returns it, from an effect host proven
+for the run's store (#253). A copy or another admission, a second mint, a mint after the dispatch or
+after the operation was performed, a refusal carrying anything else (a token or an error member, an
+undigested principal, an unbounded connection) and an unproven host give an untrusted refusal: an
+ordinary failure whose operation keeps its unknown outcome. An error a tool returns after admission (a
+provider's 401 included) is never this proof. A credential check that errors admits nothing and
+proves nothing.
+
+**The run stops at the refusal.** The writer records the dispatch as it records any failed one
+(`unknown`, with the typed failure `authentication`, `tool`, `not-started` and a fixed detail) and,
+for a trusted refusal, closes dispatch: nothing after it is committed and the model is not asked
+again, so the run's head holds the refused operation as its last dispatch. The run then ends with an
+error: the Go adapters report the typed refusal; the TypeScript engines report their checkpoint error (a
+storage failure, since what followed the refusal was deliberately not saved), the refusal itself being
+the call's `tool_result`. Either way the host reads the proof from the fenced view the run used,
+`reauthorizationOf(view)` (Go `ReauthorizationOf`).
+
+**Park.** `parkRun({..., reauthorization: proof})` parks a `reauthorization` wait, under the same lease
+the proof was minted under (`stale` otherwise), over a head whose last dispatch is the never-admitted
+operation the proof names (`unbound` otherwise): a host or Runtime effect, not a read, `unknown`, with
+the typed failure and the operation's source, tool and request digest. A proof parks one wait (`used`);
+one the package did not mint and trust is `untrusted`. The wait's pending decision is the operation
+(its claim id, source and tool), the connection and the cause; its condition is an event (the host's
+or the person's action) with no wake time; it records the disposition (`run-reauth.json`), never a
+credential. The store checks the fence binding and the head again in the park's transaction and, when
+the run's approved call is unsettled (#266), attaches that approval's binding and stamps its expiry as
+the wait's approval deadline; the park's own limits may set `run` and `waitMs`, never
+`approvalTtlMs`. The attention event needs `reauthorization` and names the connection. A timeout or a
+deadline ends the wait and closes the run, as for an approval wait.
+
+**Resume.** After the host's or the person's explicit action the host wakes the wait with its event
+and resumes it with the action (`run-reauth.json#/$defs/action`) and its current evidence. A wake is
+never the re-authorization (`decision-required`). `resumeParked` revalidates the pins as for every
+wait (an approval under a changed policy or descriptor is `approval-changed`), then the action: it is this wait's and this connection's (`invalid`); a
+`replacement`, or a refresh whose principal is not the parked one, is a changed identity
+(`identity-changed`: a new admitted run is needed, ADR-0019), never relabelled as a refresh; an action
+from before the park is `stale`; current permissions that do not cover what the operation requires are
+`permission-insufficient` (narrower ones that still cover it continue). The store's claim checks the
+principal, the permissions and the action's time (not before the park, not after the store's time)
+again in its transaction, records the refresh (`reauthorized`: actor, time, principal, permissions and
+the action's digest) and leases the run, bounded by every ceiling of the run, an unsettled approval's
+expiry included.
+
+**The continuation.** `reauthorizedRunStore({store, effectHost, resumed})` (Go
+`ReauthorizedRunStore`) is the fenced view the continuation runs on: unattended admission, the claim's
+fence (which must be the run's held lease), and one grant. The writer never sends again a dispatch it
+holds as unknown, except, once on that view, the operation the resumed wait names, whose recorded
+failure is the typed never-admitted refusal, when the run asks for exactly that request again: it is
+claimed again under its own identity and the effect host admits it for the first time. Nothing that
+may have been admitted is ever sent again: re-authorization is never retry permission. Where the run's
+continuation asks with a new request (a model adapter that issues a new call id), that is a new
+operation under its own approval policy and identity, and the never-admitted row keeps its typed
+failure and unknown outcome. ADR-0008's continuation restores an approved act call whose result was
+never written as executed with an unknown outcome and does not send it again, whatever the
+re-authorization: the person decides again in a new request.
+
+**What the host keeps.** The credentials, their refresh and the person's action are the host's; the
+package receives digests, labels and a bounded reference only, and none of them reaches a checkpoint,
+event, wait, attention event, export, report, prompt or error. The store's obligations (the fence and
+head checks at the park, the attached approval, the claim's checks and the recorded refresh, all across
+restarts) are certified by the wait conformance kit's `reauth.*` properties. Refusals are
+`ReauthorizationRefused` (`invalid`, `untrusted`, `used`, `stale`, `unbound`,
+`permission-insufficient`), with `ResumeRefused` `identity-changed` and the wait refusals above.
