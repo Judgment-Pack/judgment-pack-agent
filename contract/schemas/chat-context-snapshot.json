@@ -2,11 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/chat-context-snapshot.json",
   "title": "Chat context snapshot",
-  "description": "Complete canonical v1 chat state. Ordered opaque JSON source strings preserve request bytes. Native readers additionally enforce digests, table aliases/reachability, scope, sums, ordering and active-turn relationships.",
+  "description": "Complete canonical chat state. Version 2 has version 1's shape and says its cache rows were keyed only from arguments their JSON text says exactly (#271; vectors/chat/context-snapshot-v1-cache.json). A version 1 cache row may hold the answer to other arguments than its key names, so a version 1 snapshot still loads and restores with its entries and index and without its cache rows; a reader that supports only version 1 refuses version 2 by its version. Ordered opaque JSON source strings preserve request bytes. Native readers additionally enforce digests, table aliases/reachability, scope, sums, ordering and active-turn relationships.",
   "type": "object",
   "properties": {
     "version": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "scope": {
       "type": "string"
