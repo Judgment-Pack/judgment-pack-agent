@@ -182,6 +182,9 @@ files they were rendered from.
   (`cache-key.json`). Written by hand from the schema; `context/chat.test.ts` builds the same chat
   and holds the code to both, and the contract tests derive each row and digest again. This
   harness's (agent#8).
+  `read-arguments.json` states which raw argument texts may key a cached read at all (#271), in Go
+  and in TypeScript; `context/readKeys.test.ts` and `go/context/read_arguments_test.go` hold the
+  code to it, and the contract tests derive each outcome from its text.
 - Vectors added for the members the v0.2.0 release review found without one (#43), written by hand
   from the schemas: `delegation/record-resumed.json`, `delegation/answer-resumed.json` (a resumed,
   summarized task), `delegation/brief-partial.json` (an earlier exchange that stopped at its time

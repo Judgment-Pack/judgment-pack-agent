@@ -55,8 +55,11 @@ package runcontext
 // before, so the checkpoint's size is the run's and never the chat's.
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -91,11 +94,69 @@ func orObject(v *Value) *Value {
 // RUNTIME_IDENTITY_REFUSED in context/chat.ts). It is refused, never replaced with U+FFFD.
 const RuntimeIdentityRefused = "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate or is not valid UTF-8. Nothing was sent."
 
-// cacheableArguments reports whether a call's raw arguments may key a cached read (#246): they are
-// UTF-8 and every \u escape in them is a scalar value or half of an ordered surrogate pair, member
-// names included. ParseJSON reads a lone surrogate escape (and a byte that is not UTF-8) as U+FFFD,
-// so the check is made on the raw bytes, before they are read (scalarValue in context/chat.ts).
-func cacheableArguments(raw []byte) bool { return validReportUnicode(raw) }
+// cacheableArguments reports whether a call's raw arguments may key a cached read. Both caches key
+// from what ParseJSON reads and the tool is run with the raw bytes, so the check is made on the raw
+// bytes, before they are read. Empty is no arguments at all, which is {}.
+//
+// #246: they are UTF-8 and every \u escape in them is a scalar value or half of an ordered surrogate
+// pair, member names included: ParseJSON reads a lone surrogate escape (and a byte that is not UTF-8)
+// as U+FFFD (scalarValue in context/chat.ts).
+//
+// #271: they are exact (exactArguments).
+func cacheableArguments(raw []byte) bool {
+	return len(raw) == 0 || validReportUnicode(raw) && exactArguments(raw)
+}
+
+// exactArguments reports whether raw is one JSON object that its parsed form says exactly (#271):
+// nothing follows it, no object repeats a member name (the parsed form keeps the last value, where a
+// tool's own reader may keep another or merge them), and every number is written as the parsed form
+// writes it. A number that is not is out of range (1e400 reads as null), past what a float64 holds
+// (9007199254740993 reads as 9007199254740992), or another spelling of its value (1.0, 1e2, -0), and
+// the tool is still run with what was written. Two exact arguments share a key only where they differ
+// in whitespace, member order or a string's escapes, which the published key form leaves out and a
+// JSON reader cannot tell apart (exactArguments in context/chat.ts, whose arguments are already read).
+func exactArguments(raw []byte) bool {
+	if text := bytes.TrimLeft(raw, " \t\r\n"); len(text) == 0 || text[0] != '{' {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if !exactValue(decoder) {
+		return false
+	}
+	_, err := decoder.Token()
+	return err == io.EOF
+}
+
+func exactValue(decoder *json.Decoder) bool {
+	token, err := decoder.Token()
+	if err != nil {
+		return false
+	}
+	switch held := token.(type) {
+	case json.Number:
+		number, err := strconv.ParseFloat(string(held), 64)
+		return err == nil && jsNumber(number) == string(held)
+	case json.Delim:
+		names := map[string]bool{}
+		for decoder.More() {
+			if held == '{' {
+				token, err := decoder.Token()
+				name, _ := token.(string)
+				if err != nil || names[name] {
+					return false
+				}
+				names[name] = true
+			}
+			if !exactValue(decoder) {
+				return false
+			}
+		}
+		_, err := decoder.Token()
+		return err == nil
+	}
+	return true
+}
 
 // ReadCacheKeyOf is readCacheKey: the key a chat's read cache keeps one immutable read under, and
 // false where the read cannot be kept across runs — its result depends on the Runtime and the
@@ -105,9 +166,9 @@ func cacheableArguments(raw []byte) bool { return validReportUnicode(raw) }
 // {}. The key is made from the raw bytes, not from a parsed Value, because ParseJSON reads a lone
 // UTF-16 surrogate escape as U+FFFD: \ud800, \ud801 and a literal U+FFFD would share one key. There
 // is no key where the arguments hold a lone surrogate escape or bytes that are not UTF-8 (in a
-// value or a member name), where they are not one JSON object, or where the tool name or the
-// Runtime's identity or version is not valid UTF-8, which is how a lone surrogate reaches a Go
-// string.
+// value or a member name), where they are not one JSON object or their parsed form does not say them
+// exactly (#271, exactArguments), or where the tool name or the Runtime's identity or version is not
+// valid UTF-8, which is how a lone surrogate reaches a Go string.
 func ReadCacheKeyOf(tool string, arguments json.RawMessage, runtimeBound bool, runtime *RuntimeIdentity) (string, bool) {
 	if runtimeBound && (runtime == nil || runtime.Identity == "" || runtime.Version == "") {
 		return "", false

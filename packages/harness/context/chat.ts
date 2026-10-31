@@ -82,6 +82,30 @@ export function scalarValue(value:unknown):boolean{
  return true
 }
 
+/** True where value is one JSON holds and its JSON text reads back as the same value: not a number JSON.stringify writes as another (a non-finite one as null, -0 as 0), and nothing it writes as something else or leaves out. */
+function exactValue(value:unknown):boolean{
+ if(value===null||typeof value==='string'||typeof value==='boolean')return true
+ if(typeof value==='number')return Number.isFinite(value)&&!Object.is(value,-0)
+ if(Array.isArray(value)){
+  for(let at=0;at<value.length;at++)if(!exactValue(value[at]))return false
+  return true
+ }
+ if(typeof value!=='object')return false
+ const prototype:unknown=Object.getPrototypeOf(value)
+ return (prototype===null||Object.getPrototypeOf(prototype)===null)&&Object.values(value).every(exactValue)
+}
+
+/**
+ * True where a call's arguments may key a cached read (#271): one JSON object whose JSON text says it
+ * exactly. Go runs a tool with the bytes the model wrote and also refuses arguments its parsed form
+ * does not say exactly (repeated names, a number that does not read back as written:
+ * `exactArguments` in go/context/chat.go); here JSON.parse has already read those, and the tool is run
+ * with what it read, so they key as what is run.
+ */
+export function exactArguments(args:unknown):boolean{
+ return args!==null&&typeof args==='object'&&!Array.isArray(args)&&exactValue(args)
+}
+
 /**
  * The object a chat's read cache keys one result by; the key is the SHA-256 of its canonical JSON
  * (`canonicalJSON`). The contract's `tool-result.json#/$defs/readCacheKey`.
@@ -105,11 +129,13 @@ export function canonicalJSON(value:unknown):string{
  * The key a chat's read cache keeps one immutable read under, or undefined where the read cannot be
  * kept across runs: its result depends on the Runtime and the host has not said which one it is, or a
  * string the key would hold (the tool, an argument or member name, the Runtime's identity or version)
- * has a lone UTF-16 surrogate (#246), which Go's reading of the same key cannot hold.
+ * has a lone UTF-16 surrogate (#246), which Go's reading of the same key cannot hold, or the arguments
+ * are not one object their JSON text says exactly (#271, `exactArguments`).
  */
 export async function readCacheKey(tool:string,args:Record<string,unknown>,runtimeBound:boolean,runtime?:RuntimeIdentity):Promise<string|undefined>{
  if(runtimeBound&&(runtime===undefined||!runtime.identity||!runtime.version))return undefined
  if(runtimeBound&&(!scalarText(runtime!.identity)||!scalarText(runtime!.version))||!scalarText(tool)||!scalarValue(args))return undefined
+ if(!exactArguments(args))return undefined
  const key:ReadCacheKey={tool,arguments:args,...(runtimeBound?{runtime:{identity:runtime!.identity,version:runtime!.version}}:{})}
  return contextDigest(canonicalJSON(key))
 }
