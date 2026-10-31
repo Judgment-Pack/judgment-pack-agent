@@ -9765,6 +9765,114 @@
   "status": "caught",
   "origin": "agent#246",
   "note": "Go twin (by hand): !utf8.ValidString(tool) dropped from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ (the tool-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
+},
+{
+  "name": "read-cache key takes arguments their JSON text does not say",
+  "file": "context/chat.ts",
+  "find": " if(!exactArguments(args))return undefined\n",
+  "replace": "",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): ReadCacheKeyOf checks validReportUnicode alone in go/context/chat.go; caught at ^TestTheReadArgumentsVectorKeys$."
+},
+{
+  "name": "read wrapper caches arguments their JSON text does not say",
+  "file": "execution/controller.ts",
+  "find": "&&scalarValue(args)&&exactArguments(args)",
+  "replace": "&&scalarValue(args)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): cacheable := immutable && validReportUnicode(raw) in go/context/controller.go WrapRead; caught at ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$, ^TestARuntimeReadIsServedNoOtherCallsAnswer$ and, through both adapters, ^TestAModelToolCallIsAnsweredForItsOwnArguments$."
+},
+{
+  "name": "read-cache key takes arguments that are not one object",
+  "file": "context/chat.ts",
+  "find": "return args!==null&&typeof args==='object'&&!Array.isArray(args)&&exactValue(args)",
+  "replace": "return exactValue(args)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the first-byte check dropped from go/context/chat.go exactArguments; [1] then reads as {} and is served {}'s answer, caught at ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$ and ^TestArgumentsThatAreNotAnObjectAreAnsweredForThemselves$."
+},
+{
+  "name": "read-cache key takes a number that is not finite",
+  "file": "context/chat.ts",
+  "find": "return Number.isFinite(value)&&!Object.is(value,-0)",
+  "replace": "return !Object.is(value,-0)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the written-form comparison in go/context/chat.go exactValue dropped; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$."
+},
+{
+  "name": "read-cache key takes negative zero",
+  "file": "context/chat.ts",
+  "find": "return Number.isFinite(value)&&!Object.is(value,-0)",
+  "replace": "return Number.isFinite(value)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): string(held) == \"-0\" admitted ahead of the written-form comparison in go/context/chat.go exactValue; caught at ^TestTheReadArgumentsVectorKeys$."
+},
+{
+  "name": "read-cache key takes a value JSON does not hold",
+  "file": "context/chat.ts",
+  "find": "return (prototype===null||Object.getPrototypeOf(prototype)===null)&&Object.values(value)",
+  "replace": "return Object.values(value)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin: none; a Go call's arguments are bytes, which are JSON or get no key (^TestTheReadWrapperServesNoCallAnotherCallsAnswer$, the rows of text that is not JSON)."
+},
+{
+  "name": "read-cache key takes what is not a JSON kind",
+  "file": "context/chat.ts",
+  "find": " if(typeof value!=='object')return false\n",
+  "replace": "",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin: none; a Go call's arguments are bytes, which are JSON or get no key."
+},
+{
+  "name": "read-cache key does not look inside an array",
+  "file": "context/chat.ts",
+  "find": " for(let at=0;at<value.length;at++)if(!exactValue(value[at]))return false\n",
+  "replace": "",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the recursive exactValue result ignored in go/context/chat.go; caught at ^TestTheReadArgumentsVectorKeys$ (out of range and nested) and ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$."
+},
+{
+  "name": "read-cache key does not look inside an object",
+  "file": "context/chat.ts",
+  "find": "Object.getPrototypeOf(prototype)===null)&&Object.values(value).every(exactValue)",
+  "replace": "Object.getPrototypeOf(prototype)===null)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the recursive exactValue result ignored in go/context/chat.go; caught at ^TestTheReadArgumentsVectorKeys$ (out of range and nested) and ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$."
 }
  ]
 }

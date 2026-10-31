@@ -23446,7 +23446,11 @@ func (v ToolResultReadArguments) MarshalJSON() ([]byte, error) {
 // sequence of Unicode scalar values (#246): a read whose tool, arguments or Runtime identity or
 // version would put a lone UTF-16 surrogate in its key gets no key and is kept in neither cache,
 // and a run whose context.runtime holds one is refused before anything is sent; a lone surrogate
-// is never replaced with U+FFFD.
+// is never replaced with U+FFFD. A read's arguments key a cache only as one JSON object their
+// canonical JSON says exactly (#271): arguments that are not an object, a number with no JSON text
+// of its own (out of range, negative zero) and, where the tool is run with the bytes the model
+// wrote (Go), a repeated member name and a number not written as JSON.stringify writes it get no
+// key and are kept in neither cache (vectors/chat/read-arguments.json).
 type ToolResultReadCacheKey struct {
 	Tool      string                         `json:"tool"`
 	Arguments map[string]json.RawMessage     `json:"arguments"`

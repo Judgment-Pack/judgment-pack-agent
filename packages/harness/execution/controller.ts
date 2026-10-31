@@ -7,7 +7,7 @@ import type {ContextToolPolicy} from '../context/toolPolicy'
 import {authoredFailure,toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
 import {answer,contextDigest,type ContextLedger} from '../context/ledger'
-import {readCacheKey,scalarValue,canonicalJSON as importCanonicalPlan} from '../context/chat'
+import {exactArguments,readCacheKey,scalarValue,canonicalJSON as importCanonicalPlan} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
@@ -339,7 +339,8 @@ export class ExecutionController {
    if((name==='read_window'||name==='read_context')&&typeof args.id==='string'&&args.id.startsWith('draft:'))return execute(args)
    const chat=kept?this.ledger.chat:undefined
    // #246: arguments with a lone UTF-16 surrogate are neither served from nor kept in either cache; Go reads them as U+FFFD.
-   const cacheable=immutable&&scalarValue(args)
+   // #271: neither are arguments that are not one object their JSON text says exactly: the keys are made from that text.
+   const cacheable=immutable&&scalarValue(args)&&exactArguments(args)
    const chatKey=chat&&cacheable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
    // The cache serves only a name the run's session offers: an unoffered name goes on to the inner offer check and the gate, and a served entry never joins a child's visible set.
    if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey);if(held)return held}

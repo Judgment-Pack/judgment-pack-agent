@@ -1439,7 +1439,15 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   chat's cache nor the run's: Go's JSON reader turns a lone surrogate escape into U+FFFD, so two
   different arguments would share a key, and Go's `ReadCacheKeyOf` therefore takes the raw
   argument bytes. A lone surrogate is never replaced; a valid surrogate pair and a literal U+FFFD key as
-  written (`contract/vectors/chat/runtime-identity.json`). A mutable tool is never served from the cache. The cache serves only a name the
+  written (`contract/vectors/chat/runtime-identity.json`). Both caches key from the arguments as read,
+  so a read's arguments key a cache only as one JSON object that reading says exactly (#271): anything
+  else would let one call be served another's answer. Arguments that are not an object, and a number
+  with no JSON text of its own (out of range, negative zero), get no key and are kept in neither cache.
+  Go runs the tool with the bytes the model wrote, so it refuses as well a repeated member name and any
+  number not written as `JSON.stringify` writes it (`1.0`, `1e2`, `9007199254740993`); TypeScript runs
+  the tool with what `JSON.parse` read, so it keys those as what runs
+  (`contract/vectors/chat/read-arguments.json`). Whitespace, member order and a string's escapes stay out of
+  the key. A mutable tool is never served from the cache. The cache serves only a name the
   run's session offers: for a name it does not offer (a delegated child's profile that lacks the
   tool), the call goes on to the offer check and the gate as any other, and the cached entry is not
   added to the run's view. A cached result is the ledger's entry for it: evicted, it is no longer
