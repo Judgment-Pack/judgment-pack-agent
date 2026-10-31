@@ -148,6 +148,75 @@ func (s anyKey) WakeWait(ctx context.Context, evidence WakeEvidence) (WakeDispos
 	return s.durableWaitStore.WakeWait(ctx, evidence)
 }
 
+// #226: store kinds that leave a re-authorization guarantee out.
+// anyLease is a store kind whose park takes any disposition as the park's own.
+type anyLease struct{ durableWaitStore }
+
+func (s anyLease) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	if park.Reauthorization != nil {
+		held := *park.Reauthorization
+		held.Fence = fence
+		park.Reauthorization = &held
+	}
+	return s.durableWaitStore.ParkWait(ctx, park, fence)
+}
+
+// anyPrincipal is a store kind whose claim takes any principal as the parked one.
+type anyPrincipal struct{ durableWaitStore }
+
+func (s anyPrincipal) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if held, _ := s.ReadWait(ctx, claim.Resource, claim.Wait); claim.Reauthorized != nil && held != nil && held.Reauthorization != nil {
+		refresh := *claim.Reauthorized
+		refresh.Principal = held.Reauthorization.Principal
+		claim.Reauthorized = &refresh
+	}
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+// oldPermissions is a store kind whose claim takes the permissions the credentials held at the park.
+type oldPermissions struct{ durableWaitStore }
+
+func (s oldPermissions) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if held, _ := s.ReadWait(ctx, claim.Resource, claim.Wait); claim.Reauthorized != nil && held != nil && held.Reauthorization != nil {
+		refresh := *claim.Reauthorized
+		refresh.Permissions = held.Reauthorization.Permissions
+		claim.Reauthorized = &refresh
+	}
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+// noApproval is a store kind whose park does not attach the run's unsettled approval.
+type noApproval struct{ durableWaitStore }
+
+func (s noApproval) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	if park.Reauthorization == nil {
+		return s.durableWaitStore.ParkWait(ctx, park, fence)
+	}
+	s.mu.Lock()
+	saved := s.waits.approvals
+	s.waits.approvals = map[string]waitApproval{}
+	s.mu.Unlock()
+	defer func() { s.mu.Lock(); s.waits.approvals = saved; s.mu.Unlock() }()
+	return s.durableWaitStore.ParkWait(ctx, park, fence)
+}
+
+// losesRefresh is a factory whose restart loses the refresh a claim recorded.
+func losesRefresh() WaitStoreFactory {
+	inner := memoryWaitKind(durableKind)
+	return func(now func() time.Time, from WaitRunStore) WaitRunStore {
+		next := inner(now, from)
+		if from != nil {
+			store := next.(durableWaitStore)
+			for _, rows := range store.waits.rows {
+				for _, row := range rows {
+					row.Reauthorized = nil
+				}
+			}
+		}
+		return next
+	}
+}
+
 func TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy(t *testing.T) {
 	ctx := context.Background()
 	if err := CheckRunStoreWaitConformance(ctx, memoryWaitKind(durableKind)); err != nil {
@@ -172,6 +241,11 @@ func TestWaitConformanceKitNamesTheGuaranteeAStoreLeavesOut(t *testing.T) {
 		{"a restart that loses the run's deadline", memoryWaitKind(durableKind, "ceilings"), "wait.restart.earliest"},
 		{"a restart that loses the waits", memoryWaitKind(durableKind, "rows", "events"), "wait.restart.parked"},
 		{"a factory that fails", func(func() time.Time, WaitRunStore) WaitRunStore { panic("unavailable") }, "wait.operation"},
+		{"#226: a park that takes a proof minted under another lease", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return anyLease{durableWaitStore{store}} }), "reauth.park.stale"},
+		{"#226: a claim that takes any principal", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return anyPrincipal{durableWaitStore{store}} }), "reauth.claim.identity"},
+		{"#226: a claim that takes the parked permissions", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return oldPermissions{durableWaitStore{store}} }), "reauth.claim.narrower"},
+		{"#226: a park that does not attach the unsettled approval", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return noApproval{durableWaitStore{store}} }), "reauth.approval.bound"},
+		{"#226: a restart that loses the claim's refresh", losesRefresh(), "reauth.restart.claimed"},
 	} {
 		var failure *StorageConformanceFailure
 		if err := CheckRunStoreWaitConformance(ctx, c.create); !errors.As(err, &failure) || failure.Property != c.property {

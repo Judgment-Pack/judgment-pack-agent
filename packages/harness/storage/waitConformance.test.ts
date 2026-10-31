@@ -5,8 +5,8 @@ import {answerWith} from '../testing/scenarioDriver'
 import {toolListDigest} from '../toolSources'
 import {StorageConformanceFailure} from './conformance'
 import {MemoryRunStore,type RunStore} from './run'
-import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseAcquire,type LeaseLifetime} from './lease'
-import {parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitLifetime,type WaitRunStore,type WakeEvidence} from './wait'
+import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseAcquire,type LeaseFence,type LeaseLifetime} from './lease'
+import {parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import {runStoreWaitConformance} from './waitConformance'
 
 /* #265 M6: the wait conformance kit over the memory kind, a real restart over a fresh store instance, and stores that
@@ -45,6 +45,24 @@ describe('the wait conformance kit (#265 M6)',()=>{
   await expect(runStoreWaitConformance(memoryKind(['waits.ceilings']))).rejects.toEqual(fails('wait.restart.earliest'))
   await expect(runStoreWaitConformance(memoryKind(['waits.rows','waits.events']))).rejects.toEqual(fails('wait.restart.parked'))
   await expect(runStoreWaitConformance(()=>{throw new Error('unavailable')})).rejects.toBeInstanceOf(StorageConformanceFailure)
+ })
+ it('#226: a store that leaves a re-authorization guarantee out fails the property that names it',async()=>{
+  const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
+  // A park that takes any disposition as the park's own: a proof minted under another lease is parked.
+  class AnyLease extends DurableWaitStore {override parkWait(park:WaitPark,fence:LeaseFence){return super.parkWait(park.reauthorization?{...park,reauthorization:{...park.reauthorization,fence}}:park,fence)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new AnyLease({now})))).rejects.toEqual(fails('reauth.park.stale'))
+  // A claim that takes any principal as the parked one: a replaced identity continues as a refresh.
+  class AnyPrincipal extends DurableWaitStore {override async resumeWait(claim:WaitClaim){const held=await this.readWait(claim.resource,claim.wait);return super.resumeWait(claim.reauthorized&&held?.reauthorization?{...claim,reauthorized:{...claim.reauthorized,principal:held.reauthorization.principal}}:claim)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new AnyPrincipal({now})))).rejects.toEqual(fails('reauth.claim.identity'))
+  // A claim that takes the permissions the credentials held at the park: narrower ones after the refresh pass.
+  class OldPermissions extends DurableWaitStore {override async resumeWait(claim:WaitClaim){const held=await this.readWait(claim.resource,claim.wait);return super.resumeWait(claim.reauthorized&&held?.reauthorization?{...claim,reauthorized:{...claim.reauthorized,permissions:held.reauthorization.permissions}}:claim)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new OldPermissions({now})))).rejects.toEqual(fails('reauth.claim.narrower'))
+  // A park that does not attach the run's unsettled approval.
+  class NoApproval extends DurableWaitStore {override async parkWait(park:WaitPark,fence:LeaseFence){const approvals=(this as unknown as {waits:{approvals:Map<string,unknown>}}).waits.approvals,saved=new Map(approvals);if(park.reauthorization)approvals.clear();try{return await super.parkWait(park,fence)}finally{for(const [k,v] of saved)approvals.set(k,v)}}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new NoApproval({now})))).rejects.toEqual(fails('reauth.approval.bound'))
+  // A restart that loses the refresh a claim recorded.
+  const losesRefresh=(now:()=>Date,from?:WaitRunStore)=>{const next=memoryKind()(now,from);if(from)for(const list of (next as unknown as {waits:{rows:Map<string,{reauthorized?:unknown}[]>}}).waits.rows.values())for(const row of list)delete row.reauthorized;return next}
+  await expect(runStoreWaitConformance(losesRefresh)).rejects.toEqual(fails('reauth.restart.claimed'))
  })
 })
 

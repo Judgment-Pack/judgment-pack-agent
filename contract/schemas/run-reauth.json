@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-reauth.json",
+  "title": "Run re-authorization",
+  "description": "Version 1 records of re-authorization for unattended runs (ADR-0025 decision 4, #226). The root is the trusted, invocation-bound host disposition: the effect host refused one exact admission (its fence, operation and idempotency key) at its own admission boundary because the connection's credentials were expired or revoked, before it admitted the operation or performed anything. The package trusts it only when the effect host proven for the run's store minted it during that live dispatch, once, and the operation was never performed; a record alone, an error a tool returned or a raw provider error is never this proof, and an operation that may have been admitted keeps its unknown outcome. Credentials, tokens and raw provider errors are never carried: the principal is the SHA-256 of the host's principal identity, the connection a bounded reference, and permissions are scope labels. Rules the readers hold that JSON Schema does not state: operation.run, fence.resource and resource are one run; idempotencyKey is the SHA-256 of the operation's canonical JSON; permissions and requires are sorted in UTF-8 byte order without repeats.",
+  "type": "object",
+  "required": [
+    "version",
+    "resource",
+    "operation",
+    "idempotencyKey",
+    "fence",
+    "cause",
+    "connection",
+    "principal",
+    "permissions",
+    "requires"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "resource": {
+      "$ref": "#/$defs/identifier",
+      "description": "The run the operation belongs to."
+    },
+    "operation": {
+      "$ref": "run-lease.json#/$defs/operation",
+      "description": "The idempotency identity of the operation the effect host refused: never admitted, never performed."
+    },
+    "idempotencyKey": {
+      "$ref": "#/$defs/digest",
+      "description": "The SHA-256 of the operation's canonical JSON, as the effect host keys its admissions."
+    },
+    "fence": {
+      "$ref": "run-lease.json#/$defs/fence",
+      "description": "The fence of the refused admission: the lease the dispatch ran under. A park presents the same fence."
+    },
+    "cause": {
+      "description": "expired: the connection's credentials expired. revoked: they were revoked.",
+      "enum": [
+        "expired",
+        "revoked"
+      ]
+    },
+    "connection": {
+      "$ref": "#/$defs/connection"
+    },
+    "principal": {
+      "$ref": "#/$defs/digest",
+      "description": "The SHA-256 of the principal identity the credentials acted as. The identity itself is never carried."
+    },
+    "permissions": {
+      "$ref": "#/$defs/labels",
+      "description": "The scope labels the refused credentials held."
+    },
+    "requires": {
+      "$ref": "#/$defs/labels",
+      "description": "The scope labels the operation needs. After a refresh, permissions that do not cover them make the operation inadmissible."
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "description": "An opaque storage identifier: 1 to 256 UTF-8 bytes, no control characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "time": {
+      "description": "UTC with exactly millisecond precision.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "connection": {
+      "description": "A bounded reference to the host's connection: 1 to 64 characters, a letter or digit then letters, digits, '.', '_', ':' or '-'. A reference, never a credential.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
+    "label": {
+      "description": "A permission scope label: 1 to 128 characters, a letter or digit then letters, digits, '.', '_', ':', '/' or '-'.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "labels": {
+      "description": "At most 64 scope labels, sorted in UTF-8 byte order, without repeats.",
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/label"
+      }
+    },
+    "action": {
+      "type": "object",
+      "description": "The explicit host or person action a re-authorization resume presents: the connection's credentials refreshed for the same principal, or replaced by another. A replacement, or a refresh whose principal is not the parked one, is a changed identity: it never continues the wait (a new admitted run is needed, ADR-0019). at is when the action was taken; it is not before the park and not after the store's time.",
+      "required": [
+        "version",
+        "resource",
+        "wait",
+        "connection",
+        "action",
+        "principal",
+        "permissions",
+        "actor",
+        "at"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/identifier"
+        },
+        "wait": {
+          "$ref": "#/$defs/identifier"
+        },
+        "connection": {
+          "$ref": "#/$defs/connection"
+        },
+        "action": {
+          "enum": [
+            "refresh",
+            "replacement"
+          ]
+        },
+        "principal": {
+          "$ref": "#/$defs/digest",
+          "description": "The SHA-256 of the principal identity the connection acts as now."
+        },
+        "permissions": {
+          "$ref": "#/$defs/labels",
+          "description": "The scope labels the connection holds now."
+        },
+        "actor": {
+          "$ref": "#/$defs/identifier",
+          "description": "The host-attested person or host component that took the action."
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "reauthorized": {
+      "type": "object",
+      "description": "What a re-authorization wait's claim recorded: the refresh that continued it (its actor and time, the principal, which is the parked one, and the permissions held now, which cover what the operation requires) and the digest of the action record.",
+      "required": [
+        "actor",
+        "at",
+        "principal",
+        "permissions",
+        "digest"
+      ],
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/identifier"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "principal": {
+          "$ref": "#/$defs/digest"
+        },
+        "permissions": {
+          "$ref": "#/$defs/labels"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest",
+          "description": "The SHA-256 of the action record's canonical JSON."
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "A named re-authorization refusal. Nothing was parked, claimed or dispatched. invalid: a malformed disposition, action or claim. untrusted: the disposition was not minted by the run's proven effect host during its live dispatch of that exact admission, was minted twice, or came with the operation performed. used: the disposition already parked a wait. stale: the disposition is bound to another lease than the park's, or the action predates the park or postdates the store's time. unbound: the run's head does not hold the operation as the never-admitted dispatch the disposition names. permission-insufficient: the connection's current permissions do not cover what the operation requires.",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "invalid",
+            "untrusted",
+            "used",
+            "stale",
+            "unbound",
+            "permission-insufficient"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

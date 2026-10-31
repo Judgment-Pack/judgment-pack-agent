@@ -9497,8 +9497,8 @@
   {
    "name": "resume R2 the claim's result is taken as given",
    "file": "storage/wait.ts",
-   "find": " const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation},input.signal),wait,lease,revalidation)",
-   "replace": " const claimed=await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation},input.signal)",
+   "find": " const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation,...(reauthorized?{reauthorized}:{})},input.signal),wait,lease,revalidation,reauthorized)",
+   "replace": " const claimed=await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation,...(reauthorized?{reauthorized}:{})},input.signal)",
    "tests": [
     "storage/waitReview.test.ts"
    ],
@@ -9509,8 +9509,8 @@
   {
    "name": "resume R3 the claim's lease may outlive the approval",
    "file": "storage/wait.ts",
-   "find": "||bound.some(t=>expiry>at(t)))return invalid()",
-   "replace": ")return invalid()",
+   "find": "||bound.some(t=>expiry>at(t))\n",
+   "replace": "\n",
    "tests": [
     "storage/waitReview.test.ts"
    ],
@@ -9521,7 +9521,7 @@
   {
    "name": "deadline D24 a later run limit does not reach the wait",
    "file": "storage/wait.ts",
-   "find": "   row.deadline=stampDeadline(row.limits,parked,Math.max(next,parked+1))",
+   "find": "   row.deadline=stampDeadline(row.limits,parked,Math.max(next,parked+1),row.reason==='reauthorization'&&row.deadline?.approval!==undefined?at(row.deadline.approval):undefined)",
    "replace": "   void parked",
    "tests": [
     "storage/waitReview.test.ts",
@@ -9660,8 +9660,8 @@
   {
    "name": "wait W34 parkRun releases the caller's lease when the store refuses the park",
    "file": "storage/wait.ts",
-   "find": " return store.parkWait(park,fence,input.signal)\n}",
-   "replace": " return store.parkWait(park,fence,input.signal).catch(async error=>{await store.releaseLease(fence,input.signal).catch(()=>undefined);throw error})\n}",
+   "find": " const parked=await store.parkWait(park,fence,input.signal)\n",
+   "replace": " const parked=await store.parkWait(park,fence,input.signal).catch(async error=>{await store.releaseLease(fence,input.signal).catch(()=>undefined);throw error})\n",
    "tests": [
     "storage/waitReview.test.ts"
    ],
@@ -9765,6 +9765,282 @@
   "status": "caught",
   "origin": "agent#246",
   "note": "Go twin (by hand): !utf8.ValidString(tool) dropped from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ (the tool-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
-}
+},
+  {
+   "name": "reauth A1 a refusal minted and then performed is trusted",
+   "file": "storage/lease.ts",
+   "find": "attempt.minted!==undefined&&error===attempt.minted&&!attempt.performed",
+   "replace": "attempt.minted!==undefined&&error===attempt.minted",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the attempt.performed term of the trust decision in fencedEffect; caught at ^TestReauthTheBoundaryTrustsOnlyALiveMint$ (refused, then performed)."
+  },
+  {
+   "name": "reauth A2 a second mint for one admission is trusted",
+   "file": "storage/lease.ts",
+   "find": "if(!attempt.live||attempt.performed||attempt.minted!==undefined||!held)",
+   "replace": "if(!attempt.live||attempt.performed||!held)",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the attempt.minted != nil term in NewReauthorizationRequired; caught at ^TestReauthTheBoundaryTrustsOnlyALiveMint$ (minted twice)."
+  },
+  {
+   "name": "reauth A3 a refusal carrying a credential is trusted",
+   "file": "storage/lease.ts",
+   "find": "held=readCredentialRefusal(refusal)",
+   "replace": "held=refusal as CredentialRefusal|undefined",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop validCredentialRefusal(refusal) in NewReauthorizationRequired; caught at ^TestReauthTheBoundaryTrustsOnlyALiveMint$ (a principal that is not a digest, a connection that is not bounded, unsorted permissions)."
+  },
+  {
+   "name": "reauth A4 a refusal from a host nobody proved for the store is trusted",
+   "file": "storage/lease.ts",
+   "find": "&&!attempt.invalid&&provenAuthority(host)===(lease.store as object)){",
+   "replace": "&&!attempt.invalid){",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop sameAuthority(provenAuthority(view.host), view.store) in fencedEffect; caught at ^TestReauthTheBoundaryTrustsOnlyALiveMint$ (an unproven host)."
+  },
+  {
+   "name": "reauth A5 the reference host admits the operation before its credential check",
+   "file": "storage/lease.ts",
+   "find": "    if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n    this.#admitted.add(held.idempotencyKey)",
+   "replace": "    this.#admitted.add(held.idempotencyKey)\n    if(refused!==undefined)throw reauthorizationRequired(admission,refused)",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): in ReferenceEffectHost.admit, record h.admitted[key] before the credential check; caught at ^TestReauthorizationWaitThroughTheAdapters$ (the re-authorized call is refused already-admitted and never runs)."
+  },
+  {
+   "name": "reauth A6 a used proof parks again",
+   "file": "storage/lease.ts",
+   "find": "return held&&!held.used?structuredClone(held.disposition):undefined",
+   "replace": "return held?structuredClone(held.disposition):undefined",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the used term in reauthDispositionOf; caught at ^TestReauthorizationWaitThroughTheAdapters$ (a used proof)."
+  },
+  {
+   "name": "reauth A7 the writer goes on past a trusted refusal",
+   "file": "storage/writer.ts",
+   "find": "   else if((kind==='host'||kind==='runtime')&&trustedReauthorization(error)){this.dispatchClosed=true;this.closure=error}\n",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the trustedReauthorization branch that closes dispatch at the end of the writer's dispatch; caught at ^TestReauthorizationWaitThroughTheAdapters$ (the head no longer holds the never-admitted dispatch: unbound)."
+  },
+  {
+   "name": "reauth A8 the writer sends again any dispatch it holds as unknown",
+   "file": "storage/writer.ts",
+   "find": "&&takeReauthorizedDispatch(this.store,{run:this.id,operation:reused.id,source,tool,requestDigest:reused.requestDigest},reused.failure)){",
+   "replace": "){",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): in the writer's reuse loop, re-claim every unknown host or Runtime row without takeReauthorizedDispatch; caught at ^TestReauthorizationNoUnknownDispatchIsSentAgainWithoutAGrant$."
+  },
+  {
+   "name": "reauth S1 the store parks a disposition minted under another lease",
+   "file": "storage/wait.ts",
+   "find": "   if(disposition.fence.owner!==held.owner||disposition.fence.epoch!==held.epoch||disposition.fence.resource!==held.resource)throw new ReauthorizationRefused('stale')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the fence comparison in WaitTable.Park; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.park.stale)."
+  },
+  {
+   "name": "reauth S2 the store parks over a head that does not hold the never-admitted dispatch",
+   "file": "storage/wait.ts",
+   "find": "   if(!holdsNeverAdmitted(head.checkpoint,disposition))throw new ReauthorizationRefused('unbound')\n   unsettled=this.approvals.get(park.resource)",
+   "replace": "   unsettled=this.approvals.get(park.resource)",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the HoldsNeverAdmitted check in WaitTable.Park; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.park.unbound)."
+  },
+  {
+   "name": "reauth S3 the claim takes another principal",
+   "file": "storage/wait.ts",
+   "find": "   if(refresh.principal!==disposition.principal)throw new ResumeRefused('identity-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the principal comparison in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.claim.identity)."
+  },
+  {
+   "name": "reauth S4 the claim takes permissions that do not cover the operation",
+   "file": "storage/wait.ts",
+   "find": "   if(!permitted(disposition.requires,refresh.permissions))throw new ReauthorizationRefused('permission-insufficient')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the permitted check in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.claim.narrower)."
+  },
+  {
+   "name": "reauth S5 the claim takes a refresh from before the park",
+   "file": "storage/wait.ts",
+   "find": "if(at(refresh.at)<at(row.parked.at)||at(refresh.at)>at(now))",
+   "replace": "if(at(refresh.at)>at(now))",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the park-time comparison in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.claim.before-park)."
+  },
+  {
+   "name": "reauth S6 the claim continues a reauthorization wait with no refresh",
+   "file": "storage/wait.ts",
+   "find": "if((row.reason==='reauthorization')!==(claim.reauthorized!==undefined))",
+   "replace": "if(row.reason!=='reauthorization'&&claim.reauthorized!==undefined)",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): refuse only a refresh on another reason in WaitTable.Resume; caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$ (reauth.claim.required)."
+  },
+  {
+   "name": "reauth S7 the store does not attach the run's unsettled approval",
+   "file": "storage/wait.ts",
+   "find": "const wait:RunWait={...copy(park),...(unsettled?{approval:copy(unsettled.binding)}:{}),",
+   "replace": "const wait:RunWait={...copy(park),",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop wait.Approval = the unsettled binding in WaitTable.Park (the deadline still names the expiry, so the reader refuses the record); caught at ^TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy$."
+  },
+  {
+   "name": "reauth R1 a replacement continues as a refresh",
+   "file": "storage/reauth.ts",
+   "find": "if(action.action!=='refresh'||action.principal!==disposition.principal)",
+   "replace": "if(action.principal!==disposition.principal)",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the action != refresh term in Reauthorize; caught at ^TestReauthActionVectorsBothReaders$ (a replacement)."
+  },
+  {
+   "name": "reauth R2 narrower permissions that do not cover the operation continue",
+   "file": "storage/reauth.ts",
+   "find": " if(!permitted(disposition.requires,action.permissions))throw new ReauthorizationRefused('permission-insufficient')\n",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the permitted check in Reauthorize; caught at ^TestReauthActionVectorsBothReaders$ (permissions after the refresh that no longer cover the operation)."
+  },
+  {
+   "name": "reauth R3 an action from before the park continues",
+   "file": "storage/reauth.ts",
+   "find": " if(Date.parse(action.at)<Date.parse(wait.parked.at))throw new ReauthorizationRefused('stale')\n",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the park-time comparison in Reauthorize; caught at ^TestReauthActionVectorsBothReaders$ (an action from before the park)."
+  },
+  {
+   "name": "reauth H1 any row the head holds is taken as the never-admitted dispatch",
+   "file": "storage/wait.ts",
+   "find": "const row=rows[rows.length-1] as Record<string,unknown>",
+   "replace": "const row=(rows.find(r=>(r as {id?:unknown})?.id===disposition.operation.operation)??rows[rows.length-1]) as Record<string,unknown>",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): in HoldsNeverAdmitted, take the row with the operation's id wherever it is; caught at ^TestReauthDispositionVectorsBothReaders$ (another dispatch came after it)."
+  },
+  {
+   "name": "reauth H2 any failure of the row is taken as never admitted",
+   "file": "storage/wait.ts",
+   "find": "&&failed.outcome==='not-started'",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the outcome comparison in HoldsNeverAdmitted; caught at ^TestReauthDispositionVectorsBothReaders$ (a refused outcome; a raw 401 after admission)."
+  },
+  {
+   "name": "reauth D1 a disposition keyed by another operation is read",
+   "file": "storage/reauth.ts",
+   "find": "||within(()=>effectIdempotencyKey(disposition.operation))!==disposition.idempotencyKey",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the key comparison in ReadReauthDisposition; caught at ^TestReauthDispositionVectorsBothReaders$ (the key of another operation)."
+  },
+  {
+   "name": "reauth D2 a recorded refresh for another principal is read",
+   "file": "storage/wait.ts",
+   "find": "if(reauthorized.principal!==disposition.principal||",
+   "replace": "if(",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the principal comparison of reauthorized in ReadRunWait; caught at ^TestWaitSharedVectorsBothReaders$ (a refresh for another principal)."
+  },
+  {
+   "name": "reauth D3 a reauthorization wait's pending operation need not be its disposition's",
+   "file": "storage/wait.ts",
+   "find": "if(!held||held.resource!==park.resource||held.operation.operation!==pending.operation||",
+   "replace": "if(!held||held.resource!==park.resource||",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#226",
+   "note": "Go twin (by hand): drop the pending-operation comparisons in readWaitParkMembers; caught at ^TestWaitSharedVectorsBothReaders$ (a pending operation that is not the disposition's)."
+  }
  ]
 }
