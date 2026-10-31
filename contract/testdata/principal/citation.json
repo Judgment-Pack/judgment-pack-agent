@@ -1,0 +1,8 @@
+{
+  "description": "The delegation statement vectors of the reference gateway (spec RFC 0030 §§2-3; the gateway's SPEC.md §11.1), cited, not regenerated: gateway-statements.json is that file's bytes unchanged. Its chains were signed by the gateway's independent signer under the keys it names; the expectation of each is the first refusal of steps 1 to 7, or ok. Both readers of this package check the copy's SHA-256 against this citation and read every vector to the same expectation.",
+  "repository": "Judgment-Pack/judgment-pack-gateway",
+  "commit": "c6f77b467992c2717a0717839a283ab82f10de31",
+  "path": "testdata/delegation/statements.json",
+  "copy": "gateway-statements.json",
+  "sha256": "b1bdfe50cbab49f6408395511c0f9fbee897193f6c58f63328a6d677b99c3bd9"
+}

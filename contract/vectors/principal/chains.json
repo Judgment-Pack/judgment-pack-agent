@@ -1,0 +1,547 @@
+{
+ "description": "Handwritten delegation chains for the agent host (RFC 0030 §§2-3, ADR-0029): a root admitting two host sources of the agent host desk and one gateway source, a child narrowed from it for a sub-agent, a child that adds a tool (widened), and a grandchild below a link that permits none (widened). The statements are written by hand; their signatures and digests were made by an independent signer (Python's cryptography package) under the key below, never by the code under test. items are the chains both readers admit, with each link's digest; refused names each chain's first refusal.",
+ "schema": "run-principal.json#/$defs/chain",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (verifyChain, openPrincipal)",
+   "packages/harness/principal.test.ts"
+  ]
+ },
+ "keys": {
+  "desk": [
+   "d463c8944e4e8adebc9e54c351ec49845044aea0a060bc2f7c60c73a3df20376"
+  ]
+ },
+ "software": {
+  "package": "@judgment-pack/harness",
+  "version": "0.13.0"
+ },
+ "audience": "desk",
+ "digests": {
+  "root": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
+  "child": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+ },
+ "items": [
+  [
+   {
+    "delegationVersion": "1",
+    "id": "33333333333333333333333333333333",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "dcf58d694cc0e91522a6d8366c704bd037e3d3ba54b1b0b5897350685ad3cbd6ba54ba2005d14d32b202ab2ed23c8eafe9d4ef9d3d8265c2d1d6c547af1fea07"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "33333333333333333333333333333333",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "dcf58d694cc0e91522a6d8366c704bd037e3d3ba54b1b0b5897350685ad3cbd6ba54ba2005d14d32b202ab2ed23c8eafe9d4ef9d3d8265c2d1d6c547af1fea07"
+   },
+   {
+    "delegationVersion": "1",
+    "id": "44444444444444444444444444444444",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "calls": 2
+       }
+      }
+     ]
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T04:00:00.000Z",
+    "parent": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "depth": 1,
+    "signature": "c4d0338c8d49980dde53ce36eb29034a0a2ffc65278948a3bbbd9c90ddd4f97744b8185745085bac5996d18ef3dbd1c6bdd07ebdc2397b1ec174ca14a3892709"
+   }
+  ]
+ ],
+ "refused": [
+  {
+   "problem": "a child that adds a tool its parent does not admit",
+   "chain": [
+    {
+     "delegationVersion": "1",
+     "id": "33333333333333333333333333333333",
+     "host": "desk",
+     "keyId": "52aac879cf44aa379ed14a290e559e0c",
+     "sub": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "act": {
+      "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "scope": {
+      "sources": [
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "notes",
+        "tools": [
+         "read_note",
+         "write_note"
+        ],
+        "effects": [
+         "read",
+         "act"
+        ],
+        "limits": {
+         "calls": 3
+        }
+       },
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "wiki",
+        "tools": [
+         "search"
+        ],
+        "effects": [
+         "read"
+        ],
+        "limits": {
+         "x-rows": 10
+        }
+       },
+       {
+        "audience": {
+         "kind": "gateway",
+         "name": "gateway:test"
+        },
+        "source": "tickets/live",
+        "tools": [
+         "query"
+        ],
+        "effects": [
+         "read",
+         "read-external"
+        ],
+        "limits": {}
+       }
+      ]
+     },
+     "mayDelegate": true,
+     "issuedAt": "2026-10-30T00:00:00.000Z",
+     "expiresAt": "2026-10-30T08:00:00.000Z",
+     "parent": null,
+     "depth": 0,
+     "signature": "dcf58d694cc0e91522a6d8366c704bd037e3d3ba54b1b0b5897350685ad3cbd6ba54ba2005d14d32b202ab2ed23c8eafe9d4ef9d3d8265c2d1d6c547af1fea07"
+    },
+    {
+     "delegationVersion": "1",
+     "id": "55555555555555555555555555555555",
+     "host": "desk",
+     "keyId": "52aac879cf44aa379ed14a290e559e0c",
+     "sub": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "act": {
+      "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "scope": {
+      "sources": [
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "notes",
+        "tools": [
+         "delete_note",
+         "read_note",
+         "write_note"
+        ],
+        "effects": [
+         "read",
+         "act"
+        ],
+        "limits": {
+         "calls": 3
+        }
+       }
+      ]
+     },
+     "mayDelegate": false,
+     "issuedAt": "2026-10-30T00:00:00.000Z",
+     "expiresAt": "2026-10-30T04:00:00.000Z",
+     "parent": {
+      "id": "33333333333333333333333333333333",
+      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     },
+     "depth": 1,
+     "signature": "79f5e29fc20134bcb1c4e8ed7120f0a24e3fd1b07a900a2fbeff7a56761b6d89e7c431e6f4f944a81d37a0452c380235478c3330d45cb41330eecd3ab19c6902"
+    }
+   ],
+   "refusal": "widened"
+  },
+  {
+   "problem": "a grandchild below a link that permits no child",
+   "chain": [
+    {
+     "delegationVersion": "1",
+     "id": "33333333333333333333333333333333",
+     "host": "desk",
+     "keyId": "52aac879cf44aa379ed14a290e559e0c",
+     "sub": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "act": {
+      "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "scope": {
+      "sources": [
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "notes",
+        "tools": [
+         "read_note",
+         "write_note"
+        ],
+        "effects": [
+         "read",
+         "act"
+        ],
+        "limits": {
+         "calls": 3
+        }
+       },
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "wiki",
+        "tools": [
+         "search"
+        ],
+        "effects": [
+         "read"
+        ],
+        "limits": {
+         "x-rows": 10
+        }
+       },
+       {
+        "audience": {
+         "kind": "gateway",
+         "name": "gateway:test"
+        },
+        "source": "tickets/live",
+        "tools": [
+         "query"
+        ],
+        "effects": [
+         "read",
+         "read-external"
+        ],
+        "limits": {}
+       }
+      ]
+     },
+     "mayDelegate": true,
+     "issuedAt": "2026-10-30T00:00:00.000Z",
+     "expiresAt": "2026-10-30T08:00:00.000Z",
+     "parent": null,
+     "depth": 0,
+     "signature": "dcf58d694cc0e91522a6d8366c704bd037e3d3ba54b1b0b5897350685ad3cbd6ba54ba2005d14d32b202ab2ed23c8eafe9d4ef9d3d8265c2d1d6c547af1fea07"
+    },
+    {
+     "delegationVersion": "1",
+     "id": "44444444444444444444444444444444",
+     "host": "desk",
+     "keyId": "52aac879cf44aa379ed14a290e559e0c",
+     "sub": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "act": {
+      "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "scope": {
+      "sources": [
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "notes",
+        "tools": [
+         "read_note"
+        ],
+        "effects": [
+         "read"
+        ],
+        "limits": {
+         "calls": 2
+        }
+       }
+      ]
+     },
+     "mayDelegate": false,
+     "issuedAt": "2026-10-30T00:00:00.000Z",
+     "expiresAt": "2026-10-30T04:00:00.000Z",
+     "parent": {
+      "id": "33333333333333333333333333333333",
+      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     },
+     "depth": 1,
+     "signature": "c4d0338c8d49980dde53ce36eb29034a0a2ffc65278948a3bbbd9c90ddd4f97744b8185745085bac5996d18ef3dbd1c6bdd07ebdc2397b1ec174ca14a3892709"
+    },
+    {
+     "delegationVersion": "1",
+     "id": "66666666666666666666666666666666",
+     "host": "desk",
+     "keyId": "52aac879cf44aa379ed14a290e559e0c",
+     "sub": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "act": {
+      "agent": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "scope": {
+      "sources": [
+       {
+        "audience": {
+         "kind": "agent-host",
+         "name": "desk"
+        },
+        "source": "notes",
+        "tools": [
+         "read_note"
+        ],
+        "effects": [
+         "read"
+        ],
+        "limits": {
+         "calls": 1
+        }
+       }
+      ]
+     },
+     "mayDelegate": false,
+     "issuedAt": "2026-10-30T00:00:00.000Z",
+     "expiresAt": "2026-10-30T02:00:00.000Z",
+     "parent": {
+      "id": "44444444444444444444444444444444",
+      "digest": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+     },
+     "depth": 2,
+     "signature": "655b08d96b52a76f4e195cc985e9acbd0009418ebde30cd3046e5b34ad03da8db86c723b55b4afd8e233e371ecb2f869f4dd2f96a6ab81013b62ee9d030fe004"
+    }
+   ],
+   "refusal": "widened"
+  }
+ ]
+}

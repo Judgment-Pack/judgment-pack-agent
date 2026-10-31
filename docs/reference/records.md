@@ -26,8 +26,8 @@ Feature-free writer defaults remain checkpoint 2 and event/policy 1. Feature-bea
 
 | Record | Feature-free writer default | Current schema version |
 | --- | --- | --- |
-| checkpoint | `2` | `3` |
-| event | `1` | `2` |
+| checkpoint | `2` | `4` |
+| event | `1` | `3` |
 | policy | `1` | `2` |
 
 ## Retained reports and history

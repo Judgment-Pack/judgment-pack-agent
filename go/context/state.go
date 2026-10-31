@@ -292,7 +292,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		return nil, err
 	}
 	version := value.Get("version")
-	if version == nil || version.Kind() != KindNumber || (version.Num() != 1 && version.Num() != 2 && version.Num() != 3) ||
+	if version == nil || version.Kind() != KindNumber || (version.Num() != 1 && version.Num() != 2 && version.Num() != 3 && version.Num() != 4) ||
 		!isText(value.Get("id"), 100) || value.Get("id").Str() == "" ||
 		!isText(value.Get("requestKey"), 64) || !digest64.MatchString(value.Get("requestKey").Str()) ||
 		!oneOf(value.Get("phase"), "plan", "work") ||
@@ -300,11 +300,15 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		!oneOf(value.Get("unit"), "model-requests", "provider-managed") {
 		return nil, errSavedExecution
 	}
-	if value.Get("approval").Has("runtime") && version.Num() != 3 {
+	// ADR-0029: version 4 is a delegated run's, and carries exactly its principal.
+	if (version.Num() == 4) != value.Has("principal") || value.Has("principal") && !validPrincipalValue(value.Get("principal")) {
+		return nil, errSavedExecution
+	}
+	if value.Get("approval").Has("runtime") && version.Num() < 3 {
 		return nil, errSavedExecution
 	}
 	if value.Has("turnRoute") {
-		if version.Num() != 3 {
+		if version.Num() < 3 {
 			return nil, errSavedExecution
 		}
 		var route TurnRoute
@@ -312,14 +316,14 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 			return nil, errSavedExecution
 		}
 	}
-	if value.Has("repeatTools") && (version.Num() != 3 || !validRepeatTools(value.Get("repeatTools"))) {
+	if value.Has("repeatTools") && (version.Num() < 3 || !validRepeatTools(value.Get("repeatTools"))) {
 		return nil, errSavedExecution
 	}
 	if !validRepeatRecordCustody(value) {
 		return nil, errSavedExecution
 	}
 	if value.Has("usageBudget") {
-		if version.Num() != 3 {
+		if version.Num() < 3 {
 			return nil, errSavedExecution
 		}
 		if _, err := readUsageJournal(value.Get("usageBudget")); err != nil {
@@ -365,7 +369,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 	if pin := value.Get("planState").Get("taskCoordinator"); pin != nil {
 		coordinator, e := readTaskCoordinatorBinding(pin)
 		scope, _ := canonicalRaw(DurableScope{Execution: planText(value.Get("id")), Role: "author"})
-		if e != nil || version.Num() != 3 || coordinator.Run != planText(value.Get("id")) || coordinator.Execution != planText(value.Get("id")) || coordinator.ScopeDigest != durableDigest(scope) || planText(value.Get("unit")) != "provider-managed" {
+		if e != nil || version.Num() < 3 || coordinator.Run != planText(value.Get("id")) || coordinator.Execution != planText(value.Get("id")) || coordinator.ScopeDigest != durableDigest(scope) || planText(value.Get("unit")) != "provider-managed" {
 			return nil, errSavedExecution
 		}
 	}
@@ -389,7 +393,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		return nil, errSavedExecution
 	}
 	for _, row := range value.Get("durable").Get("dispatches").Items() {
-		if row.Has("planPause") && (!isText(row.Get("planPause").Get("callId"), 256) || planText(row.Get("planPause").Get("callId")) == "" || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("revision"))) || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("candidateRevision"))) || version.Num() != 3 || planText(row.Get("kind")) != "agent" || !row.Get("read").Truth() || planText(row.Get("state")) != "unknown" || planText(row.Get("scope").Get("execution")) != planText(value.Get("id")) || planText(row.Get("scope").Get("role")) != "author" || row.Get("scope").Has("task")) {
+		if row.Has("planPause") && (!isText(row.Get("planPause").Get("callId"), 256) || planText(row.Get("planPause").Get("callId")) == "" || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("revision"))) || !recordDigestPattern.MatchString(planText(row.Get("planPause").Get("candidateRevision"))) || version.Num() < 3 || planText(row.Get("kind")) != "agent" || !row.Get("read").Truth() || planText(row.Get("state")) != "unknown" || planText(row.Get("scope").Get("execution")) != planText(value.Get("id")) || planText(row.Get("scope").Get("role")) != "author" || row.Get("scope").Has("task")) {
 			return nil, errSavedExecution
 		}
 	}
@@ -405,7 +409,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 				matched = true
 			}
 		}
-		if version.Num() != 3 || !matched {
+		if version.Num() < 3 || !matched {
 			return nil, errSavedExecution
 		}
 	}
@@ -689,7 +693,7 @@ func ExtendExecution(checkpoint contract.Checkpoint, interrupted bool, now time.
 		limit = MaxRequestAllowance
 	}
 	out, _, err := MutateCheckpoint(*saved, CheckpointPatch{"Version": func() int64 {
-		if saved.Version == 3 {
+		if saved.Version >= 3 {
 			return 3
 		}
 		return int64(contract.CheckpointVersion)

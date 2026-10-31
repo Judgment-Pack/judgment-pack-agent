@@ -86,7 +86,7 @@ export function validRepeatRecordCustody(value:unknown):boolean {
  try{
   const cp=value as {version:number;repeatTools?:RepeatTools;durable?:{dispatches:DurableDispatch[]}}
   for(const row of cp.durable?.dispatches??[])if(row.repeatResultJson!==undefined){
-   if(cp.version!==3||!cp.repeatTools?.executions.some(state=>state.execution===row.scope.execution&&state.seen.some(item=>item.dispatchId===row.id&&item.keyDigest===repeatKey(row))))return false
+   if(cp.version<3||!cp.repeatTools?.executions.some(state=>state.execution===row.scope.execution&&state.seen.some(item=>item.dispatchId===row.id&&item.keyDigest===repeatKey(row))))return false
   }
   return true
  }catch{return false}

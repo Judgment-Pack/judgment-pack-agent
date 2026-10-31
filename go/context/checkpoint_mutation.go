@@ -214,6 +214,16 @@ func MutateCheckpoint[T checkpointValue](current T, patch CheckpointPatch, valid
 		}
 		field.Set(cloneCheckpointValue(incoming))
 	}
+	// ADR-0029: a delegated run's checkpoint is version 4 whatever a feature writer stamps; an
+	// undelegated one is never 4.
+	if principal := target.FieldByName("Principal"); principal.IsValid() {
+		version := target.FieldByName("Version")
+		if !principal.IsNil() {
+			version.SetInt(4)
+		} else if version.Int() == 4 {
+			return current, false, fmt.Errorf("a checkpoint of version 4 carries its principal")
+		}
+	}
 	for _, check := range validate {
 		candidate := cloneCheckpointValue(reflect.ValueOf(next)).Interface().(T)
 		if err := check(candidate); err != nil {

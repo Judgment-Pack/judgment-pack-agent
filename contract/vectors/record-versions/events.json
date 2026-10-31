@@ -669,7 +669,7 @@
         "text": "Kept exactly.",
         "unfamiliar": true
       },
-      "raw": "{\"version\":3e0,\"type\":\"message\",\"text\":\"Kept exactly.\",\"unfamiliar\":true}",
+      "raw": "{\"version\":4e0,\"type\":\"message\",\"text\":\"Kept exactly.\",\"unfamiliar\":true}",
       "outcome": "UnsupportedRecordVersion"
     },
     {
@@ -711,9 +711,151 @@
       "outcome": "accepted"
     },
     {
-      "name": "future before unfamiliar type",
+      "name": "delegated: an event 3 tool call with its principal (ADR-0029)",
       "input": {
         "version": 3,
+        "type": "tool_call",
+        "callId": "call-1",
+        "name": "notes_read_note",
+        "args": {
+          "id": "n1"
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "delegated: an event 3 delegation refusal",
+      "input": {
+        "version": 3,
+        "type": "guardrail",
+        "tool": "notes_write_note",
+        "action": "refused",
+        "detail": "notes_write_note was not run: the delegation this run acts under does not admit it (revoked). Nothing was changed. Do not retry it; say what could not be done.",
+        "reason": "delegation refused",
+        "refusal": {
+          "name": "revoked"
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "delegated: an event 1 tool call carries no principal",
+      "input": {
+        "version": 1,
+        "type": "tool_call",
+        "callId": "call-1",
+        "name": "notes_read_note",
+        "args": {
+          "id": "n1"
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "delegated: an event 2 tool call is not a version a tool call takes",
+      "input": {
+        "version": 2,
+        "type": "tool_call",
+        "callId": "call-1",
+        "name": "notes_read_note",
+        "args": {
+          "id": "n1"
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "InvalidRecord"
+    },
+    {
+      "name": "future before unfamiliar type",
+      "input": {
+        "version": 4,
         "type": "future",
         "payload": true
       },

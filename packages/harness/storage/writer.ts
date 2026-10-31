@@ -621,7 +621,7 @@ export class RunWriter {
     const marker={dispatchId:proof.id,requestDigest:proof.requestDigest};heldEvent.route.widenedInvocation=marker;mutateCheckpoint(heldState,{turnRoute:{...heldState.turnRoute!,widenedInvocation:{...marker}}})
    }
   }
-  if(binding.writer!==this||heldState.id!==binding.scope.execution||heldState.version!==3||canonicalJSON(heldState.turnRoute)!==canonicalJSON(heldEvent.route))throw new ContinuationIdentityChanged()
+  if(binding.writer!==this||heldState.id!==binding.scope.execution||heldState.version<3||canonicalJSON(heldState.turnRoute)!==canonicalJSON(heldEvent.route))throw new ContinuationIdentityChanged()
   if(this.planDelivery.size>=400)throw new ContinuationNotRecoverable()
   const output=(await this.publish(binding,heldState,heldEvent,undefined,signal))!
   if(proof){proof.consumed=true;this.nativeSuperseded.set(scopeKey(binding.scope),{id:proof.id,requestDigest:proof.requestDigest,route:canonicalJSON(heldState.turnRoute)})}

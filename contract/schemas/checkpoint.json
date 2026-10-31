@@ -27,9 +27,10 @@
       "enum": [
         1,
         2,
-        3
+        3,
+        4
       ],
-      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2."
+      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029)."
     },
     "digest": {
       "$ref": "provenance.json#/$defs/recordDigest"
@@ -367,6 +368,10 @@
     },
     "repeatTools": {
       "$ref": "#/$defs/repeatTools"
+    },
+    "principal": {
+      "description": "ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the subject, the leaf link and the chain's digests. A resume under another subject or agent principal is refused (principal-changed); a re-issued chain for the same principals replaces it. Never a credential.",
+      "$ref": "run-principal.json"
     }
   },
   "additionalProperties": false,

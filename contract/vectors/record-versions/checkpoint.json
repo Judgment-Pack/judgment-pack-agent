@@ -588,15 +588,7 @@
       "outcome": "accepted"
     },
     {
-      "name": "future before unfamiliar body",
-      "input": {
-        "version": 4,
-        "future": true
-      },
-      "outcome": "UnsupportedRecordVersion"
-    },
-    {
-      "name": "future exponent before unknown body",
+      "name": "delegated: version 4 with its principal (ADR-0029)",
       "input": {
         "version": 4,
         "id": "compatibility",
@@ -614,9 +606,150 @@
           "scope": "compatibility",
           "entries": []
         },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "accepted"
+    },
+    {
+      "name": "delegated: version 3 carries no principal",
+      "input": {
+        "version": 3,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "delegated: a principal member the record does not name",
+      "input": {
+        "version": 4,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ],
+          "token": "never"
+        }
+      },
+      "outcome": "UnknownRecordMember"
+    },
+    {
+      "name": "future before unfamiliar body",
+      "input": {
+        "version": 5,
+        "future": true
+      },
+      "outcome": "UnsupportedRecordVersion"
+    },
+    {
+      "name": "future exponent before unknown body",
+      "input": {
+        "version": 5,
+        "id": "compatibility",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "running",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
         "unfamiliar": true
       },
-      "raw": "{\"version\":4e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
+      "raw": "{\"version\":5e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
       "outcome": "UnsupportedRecordVersion"
     }
   ],
