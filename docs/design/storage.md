@@ -97,6 +97,25 @@ source/tool/argument fingerprint. An unresolved claim refuses as `HostOutcomeUnk
 when the call might never have started. Intentional repetition needs a new host-authorized
 run identity. This is conservative dispatch recovery, with no exactly-once external-effect claim.
 
+The fingerprint digests the request as `ParseJSON` reads it. It is persisted and re-derived when a
+stored book is read, so its form does not change, and it says two requests read alike, not that they
+are one write. The decision is made from the text the row records (#275,
+`contract/vectors/storage/durable-repeats.json`). The same text is the same write, and so are two
+requests their parsed form says exactly (`exactArguments`), which differ only in whitespace, a
+string's escapes or the order of names that do not fold together: the record answers them and they do
+not run. Exact numbers that differ make a different write, which runs and gets its own row with the
+same fingerprint, so a legitimate integer past 2^53 runs beside its neighbour. The same values written
+differently (`1.0` and `1`, `-0` and `0`, a repeated name, two names `encoding/json` folds together, in
+both orders) cannot be told apart: they are refused with `DurableRequestConflict`, neither run nor
+answered. A row a published release wrote is judged by the same rule, from the request it recorded, and
+needs no migration. A call whose text the record cannot hold (a repeated name, a number out of range, a
+lone surrogate) is refused with `DurableRequestUnrecordable` before anything is claimed, unless a row a
+published release wrote answers it first; retained history refuses that text, which used to reach the
+writer after the claim and end the run with a storage failure. TypeScript runs a host write with the
+canonical JSON of what `JSON.parse` read, so what runs is what is keyed; there, under a run store, a host
+write holding an integer past 2^53 or a number read as an infinity is refused the same way, because
+the write it would run is not the one the model wrote.
+
 Checkpoint version 2 carries a bounded durable journal, trusted acknowledged operation and
 artifact observations, children and the four delegation handoff states. Prepared request bodies
 and exact continuation frames are retained without transport headers or private reasoning.

@@ -158,6 +158,32 @@ func (e *ContinuationIdentityChanged) Unwrap() error {
 	return storageNamedFailure("stale-state", "context", "not-started", e.Error())
 }
 
+// DurableRequestConflict refuses a write that reads the same as one recorded in this run and is written
+// differently (#275): the same numbers in another spelling, a repeated name, two names encoding/json
+// folds together. It may be that write and it may not, so it is neither run, which could perform a
+// write twice, nor answered from that record, which could report a write nothing performed.
+type DurableRequestConflict struct{}
+
+func (*DurableRequestConflict) Error() string {
+	return "DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. Repeat that write exactly for its result; a different write needs different values."
+}
+func (e *DurableRequestConflict) Unwrap() error {
+	return storageNamedFailure("invalid-tool-input", "tool", "not-started", e.Error())
+}
+
+// DurableRequestUnrecordable refuses a call whose arguments the durable record cannot hold as written
+// (#275): a repeated member name, a number out of range or a lone surrogate. Refused before anything is
+// claimed, and the run goes on. Retained history refuses the same bytes (readHistoryRequestJSON), which
+// reached the writer after the claim and ended the run with a storage failure.
+type DurableRequestUnrecordable struct{}
+
+func (*DurableRequestUnrecordable) Error() string {
+	return "DurableRequestUnrecordable: this call's arguments cannot be recorded as written: they hold a repeated member name, a number that cannot be held exactly or a lone surrogate. Nothing was run. Write them again without it."
+}
+func (e *DurableRequestUnrecordable) Unwrap() error {
+	return storageNamedFailure("invalid-tool-input", "tool", "not-started", e.Error())
+}
+
 type HostOutcomeUnknown struct{}
 
 func (*HostOutcomeUnknown) Error() string {
@@ -1091,6 +1117,59 @@ func (b *RunBinding) WithRole(role string) *RunBinding {
 	copy.Scope.Role = role
 	return &copy
 }
+
+// durableFingerprint is a dispatch's published fingerprint: the digest of its kind, scope, source, tool
+// and request as ParseJSON reads the request. It is persisted, and a stored book is re-derived against
+// it, so its form does not change. It says two requests read alike, not that they are one write: a
+// float64 holds 9007199254740993 and 9007199254740992 as one number. compareDurableRequests decides
+// that from the bytes the row records.
+func durableFingerprint(kind string, scope DurableScope, source, tool string, request []byte) (string, error) {
+	parsed, err := ParseJSON(request)
+	if err != nil {
+		return "", &ContinuationNotRecoverable{}
+	}
+	scoped, err := canonicalRaw(scope)
+	if err != nil {
+		return "", &ContinuationNotRecoverable{}
+	}
+	return durableDigest([]byte(CanonicalJSON(ObjectOf("kind", String(kind), "scope", MustParseJSON(string(scoped)), "source", String(source), "tool", String(tool), "request", parsed)))), nil
+}
+
+// durableRepeat is what a request that reads alike a recorded one is to that record.
+type durableRepeat int
+
+const (
+	// durableDifferent: another write. It has its own record, or runs and makes one.
+	durableDifferent durableRepeat = iota
+	// durableSame: this write. The record answers it, and it does not run.
+	durableSame
+	// durableConflict: it cannot be told. Refused (DurableRequestConflict): it neither runs nor is answered.
+	durableConflict
+)
+
+// compareDurableRequests decides, from the exact bytes, what a request with a recorded row's fingerprint
+// is to that row (#275). The same bytes are the same write. Two requests their parsed form says exactly
+// (exactArguments) are too: they differ only in whitespace, a string's escapes or the order of names that
+// do not fold together, which the fingerprint has always left out, so a resumed run's repeat of a write
+// is never performed twice. Otherwise, exact numbers that differ make a different write: this is what
+// lets a legitimate integer past 2^53 run beside its neighbour. What remains is the same values written
+// differently: another spelling of a number, a repeated name, two names that fold together. A reader may
+// tell those apart or may not, so nothing here says which they are.
+//
+// It reads only the row's request, which every published release has recorded byte for byte, so a row
+// from before this rule is judged by it and needs no migration.
+func compareDurableRequests(recorded, request []byte) durableRepeat {
+	if bytes.Equal(recorded, request) || exactArguments(recorded) && exactArguments(request) {
+		return durableSame
+	}
+	left, leftErr := canonicalRepeatArgs(recorded)
+	right, rightErr := canonicalRepeatArgs(request)
+	if leftErr == nil && rightErr == nil && left != right {
+		return durableDifferent
+	}
+	return durableConflict
+}
+
 func safeDurableRequest(raw []byte) error {
 	if len(raw) > StorageRecordBytes {
 		return &ContinuationNotRecoverable{}
@@ -1282,12 +1361,22 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		w.mu.Unlock()
 		return zero, prepareErr
 	}
-	parsed, _ := ParseJSON(request)
-	scope, _ := canonicalRaw(binding.Scope)
-	fingerprint := durableDigest([]byte(CanonicalJSON(ObjectOf("kind", String(kind), "scope", MustParseJSON(string(scope)), "source", String(source), "tool", String(tool), "request", parsed))))
+	fingerprint, fingerprintErr := durableFingerprint(kind, binding.Scope, source, tool, request)
+	if fingerprintErr != nil {
+		w.mu.Unlock()
+		return zero, fingerprintErr
+	}
 	if !read {
+		conflict := false
 		for _, row := range w.book.Dispatches {
 			if !row.Read && row.Kind == kind && row.Fingerprint == fingerprint {
+				switch compareDurableRequests([]byte(row.Request), request) {
+				case durableConflict:
+					conflict = true
+					continue
+				case durableDifferent:
+					continue
+				}
 				w.mu.Unlock()
 				if row.State != "result" || row.Result == nil {
 					return zero, &HostOutcomeUnknown{}
@@ -1305,6 +1394,17 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				}
 				return result, nil
 			}
+		}
+		if conflict {
+			w.mu.Unlock()
+			return zero, &DurableRequestConflict{}
+		}
+	}
+	// A record answers first: a published release may have recorded what this release cannot.
+	if kind == "host" || kind == "runtime" {
+		if _, err := readHistoryRequestJSON(request); err != nil {
+			w.mu.Unlock()
+			return zero, &DurableRequestUnrecordable{}
 		}
 	}
 	if len(w.book.Dispatches) >= 400 {
@@ -1881,13 +1981,8 @@ func ValidDurable(value *Value) bool {
 		if _, duplicate := seen[row.ID]; duplicate {
 			return false
 		}
-		parsed, err := ParseJSON([]byte(row.Request))
-		if err != nil {
-			return false
-		}
-		scoped, _ := canonicalRaw(row.Scope)
-		expected := durableDigest([]byte(CanonicalJSON(ObjectOf("kind", String(row.Kind), "scope", MustParseJSON(string(scoped)), "source", String(row.Source), "tool", String(row.Tool), "request", parsed))))
-		if row.Fingerprint != expected {
+		expected, err := durableFingerprint(row.Kind, row.Scope, row.Source, row.Tool, []byte(row.Request))
+		if err != nil || row.Fingerprint != expected {
 			return false
 		}
 		seen[row.ID] = row

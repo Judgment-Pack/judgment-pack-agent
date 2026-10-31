@@ -43,7 +43,7 @@ export * from '../storage/conformance'
 export {MemoryChatStore} from '../storage/chat'
 export type {ChatEntry,ChatListRequest,ChatPage,StoredChat,ChatPatch} from '../storage/chat'
 export type {DurableRunInput,DurableScope,ArtifactObservation,DurableObservation} from '../storage/writer'
-export {ContinuationNotRecoverable,ContinuationIdentityChanged,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
+export {ContinuationNotRecoverable,ContinuationIdentityChanged,DurableRequestConflict,DurableRequestUnrecordable,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
 
 export * from '../planning/references'
 export type {ChatPlan,PlanReference,CurrentPlanReference,LegacyPlanReference} from '../planning/model'

@@ -919,6 +919,137 @@ class VectorTests(unittest.TestCase):
                 key = sha256(canonical({"tool": "lookup", "arguments": json.loads(read["call"])}))
                 self.assertEqual(rows[key], entry["id"])
 
+    def test_the_durable_repeat_decisions_follow_from_each_text(self):
+        # #275: a third reading of each case, from its two texts alone. One fingerprint between them; the
+        # same text or two exact requests are one write; exact numbers that differ are two; what is left is
+        # the same values written differently, which cannot be told apart.
+        vector = self.vectors["storage/durable-repeats.json"]
+
+        def fold(name):
+            folded = []
+            for point in name:
+                upper = point.upper()
+                lower = (upper if len(upper) == 1 else point).lower()
+                folded.append(point if point == chr(0x131) or len(lower) != 1 else lower)
+            return "".join(folded)
+
+        def written(value):
+            # Number::toString, from the shortest digits that read back as the value.
+            if value == 0:
+                return "0"
+            sign, digits, exponent = decimal.Decimal(repr(abs(value))).normalize().as_tuple()
+            digits = "".join(map(str, digits))
+            k, n = len(digits), len(digits) + exponent
+            text = (
+                digits + "0" * (n - k) if k <= n <= 21
+                else digits[:n] + "." + digits[n:] if 0 < n <= 21
+                else "0." + "0" * -n + digits if -6 < n <= 0
+                else digits[0] + ("." + digits[1:] if k > 1 else "") + "e" + ("+" if n > 0 else "-") + str(abs(n - 1))
+            )
+            return ("-" if value < 0 else "") + text
+
+        def exact(text):
+            def number(literal):
+                value = float(literal)
+                if math.isinf(value) or written(value) != literal:
+                    raise ValueError(literal)
+                return value
+
+            def members(pairs):
+                names = [fold(name) for name, _ in pairs]
+                if len(names) != len(set(names)):
+                    raise ValueError(names)
+                return dict(pairs)
+            try:
+                return isinstance(json.loads(text, parse_int=number, parse_float=number, object_pairs_hook=members), dict)
+            except ValueError:
+                return False
+
+        def values(text):
+            return json.loads(text, parse_int=decimal.Decimal, parse_float=decimal.Decimal)
+
+        def reading(text):
+            # As ParseJSON reads it and JSON.stringify writes it: floats, the last of a repeated name.
+            def canonical_number(value):
+                value = float(value)
+                return "null" if math.isinf(value) else written(value)
+
+            def write(held):
+                if isinstance(held, decimal.Decimal):
+                    return canonical_number(held)
+                if isinstance(held, list):
+                    return "[" + ",".join(write(item) for item in held) + "]"
+                if isinstance(held, dict):
+                    return "{" + ",".join(json.dumps(name, ensure_ascii=False) + ":" + write(held[name]) for name in sorted(held, key=lambda name: name.encode("utf-16-be"))) + "}"
+                return json.dumps(held, ensure_ascii=False)
+            return write(values(text))
+
+        kinds = set()
+        for case in vector["cases"]:
+            with self.subTest(case=case["label"]):
+                recorded, request = case["recorded"], case["request"]
+                self.assertEqual(reading(recorded), reading(request))
+                if recorded == request or exact(recorded) and exact(request):
+                    decision = "same"
+                elif values(recorded) != values(request):
+                    decision = "different"
+                else:
+                    decision = "conflict"
+                self.assertEqual(case["decision"], decision)
+                kinds.add(decision)
+        self.assertEqual(kinds, {"same", "different", "conflict"})
+        # What the record can hold: no repeated name, no number out of range, no lone surrogate.
+        for row in vector["recordable"]:
+            with self.subTest(text=row["text"]):
+                def members(pairs):
+                    names = [name for name, _ in pairs]
+                    if len(names) != len(set(names)):
+                        raise ValueError(names)
+                    return dict(pairs)
+
+                def finite(literal):
+                    if math.isinf(float(literal)):
+                        raise ValueError(literal)
+                    return float(literal)
+                try:
+                    held = json.loads(row["text"], parse_int=finite, parse_float=finite, object_pairs_hook=members)
+                    json.dumps(held, ensure_ascii=False).encode("utf-8")
+                    recordable = True
+                except (ValueError, UnicodeEncodeError):
+                    recordable = False
+                self.assertEqual(row["recordable"], recordable)
+        # The rows carry the published fingerprint: the digest of the text as it reads.
+        for row in vector["items"]:
+            with self.subTest(row=row["request"]):
+                fingerprint = '{"kind":"host","request":%s,"scope":{"execution":"repeats","role":"author"},"source":"source","tool":"write"}' % reading(row["request"])
+                self.assertEqual(row["fingerprint"], "sha256:" + sha256(fingerprint))
+                self.assertEqual(row["requestDigest"], "sha256:" + sha256(row["request"]))
+        # The escape rows hold a real backslash.
+        self.assertTrue(any(chr(0x5c) + "u0061" in case["recorded"] for case in vector["cases"]))
+
+        # Each published checkpoint: every row's digest and fingerprint again, and the resume's premises.
+        published = load(CONTRACT / "testdata" / "durable-writes" / "published-checkpoints.json")["checkpoints"]
+        self.assertEqual(set(published), set(vector["resume"]))
+        for tag, text in published.items():
+            with self.subTest(tag=tag):
+                saved = json.loads(text)
+                rows = {row["request"]: row for row in saved["durable"]["dispatches"]}
+                for row in rows.values():
+                    self.assertEqual(row["requestDigest"], "sha256:" + sha256(row["request"]))
+                    scope = '{"execution":"%s","role":"author"}' % saved["id"]
+                    fingerprint = '{"kind":"host","request":%s,"scope":%s,"source":"source","tool":"write"}' % (reading(row["request"]), scope)
+                    self.assertEqual(row["fingerprint"], "sha256:" + sha256(fingerprint))
+                    self.assertEqual(row["read"], False)
+                self.assertEqual(rows['{"unknown":1}']["state"], "unknown")
+                for call in vector["resume"][tag]:
+                    if call["call"] in rows and call["outcome"] == "record" and rows[call["call"]]["state"] == "result":
+                        self.assertEqual(call["answer"], "wrote " + call["call"])
+                    if call["outcome"] == "conflict":
+                        self.assertNotIn(call["call"], rows)
+                        self.assertTrue(any(reading(request) == reading(call["call"]) for request in rows))
+                    if call["outcome"] == "run" and call["call"] in ('{"id":9007199254740992}', '{"big":null}'):
+                        self.assertTrue(any(reading(request) == reading(call["call"]) for request in rows))
+
     def test_the_turn_index_rows_follow_from_the_fixture(self):
         vector = self.vectors["chat/turn-index.json"]
         fixture = vector["fixture"]

@@ -10005,6 +10005,222 @@
   "status": "caught",
   "origin": "agent#271",
   "note": "Go twin: none; Go folds by unicode.SimpleFold, one rune to one (^TestFoldNameIsWhatEncodingJSONMatches$)."
+},
+{
+  "name": "a durable write is answered from the first row with its fingerprint",
+  "file": "storage/writer.ts",
+  "find": "reused=rows[decisions.indexOf('same')]",
+  "replace": "reused=rows[0]",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): compareDurableRequests' switch dropped from go/context/run_writer.go invokeDurable, the published behaviour; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and, through both adapters, ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "a durable write that cannot be told from a recorded one runs",
+  "file": "storage/writer.ts",
+  "find": "    if(decisions.includes('conflict')){refusal=new DurableRequestConflict();return}\n",
+  "replace": "",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): case durableConflict: continue, with no refusal; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "a durable repeat of the same bytes is not the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): bytes.Equal dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "two exact durable requests that read alike are not the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(recorded===request)return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the exactArguments clause dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$ (a resumed repeat in another order would be performed twice)."
+},
+{
+  "name": "one exact durable request is enough to be the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(recorded===request||exactArgumentsText(request))return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): exactArguments(recorded) dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "durable numbers that differ cannot run",
+  "file": "storage/writer.ts",
+  "find": "try{return canonicalRepeatArgs(recorded)!==canonicalRepeatArgs(request)?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "return 'conflict'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): compareDurableRequests returns durableConflict at once; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$ (the integer past 2^53 and its neighbour)."
+},
+{
+  "name": "durable values written differently are different writes",
+  "file": "storage/writer.ts",
+  "find": "?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "?'different':'different'}catch{return 'conflict'}",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): left != right dropped from the different branch; caught at ^TestTheDurableRepeatVector$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "durable text that cannot be read is a different write",
+  "file": "storage/writer.ts",
+  "find": "?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "?'different':'conflict'}catch{return 'different'}",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none reachable; a recorded and a current request have both read before they get here. By hand, leftErr and rightErr dropped from the different branch fails no test, since canonicalRepeatArgs errors only past the durable bounds safeDurableRequest and ValidDurable already hold."
+},
+{
+  "name": "a durable call the record cannot hold is claimed",
+  "file": "storage/writer.ts",
+  "find": "&&(!recordable||!recordableRequest(request)))",
+  "replace": "&&!recordable)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the readHistoryRequestJSON check dropped from invokeDurable; the run then ends with HistoryInputInvalid; caught at ^TestTheDurableRecordableVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableReadIsRefusedOnlyWhereItCannotBeRecorded$."
+},
+{
+  "name": "a durable call the record cannot hold is refused before its record answers",
+  "file": "storage/writer.ts",
+  "find": "   if(!read){\n    const rows=this.book.dispatches.filter(",
+  "replace": "   if((kind==='host'||kind==='runtime')&&!recordableRequest(request)){refusal=new DurableRequestUnrecordable();return}\n   if(!read){\n    const rows=this.book.dispatches.filter(",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the readHistoryRequestJSON check moved ahead of the row scan in invokeDurable; caught at ^TestAResumeOverAPublishedCheckpoint$ (v0.10.0's repeated name and out-of-range rows)."
+},
+{
+  "name": "a host write JSON.parse rounded is run",
+  "file": "context/session.ts",
+  "find": ",durableReadingTool(tool)||exactlyHeld(args))",
+  "replace": ")",
+  "tests": [
+    "storage/durableWrites.engines.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go runs the bytes the model wrote, so it has nothing rounded to refuse."
+},
+{
+  "name": "a host read is held to what a write is",
+  "file": "context/session.ts",
+  "find": ",durableReadingTool(tool)||exactlyHeld(args))",
+  "replace": ",exactlyHeld(args))",
+  "tests": [
+    "storage/durableWrites.engines.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; the same."
+},
+{
+  "name": "a number JSON.parse read as an infinity counts as held",
+  "file": "storage/writer.ts",
+  "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
+  "replace": "return !Number.isInteger(value)||Number.isSafeInteger(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go refuses these from their text (^TestTheDurableRecordableVector$)."
+},
+{
+  "name": "an integer JSON.parse rounded counts as held",
+  "file": "storage/writer.ts",
+  "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
+  "replace": "return Number.isFinite(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go runs the bytes the model wrote."
+},
+{
+  "name": "arrays and objects are not looked inside for what JSON.parse lost",
+  "file": "storage/writer.ts",
+  "find": "return value===null||typeof value!=='object'||Object.values(value).every(exactlyHeld)",
+  "replace": "return true",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; the same."
+},
+{
+  "name": "arguments in their text may repeat a name",
+  "file": "context/chat.ts",
+  "find": "return members(value)===names&&(rest.match(",
+  "replace": "return (rest.match(",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the repeated-name check in go/context/chat.go exactValue dropped; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "arguments in their text may spell a number another way",
+  "file": "context/chat.ts",
+  "find": ".every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)",
+  "replace": "&&exactArguments(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the written-form comparison in go/context/chat.go exactValue dropped; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "arguments in their text may hold names that fold together",
+  "file": "context/chat.ts",
+  "find": ".every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)",
+  "replace": ".every(number=>JSON.stringify(Number(number))===number)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): folded := name in go/context/chat.go exactValue; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
 }
  ]
 }
