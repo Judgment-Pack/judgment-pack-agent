@@ -1,0 +1,145 @@
+{
+  "description": "The Runtime identity and read-cache key contract for strings that hold a lone UTF-16 surrogate (#246), written by hand. JavaScript can hold such a string and Go cannot: encoding/json reads a lone surrogate escape as U+FFFD without saying so, so the two languages would name different Runtimes, or one key for two reads. Both refuse instead of replacing. A run whose context.runtime has an identity or version with a lone surrogate is refused before anything is sent, with failure code configuration and the detail in refusal (admission refused). A read whose key would hold one, in the Runtime's strings, the tool or an argument, gets no key and is not kept in either cache (key none). Every other string keeps its exact text: a valid surrogate pair and a literal U+FFFD key as written. outcomes[i] is the outcome for items[i]: its admission, and its canonical JSON and the SHA-256 of that, or key none. The lone surrogates are written as JSON escapes; a Go reader decodes them from the raw item, since encoding/json would replace them. context/chat.test.ts and go/context/runtime_identity_test.go hold both languages to every item, and the contract tests compute each digest again.",
+  "schema": "tool-result.json#/$defs/readCacheKey",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts (readCacheKey, scalarText, RUNTIME_IDENTITY_REFUSED)",
+      "packages/harness/context/session.ts (contextualSession)",
+      "packages/harness/execution/controller.ts (wrapRead)"
+    ]
+  },
+  "refusal": "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent.",
+  "outcomes": [
+    {
+      "label": "an ordinary release version",
+      "admission": "admitted",
+      "canonical": "{\"arguments\":{\"spec_version\":\"0.3.0\"},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.39.0\"},\"tool\":\"get_schema\"}",
+      "sha256": "e19271eaa5e4faf5f0681fc1b57f22ff53601939c3bf0096169996572e4494b6"
+    },
+    {
+      "label": "an ordinary prerelease version with build metadata",
+      "admission": "admitted",
+      "canonical": "{\"arguments\":{},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.40.0-rc.1+build.7\"},\"tool\":\"get_schema\"}",
+      "sha256": "d90ee10224ac7726a67dfb5316a0066522b4c78e0932f41dd49fb80fc0ba4ffc"
+    },
+    {
+      "label": "the issue's example: a lone high surrogate in the version",
+      "admission": "refused",
+      "key": "none"
+    },
+    {
+      "label": "a lone low surrogate in the version",
+      "admission": "refused",
+      "key": "none"
+    },
+    {
+      "label": "a surrogate pair written low first",
+      "admission": "refused",
+      "key": "none"
+    },
+    {
+      "label": "a valid surrogate pair (U+1F600)",
+      "admission": "admitted",
+      "canonical": "{\"arguments\":{},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.39.0-\ud83d\ude00\"},\"tool\":\"get_schema\"}",
+      "sha256": "587d5c01b70a1fbdc3aca413b7ecff32bebb2f6f844c86741199a3db136d36da"
+    },
+    {
+      "label": "a literal U+FFFD, which is a scalar value",
+      "admission": "admitted",
+      "canonical": "{\"arguments\":{},\"runtime\":{\"identity\":\"jpack\",\"version\":\"0.39.0-\ufffd\"},\"tool\":\"get_schema\"}",
+      "sha256": "b2cb0b15ac7b288bbefd9c42da5a07f6d8dc89d1b917b79dfa6647a7449772e0"
+    },
+    {
+      "label": "a lone high surrogate in the identity",
+      "admission": "refused",
+      "key": "none"
+    },
+    {
+      "label": "a lone high surrogate in an argument, with an ordinary Runtime",
+      "admission": "admitted",
+      "key": "none"
+    }
+  ],
+  "items": [
+    {
+      "tool": "get_schema",
+      "arguments": {
+        "spec_version": "0.3.0"
+      },
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.40.0-rc.1+build.7"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0-\ud800"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0-\udc00"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0-\ude00\ud83d"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0-\ud83d\ude00"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0-\ufffd"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack-\ud800",
+        "version": "0.39.0"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {
+        "spec_version": "0.3.0-\ud800"
+      },
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0"
+      }
+    }
+  ]
+}

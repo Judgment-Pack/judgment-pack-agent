@@ -365,8 +365,10 @@ The chat's ledger keeps what each run retained, and every answer of a session to
 later run's `read_window`, `read_context` and `search` find it. A read the tool declares immutable is
 served again from the chat's read cache without a call, keyed by the tool, its arguments and, for a
 Runtime-served read (every runtime tool, and a host tool that declares `contextPolicy.runtime`), the
-`context.runtime` the host names; without that, such a read is cached for the run only. A mutable
-read never is, and the cache serves only a name the run's session offers: a delegated child is never
+`context.runtime` the host names; without that, such a read is cached for the run only. The identity
+and version are Unicode scalar text: a `context.runtime` with a lone UTF-16 surrogate is refused
+before anything is sent (`RUNTIME_IDENTITY_REFUSED`), and a read whose arguments hold one is not
+cached (#246). A mutable read never is, and the cache serves only a name the run's session offers: a delegated child is never
 served a read its profile was not offered. `retainedBytes` bounds the chat: the oldest entries no running run references are
 evicted first. Each run's first message carries, after the request text, an index of the results
 earlier runs kept (`read_window` id, tool, arguments digest, size, first line), bounded by

@@ -58,6 +58,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // ReadCacheKey is the object a chat's read cache keys one result by; the key is the SHA-256 of
@@ -84,11 +85,52 @@ func orObject(v *Value) *Value {
 	return v
 }
 
+// RuntimeIdentityRefused is the detail of the refusal of an Input.Runtime whose identity or version
+// is not valid UTF-8, the form a lone UTF-16 surrogate takes in a Go string (#246;
+// RUNTIME_IDENTITY_REFUSED in context/chat.ts). It is refused, never replaced with U+FFFD.
+const RuntimeIdentityRefused = "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent."
+
+// scalarValue reports whether every string in v, member names included, is valid UTF-8: a
+// sequence of Unicode scalar values, with no lone surrogate.
+func scalarValue(v *Value) bool {
+	if v == nil {
+		return true
+	}
+	switch v.kind {
+	case KindString:
+		return utf8.ValidString(v.s)
+	case KindArray:
+		for _, item := range v.a {
+			if !scalarValue(item) {
+				return false
+			}
+		}
+	case KindObject:
+		for _, m := range v.o {
+			if !utf8.ValidString(m.key) || !scalarValue(m.val) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// cacheableArguments reports whether a call's raw arguments may key a cached read (#246): they are
+// UTF-8 and every \u escape in them is a scalar value or half of an ordered surrogate pair. ParseJSON
+// reads a lone surrogate escape as U+FFFD, so a read whose arguments hold one is neither served from
+// nor kept in either cache (the scalarValue check in readCacheKey and wrapRead, context/chat.ts).
+func cacheableArguments(raw []byte) bool { return validReportUnicode(raw) }
+
 // ReadCacheKeyOf is readCacheKey: the key a chat's read cache keeps one immutable read under, and
 // false where the read cannot be kept across runs — its result depends on the Runtime and the
-// host has not said which one it is.
+// host has not said which one it is, or a string the key would hold (the tool, an argument or
+// member name, the Runtime's identity or version) is not valid UTF-8, which is how a lone UTF-16
+// surrogate reaches a Go string (#246).
 func ReadCacheKeyOf(tool string, args *Value, runtimeBound bool, runtime *RuntimeIdentity) (string, bool) {
 	if runtimeBound && (runtime == nil || runtime.Identity == "" || runtime.Version == "") {
+		return "", false
+	}
+	if runtimeBound && (!utf8.ValidString(runtime.Identity) || !utf8.ValidString(runtime.Version)) || !utf8.ValidString(tool) || !scalarValue(args) {
 		return "", false
 	}
 	key := ReadCacheKey{Tool: tool, Arguments: args}

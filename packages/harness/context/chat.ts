@@ -50,8 +50,37 @@ import {contextDigest,type ContextLedger,type Entry,type LedgerStore} from './le
 import {frameBlock} from '../framing'
 import type {McpToolResult} from '../engine'
 
-/** What the host knows the Runtime by: an identity (its pinned digest, or the name its initialize answer gave) and its version. */
+/**
+ * What the host knows the Runtime by: an identity (its pinned digest, or the name its initialize answer gave) and its version.
+ * Both are strings of Unicode scalar values (#246): a run whose `context.runtime` holds a lone UTF-16
+ * surrogate is refused with `RUNTIME_IDENTITY_REFUSED` before anything is sent.
+ */
 export interface RuntimeIdentity {identity:string;version:string}
+
+/**
+ * The detail of the refusal of a `context.runtime` whose identity or version holds a lone UTF-16 surrogate
+ * (#246). Such a string has no UTF-8 form: Go cannot hold it, and JSON readers that replace it with U+FFFD
+ * would key another Runtime's reads under it. It is refused, never replaced.
+ */
+export const RUNTIME_IDENTITY_REFUSED='Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent.'
+
+/** True where text is a sequence of Unicode scalar values: every surrogate is half of a pair, in order (#246). */
+export function scalarText(text:string):boolean{
+ for(let at=0;at<text.length;at++){
+  const unit=text.charCodeAt(at)
+  if(unit>=0xdc00&&unit<=0xdfff)return false
+  if(unit>=0xd800&&unit<=0xdbff){const next=text.charCodeAt(++at);if(!(next>=0xdc00&&next<=0xdfff))return false}
+ }
+ return true
+}
+
+/** True where every string in value, member names included, is a sequence of Unicode scalar values. */
+export function scalarValue(value:unknown):boolean{
+ if(typeof value==='string')return scalarText(value)
+ if(Array.isArray(value))return value.every(scalarValue)
+ if(value!==null&&typeof value==='object')return Object.entries(value).every(([name,member])=>scalarText(name)&&scalarValue(member))
+ return true
+}
 
 /**
  * The object a chat's read cache keys one result by; the key is the SHA-256 of its canonical JSON
@@ -74,10 +103,13 @@ export function canonicalJSON(value:unknown):string{
 
 /**
  * The key a chat's read cache keeps one immutable read under, or undefined where the read cannot be
- * kept across runs: its result depends on the Runtime and the host has not said which one it is.
+ * kept across runs: its result depends on the Runtime and the host has not said which one it is, or a
+ * string the key would hold (the tool, an argument or member name, the Runtime's identity or version)
+ * has a lone UTF-16 surrogate (#246), which Go's reading of the same key cannot hold.
  */
 export async function readCacheKey(tool:string,args:Record<string,unknown>,runtimeBound:boolean,runtime?:RuntimeIdentity):Promise<string|undefined>{
  if(runtimeBound&&(runtime===undefined||!runtime.identity||!runtime.version))return undefined
+ if(runtimeBound&&(!scalarText(runtime!.identity)||!scalarText(runtime!.version))||!scalarText(tool)||!scalarValue(args))return undefined
  const key:ReadCacheKey={tool,arguments:args,...(runtimeBound?{runtime:{identity:runtime!.identity,version:runtime!.version}}:{})}
  return contextDigest(canonicalJSON(key))
 }

@@ -1257,8 +1257,12 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		if kept != nil {
 			chat = c.ledger.Chat()
 		}
+		// #246: arguments with a lone UTF-16 surrogate escape (or bytes that are not UTF-8) are neither
+		// served from nor kept in either cache: ParseJSON reads them as U+FFFD, so two different
+		// arguments would share one key.
+		cacheable := immutable && cacheableArguments(raw)
 		chatKey, hasChatKey := "", false
-		if chat != nil && immutable {
+		if chat != nil && cacheable {
 			runtimeBound := kept.Runtime || (policy != nil && policy.Runtime)
 			var runtime *RuntimeIdentity
 			if c.session.Context != nil {
@@ -1274,7 +1278,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 			}
 		}
 		key := name + ":" + args.Text()
-		if !hasChatKey && immutable {
+		if !hasChatKey && cacheable {
 			if held, ok := c.cache[key]; ok {
 				return held.Clone(), nil
 			}
@@ -1295,7 +1299,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 				return result, err
 			}
 		}
-		if !hasChatKey && immutable && !result.Err() {
+		if !hasChatKey && cacheable && !result.Err() {
 			c.cache[key] = result.Clone()
 		}
 		return result, nil

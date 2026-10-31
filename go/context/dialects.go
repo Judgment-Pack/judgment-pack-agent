@@ -53,7 +53,9 @@ const (
 	dialectCursorMax        = 1000000
 )
 
-// Published Spec RC2 companion at draft maturity; this tuple does not select general Core support.
+// The published Spec v0.3.0 companion at draft maturity: the final distribution of the
+// retained-column/1 leaf that Spec v0.3.0-rc.2 carried with the same schema and corpus bytes (#269).
+// This tuple does not select general Core support.
 type DialectConversionSpec struct {
 	Version      string `json:"version"`
 	Revision     string `json:"revision"`
@@ -67,8 +69,10 @@ type DialectConversionContract struct {
 }
 
 // DialectRetainedColumnDraft retains its compatibility name for the accepted draft-maturity companion.
+// It selects Spec 0.3.0 at its release commit, the tuple Runner v0.27.0 and Runtime v0.39.0 install;
+// the Spec 0.3.0-rc.2 tuple it selected through v0.12.0 is no longer the supported opt-in.
 func DialectRetainedColumnDraft() DialectConversionContract {
-	return DialectConversionContract{"retained-column/1", "base", DialectConversionSpec{"0.3.0-rc.2", "bcac15b7537ce21879201b5e5dfe795496225121", "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557", "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"}}
+	return DialectConversionContract{"retained-column/1", "base", DialectConversionSpec{"0.3.0", "27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc", "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557", "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"}}
 }
 
 type DialectRetainedOccurrence struct {

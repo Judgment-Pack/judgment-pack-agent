@@ -9357,6 +9357,66 @@
   "status": "caught",
   "origin": "agent#266",
   "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeTheClaimChecksTheHeadDigestAsWellAsItsRevision$."
+},
+{
+  "name": "retained-column selector names the RC2 tuple again",
+  "file": "dialects.ts",
+  "find": "spec:Object.freeze({version:'0.3.0',revision:'27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc',",
+  "replace": "spec:Object.freeze({version:'0.3.0-rc.2',revision:'bcac15b7537ce21879201b5e5dfe795496225121',",
+  "tests": [
+    "dialects-pin.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#269",
+  "note": "Go twin (by hand): the same break in go/context/dialects.go DialectRetainedColumnDraft; caught at ^TestDialectSelectorIsRunnerInstalledConversionSpec$ (and ^TestDialectPublishedFinalIdentity$)."
+},
+{
+  "name": "Runtime identity admission takes a lone surrogate",
+  "file": "context/session.ts",
+  "find": " if(runtime&&[runtime.identity,runtime.version].some(text=>typeof text==='string'&&!scalarText(text)))throw authoredFailure('configuration',RUNTIME_IDENTITY_REFUSED,'context')\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the same break in go/context/session.go ContextualSessionWithEnrollment; caught at ^TestTheRuntimeIdentityVectorAdmission$."
+},
+{
+  "name": "Runtime identity admission keeps the host's own object",
+  "file": "context/session.ts",
+  "find": " if(runtime)session={...session,context:{...session.context,runtime:{identity:runtime.identity,version:runtime.version}}}\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the Runtime copy removed in go/context/session.go; caught at ^TestTheRuntimeIdentityVectorAdmission$."
+},
+{
+  "name": "read-cache key takes a string with a lone surrogate",
+  "file": "context/chat.ts",
+  "find": " if(runtimeBound&&(!scalarText(runtime!.identity)||!scalarText(runtime!.version))||!scalarText(tool)||!scalarValue(args))return undefined\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the UTF-8 check removed from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$."
+},
+{
+  "name": "read wrapper caches arguments with a lone surrogate",
+  "file": "execution/controller.ts",
+  "find": "const cacheable=immutable&&scalarValue(args)",
+  "replace": "const cacheable=immutable",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): cacheable := immutable in go/context/controller.go WrapRead; caught at ^TestTheReadWrapperKeepsNoArgumentsWithALoneSurrogate$."
 }
  ]
 }

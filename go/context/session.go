@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -1377,10 +1378,19 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 	}
 	if session.Context != nil {
+		// #246: the Runtime the host names keys reads across runs, so it is admitted only as valid
+		// UTF-8 (no lone surrogate), never replaced, and copied so a later change cannot reach the run.
+		if runtime := session.Context.Runtime; runtime != nil && (!utf8.ValidString(runtime.Identity) || !utf8.ValidString(runtime.Version)) {
+			return nil, failure.Authored("configuration", RuntimeIdentityRefused, "context")
+		}
 		copied := *session.Context
 		if copied.RequestCap != nil {
 			cap := *copied.RequestCap
 			copied.RequestCap = &cap
+		}
+		if copied.Runtime != nil {
+			runtime := *copied.Runtime
+			copied.Runtime = &runtime
 		}
 		session.Context = &copied
 	}

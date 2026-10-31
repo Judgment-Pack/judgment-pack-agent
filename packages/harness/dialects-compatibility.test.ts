@@ -1,5 +1,6 @@
 import privateDraft from '../../contract/testdata/dialect-authoring/superseded-private-draft-identity.json'
 // @vitest-environment node
+import rc2 from '../../contract/testdata/dialect-authoring/superseded-rc2-identity.json'
 import {expect,it,vi} from 'vitest'
 import {createHash} from 'node:crypto'
 import {transformSync} from 'esbuild'
@@ -111,7 +112,7 @@ it('reads every public draft-retention vector with exact closed type members',as
  const {default:vectors}=await import('../../contract/vectors/dialect-authoring/retention.json')
  const stages=new Set<string>(),operations=new Set<string>(),failures=new Set<string>()
  for(const row of vectors.items){
-  if('candidate'in row){const c=row as unknown as DialectDraftCheckpoint;stages.add(c.stage);expect(c.attemptId).toMatch(/^[a-f0-9]{32}$/);expect(c.candidate.columns[0]!.samples[0]!.valueJson).toBe('false');if(c.candidate.conversionContract)expect([fixture.conversionContract,privateDraft]).toContainEqual(c.candidate.conversionContract);for(const result of c.check?.results??[])operations.add(result.operation);if(c.check?.failure)failures.add(c.check.failure.code)}
+  if('candidate'in row){const c=row as unknown as DialectDraftCheckpoint;stages.add(c.stage);expect(c.attemptId).toMatch(/^[a-f0-9]{32}$/);expect(c.candidate.columns[0]!.samples[0]!.valueJson).toBe('false');if(c.candidate.conversionContract)expect([fixture.conversionContract,privateDraft,rc2]).toContainEqual(c.candidate.conversionContract);for(const result of c.check?.results??[])operations.add(result.operation);if(c.check?.failure)failures.add(c.check.failure.code)}
   else if('status'in row){expect(row.status).toBe('draft');expect(row.receipt).toBeTruthy()}
   else expect(row.checkedReceipt).toBe('checked:one')
  }

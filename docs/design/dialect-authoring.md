@@ -79,16 +79,32 @@ The trusted host must explicitly opt into `DIALECT_RETAINED_COLUMN_DRAFT` in
 TypeScript or `DialectRetainedColumnDraft()` in Go through ports.conversionContract.
 These helper names remain for API compatibility and select the accepted companion at
 draft maturity, not general Core support. Model arguments cannot select this contract.
-The exact published Spec distribution is `0.3.0-rc.2`, signed source commit
-`bcac15b7537ce21879201b5e5dfe795496225121`, schema
+The exact published Spec distribution is the final `0.3.0`, source commit
+`27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc`, schema
 `0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557` and corpus
 `17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863`,
-contract `retained-column/1`, profile `base`, role `document-validation`.
+contract `retained-column/1`, profile `base`, role `document-validation` (#269).
+The four tuple members were checked against the published Spec v0.3.0 release archive:
+its checksum, its build attestation for the `v0.3.0` tag at that commit, its
+`release-identity.json` and the SHA-256 of its retained-column schema and corpus files.
+It is the tuple Runner v0.27.0 compiles (`installedConversionSpec`) and Runtime v0.39.0
+installs, whose selected routes require the exact installed contract; a test holds the
+selector to Runner's declaration byte for byte through a handwritten copy with its source cited.
 The companion source is `spec/retained-column.md`; RFC0029 remains its informative
-design record. The verified Spec RC2 archives are published. This package's selected
-identity does not establish a released Runtime or Runner implementation, final Core
-conformance, preparation verification, acquisition authenticity or execution authority.
-Stable batch, independent review, exact dependency and release gates remain required.
+design record.
+
+Through v0.12.0 the selector named the candidate distribution `0.3.0-rc.2` at
+`bcac15b7537ce21879201b5e5dfe795496225121`. Spec v0.3.0 publishes the leaf's schema and
+corpus bytes unchanged, so the digests are equal, but the version and source revision are
+part of the contract identity and differ. A host that still opts into the RC2 tuple is
+refused before the Runtime, and a caller that compares against it sees a different
+selector. A stored checkpoint that carries the RC2 tuple stays inspectable, as the Draft
+RFC0029 checkpoints do, and grants no new contract support.
+
+Equal tuples are not an end-to-end qualification against the released Runner or Runtime.
+This package's selected identity does not establish final Core conformance, preparation
+verification, acquisition authenticity or execution authority. Stable batch, independent
+review, exact dependency and release gates remain required.
 
 The Runtime port calls only get_dialect_contract, dialect_validate and dialect_check,
 with the explicit draftContract and draftProfile selectors. These selector names remain
@@ -180,7 +196,7 @@ existing update-dialect card for candidate/checked/final lineage without duplica
 cards or marking it applied. Fixtures do not mount React, execute a browser, or
 wire that adapter; actual Desk cutover remains separately owned and unverified.
 
-Published Runtime v0.39.0-alpha.1 does not establish this selected RC2 capability.
+Published Runtime v0.39.0-alpha.1 does not establish this selected capability.
 The factory does not implement the newer general quality-target conversions/reconciliation,
 typed results, profile/binding/preparation verification or arbitrary acquisition execution.
 Spec companion acceptance and publication are established for the selected identity;
