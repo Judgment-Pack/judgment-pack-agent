@@ -39,7 +39,7 @@ import {READ_TOOL} from './reader'
 import {SEARCH_TOOL} from './search'
 import {capabilitiesFor,type ModelCapabilities} from '../capabilities'
 import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type ContextConfiguration} from './policy'
-import {INDEX_SHARE,partBytes,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
+import {INDEX_SHARE,RUNTIME_IDENTITY_REFUSED,partBytes,scalarText,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
 import {declareSources,offerSources,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
@@ -875,8 +875,13 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   if(problem) throw authoredFailure('configuration','Runtime tool taxonomy refused. Nothing was sent.','context')
  }
  session={...session,tools:session.tools.map(t=>({...t,taxonomy:structuredClone(t._meta!),_meta:structuredClone(t._meta!),annotations:taxonomyAnnotations(t._meta!.effect)}))}
+ // #246: the Runtime the host names keys reads across runs, so it is admitted only as Unicode scalar text, never replaced.
+ const runtime=session.context?.runtime
+ if(runtime&&[runtime.identity,runtime.version].some(text=>typeof text==='string'&&!scalarText(text)))throw authoredFailure('configuration',RUNTIME_IDENTITY_REFUSED,'context')
  // Copy the host's scalar admission input before any asynchronous setup.
  session={...session,context:session.context?{...session.context,requestCap:session.context.requestCap}:undefined}
+ // The Runtime as admitted: a change the host makes to its own object later never reaches a key.
+ if(runtime)session={...session,context:{...session.context,runtime:{identity:runtime.identity,version:runtime.version}}}
  session={...session,...(session.route?{route:structuredClone(session.route)}:{}),...(session.routeFacts?{routeFacts:structuredClone(session.routeFacts)}:{})}
  session=await durableSession(session)
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.

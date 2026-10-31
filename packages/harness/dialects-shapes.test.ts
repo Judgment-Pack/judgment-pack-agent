@@ -3,6 +3,7 @@ import checkpoints from '../../contract/vectors/record-versions/checkpoint.json'
 import drafts from '../../contract/vectors/dialect-authoring/retention.json'
 import current from '../../contract/testdata/dialect-authoring/authoring.json'
 import historical from '../../contract/testdata/dialect-authoring/superseded-private-draft-identity.json'
+import rc2 from '../../contract/testdata/dialect-authoring/superseded-rc2-identity.json'
 import shapes from './contract/record-shapes.json'
 import {checkRecord,InvalidRecord,UnknownRecordMember} from './recordReader'
 
@@ -25,6 +26,17 @@ it('native generated draft inventory accepts both complete tuples and rejects ev
   else expect(()=>nativeDraft(value),'native refusal of hybrid tuple '+mask).toThrow(InvalidRecord)
  }
  expect(JSON.stringify(drafts)).toBe(before)
+})
+it('native generated draft inventory keeps the RC2 tuple as history and never mixes it with the final (#269)',()=>{
+ // The two tuples share their digests: only version and revision can mix.
+ for(let mask=0;mask<4;mask++){
+  const value=witness(),spec=value.candidate.conversionContract.spec
+  Object.assign(spec,current.conversionContract.spec)
+  if(mask&1)spec.version=rc2.spec.version
+  if(mask&2)spec.revision=rc2.spec.revision
+  if(mask===0||mask===3)expect(()=>nativeDraft(value),'native acceptance of exact tuple '+mask).not.toThrow()
+  else expect(()=>nativeDraft(value),'native refusal of hybrid tuple '+mask).toThrow(InvalidRecord)
+ }
 })
 it('native generated draft inventory refuses missing and unknown tuple fields',()=>{
  for(const key of Object.keys(current.conversionContract.spec)){const value=witness();delete value.candidate.conversionContract.spec[key];expect(()=>nativeDraft(value)).toThrow(InvalidRecord)}

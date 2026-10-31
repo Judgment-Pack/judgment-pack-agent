@@ -20,10 +20,15 @@ import {toolTimeout, withDeadline} from './engines/contract'
  * largest. ADR-0028 carries the arithmetic.
  */
 export const DIALECT_AUTHORING_LIMITS = Object.freeze({documentBytes:1048576, packBytes:1048576, snapshotBytes:4194304, resultBytes:2097152, runtimeBytes:4194304, candidateBytes:4194304, draftBytes:8388608, runtimeResults:2, columns:1000, bindings:1000, samples:3, sampleBytes:16384, shownSampleBytes:160, rememberedReads:32, milliseconds:10000, indexBytes:2097152, pageBytes:1048576, pageDeclarations:1000})
-/** Published Spec RC2 companion at draft maturity; the compatibility helper name does not select Core. */
+/**
+ * The published Spec v0.3.0 companion at draft maturity (#269): the final distribution of the leaf
+ * Spec v0.3.0-rc.2 carried with the same schema and corpus bytes, and the tuple Runner v0.27.0 and
+ * Runtime v0.39.0 install. The RC2 tuple selected through v0.12.0 is no longer the supported opt-in.
+ * The compatibility helper name does not select Core.
+ */
 export const DIALECT_RETAINED_COLUMN_DRAFT = Object.freeze({
  contract:'retained-column/1', profile:'base',
- spec:Object.freeze({version:'0.3.0-rc.2',revision:'bcac15b7537ce21879201b5e5dfe795496225121',schemaSha256:'sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557',corpusSha256:'sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863'})
+ spec:Object.freeze({version:'0.3.0',revision:'27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc',schemaSha256:'sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557',corpusSha256:'sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863'})
 })
 export interface DialectConversionContract {contract:string; profile:string; spec:{version:string; revision:string; schemaSha256:string; corpusSha256:string}}
 export interface DialectRetainedRead {documentJson:string; occurrence:{kind:'case'}|{kind:'source';name:string}; framePointer:string}
