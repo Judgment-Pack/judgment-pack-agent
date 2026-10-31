@@ -536,8 +536,9 @@ func TestPrincipalSessionBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// As a child's input: its writer's store, and no store of its own.
 		held := *prepared
-		held.Principal = nil
+		held.Principal, held.RunStore = nil, nil
 		session.Context = &held
 		run, err := ContextualSession(context.Background(), session)
 		if run != nil {
