@@ -55,6 +55,7 @@ package runcontext
 // before, so the checkpoint's size is the run's and never the chat's.
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync"
@@ -88,50 +89,39 @@ func orObject(v *Value) *Value {
 // RuntimeIdentityRefused is the detail of the refusal of an Input.Runtime whose identity or version
 // is not valid UTF-8, the form a lone UTF-16 surrogate takes in a Go string (#246;
 // RUNTIME_IDENTITY_REFUSED in context/chat.ts). It is refused, never replaced with U+FFFD.
-const RuntimeIdentityRefused = "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent."
-
-// scalarValue reports whether every string in v, member names included, is valid UTF-8: a
-// sequence of Unicode scalar values, with no lone surrogate.
-func scalarValue(v *Value) bool {
-	if v == nil {
-		return true
-	}
-	switch v.kind {
-	case KindString:
-		return utf8.ValidString(v.s)
-	case KindArray:
-		for _, item := range v.a {
-			if !scalarValue(item) {
-				return false
-			}
-		}
-	case KindObject:
-		for _, m := range v.o {
-			if !utf8.ValidString(m.key) || !scalarValue(m.val) {
-				return false
-			}
-		}
-	}
-	return true
-}
+const RuntimeIdentityRefused = "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate or is not valid UTF-8. Nothing was sent."
 
 // cacheableArguments reports whether a call's raw arguments may key a cached read (#246): they are
-// UTF-8 and every \u escape in them is a scalar value or half of an ordered surrogate pair. ParseJSON
-// reads a lone surrogate escape as U+FFFD, so a read whose arguments hold one is neither served from
-// nor kept in either cache (the scalarValue check in readCacheKey and wrapRead, context/chat.ts).
+// UTF-8 and every \u escape in them is a scalar value or half of an ordered surrogate pair, member
+// names included. ParseJSON reads a lone surrogate escape (and a byte that is not UTF-8) as U+FFFD,
+// so the check is made on the raw bytes, before they are read (scalarValue in context/chat.ts).
 func cacheableArguments(raw []byte) bool { return validReportUnicode(raw) }
 
 // ReadCacheKeyOf is readCacheKey: the key a chat's read cache keeps one immutable read under, and
 // false where the read cannot be kept across runs — its result depends on the Runtime and the
-// host has not said which one it is, or a string the key would hold (the tool, an argument or
-// member name, the Runtime's identity or version) is not valid UTF-8, which is how a lone UTF-16
-// surrogate reaches a Go string (#246).
-func ReadCacheKeyOf(tool string, args *Value, runtimeBound bool, runtime *RuntimeIdentity) (string, bool) {
+// host has not said which one it is, or a string the key would hold has no exact UTF-8 form (#246).
+//
+// arguments is the call's raw JSON arguments object, exactly as the model gave them; empty means
+// {}. The key is made from the raw bytes, not from a parsed Value, because ParseJSON reads a lone
+// UTF-16 surrogate escape as U+FFFD: \ud800, \ud801 and a literal U+FFFD would share one key. There
+// is no key where the arguments hold a lone surrogate escape or bytes that are not UTF-8 (in a
+// value or a member name), where they are not one JSON object, or where the tool name or the
+// Runtime's identity or version is not valid UTF-8, which is how a lone surrogate reaches a Go
+// string.
+func ReadCacheKeyOf(tool string, arguments json.RawMessage, runtimeBound bool, runtime *RuntimeIdentity) (string, bool) {
 	if runtimeBound && (runtime == nil || runtime.Identity == "" || runtime.Version == "") {
 		return "", false
 	}
-	if runtimeBound && (!utf8.ValidString(runtime.Identity) || !utf8.ValidString(runtime.Version)) || !utf8.ValidString(tool) || !scalarValue(args) {
+	if runtimeBound && (!utf8.ValidString(runtime.Identity) || !utf8.ValidString(runtime.Version)) || !utf8.ValidString(tool) || !cacheableArguments(arguments) {
 		return "", false
+	}
+	args := Object()
+	if len(arguments) > 0 {
+		held, err := ParseJSON(arguments)
+		if err != nil || !held.IsObject() {
+			return "", false
+		}
+		args = held
 	}
 	key := ReadCacheKey{Tool: tool, Arguments: args}
 	if runtimeBound {

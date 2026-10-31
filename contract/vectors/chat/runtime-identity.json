@@ -1,5 +1,5 @@
 {
-  "description": "The Runtime identity and read-cache key contract for strings that hold a lone UTF-16 surrogate (#246), written by hand. JavaScript can hold such a string and Go cannot: encoding/json reads a lone surrogate escape as U+FFFD without saying so, so the two languages would name different Runtimes, or one key for two reads. Both refuse instead of replacing. A run whose context.runtime has an identity or version with a lone surrogate is refused before anything is sent, with failure code configuration and the detail in refusal (admission refused). A read whose key would hold one, in the Runtime's strings, the tool or an argument, gets no key and is not kept in either cache (key none). Every other string keeps its exact text: a valid surrogate pair and a literal U+FFFD key as written. outcomes[i] is the outcome for items[i]: its admission, and its canonical JSON and the SHA-256 of that, or key none. The lone surrogates are written as JSON escapes; a Go reader decodes them from the raw item, since encoding/json would replace them. context/chat.test.ts and go/context/runtime_identity_test.go hold both languages to every item, and the contract tests compute each digest again.",
+  "description": "The Runtime identity and read-cache key contract for strings that hold a lone UTF-16 surrogate (#246), written by hand. JavaScript can hold such a string and Go cannot: encoding/json reads a lone surrogate escape as U+FFFD without saying so, so the two languages would name different Runtimes, or one key for two reads. Both refuse instead of replacing. A run whose context.runtime has an identity or version with a lone surrogate is refused before anything is sent, with failure code configuration and the detail in refusal (admission refused). A read whose key would hold one, in the Runtime's strings, the tool name, an argument value or an argument member name, gets no key and is not kept in either cache (key none). Every other string keeps its exact text: a valid surrogate pair and a literal U+FFFD key as written. outcomes[i] is the outcome for items[i]: its admission, and its canonical JSON and the SHA-256 of that, or key none. The lone surrogates are written as JSON escapes; a Go reader decodes the tool and the Runtime's strings from the raw item, since encoding/json would replace them, and hands ReadCacheKeyOf the raw arguments. context/chat.test.ts and go/context/runtime_identity_test.go hold both languages to every item, and the contract tests compute each digest again.",
   "schema": "tool-result.json#/$defs/readCacheKey",
   "source": {
     "harness": {
@@ -12,7 +12,7 @@
       "packages/harness/execution/controller.ts (wrapRead)"
     ]
   },
-  "refusal": "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent.",
+  "refusal": "Runtime identity refused: its identity or version holds a lone UTF-16 surrogate or is not valid UTF-8. Nothing was sent.",
   "outcomes": [
     {
       "label": "an ordinary release version",
@@ -60,6 +60,16 @@
     },
     {
       "label": "a lone high surrogate in an argument, with an ordinary Runtime",
+      "admission": "admitted",
+      "key": "none"
+    },
+    {
+      "label": "a lone high surrogate in the tool name, with an ordinary Runtime",
+      "admission": "admitted",
+      "key": "none"
+    },
+    {
+      "label": "a lone low surrogate in an argument member name, with an ordinary Runtime",
       "admission": "admitted",
       "key": "none"
     }
@@ -135,6 +145,24 @@
       "tool": "get_schema",
       "arguments": {
         "spec_version": "0.3.0-\ud800"
+      },
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0"
+      }
+    },
+    {
+      "tool": "get_schema\ud800",
+      "arguments": {},
+      "runtime": {
+        "identity": "jpack",
+        "version": "0.39.0"
+      }
+    },
+    {
+      "tool": "get_schema",
+      "arguments": {
+        "spec\udc00": "0.3.0"
       },
       "runtime": {
         "identity": "jpack",

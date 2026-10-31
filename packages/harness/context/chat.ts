@@ -62,7 +62,7 @@ export interface RuntimeIdentity {identity:string;version:string}
  * (#246). Such a string has no UTF-8 form: Go cannot hold it, and JSON readers that replace it with U+FFFD
  * would key another Runtime's reads under it. It is refused, never replaced.
  */
-export const RUNTIME_IDENTITY_REFUSED='Runtime identity refused: its identity or version holds a lone UTF-16 surrogate. Nothing was sent.'
+export const RUNTIME_IDENTITY_REFUSED='Runtime identity refused: its identity or version holds a lone UTF-16 surrogate or is not valid UTF-8. Nothing was sent.'
 
 /** True where text is a sequence of Unicode scalar values: every surrogate is half of a pair, in order (#246). */
 export function scalarText(text:string):boolean{

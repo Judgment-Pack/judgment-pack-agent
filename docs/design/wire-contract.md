@@ -1435,9 +1435,10 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   whose `context.runtime` has an identity or version with a lone UTF-16 surrogate is refused before
   anything is sent (failure `configuration`, detail `RUNTIME_IDENTITY_REFUSED` /
   `RuntimeIdentityRefused`); in Go such a string is one that is not valid UTF-8. A read whose tool
-  or arguments hold one gets no key and is kept in neither the chat's cache nor the run's: Go's
-  JSON reader turns a lone surrogate escape into U+FFFD, so two different arguments would share a
-  key. A lone surrogate is never replaced; a valid surrogate pair and a literal U+FFFD key as
+  name, argument values or argument member names hold one gets no key and is kept in neither the
+  chat's cache nor the run's: Go's JSON reader turns a lone surrogate escape into U+FFFD, so two
+  different arguments would share a key, and Go's `ReadCacheKeyOf` therefore takes the raw
+  argument bytes. A lone surrogate is never replaced; a valid surrogate pair and a literal U+FFFD key as
   written (`contract/vectors/chat/runtime-identity.json`). A mutable tool is never served from the cache. The cache serves only a name the
   run's session offers: for a name it does not offer (a delegated child's profile that lacks the
   tool), the call goes on to the offer check and the gate as any other, and the cached entry is not

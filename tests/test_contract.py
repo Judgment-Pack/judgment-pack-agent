@@ -779,7 +779,10 @@ class VectorTests(unittest.TestCase):
         self.assertIn("0.39.0-\ud800", versions)
         self.assertIn("0.39.0-\U0001F600", versions)
         self.assertIn("0.39.0-\ufffd", versions)
-        self.assertEqual((refused, keyless), (4, 5))
+        self.assertEqual((refused, keyless), (4, 7))
+        # The tool name and an argument member name each hold one in a row of their own.
+        self.assertTrue(any(not scalar(item["tool"]) for item in vector["items"]))
+        self.assertTrue(any(not all(scalar(name) for name in item["arguments"]) for item in vector["items"]))
 
     def test_the_turn_index_rows_follow_from_the_fixture(self):
         vector = self.vectors["chat/turn-index.json"]

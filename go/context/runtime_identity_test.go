@@ -81,7 +81,7 @@ func vectorString(t *testing.T, raw json.RawMessage) string {
 type identityVector struct {
 	Refusal string `json:"refusal"`
 	Items   []struct {
-		Tool      string          `json:"tool"`
+		Tool      json.RawMessage `json:"tool"`
 		Arguments json.RawMessage `json:"arguments"`
 		Runtime   *struct {
 			Identity json.RawMessage `json:"identity"`
@@ -122,8 +122,9 @@ func TestTheVectorStringsKeepALoneSurrogate(t *testing.T) {
 	}
 }
 
-// Each item keys as its outcome states, or gets no key; Go's path is the read wrapper's: the raw
-// arguments, then ReadCacheKeyOf.
+// Each item keys as its outcome states, or gets no key, through the exported ReadCacheKeyOf alone:
+// the raw arguments as the vector writes them, the tool and the Runtime's strings as a lossless Go
+// host would hold them.
 func TestTheRuntimeIdentityVectorKeys(t *testing.T) {
 	vector := readIdentityVector(t)
 	if vector.Refusal != RuntimeIdentityRefused {
@@ -131,30 +132,49 @@ func TestTheRuntimeIdentityVectorKeys(t *testing.T) {
 	}
 	for at, item := range vector.Items {
 		outcome := vector.Outcomes[at]
-		args, err := ParseJSON(item.Arguments)
-		if err != nil {
-			t.Fatal(err)
-		}
+		tool := vectorString(t, item.Tool)
 		var runtime *RuntimeIdentity
 		if item.Runtime != nil {
 			runtime = &RuntimeIdentity{Identity: vectorString(t, item.Runtime.Identity), Version: vectorString(t, item.Runtime.Version)}
 		}
-		key, ok := "", false
-		if cacheableArguments(item.Arguments) {
-			key, ok = ReadCacheKeyOf(item.Tool, args, runtime != nil, runtime)
-		}
+		key, ok := ReadCacheKeyOf(tool, item.Arguments, runtime != nil, runtime)
 		if outcome.Canonical == "" {
 			if outcome.Key != "none" || ok {
 				t.Errorf("%s: keyed %s", outcome.Label, key)
 			}
 			continue
 		}
-		if held := CanonicalJSON(ReadCacheKey{Tool: item.Tool, Arguments: args, Runtime: runtime}.Value()); held != outcome.Canonical {
+		args, err := ParseJSON(item.Arguments)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if held := CanonicalJSON(ReadCacheKey{Tool: tool, Arguments: args, Runtime: runtime}.Value()); held != outcome.Canonical {
 			t.Errorf("%s: canonicalizes to %s", outcome.Label, held)
 		}
 		if !ok || key != outcome.SHA256 {
 			t.Errorf("%s: keys to %s", outcome.Label, key)
 		}
+	}
+}
+
+// The exported key function is given the raw arguments, so a Go host cannot get one key for two
+// different arguments: \ud800 and \ud801 get none, a literal U+FFFD keys as itself, and so do bytes
+// that are not UTF-8 or arguments that are not one object (none).
+func TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates(t *testing.T) {
+	runtime := &RuntimeIdentity{Identity: "jpack", Version: "0.39.0"}
+	for _, raw := range []string{`{"q":"\ud800"}`, `{"q":"\ud801"}`, `{"q":"\udc00\ud800"}`, `{"\ud800":1}`, "{\"q\":\"\xed\xa0\x80\"}", "{\"q\":\"\xff\"}", `[1]`, `{"q":`} {
+		if key, ok := ReadCacheKeyOf("get_schema", json.RawMessage(raw), true, runtime); ok {
+			t.Errorf("%q keyed %s", raw, key)
+		}
+	}
+	replacement, ok := ReadCacheKeyOf("get_schema", json.RawMessage(`{"q":"\ufffd"}`), true, runtime)
+	written, same := ReadCacheKeyOf("get_schema", json.RawMessage("{\"q\":\"\uFFFD\"}"), true, runtime)
+	pair, paired := ReadCacheKeyOf("get_schema", json.RawMessage(`{"q":"\ud83d\ude00"}`), true, runtime)
+	if !ok || !same || !paired || replacement != written || replacement == pair {
+		t.Fatalf("scalar arguments keyed %v %v %v", replacement, written, pair)
+	}
+	if _, ok := ReadCacheKeyOf("get_schema\xed\xa0\x80", nil, false, nil); ok {
+		t.Error("a tool name that is not UTF-8 keyed")
 	}
 }
 

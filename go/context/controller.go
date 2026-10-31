@@ -1268,7 +1268,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 			if c.session.Context != nil {
 				runtime = c.session.Context.Runtime
 			}
-			chatKey, hasChatKey = ReadCacheKeyOf(name, args, runtimeBound, runtime)
+			chatKey, hasChatKey = ReadCacheKeyOf(name, raw, runtimeBound, runtime)
 		}
 		// The cache serves only a name the run's session offers: an unoffered name goes on to the
 		// inner offer check and the gate, and a served entry never joins a child's visible set.

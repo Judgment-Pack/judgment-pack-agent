@@ -9404,7 +9404,7 @@
   ],
   "status": "caught",
   "origin": "agent#246",
-  "note": "Go twin (by hand): the UTF-8 check removed from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$."
+  "note": "Go twin (by hand): the UTF-8 and raw-argument checks removed from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
 },
 {
   "name": "read wrapper caches arguments with a lone surrogate",
@@ -9417,6 +9417,30 @@
   "status": "caught",
   "origin": "agent#246",
   "note": "Go twin (by hand): cacheable := immutable in go/context/controller.go WrapRead; caught at ^TestTheReadWrapperKeepsNoArgumentsWithALoneSurrogate$."
+},
+{
+  "name": "read-cache key ignores argument member names",
+  "file": "context/chat.ts",
+  "find": "every(([name,member])=>scalarText(name)&&scalarValue(member))",
+  "replace": "every(([,member])=>scalarValue(member))",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): go/context/chat.go checks member names on the raw bytes (cacheableArguments); dropping its escape check is caught at ^TestTheRuntimeIdentityVectorKeys$ (the member-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
+},
+{
+  "name": "read-cache key ignores the tool name",
+  "file": "context/chat.ts",
+  "find": "||!scalarText(tool)||",
+  "replace": "||",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): !utf8.ValidString(tool) dropped from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ (the tool-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
 }
  ]
 }

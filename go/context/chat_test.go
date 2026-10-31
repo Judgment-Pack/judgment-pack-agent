@@ -5,6 +5,7 @@ package runcontext
 // a scripted endpoint are the adapter's).
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -76,7 +77,7 @@ func TestTheCacheKeyIsTheContractVector(t *testing.T) {
 		if held := item.Get("runtime"); held != nil {
 			runtime = &RuntimeIdentity{Identity: held.Get("identity").Str(), Version: held.Get("version").Str()}
 		}
-		key, ok := ReadCacheKeyOf(item.Get("tool").Str(), item.Get("arguments"), runtime != nil, runtime)
+		key, ok := ReadCacheKeyOf(item.Get("tool").Str(), json.RawMessage(item.Get("arguments").Text()), runtime != nil, runtime)
 		if !ok || key != keys[at].Get("sha256").Str() {
 			t.Errorf("item %d keys to %s", at, key)
 		}
@@ -85,13 +86,13 @@ func TestTheCacheKeyIsTheContractVector(t *testing.T) {
 
 func TestTheCacheKeyCarriesTheArguments(t *testing.T) {
 	runtime := &RuntimeIdentity{Identity: "jpack", Version: "0.19.0"}
-	one, _ := ReadCacheKeyOf("get_schema", MustParseJSON(`{"spec_version":"0.2.0-draft"}`), true, runtime)
-	two, _ := ReadCacheKeyOf("get_schema", MustParseJSON(`{"spec_version":"0.1.0-draft"}`), true, runtime)
+	one, _ := ReadCacheKeyOf("get_schema", json.RawMessage(`{"spec_version":"0.2.0-draft"}`), true, runtime)
+	two, _ := ReadCacheKeyOf("get_schema", json.RawMessage(`{"spec_version":"0.1.0-draft"}`), true, runtime)
 	if one == two {
 		t.Error("two calls that differ only in their arguments have one key")
 	}
 	// A Runtime-served read the host named no Runtime for is not kept across runs.
-	if _, ok := ReadCacheKeyOf("get_schema", Object(), true, nil); ok {
+	if _, ok := ReadCacheKeyOf("get_schema", nil, true, nil); ok {
 		t.Error("a read with no Runtime was given a key")
 	}
 }
