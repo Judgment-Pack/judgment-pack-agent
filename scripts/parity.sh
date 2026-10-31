@@ -387,6 +387,8 @@ $pkg/storage/resume.test.ts
 $pkg/storage/waitConformance.ts
 $pkg/storage/waitConformance.test.ts
 $pkg/storage/waitReview.test.ts
+$pkg/storage/reauth.ts
+$pkg/storage/reauth.test.ts
 EOF
 }
 

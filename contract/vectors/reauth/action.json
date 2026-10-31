@@ -1,0 +1,1013 @@
+{
+  "description": "Handwritten re-authorization actions (#226): the explicit host or person action a resume presents (a refresh for the same principal, or a replacement by another), and what a claim records (reauthorized: the refresh's actor, time, principal and current permissions, and the action's digest). digests are each action's SHA-256 over its canonical JSON. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state (unsorted labels, an impossible time). cases: the action a reauthorization wait is resumed with and what both languages decide: the reauthorized record (an index into reauthorized.items) or the refusal (resume: ResumeRefused; reauth: ReauthorizationRefused): a replacement or another principal is a changed identity, never a refresh; an action from before the park is stale; current permissions that do not cover what the operation requires are insufficient, narrower ones that do are accepted; another wait or connection is invalid.",
+  "schema": "run-reauth.json#/$defs/action",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/reauth.ts (readReauthDisposition, readReauthAction, readReauthorized, readReauthRefusal, reauthorize)",
+      "packages/harness/storage/wait.ts (holdsNeverAdmitted)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-refreshed",
+      "wait": "wait-1",
+      "connection": "tracker-conn",
+      "action": "refresh",
+      "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+      "permissions": [
+        "issues:write"
+      ],
+      "actor": "person-owner",
+      "at": "2026-01-01T00:01:30.000Z"
+    },
+    {
+      "version": 1,
+      "resource": "run-reauth",
+      "wait": "wait-1",
+      "connection": "tracker-conn",
+      "action": "replacement",
+      "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+      "permissions": [
+        "issues:read",
+        "issues:write"
+      ],
+      "actor": "host-console",
+      "at": "2026-01-01T00:05:00.000Z"
+    }
+  ],
+  "digests": [
+    "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83",
+    "sha256:8ee68d99aa6879c90fb46ef56ee21c2a2e82a3d61ee7bf41031d79ce8af9a940"
+  ],
+  "refused": [
+    {
+      "problem": "a token member",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z",
+        "token": "SENTINEL-REFRESHED-TOKEN"
+      }
+    },
+    {
+      "problem": "an unknown action",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "renew",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "a principal that is not a digest",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "person-one@example.invalid",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "a time without milliseconds",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30Z"
+      }
+    },
+    {
+      "problem": "a connection with a slash",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker/conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "no actor",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an empty record",
+      "action": {}
+    },
+    {
+      "problem": "65 permission labels",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "scope-00",
+          "scope-01",
+          "scope-02",
+          "scope-03",
+          "scope-04",
+          "scope-05",
+          "scope-06",
+          "scope-07",
+          "scope-08",
+          "scope-09",
+          "scope-10",
+          "scope-11",
+          "scope-12",
+          "scope-13",
+          "scope-14",
+          "scope-15",
+          "scope-16",
+          "scope-17",
+          "scope-18",
+          "scope-19",
+          "scope-20",
+          "scope-21",
+          "scope-22",
+          "scope-23",
+          "scope-24",
+          "scope-25",
+          "scope-26",
+          "scope-27",
+          "scope-28",
+          "scope-29",
+          "scope-30",
+          "scope-31",
+          "scope-32",
+          "scope-33",
+          "scope-34",
+          "scope-35",
+          "scope-36",
+          "scope-37",
+          "scope-38",
+          "scope-39",
+          "scope-40",
+          "scope-41",
+          "scope-42",
+          "scope-43",
+          "scope-44",
+          "scope-45",
+          "scope-46",
+          "scope-47",
+          "scope-48",
+          "scope-49",
+          "scope-50",
+          "scope-51",
+          "scope-52",
+          "scope-53",
+          "scope-54",
+          "scope-55",
+          "scope-56",
+          "scope-57",
+          "scope-58",
+          "scope-59",
+          "scope-60",
+          "scope-61",
+          "scope-62",
+          "scope-63",
+          "scope-64"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor of 257 characters",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor with a bearer token and an address in it",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "Bearer SENTINEL-ACCESS-TOKEN person@example.invalid",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor that is an address",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person@example.invalid",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an actor of 65 characters",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "unsorted permissions",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write",
+          "issues:read"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      }
+    },
+    {
+      "problem": "an impossible date",
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-02-30T00:00:00.000Z"
+      }
+    }
+  ],
+  "reauthorized": {
+    "schema": "run-reauth.json#/$defs/reauthorized",
+    "items": [
+      {
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+      },
+      {
+        "actor": "person-owner",
+        "at": "2026-01-01T00:00:00.000Z",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "digest": "sha256:9216e5e0f35e628b765f9d42cf2fb1870f1e9504e009555c8d4c5d1b0c0c1870"
+      }
+    ],
+    "refused": [
+      {
+        "problem": "a token member",
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83",
+          "token": "SENTINEL-REFRESHED-TOKEN"
+        }
+      },
+      {
+        "problem": "no digest",
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ]
+        }
+      },
+      {
+        "problem": "an empty record",
+        "reauthorized": {}
+      },
+      {
+        "problem": "an actor with a bearer token and an address in it",
+        "reauthorized": {
+          "actor": "Bearer SENTINEL-ACCESS-TOKEN person@example.invalid",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    ],
+    "readerRefused": [
+      {
+        "problem": "unsorted permissions",
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write",
+            "issues:read"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      },
+      {
+        "problem": "an impossible date",
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-02-30T00:00:00.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case": "a refresh for the same principal, narrower permissions that still cover the operation",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "reauthorized": 0
+      }
+    },
+    {
+      "case": "a refresh taken at the park time",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:00:00.000Z"
+      },
+      "outcome": {
+        "reauthorized": 1
+      }
+    },
+    {
+      "case": "a replacement",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "replacement",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "identity-changed",
+        "by": "resume"
+      }
+    },
+    {
+      "case": "a refresh for another principal",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "identity-changed",
+        "by": "resume"
+      }
+    },
+    {
+      "case": "permissions after the refresh that no longer cover the operation",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "permission-insufficient",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "no permissions at all",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "permission-insufficient",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "an action from before the park",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2025-12-31T23:59:59.999Z"
+      },
+      "outcome": {
+        "refused": "stale",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "another wait's action",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-2",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "invalid",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "another run's action",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "invalid",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "another connection's action",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "other-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "invalid",
+        "by": "reauth"
+      }
+    },
+    {
+      "case": "a malformed action",
+      "wait": {
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "parkedAt": "2026-01-01T00:00:00.000Z",
+        "connection": "tracker-conn",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      },
+      "action": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "connection": "tracker-conn",
+        "action": "refresh",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write",
+          "issues:read"
+        ],
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z"
+      },
+      "outcome": {
+        "refused": "invalid",
+        "by": "reauth"
+      }
+    }
+  ]
+}

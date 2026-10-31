@@ -1,0 +1,56 @@
+{
+  "description": "Handwritten named re-authorization refusals, one per reason, in order: every reason both languages give and nothing else, and records both readers refuse.",
+  "schema": "run-reauth.json#/$defs/refusal",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/reauth.ts (readReauthDisposition, readReauthAction, readReauthorized, readReauthRefusal, reauthorize)",
+      "packages/harness/storage/wait.ts (holdsNeverAdmitted)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "reason": "invalid"
+    },
+    {
+      "version": 1,
+      "reason": "untrusted"
+    },
+    {
+      "version": 1,
+      "reason": "used"
+    },
+    {
+      "version": 1,
+      "reason": "stale"
+    },
+    {
+      "version": 1,
+      "reason": "unbound"
+    },
+    {
+      "version": 1,
+      "reason": "permission-insufficient"
+    }
+  ],
+  "refused": [
+    {
+      "version": 1,
+      "reason": "forged"
+    },
+    {
+      "version": 2,
+      "reason": "stale"
+    },
+    {
+      "version": 1,
+      "reason": "stale",
+      "detail": "invalid_grant"
+    },
+    {}
+  ]
+}
