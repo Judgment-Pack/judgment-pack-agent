@@ -1819,6 +1819,11 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 				return ToolResult{}, err
 			}
 		}
+		if admit := dispatchAdmissionOf(ctx); admit != nil {
+			if err := admit(ctx); err != nil {
+				return ToolResult{}, err
+			}
+		}
 		return execute(withoutReceiptAdmission(ctx), raw)
 	}, admit, func(result ToolResult) bool { return !result.Err() }, func(result ToolResult) []ArtifactObservation {
 		if tool.Artifacts != nil {

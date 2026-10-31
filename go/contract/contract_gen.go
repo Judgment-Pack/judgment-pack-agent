@@ -20025,7 +20025,9 @@ func (v RunPrincipalAdmissionAnswerOption3) MarshalJSON() ([]byte, error) {
 // the audience names it, the tool's own name at its source, its owner-declared ADR-0027 effect,
 // and whether this admission counts against the calls limits. count is true only on the admission
 // immediately before a dispatch the package itself is the enforcing host of (a host source) and
-// whose own checks held; a gateway source's call is counted by the gateway.
+// whose own checks held; a gateway source's call is counted by the gateway. An acting Runtime call
+// names source runtime; a host tool with no source names source local, which no scope matches, and
+// its read asks only whether the chain stands and never counts.
 type RunPrincipalAdmissionCall struct {
 	Source string `json:"source"`
 	Tool   string `json:"tool"`

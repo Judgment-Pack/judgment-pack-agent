@@ -1285,11 +1285,13 @@ class VectorTests(unittest.TestCase):
             return "sha256:" + hashlib.sha256(json.dumps(statement, separators=(",", ":"), ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
         reissued, other_actor, other_subject = chains["items"][2][0], chains["items"][3][0], chains["items"][4][0]
-        self.assertEqual(chains["digests"], {"root": digest(root), "child": digest(child), "reissued": digest(reissued), "otherActor": digest(other_actor), "otherSubject": digest(other_subject)})
+        self.assertEqual(chains["digests"], {"root": digest(root), "child": digest(child), "reissued": digest(reissued), "otherActor": digest(other_actor), "otherSubject": digest(other_subject),
+                                             "runtimeRoot": digest(chains["items"][5][0]), "relay": digest(chains["items"][6][1]), "relayLeaf": digest(chains["items"][7][2]),
+                                             "otherActorChild": digest(chains["items"][8][1]), "otherSubjectChild": digest(chains["items"][9][1])})
         self.assertEqual(child["parent"], {"id": root["id"], "digest": digest(root)})
         reads = rows["principal/admission.json"]
         self.assertTrue(all(case["read"] is None or 0 <= case["read"] < len(reads["items"]) for case in reads["cases"]))
-        self.assertEqual(sorted({case["read"] for case in reads["cases"] if case["read"] is not None}), list(range(len(reads["items"]))))
+        self.assertEqual(sorted({case["read"] for case in reads["cases"] + reads["standing"] if case["read"] is not None}), list(range(len(reads["items"]))))
 
     def test_every_run_wait_member_and_value_is_carried_and_every_refused_record_fails(self):
         # #224 and #228: every member of run-wait.json (root and definitions) and every enum value is

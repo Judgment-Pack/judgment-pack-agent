@@ -24,7 +24,7 @@ import {normalize,wireFor,dialectFor,TIER_MEMBERS,RESPONSE_TOKENS} from '../thin
 import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider,type FailoverClass} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure,normalizeFailure} from '../failures'
-import {openPrincipal,DelegationRefused,PrincipalInputInvalid,type OpenedPrincipal,type PrincipalRefusal,type RunPrincipal} from '../principal'
+import {PRINCIPAL_CHANGED,admitStanding,openRunPrincipal,principalsChanged,refusalDetail,type OpenedPrincipal,type PrincipalRefusal,type RunPrincipal} from '../principal'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
 import {CriticSwitch,readCriticSettings,REQUEST_REVIEW,REQUEST_REVIEW_DESCRIPTION,REQUEST_REVIEW_SCHEMA,REVIEW_TAKEN,type CriticDecision,type CriticTier} from '../criticSwitch'
 import {GateViolation} from '../toolGate'
@@ -43,7 +43,7 @@ import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type Contex
 import {INDEX_SHARE,RUNTIME_IDENTITY_REFUSED,partBytes,scalarText,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
-import {declareSources,offerSources,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
+import {declareSources,offerSources,dispatchAdmission,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
 import {declareSubagents,catalogueSubagents,subagentOffer,subagentRecord,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import {selectAskingWell,requireAskingWell} from '../askingWell'
@@ -892,13 +892,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0029: the delegation the issuing host supplied, verified before anything is offered or asked; a
  // delegated child acts under its parent's principal.
  let principal:OpenedPrincipal|undefined
- if(session.context?.principal!==undefined){
-  try{principal=await openPrincipal(session.context.principal)}catch(error){
-   if(error instanceof DelegationRefused)throw authoredFailure('configuration',`The run's delegation is refused (${error.refusal.name}). Nothing was sent.`,'context')
-   if(error instanceof PrincipalInputInvalid)throw authoredFailure('configuration',error.message+' Nothing was sent.','context')
-   throw error
-  }
- }else principal=session.context?.link?.sources?.()?.principal
+ if(session.context?.principal!==undefined)principal=await openRunPrincipal(session.context.principal)
+ else principal=session.context?.link?.sources?.()?.principal
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  for(const original of session.hostTools){const copy=declared.hostTools.find(tool=>tool.name===original.name&&tool.execute===original.execute);if(copy)copyTaskDelegationTool(original,copy)}
@@ -927,7 +922,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // the same subject and root actor: a re-issued or narrowed chain replaces the record; another principal, a
  // run that was not delegated, or one that is no longer, is refused (principal-changed).
  const saved=context.execution.state.principal,restoring=session.context?.execution!==undefined
- if(restoring&&(saved===undefined)!==(principal===undefined)||saved!==undefined&&principal!==undefined&&(canonicalJSON(saved.subject)!==canonicalJSON(principal.record.subject)||saved.rootActor!==principal.record.rootActor||saved.actor.host!==principal.record.actor.host))throw authoredFailure('stale-state','The run continues under another principal than it began under (principal-changed). Nothing was sent.','context')
+ if(restoring&&principalsChanged(saved,principal?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  if(principal)context.execution.mutate({principal:structuredClone(principal.record)})
  const persistence=session.context?.[durableOwner]
  const legacyID=legacyCheckpointIdentity(session.context?.checkpoint)
@@ -1016,6 +1011,13 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
+ // ADR-0029: a host's tool with no source is not matched against the scope, which names sources, and is still refused under a delegation that no longer stands. A question or a delegation is the package's own interaction, not the host's dispatch.
+ const sourceless=new Set(session.hostTools.filter(tool=>tool.source===undefined&&tool.interaction===undefined).map(tool=>tool.name))
+ const stands=async(tool:HostTool,signal:AbortSignal)=>{
+  if(!context.principal||!sourceless.has(tool.name))return
+  const refusal=await admitStanding(context.principal,tool.name,tool.taxonomy?.effect,signal)
+  if(refusal)throw context.refuse(tool.name,refusalDetail(tool.name,refusal),'delegation refused',refusal)
+ }
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
@@ -1023,7 +1025,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string,admission?:ReceiptAdmission)=>{
   const binding=session.context?.[durableOwner]
   const source=declared.entries.get(tool.name)?.record
-  const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
+  const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
   return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined)
@@ -1053,7 +1055,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   else{await session.context?.checkpoint?.(state);context.memoryNotice(event)}
  }
  await context.execution.publishPlanDecision()
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>{const admission=receiptAdmission(bounded);return context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId,admission),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined,admission)(given)};return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);await stands(tool,signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>{const admission=receiptAdmission(bounded);return context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId,admission),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined,admission)(given)};return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  const routePolicy=routingPolicyFromMembers(context.resolvedPolicy)
  if(routePolicy&&!session.childDefinition&&!session.context?.objective)context.turnRoute=new TurnRouteOwner(context,session,routePolicy,hostTools)
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.

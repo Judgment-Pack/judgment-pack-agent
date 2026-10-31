@@ -4,7 +4,7 @@
 // authority past the delegation; an undelegated gate asks nothing.
 import {describe,it,expect,beforeEach} from 'vitest'
 import chains from '../../contract/vectors/principal/chains.json'
-import {declareSources,SourceGate,toolListDigest,type ApprovalBook} from './toolSources'
+import {declareSources,dispatchAdmission,SourceGate,toolListDigest,type ApprovalBook} from './toolSources'
 import {openPrincipal,type AdmissionRead,type AdmissionAnswer} from './principal'
 import {CONTEXT_DEFAULTS} from './context/policy'
 import {GateViolation} from './toolGate'
@@ -16,7 +16,7 @@ import type {ApprovalRecord,SourceFigures} from './execution/state'
 beforeEach(()=>configureHarness(testHost()))
 const T='2026-10-30T01:00:00.000Z'
 const ok=():McpToolResult=>({content:[{type:'text',text:'done'}]})
-type Port={answer:AdmissionAnswer|'throw';reads:AdmissionRead[];now:string}
+type Port={answer:AdmissionAnswer|'throw';answerFor?:(read:AdmissionRead)=>AdmissionAnswer;reads:AdmissionRead[];now:string}
 
 async function tools(ran:string[],extra:Partial<Record<string,Partial<HostTool>>>={}):Promise<HostTool[]>{
  const notes=[['read_note','read','read'],['write_note','act','act'],['delete_note','act','act']] as const
@@ -34,9 +34,10 @@ async function delegatedGate(port:Port,ran:string[],book?:ApprovalBook,extra?:Pa
  const notices:{tool:string;detail:string;reason?:string;refusal?:unknown}[]=[]
  const rows:SourceFigures[]=[]
  const gate=new SourceGate(declared.entries,declared.sources,CONTEXT_DEFAULTS,'marker',(tool,detail,reason,refusal)=>{notices.push({tool,detail,...(reason===undefined?{}:{reason}),...(refusal===undefined?{}:{refusal})});return new GateViolation(tool,detail)},()=>rows,'json-schema',undefined,book)
- gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain==='child'?chains.items[1]:chains.items[0]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(port.now),admission:read=>{port.reads.push(read);if(port.answer==='throw')throw Error('port down');return port.answer}}))
+ gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain==='child'?chains.items[1]:chains.items[0]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(port.now),admission:read=>{port.reads.push(read);if(port.answerFor)return port.answerFor(read);if(port.answer==='throw')throw Error('port down');return port.answer}}))
  const byName=new Map(declared.hostTools.map(t=>[t.name,t]))
- const call=(name:string,args:Record<string,unknown>={},callId?:string)=>gate.call(byName.get(name)!,args,new AbortController().signal,(given,signal)=>byName.get(name)!.execute(given,signal),callId)
+ // As the session runs a call: the final admission, at the dispatch, and then the host's execute.
+ const call=(name:string,args:Record<string,unknown>={},callId?:string)=>gate.call(byName.get(name)!,args,new AbortController().signal,async(given,signal)=>{await dispatchAdmission(signal)?.();return byName.get(name)!.execute(given,signal)},callId)
  return {gate,notices,rows,call,byName}
 }
 const admit=():Port=>({answer:{admission:'admit'},reads:[],now:T})
@@ -47,7 +48,7 @@ describe('a delegated run admits each call before dispatch (ADR-0029)',()=>{
   const {call}=await delegatedGate(port,ran)
   await call('notes__read_note')
   expect(ran).toEqual(['read_note'])
-  expect(port.reads.map(r=>[r.call.tool,r.call.count])).toEqual([['read_note',true]])
+  expect(port.reads.map(r=>[r.call.tool,r.call.count])).toEqual([['read_note',false],['read_note',true]])
  })
  it('refuses a tool the scope does not name before dispatch, by name, counting nothing',async()=>{
   const port=admit(),ran:string[]=[]
@@ -103,11 +104,11 @@ describe('a delegated run admits each call before dispatch (ADR-0029)',()=>{
   const port=admit(),ran:string[]=[]
   const {call,notices}=await delegatedGate(port,ran)
   await call('tickets__query')
-  expect(port.reads.map(r=>[r.audience,r.call.source,r.call.count])).toEqual([[{kind:'gateway',name:'gateway:test'},'tickets/live',false]])
+  expect(port.reads.map(r=>[r.audience,r.call.source,r.call.count])).toEqual([[{kind:'gateway',name:'gateway:test'},'tickets/live',false],[{kind:'gateway',name:'gateway:test'},'tickets/live',false]])
   await expect(call('records__lookup')).rejects.toBeInstanceOf(GateViolation)
   expect(notices.at(-1)).toMatchObject({refusal:{name:'out-of-scope',reason:'source'}})
   // A gateway source with no mapping names no audience: nothing is read for it.
-  expect(port.reads.length).toBe(1)
+  expect(port.reads.length).toBe(2)
   expect(ran).toEqual(['query'])
  })
  it('never puts a call the delegation refuses to the person, and checks before asking without counting',async()=>{
@@ -125,7 +126,23 @@ describe('a delegated run admits each call before dispatch (ADR-0029)',()=>{
   port.answer={admission:'refuse',refusal:'revoked'}
   await expect(call('notes__write_note',{},'call-2')).rejects.toBeInstanceOf(GateViolation)
   expect(ran).toEqual([])
-  expect(port.reads.map(r=>r.call.count)).toEqual([false,true])
+  expect(port.reads.map(r=>r.call.count)).toEqual([false,false])
+ })
+ it('counts only at the dispatch, the last read of a call, whatever checks came before it',async()=>{
+  const port=admit(),ran:string[]=[]
+  const {gate,call}=await delegatedGate(port,ran)
+  expect((await gate.decide('notes__write_note',{},'call-2')).answer).toBe('allow')
+  await call('notes__write_note',{},'call-2')
+  expect(ran).toEqual(['write_note'])
+  expect(port.reads.map(r=>r.call.count)).toEqual([false,false,true])
+ })
+ it('refuses at the dispatch when its counted read does not admit it, and gives its slot back',async()=>{
+  const port=admit(),ran:string[]=[]
+  const {call,notices}=await delegatedGate(port,ran)
+  port.answerFor=read=>read.call.count?{admission:'refuse',refusal:'out-of-scope',reason:'limit'}:{admission:'admit'}
+  await expect(call('notes__read_note')).rejects.toBeInstanceOf(GateViolation)
+  expect(ran).toEqual([])
+  expect(notices.at(-1)).toMatchObject({refusal:{name:'out-of-scope',reason:'limit'}})
  })
  it("carries no authority past the delegation on an approval's continuation",async()=>{
   const port=admit(),ran:string[]=[]
@@ -134,11 +151,32 @@ describe('a delegated run admits each call before dispatch (ADR-0029)',()=>{
   const {gate,byName}=await delegatedGate(port,ran,book,{write_note:{approve:()=>'ask'}})
   expect((await gate.decide('notes__write_note',{text:'x'},'call-3')).answer).toBe('ask')
   port.answer={admission:'refuse',refusal:'revoked'}
-  const run=(args:Record<string,unknown>,signal:AbortSignal)=>byName.get('notes__write_note')!.execute(args,signal)
+  const run=async(args:Record<string,unknown>,signal:AbortSignal)=>{await dispatchAdmission(signal)?.();return byName.get('notes__write_note')!.execute(args,signal)}
   const outcome=await gate.approved({...current!,state:'approved'},new AbortController().signal,run)
   expect(outcome.ran).toBe(false)
   expect(ran).toEqual([])
-  expect(port.reads.map(r=>r.call.count)).toEqual([false,true])
+  expect(port.reads.map(r=>r.call.count)).toEqual([false,false])
+ })
+ it('does not ask the port about a call already answered checked',async()=>{
+  const port=admit(),ran:string[]=[]
+  const {gate}=await delegatedGate(port,ran)
+  ;(gate as unknown as {changed:Set<string>}).changed.add('notes')
+  expect((await gate.decide('notes__write_note',{},'call-4')).answer).toBe('checked')
+  expect(port.reads).toEqual([])
+ })
+ it("refuses an approval's continuation at its dispatch: it did not run",async()=>{
+  const port=admit(),ran:string[]=[]
+  let current:ApprovalRecord|undefined
+  const book:ApprovalBook={current:()=>current,ask:record=>{current=record},closed:()=>''}
+  const {gate,byName}=await delegatedGate(port,ran,book,{write_note:{approve:()=>'ask'}})
+  expect((await gate.decide('notes__write_note',{text:'x'},'call-3')).answer).toBe('ask')
+  port.answerFor=read=>read.call.count?{admission:'refuse',refusal:'revoked'}:{admission:'admit'}
+  const run=async(args:Record<string,unknown>,signal:AbortSignal)=>{await dispatchAdmission(signal)?.();return byName.get('notes__write_note')!.execute(args,signal)}
+  const outcome=await gate.approved({...current!,state:'approved'},new AbortController().signal,run)
+  expect(outcome.ran).toBe(false)
+  expect(outcome.result.isError).toBe(true)
+  expect(ran).toEqual([])
+  expect(port.reads.map(r=>r.call.count)).toEqual([false,false,true])
  })
  it('lets an effect already dispatched finish when a revocation lands; the next call is refused (uncertain-action rules unchanged)',async()=>{
   const port=admit(),ran:string[]=[]

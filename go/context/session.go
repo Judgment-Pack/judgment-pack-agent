@@ -1488,7 +1488,11 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		// refused (principal-changed).
 		saved := held.Execution.State().Principal
 		restoring := session.Context != nil && session.Context.Execution != nil
-		if restoring && (saved == nil) != (principal == nil) || saved != nil && principal != nil && (saved.Subject.Kind != principal.Record.Subject.Kind || saved.Subject.Issuer != principal.Record.Subject.Issuer || saved.Subject.Subject != principal.Record.Subject.Subject || saved.RootActor != principal.Record.RootActor || saved.Actor.Host != principal.Record.Host) {
+		var current *PrincipalRecord
+		if principal != nil {
+			current = &principal.Record
+		}
+		if restoring && PrincipalsChanged(saved, current) {
 			return failure.Authored("stale-state", "The run continues under another principal than it began under (principal-changed). Nothing was sent.", "context")
 		}
 		if principal != nil {
@@ -1781,6 +1785,15 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			own[session.HostTools[at].Name] = true
 		}
 	}
+	// ADR-0029: a host's tool with no source is not matched against the scope, which names sources, and
+	// is still refused under a delegation that no longer stands. A question or a delegation is the
+	// package's own interaction, not the host's dispatch.
+	sourceless := map[string]bool{}
+	for at := range session.HostTools {
+		if tool := &session.HostTools[at]; tool.Source == nil && tool.Interaction == "" {
+			sourceless[tool.Name] = true
+		}
+	}
 	tools := append([]HostTool{}, session.HostTools...)
 	if held.MemoryAdmitted() && held.ContextPhase() != "plan" {
 		tools = append(tools, held.Drafts.Tools()...)
@@ -1952,6 +1965,11 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			}
 			if err := authorize(ctx); err != nil {
 				return ToolResult{}, err
+			}
+			if held.Principal != nil && sourceless[name] {
+				if err := held.refuseUnlessStanding(ctx, declared); err != nil {
+					return ToolResult{}, err
+				}
 			}
 			// ADR-0006: each call of a tool with a source is held by the source gate before the host's.
 			if held.Sources != nil {

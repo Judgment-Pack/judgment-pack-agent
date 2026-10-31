@@ -69,6 +69,12 @@ type ToolSource struct {
 	GatewayScope *GatewayScope
 }
 
+var gatewayScopeAuthority = regexp.MustCompile(`^[!-~]{1,256}$`)
+
+func gatewayScopeForm(scope *GatewayScope) bool {
+	return gatewayScopeAuthority.MatchString(scope.Authority) && U16Length(scope.Source) >= 1 && U16Length(scope.Source) <= 256
+}
+
 // GatewayScope maps a gateway source to its delegation scope entry (ADR-0029).
 type GatewayScope struct {
 	Authority string
@@ -369,6 +375,14 @@ func declarationProblem(tool HostTool) string {
 		return "its source has no approved taxonomy-bound tool-list digest"
 	case s.Identity != nil && (s.Identity.Kind != "person" && s.Identity.Kind != "service" && s.Identity.Kind != "connection" || s.Identity.Label == "" || U16Length(s.Identity.Label) > 128):
 		return "its identity is not a person, service or connection with a label of 1 to 128 characters"
+	// ADR-0029: a mapping says a gateway enforces and counts this source, so the host that dispatches any
+	// other kind cannot name one; it has its form, and it names the gateway the receipts pin.
+	case s.GatewayScope != nil && !gatewayScopeForm(s.GatewayScope):
+		return "its gatewayScope is not an authority label and a source name of 1 to 256 characters"
+	case s.GatewayScope != nil && s.Kind != "gateway":
+		return "its gatewayScope is for a source a gateway serves, and it is not one"
+	case s.GatewayScope != nil && s.GatewayReceipt != nil && s.GatewayScope.Authority != s.GatewayReceipt.Authority:
+		return "its gatewayScope names another authority than the receipts it pins"
 	case s.DescriptorSnapshot != nil && s.Kind != "mcp" && s.Kind != "gateway":
 		return "its descriptor snapshot is not MCP snapshot bytes"
 	case s.DescriptorSnapshot != nil && (s.CurrentDescriptorSnapshot == nil || s.DescriptorApproval == nil):
@@ -1332,15 +1346,26 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	// ADR-0029: a call the delegation does not admit is never put to the person; its Call refuses it
 	// by name. The check is made with counting unset, outside the lock, before the policy is asked.
 	delegationRefused := false
+	// A changed list, a spent bound or an unloaded tool already answers checked: the port is not asked.
+	given, _ := ParseJSON(nonEmptyArgs(args))
+	checked := func(row *contract.ProvenanceSourceFigures) bool {
+		return identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
+			entry.Catalogued && (!g.isLoaded(name) || ArgumentProblem(g.loadedSchema(name), orNullValue(given)) != "")
+	}
 	if closed == "" && g.Principal() != nil && !(g.book != nil && g.book.Current() != nil && g.book.Current().State == "asked") {
-		refusal, err := g.delegated(WithCallID(ctx, callID), entry, false)
-		delegationRefused = err != nil || refusal != nil
+		g.mu.Lock()
+		answered := checked(g.row(id))
+		g.publishLocked()
+		g.mu.Unlock()
+		if !answered {
+			refusal, err := g.delegated(WithCallID(ctx, callID), entry, false)
+			delegationRefused = err != nil || refusal != nil
+		}
 	}
 	g.mu.Lock()
 	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	held := decision{}
 	row := g.row(id)
-	given, _ := ParseJSON(nonEmptyArgs(args))
 	switch {
 	case claimPending:
 		held = decision{answer: "pending", detail: closed}
@@ -1348,8 +1373,7 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		g.mark(name, callID, mark{})
 	case closed != "":
 		held = decision{answer: "closed", detail: closed}
-	case identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
-		entry.Catalogued && (!g.isLoaded(name) || ArgumentProblem(g.loadedSchema(name), orNullValue(given)) != ""):
+	case checked(row):
 		held = decision{answer: "checked"}
 	case delegationRefused:
 		held = decision{answer: "checked"}
@@ -1562,9 +1586,9 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 			return refusedWith(err)
 		}
 	}
-	// ADR-0029: the approval carries no authority past the delegation; the call is admitted again,
-	// counted, immediately before it runs.
-	if refusal, err := g.delegated(ctx, entry, true); err != nil || refusal != nil {
+	// ADR-0029: the approval carries no authority past the delegation; the call is admitted again, and
+	// counted only at its dispatch.
+	if refusal, err := g.delegated(ctx, entry, false); err != nil || refusal != nil {
 		g.mu.Lock()
 		g.giveBackCall(g.row(id), *entry.Record.Identity)
 		g.publishLocked()
@@ -1581,6 +1605,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 	limit := time.Duration(min(g.policy.SourceCallMilliseconds, g.policy.ToolCallMilliseconds)) * time.Millisecond
 	started := time.Now()
 	var invocation GatewayExecutionContext
+	refusedAtDispatch := false
 	result, err := withSourceDeadline(ctx, limit, func(bounded context.Context) (ToolResult, error) {
 		if entry.Declared.Source.GatewayReceipt != nil {
 			var err error
@@ -1589,6 +1614,13 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 				return ToolResult{}, err
 			}
 		}
+		bounded = g.holdDispatch(bounded, entry, record.Name, record.CallID, func() {
+			refusedAtDispatch = true
+			g.mu.Lock()
+			g.giveBackCall(g.row(id), *entry.Record.Identity)
+			g.publishLocked()
+			g.mu.Unlock()
+		})
 		return run(bounded, args)
 	})
 	gatewayVerified := false
@@ -1620,7 +1652,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		}
 		text, structured := failure.ToolFailure(err)
 		value, _ := ParseJSON(structured)
-		return ResultOf([]Content{TextContent(text)}, value).WithIsError(true), true, nil
+		return ResultOf([]Content{TextContent(text)}, value).WithIsError(true), !refusedAtDispatch, nil
 	}
 	result.Receipt = ""
 	g.row(id).Bytes += int64(UTF8Bytes(string(result.JSON())))
@@ -1840,12 +1872,11 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 			return ToolResult{}, err
 		}
 	}
-	// ADR-0029: admitted under the run's delegation immediately before dispatch, counted only where
-	// this call is dispatched here (not a proposal, which is held, and not an act call no allow was
-	// given for).
+	// ADR-0029: admitted under the run's delegation with counting unset, so a read the caches answer
+	// counts nothing. The count is made by the admission at the dispatch itself (RFC 0030 §2), after the
+	// action-key lookup.
 	if g.Principal() != nil {
-		count := !proposal && (decided == nil || decided.answer == "allow") && ctx.Err() == nil
-		refusal, err := g.delegated(ctx, entry, count)
+		refusal, err := g.delegated(ctx, entry, false)
 		if err != nil || refusal != nil {
 			g.mu.Lock()
 			giveBack()
@@ -1939,6 +1970,12 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 		if admission != nil {
 			bounded = context.WithValue(bounded, receiptAdmissionKey{}, admission)
 		}
+		bounded = g.holdDispatch(bounded, entry, name, callID, func() {
+			g.mu.Lock()
+			giveBack()
+			g.publishLocked()
+			g.mu.Unlock()
+		})
 		return run(bounded, args)
 	})
 	receiptOK := true
@@ -2001,6 +2038,35 @@ type receiptAdmission struct {
 }
 
 type receiptAdmissionKey struct{}
+
+type dispatchAdmissionKey struct{}
+
+// dispatchAdmissionOf is the admission a dispatch makes last (ADR-0029), counted, or nil. Set only under
+// a delegation; a result served without a dispatch never reaches it.
+func dispatchAdmissionOf(ctx context.Context) func(context.Context) error {
+	held, _ := ctx.Value(dispatchAdmissionKey{}).(func(context.Context) error)
+	return held
+}
+
+// holdDispatch gives the call's bounded context its final admission, immediately before it dispatches.
+func (g *SourceGate) holdDispatch(bounded context.Context, entry *SourceEntry, name, callID string, giveBack func()) context.Context {
+	if g.Principal() == nil {
+		return bounded
+	}
+	return context.WithValue(bounded, dispatchAdmissionKey{}, func(ctx context.Context) error {
+		refusal, err := g.delegated(ctx, entry, true)
+		if err != nil {
+			return err
+		}
+		if refusal == nil {
+			return nil
+		}
+		giveBack()
+		g.mu.Lock()
+		defer func() { g.publishLocked(); g.mu.Unlock() }()
+		return g.refused(entry, callID, g.refuseDelegation(name, *refusal))
+	})
+}
 
 // receiptAdmissionOf is the receipt check of the call ctx belongs to, or nil.
 func receiptAdmissionOf(ctx context.Context) *receiptAdmission {
