@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-lease.json",
   "title": "Run lease",
-  "description": "Version 1 lease of one store resource (ADR-0025 decision 1, #223): its owner, its authoritative expiry decided by the store clock, and its exact monotonically increasing epoch. The fence is the evidence a writer presents at every checkpoint commit and an effect host checks at every admission. A lease grants neither tool permission nor approval. A released or expired lease is never revived; the next acquisition takes a strictly greater epoch.",
+  "description": "Version 1 lease of one store resource (ADR-0025 decision 1, #223): its owner, its authoritative expiry decided by the store clock, and its exact monotonically increasing epoch. The fence is the evidence a writer presents at every checkpoint commit and an effect host checks at every admission. A lease grants neither tool permission nor approval. A released or expired lease is never revived; the next acquisition takes a strictly greater epoch. Version 2 (ADR-0029) is a delegated run's lease: it holds the run's principals (principal), a takeover is a new epoch of the same principals and any other is refused principal-changed; version 1 names none and cannot host a delegated run.",
   "type": "object",
   "required": [
     "version",
@@ -14,7 +14,10 @@
   ],
   "properties": {
     "version": {
-      "const": 1
+      "enum": [
+        1,
+        2
+      ]
     },
     "resource": {
       "$ref": "#/$defs/identifier"
@@ -34,6 +37,10 @@
         "held",
         "released"
       ]
+    },
+    "principal": {
+      "description": "Version 2 only, and required there (the readers hold it): the delegated run's subject, root actor and issuing host.",
+      "$ref": "run-principal.json#/$defs/binding"
     }
   },
   "additionalProperties": false,
@@ -59,7 +66,7 @@
       "pattern": "^sha256:[a-f0-9]{64}$"
     },
     "fence": {
-      "description": "The fence: the evidence a writer presents at a checkpoint commit and an effect host checks at an admission. It is current when the store holds a lease of the resource with this owner and exactly this epoch, not released and not expired by the store clock.",
+      "description": "The fence: the evidence a writer presents at a checkpoint commit and an effect host checks at an admission. It is current when the store holds a lease of the resource with this owner and exactly this epoch, not released and not expired by the store clock. A version 2 fence names the delegated run's principals, which must be the lease's: a takeover or dispatch under others is refused principal-changed.",
       "type": "object",
       "required": [
         "version",
@@ -69,7 +76,10 @@
       ],
       "properties": {
         "version": {
-          "const": 1
+          "enum": [
+            1,
+            2
+          ]
         },
         "resource": {
           "$ref": "#/$defs/identifier"
@@ -79,6 +89,10 @@
         },
         "epoch": {
           "$ref": "#/$defs/epoch"
+        },
+        "principal": {
+          "description": "Version 2 only, and required there (the readers hold it): the delegated run's subject, root actor and issuing host.",
+          "$ref": "run-principal.json#/$defs/binding"
         }
       },
       "additionalProperties": false
@@ -138,7 +152,7 @@
       "additionalProperties": false
     },
     "refusal": {
-      "description": "A named lease or fence refusal. Nothing was admitted or committed. already-admitted is an effect host's answer to an idempotency identity it admitted before: that outcome stays unknown and is never performed again.",
+      "description": "A named lease or fence refusal. Nothing was admitted or committed. already-admitted is an effect host's answer to an idempotency identity it admitted before: that outcome stays unknown and is never performed again. principal-changed: a takeover or fence under another subject or root actor than the lease holds (ADR-0029).",
       "type": "object",
       "required": [
         "version",
@@ -160,7 +174,8 @@
             "released",
             "epoch-exhausted",
             "resource-mismatch",
-            "already-admitted"
+            "already-admitted",
+            "principal-changed"
           ]
         }
       },

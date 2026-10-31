@@ -42,7 +42,7 @@ type ResumeEvidence = contract.RunResumeEvidence
 type ResumeChange = contract.RunResumeChange
 type Revalidation = contract.RunResume
 
-var ResumeRefusalReasons = []string{"invalid", "evidence-missing", "identity-changed", "lineage-changed", "model-retired", "model-changed", "reference-changed", "policy-changed", "approval-changed", "admission-invalid"}
+var ResumeRefusalReasons = []string{"invalid", "evidence-missing", "identity-changed", "lineage-changed", "model-retired", "model-changed", "reference-changed", "policy-changed", "approval-changed", "admission-invalid", "principal-changed"}
 
 // ResumeRefused is a named revalidation refusal. Nothing was claimed or dispatched; the wait still holds
 // the run.
@@ -400,7 +400,7 @@ func readPlanPin(raw json.RawMessage) (*PlanPin, error) {
 
 // ReadResumePins reads the execution authority a parked run continues under.
 func ReadResumePins(raw []byte) (ResumePins, error) {
-	m, err := resumeShape(raw, []string{"model", "policy", "sources", "artifacts"}, []string{"plan"})
+	m, err := resumeShape(raw, []string{"model", "policy", "sources", "artifacts"}, []string{"plan", "principal"})
 	if err != nil {
 		return ResumePins{}, err
 	}
@@ -422,6 +422,11 @@ func ReadResumePins(raw []byte) (ResumePins, error) {
 	if pins.Artifacts, err = readArtifactPins(m["artifacts"]); err != nil {
 		return ResumePins{}, err
 	}
+	if m.has("principal") {
+		if pins.Principal, err = readPrincipalBinding(m["principal"]); err != nil {
+			return ResumePins{}, resumeInvalid()
+		}
+	}
 	return pins, nil
 }
 func checkResumePins(pins ResumePins) (ResumePins, error) {
@@ -440,7 +445,7 @@ func checkResumePins(pins ResumePins) (ResumePins, error) {
 
 // ReadResumeEvidence reads the host's current evidence for one resume.
 func ReadResumeEvidence(raw []byte) (ResumeEvidence, error) {
-	m, err := resumeShape(raw, []string{"version", "resource", "wait", "model", "policy", "sources", "artifacts"}, []string{"plan", "admissions"})
+	m, err := resumeShape(raw, []string{"version", "resource", "wait", "model", "policy", "sources", "artifacts"}, []string{"plan", "admissions", "principal"})
 	if err != nil || m.version() != nil {
 		return ResumeEvidence{}, resumeInvalid()
 	}
@@ -476,6 +481,11 @@ func ReadResumeEvidence(raw []byte) (ResumeEvidence, error) {
 	}
 	if evidence.Artifacts, err = readArtifactPins(m["artifacts"]); err != nil {
 		return ResumeEvidence{}, err
+	}
+	if m.has("principal") {
+		if evidence.Principal, err = readPrincipalBinding(m["principal"]); err != nil {
+			return ResumeEvidence{}, resumeInvalid()
+		}
 	}
 	if m.has("admissions") {
 		items, err := m.list("admissions", ResumeAdmissionLimit)
@@ -723,6 +733,9 @@ func PinsFrom(checkpoint *contract.Checkpoint, model PinnedModel) (ResumePins, e
 		sources[record.ID] = pin
 	}
 	pins := ResumePins{Model: model, Policy: PolicyIdentity(checkpoint.Policy), Sources: []SourcePin{}, Artifacts: []ArtifactPin{}}
+	if checkpoint.Principal != nil {
+		pins.Principal = &PrincipalBinding{Sub: checkpoint.Principal.Subject, RootActor: checkpoint.Principal.RootActor, Host: checkpoint.Principal.Actor.Host}
+	}
 	for _, pin := range sources {
 		pins.Sources = append(pins.Sources, pin)
 	}
@@ -794,6 +807,14 @@ func RevalidateResume(wait RevalidatedWait, input ResumeEvidence) (Revalidation,
 	}
 	if current.Resource != wait.Resource || current.Wait != wait.Wait {
 		return Revalidation{}, resumeInvalid()
+	}
+	// ADR-0029: a resume keeps the wait's principals: evidence of none for a delegated run is missing, and
+	// other principals, or some for an undelegated run, are a changed principal, never a refresh.
+	if pins.Principal != nil && current.Principal == nil {
+		return Revalidation{}, &ResumeRefused{Reason: "evidence-missing"}
+	}
+	if !SamePrincipalBinding(pins.Principal, current.Principal) {
+		return Revalidation{}, &ResumeRefused{Reason: "principal-changed"}
 	}
 	sources := map[string]SourcePin{}
 	for _, s := range current.Sources {

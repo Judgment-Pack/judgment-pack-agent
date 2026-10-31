@@ -5,7 +5,8 @@ import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
 import {storageId,STORAGE_PAGE_LIMIT} from './common'
-import {LeaseRefused,readLeaseFence,readRunLease,validLeaseEpoch,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease} from './lease'
+import {sameBinding} from '../principal'
+import {LeaseRefused,fenceOf,readLeaseFence,readRunLease,validLeaseEpoch,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease} from './lease'
 import type {StorageRevision} from './common'
 import type {RunStore} from './run'
 import type {ChatStore} from './chat'
@@ -718,9 +719,10 @@ export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
  // #227: missing current evidence refuses; nothing of the continuation is claimed before the revalidation passes.
  if(input.current===undefined)throw new ResumeRefused('evidence-missing')
  const revalidation=revalidateResume(wait,input.current)
- const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs}
+ // ADR-0029: the claim's lease holds the principals the wait pinned, so a takeover by resume keeps them.
+ const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs,...(wait.pins.principal?{principal:copy(wait.pins.principal)}:{})}
  const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation},input.signal),wait,lease,revalidation)
- const fence={version:1 as const,resource:claimed.lease.resource,owner:claimed.lease.owner,epoch:claimed.lease.epoch}
+ const fence=fenceOf(claimed.lease)
  return {lease:claimed.lease,fence,wait:claimed.wait,revalidation:copy(claimed.wait.revalidation!),...decision,...(claimed.wait.resolution?{resolution:copy(claimed.wait.resolution)}:{})}
 }
 /** #266 M6: the store's claim is checked before its fence is handed out. It must be this wait, resumed by the lease it
@@ -734,7 +736,7 @@ function readClaimed(value:unknown,wait:RunWait,request:LeaseAcquire,revalidatio
  try{lease=readRunLease(copy(value.lease))}catch{return invalid()}
  const expiry=at(lease.expiry),bound=[held.deadline?.run,held.reason==='approval'?held.deadline?.approval:undefined].filter((t):t is string=>t!==undefined)
  if(held.resource!==wait.resource||held.wait!==wait.wait||held.state!=='resumed'||held.resumed?.owner!==lease.owner||held.resumed.epoch!==lease.epoch||canonicalJSON(held.revalidation)!==canonicalJSON(revalidation)||canonicalJSON(held.checkpoint)!==canonicalJSON(wait.checkpoint)
-  ||lease.resource!==wait.resource||lease.owner!==request.owner||lease.state!=='held'||held.reason==='approval'&&held.deadline?.approval===undefined||bound.some(t=>expiry>at(t)))return invalid()
+  ||lease.resource!==wait.resource||lease.owner!==request.owner||lease.state!=='held'||!sameBinding(lease.principal,request.principal)||held.reason==='approval'&&held.deadline?.approval===undefined||bound.some(t=>expiry>at(t)))return invalid()
  return {wait:held,lease}
 }
 

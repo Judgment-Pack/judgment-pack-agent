@@ -22,6 +22,7 @@ import { ChatContext, type ReusableResult, type TaskThread } from './context/cha
 import { ContextBudgetError } from './context/policy'
 import { ContextLedger, answer, type Entry } from './context/ledger'
 import { dataMarker, frameData } from './framing'
+import { DelegationRefused, narrowChild, openChildPrincipal, refusalDetail, type PrincipalRecord, type RunPrincipal } from './principal'
 import { runModels, type RunModels } from './host'
 import { testCallCapFailure, resolveSessionPolicy, delegatedRoleSession, contextualSession, type ExecutionLink, type SessionContext } from './context/session'
 
@@ -457,12 +458,16 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     let asked: RunModels | undefined
     const connectionAnswer = (): RunModels => shared.context ? shared.context.models(engine.id) : (asked ??= runModels({...(session.context?.connection?{connection:session.context.connection}:{}),engine:engine.id,...('model' in session?{family:session.model.family}:{}),model:modelName}))
     const stopParent = (error: unknown) => { fatal ??= error; parentStop.abort() }
+    /** ADR-0029: each delegated child's narrowed principal, issued once per task by the issuing host. */
+    const childLinks=new Map<string,{input:RunPrincipal;record:PrincipalRecord}>()
     const publish = async (task: DelegatedTask) => {
       if(signal.aborted)return
       const snapshot=structuredClone(task)
       if(handoff)await saveHandoff()
-      const event:Extract<AssistantEvent,{type:'delegated_task'}>={type:'delegated_task',task:snapshot,...(task.subagent?{subagent:task.subagent}:{}),provider:shared.context?.recordProvider(shared.context.delegatedRole(task.profile))}
-      if(persistence?.writer.hasTaskSteps)await deliver(await persistence.writer.commitTaskResult(persistence,event,signal),true);else await deliver(event)
+      // ADR-0029: a delegated child's record names its narrowed chain.
+      const childRecord=childLinks.get(task.id)?.record
+      const event:Extract<AssistantEvent,{type:'delegated_task'}>={type:'delegated_task',task:snapshot,...(task.subagent?{subagent:task.subagent}:{}),provider:shared.context?.recordProvider(shared.context.delegatedRole(task.profile)),...(childRecord?{principal:structuredClone(childRecord)}:{})}
+      if(persistence?.writer.hasTaskSteps)await deliver(await persistence.writer.commitTaskResult(persistence,event,signal),true);else await deliver(childRecord?writeRunEvent(event):event)
       // Stop is persisted by the owning chat. Do not queue a rejected save
       // after cancellation, when no consumer can observe this transition.
       if(signal.aborted)return
@@ -688,12 +693,29 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       const named=planned.subagent?await Promise.all(session.hostTools.map(async tool=>({tool,name:tool.source?await wireName(tool.source.id,tool.name):tool.name}))):[]
       const {tools,hostTools}=planned.subagent?{tools:[],hostTools:offered?named.filter(t=>planned.subagent!.tools.includes(t.name)).map(t=>t.tool):[]}:childOffer(profile,session,offered)
       const runtime = new Set(tools.map(t=>t.name))
+      // ADR-0029: under a delegation a child runs only with the link the issuing host narrowed for it, verified here and at
+      // its opening. A child it cannot have is refused by name and recorded; nothing of it starts.
+      const parentPrincipal=shared.context?.principal
+      if(parentPrincipal&&!childLinks.has(task.id)){
+       try{
+        const input=await narrowChild(parentPrincipal,{task:task.id,profile:profile.id,tools:hostTools.flatMap(t=>t.source?[{source:t.source.id,tool:t.name}]:[])},childSignal)
+        childLinks.set(task.id,{input,record:(await openChildPrincipal(parentPrincipal,input)).record})
+       }catch(error){
+        if(!(error instanceof DelegationRefused))throw error
+        const detail=refusalDetail(DELEGATE_TOOL,error.refusal)
+        await deliver(writeRunEvent({type:'guardrail',tool:DELEGATE_TOOL,action:'refused',detail,reason:'delegation refused',refusal:error.refusal,principal:structuredClone(parentPrincipal.record)}))
+        run.failed=detail;task.failure={...failure('permission','tool','not-started'),detail}
+        return
+       }
+      }
+      const childPrincipal=childLinks.get(task.id)?.input
       const link: ExecutionLink = {attach:context=>{
         context.execution.toolAllowance=()=>({used:task.toolCalls,limit:planned.budget.toolCalls,scope:'task'})
         meter.contexts.push(context)
       },
       // ADR-0006: a child's source calls count against the turn and reach the parent's report, as its test calls do.
-      sources:()=>shared.context?.sources}
+      sources:()=>shared.context?.sources,
+      principal:()=>shared.context?.principal}
       const model = childModel(profile)
       childModels.set(task.id, model.name)
       const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
@@ -704,7 +726,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         input:[],
         ...(selected&&provider?{policyProject:undefined,policyConnections:shared.context?.connectionBindings()??session.policyConnections,policy:{...session.policy,models:{author:{model:provider.connection,provider:provider.connection,...(fallback?{fallback}:{})}},critic:{default:'off'}},...( 'agent'in selected?{agent:selected.agent}:{})}:{}),
         // agent#11: the objective is the child's request text, the first text part of its first message.
-        context:{...('model'in session?{requestCap:Math.min(MAX_TURNS,requestLimit)}:{}),configuration:session.context?.configuration,connectionRevisions:session.context?.connectionRevisions,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
+        context:{...('model'in session?{requestCap:Math.min(MAX_TURNS,requestLimit)}:{}),configuration:session.context?.configuration,connectionRevisions:session.context?.connectionRevisions,phase:session.context?.phase,authorize:session.context?.authorize,artifactProposals:session.context?.artifactProposals,memory:session.context?.memory,objective,runtime:session.context?.runtime,chat:chat.childScope(planned.visible),link,...(childPrincipal?{principal:childPrincipal}:{}),...(provider?{connection:{...session.context?.connection,connectionId:provider.connection}}:session.context?.connection?{connection:session.context.connection}:{})},
         purpose:undefined,prompt,testPrompt:'',allowConversation:true,interactive:true,critic:'off',
         // ADR-0009: a child is handed no skills; it inherits none of the parent's loaded set.
         skills:planned.subagent?session.skills?.filter(s=>planned.subagent!.skills.includes(s.id)):undefined,

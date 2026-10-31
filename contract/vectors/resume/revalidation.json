@@ -50,6 +50,14 @@
       "pins": "sha256:36457ad1e80e345f056c35cc52daf4943444bbef9558fb8d91a687d203538a13",
       "evidence": "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
       "changes": []
+    },
+    {
+      "version": 1,
+      "resource": "run-delegated",
+      "wait": "wait-2",
+      "pins": "sha256:15dd8e2af9c22c5ff17e8cd76a19a61d5596a832dbacf56562c951cbe2733d5e",
+      "evidence": "sha256:1d9a7a4767ed88ef75df1e1ce840f88b94a68921948702b56e1b53d2461c8346",
+      "changes": []
     }
   ],
   "cases": [
@@ -2176,6 +2184,306 @@
       },
       "outcome": {
         "refused": "invalid"
+      }
+    },
+    {
+      "case": "a delegated wait under the same principals",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": [],
+          "principal": {
+            "sub": {
+              "kind": "person",
+              "issuer": "https://login.example.com/",
+              "subject": "approver@example.com"
+            },
+            "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk"
+          }
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        }
+      },
+      "outcome": {
+        "revalidation": 3
+      }
+    },
+    {
+      "case": "a delegated wait under another root actor",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": [],
+          "principal": {
+            "sub": {
+              "kind": "person",
+              "issuer": "https://login.example.com/",
+              "subject": "approver@example.com"
+            },
+            "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk"
+          }
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+          "host": "desk"
+        }
+      },
+      "outcome": {
+        "refused": "principal-changed"
+      }
+    },
+    {
+      "case": "a delegated wait under another subject",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": [],
+          "principal": {
+            "sub": {
+              "kind": "person",
+              "issuer": "https://login.example.com/",
+              "subject": "approver@example.com"
+            },
+            "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk"
+          }
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "other@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        }
+      },
+      "outcome": {
+        "refused": "principal-changed"
+      }
+    },
+    {
+      "case": "a delegated wait under the same pair of another kind",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": [],
+          "principal": {
+            "sub": {
+              "kind": "person",
+              "issuer": "https://login.example.com/",
+              "subject": "approver@example.com"
+            },
+            "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk"
+          }
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "service",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        }
+      },
+      "outcome": {
+        "refused": "principal-changed"
+      }
+    },
+    {
+      "case": "a delegated wait with no current principal",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": [],
+          "principal": {
+            "sub": {
+              "kind": "person",
+              "issuer": "https://login.example.com/",
+              "subject": "approver@example.com"
+            },
+            "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk"
+          }
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": []
+      },
+      "outcome": {
+        "refused": "evidence-missing"
+      }
+    },
+    {
+      "case": "an undelegated wait resumed under a principal",
+      "wait": {
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "reason": "question",
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "sources": [],
+          "artifacts": []
+        }
+      },
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        }
+      },
+      "outcome": {
+        "refused": "principal-changed"
       }
     }
   ],

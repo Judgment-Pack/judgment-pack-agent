@@ -54,6 +54,10 @@
     {
       "version": 1,
       "reason": "already-admitted"
+    },
+    {
+      "version": 1,
+      "reason": "principal-changed"
     }
   ],
   "refused": [

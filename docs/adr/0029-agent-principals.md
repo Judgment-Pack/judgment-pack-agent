@@ -28,8 +28,7 @@ reads them (`canon` with code-point order, keys held to the gateway's §8.4 key 
 Ed25519 over `judgment-pack/delegation/1:`, the narrowing clauses 0 to 8 including
 `mayDelegate`, a lifetime of at most 24 hours, at most five links), and the leaf's software
 against the run's (`software-mismatch`). A refused chain ends the run before any request
-(`configuration`). The model never sees, chooses or changes the chain; a delegated child acts
-under its parent's.
+(`configuration`). The model never sees, chooses or changes the chain.
 
 **Every call of a tool with a source is admitted immediately before dispatch.** At the host's
 time the package applies step 8 (`not-yet-valid`, `expired`; equal time is expired) and its own
@@ -74,6 +73,39 @@ same subject and root actor; a chain re-issued or narrowed for them replaces the
 subject or root actor, a delegated run resumed without its delegation, and an undelegated run
 resumed with one are refused (`principal-changed`).
 
+**A delegated child gets the narrowed link the issuing host signs, never its parent's reach.**
+Under a delegation a child starts only with its own chain. The coordinator asks the host's child port
+(`RunPrincipal.child`, Go `RunPrincipal.Child`) for it at the child's start, naming the host, the
+parent's chain digests, the task, the profile and the tools the child is offered, once per task. The
+chain answered must be the parent's chain plus exactly one link, verified to the same rules
+as any chain, so a link wider than its parent is refused `widened` at the child's start, whatever the
+host answered; a chain of another root or with other links above it is `chain-broken`. A parent whose
+link sets `mayDelegate` false, or a host with no child port, has no child: `delegation-not-permitted`,
+without asking. The host may refuse by name (`delegation-not-permitted`, `not-parent-actor`); a port
+that fails, answers another form or answers past its five seconds refuses `admission-unknown`. A
+refused child starts nothing: the run records the guardrail, its refusal and the parent's `principal`,
+and the task fails `permission` with outcome `not-started`, stating the refusal to the parent. A child
+that starts carries its own chain: its calls are admitted under that chain, and `delegated_task` carries
+its `principal` as event 3. ADR-0013's rule holds: a child never delegates, so the harness asks for one
+level; a chain of more links reaches the child only through its parent's chain.
+
+**A lease holds the principals it hosts.** `run-lease.json` version 2 is a lease and fence with
+`principal` `{sub, rootActor, host}` (`$defs/binding` of `run-principal.json`, the form of the
+gateway's reservation scope). A delegated run's first lease binds it; a later acquisition by the same
+principals is a new epoch as ever, and any other, or a version 1 lease taken over for a delegated run,
+or a version 2 row taken without principals, refuses `principal-changed` before the epoch moves, also
+after a release, since the row is kept. A fence checks against the row (`principal-changed`), so the
+reference effect host refuses a dispatch under other principals and performs nothing, and a session
+opening on a fenced store refuses a fence that does not hold the run's principals, in both directions,
+before anything is committed. A store kind must keep and return the member: it declares
+`leasePrincipals()` (Go `LeasePrincipalStore`), `fencedRunStore` refuses a delegated fence on one that
+does not, and the store conformance kit proves it (`lease.principal.*`). The idempotency key names
+neither the principals nor the epoch, so it is unchanged. A wait's pins hold the binding, its claim
+lease holds it, and a resume's evidence names it: missing evidence for a delegated wait is
+`evidence-missing` and another binding is `principal-changed`, never a refresh an admission could
+accept. The wait conformance kit's `wait.principal.*` and `wait.restart.principal*` hold it across a
+restart.
+
 ## Departures from RFC 0030
 
 - **Signing and admission are the host's, not a credential.** The harness binds no credential
@@ -97,15 +129,20 @@ resumed with one are refused (`principal-changed`).
   to RFC §7 rule 2's subject and root actor, which the chain's digests do not name.
 - **Expiry or revocation while a run holds its lease refuses the call** and the run continues with
   the refusal; the re-authorization park naming the delegation (ADR-0025 decision 4) is not built.
+- **The lease's binding adds the issuing `host`** beside RFC §7 rule 2's subject and root actor: it is
+  the form of the gateway's reservation scope, and two hosts' root actors are different principals.
+- **The issuing host signs the child's link, not the harness.** The harness holds no signing key, so
+  RFC §3's narrowing is the host's act; the harness refuses by name any chain that does not satisfy it.
+  With no child port there is no child under a delegation: a delegated run never falls back to running
+  a child under its parent's chain.
+- **`delegated_task` carries `principal`** as event 3, beside the RFC's tool events: it is the record
+  of the chain a child ran under, and the only event that names the link before the child's first call.
 
 ## Not built here
 
-Narrowed child links issued by the host for a delegated child and their widening refusal at the
-child's start, the lease's principal binding (`principal-changed` at takeover and effect
-admission, binding with the resume revalidation of #266) and the wait conformance kit's delegation
-properties are the stacked follow-up pull request. Key rotation for an issuing host, revocation
-statements and the offline `delegation-unresolved` check are the RFC's open questions and are not
-built.
+Key rotation for an issuing host, revocation statements and the offline `delegation-unresolved`
+check are the RFC's open questions and are not built. The certification scenarios do not yet run a
+delegated child on every engine; the coordinator's cases are package tests in both languages.
 
 ## Evidence
 
@@ -115,6 +152,10 @@ handwritten agent vectors in `contract/vectors/principal/`: agent-host chains si
 independent signer, 33 admission cases with the exact admission read each makes, the record
 member, every refusal, the port's answer forms, event 3 records and a report 3. Gate and session
 tests in both languages cover a call out of scope, an expired and a revoked delegation, a
-revocation between the check and the dispatch, an approval's continuation, an effect in flight, a
-child under its parent's principal, the undelegated run unchanged, startup refusal and resume.
-Mutation rows `principal P1` to `P21` hold the safeguards, each with its Go twin.
+revocation between the check and the dispatch, an approval's continuation, an effect in flight, the
+undelegated run unchanged, startup refusal and resume. The child cases (`contract/vectors/principal/child.json`)
+drive the same narrowing in both languages, and through the real coordinator a narrowed child runs and
+is recorded, a widened one and one with no port or permission start nothing, and an undelegated parent
+delegates as before. The lease vectors hold version 2 and `principal-changed`; the store and wait
+conformance kits hold the binding across takeover, effect admission, claim and restart. Mutation rows
+`principal P1` onward hold the safeguards, each with its Go twin.

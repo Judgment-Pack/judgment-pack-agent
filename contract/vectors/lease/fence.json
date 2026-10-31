@@ -28,6 +28,21 @@
       "resource": "chat-alpha",
       "owner": "worker-c",
       "epoch": "999999999999999999"
+    },
+    {
+      "version": 2,
+      "resource": "run-delegated",
+      "owner": "worker-a",
+      "epoch": "1",
+      "principal": {
+        "sub": {
+          "kind": "person",
+          "issuer": "https://login.example.com/",
+          "subject": "approver@example.com"
+        },
+        "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "host": "desk"
+      }
     }
   ],
   "epochs": {
@@ -219,9 +234,9 @@
       }
     },
     {
-      "problem": "version 2",
+      "problem": "version 3",
       "fence": {
-        "version": 2,
+        "version": 3,
         "resource": "run-alpha",
         "owner": "worker-a",
         "epoch": "1"
@@ -235,6 +250,51 @@
         "owner": "worker-a",
         "epoch": "1",
         "expiry": "2026-01-01T00:00:30.000Z"
+      }
+    },
+    {
+      "problem": "a version 2 fence names its principals",
+      "fence": {
+        "version": 2,
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1"
+      }
+    },
+    {
+      "problem": "a version 1 fence names no principals",
+      "fence": {
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1",
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        },
+        "version": 1
+      }
+    },
+    {
+      "problem": "a root actor that is not an opaque identifier",
+      "fence": {
+        "version": 2,
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1",
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "agent-1",
+          "host": "desk"
+        }
       }
     }
   ]
