@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect} from './lease'
+import {fencedEffect,isNeverAdmittedFailure,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {readingTool} from '../framing'
 import {canonicalJSON} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -145,6 +145,9 @@ export class RunWriter {
  private tail:Promise<unknown>=Promise.resolve()
  private fatal:unknown
  private dispatchClosed=false
+ /** #226: a trusted re-authorization refusal that closed dispatch; nothing after it is committed or dispatched. */
+ private closure:unknown
+ private closed():unknown{return this.closure??new DOMException('The operation was aborted','AbortError')}
  private stopped=false
  private book:DurableBook
  private root?:()=>ExecutionCheckpoint
@@ -553,7 +556,7 @@ export class RunWriter {
   if(signal?.aborted)this.dispatchClosed=true
   return output
  }
- save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>{if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'));return this.publish(binding,state,undefined,undefined,signal)}).then(()=>undefined)}
+ save(binding:DurableBinding,state:ExecutionCheckpoint,signal?:AbortSignal){return this.enqueue(()=>{if(this.dispatchClosed)throw new DispatchCanceled(this.closed());return this.publish(binding,state,undefined,undefined,signal)}).then(()=>undefined)}
  /** Commit once, then issue a private writer-owned delivery identity. It is never serialized. */
  /** A claim handle is private to one acknowledged native execution, never a host marker. */
  acknowledgeNativeRouteRelease(binding:DurableBinding,token:object|undefined,request:string,route:string,needed:string){
@@ -665,7 +668,7 @@ export class RunWriter {
   this.planDelivery.set(output,{scope:scopeKey(binding.scope),bytes:canonicalJSON(output)})
   return output
  })}
- event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'));const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
+ event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{if(this.dispatchClosed)throw new DispatchCanceled(this.closed());const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
   return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
  }
@@ -735,6 +738,13 @@ export class RunWriter {
    if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution))canonicalRepeatArgs(request)
    if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))
    reused=this.book.dispatches.find(row=>!read&&!row.read&&row.kind===kind&&row.fingerprint===fingerprint)
+   // #226: a dispatch the run holds as unknown is never sent again, except the one operation a resumed re-authorization
+   // wait granted on this fenced view, whose recorded failure is the typed never-admitted refusal: it is claimed again
+   // under its own identity, once, and its effect host admits it for the first time.
+   if(reused&&reused.state==='unknown'&&(kind==='host'||kind==='runtime')&&takeReauthorizedDispatch(this.store,{run:this.id,operation:reused.id,source,tool,requestDigest:reused.requestDigest},reused.failure)){
+    claim=reused;reused=undefined;claim.state='claimed';delete claim.failure
+    await this.publish(binding,undefined,undefined,undefined,signal);return
+   }
    if(reused)return
    if(this.book.dispatches.length>=400)throw new ContinuationNotRecoverable()
    const budgeted=this.budget&&(kind==='model'||kind==='agent')
@@ -773,12 +783,20 @@ export class RunWriter {
    }
    finishRecovery()
    if(admit&&!signal?.aborted){live=undefined;await admit(value)}
-  }catch(error){
+  }catch(thrown){
+   // #226: the typed never-admitted failure means a refusal the package trusted for this very dispatch, and it is what lets
+   // a resumed re-authorization wait send the row again. Any other failure of that shape (a tool's, after admission) is
+   // recorded and reported as an unknown outcome, with nothing said about admission.
+   const effect=kind==='host'||kind==='runtime',refused=effect&&takeFreshReauthorization(thrown)
+   const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown
    if(kind!=='model')finishRecovery()
    const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
    try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
    if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
    if(kind==='model')this.dispatchClosed=true
+   // #226: a trusted re-authorization refusal stops the run at the operation it refused: nothing after it is committed and
+   // nothing more is dispatched, so the run's head holds it as the never-admitted dispatch a park binds.
+   else if(refused){this.dispatchClosed=true;this.closure=error}
    throw error
   }
   if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;if(!this.stopped)claim.state='unknown';throw live?.reason??new DOMException('The operation was aborted','AbortError')}

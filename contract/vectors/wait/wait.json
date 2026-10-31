@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten version 1 waits: an approval wait parked on an event or a wake time with a timeout, a run deadline, an approval TTL and a chat binding; a budget wait woken by its wake time; a question woken by a real answer; a question that timed out unanswered with uncertain release; a redacted question resumed after its uncertain release was reconciled and after a new policy layer; an approval woken by a decision a millisecond before its expiry and then ended by its deadline; a question its run deadline ended unwoken, unanswered; an approval resumed under an admitted model and an admitted artifact revision; an approval whose approved call did not settle by its expiry, ended after its claim (#266 N1). Each wait has its own wake key (#265 M1). Every wait pins its execution authority; an approval wait carries its binding and expires. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state and fail both readers. readerRefused also pins one whitespace set and one case fold (#265 M4): blank is only JavaScript's \\s and U+0085, and labels are compared trimmed, each code point lowercased alone, final sigma as sigma.",
+  "description": "Handwritten version 1 waits: an approval wait parked on an event or a wake time with a timeout, a run deadline, an approval TTL and a chat binding; a budget wait woken by its wake time; a question woken by a real answer; a question that timed out unanswered with uncertain release; a redacted question resumed after its uncertain release was reconciled and after a new policy layer; an approval woken by a decision a millisecond before its expiry and then ended by its deadline; a question its run deadline ended unwoken, unanswered; an approval resumed under an admitted model and an admitted artifact revision; an approval whose approved call did not settle by its expiry, ended after its claim (#266 N1). Each wait has its own wake key (#265 M1). Every wait pins its execution authority; an approval wait carries its binding and expires. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state and fail both readers. readerRefused also pins one whitespace set and one case fold (#265 M4): blank is only JavaScript's \\s and U+0085, and labels are compared trimmed, each code point lowercased alone, final sigma as sigma. #226 adds three reauthorization waits: one parked on a trusted disposition with a wait deadline; one resumed after a same-principal refresh whose narrower permissions still cover the operation; one parked while the run's approved call was unsettled, carrying that approval's binding and expiry, its disposition revoked. readerRefused hold their rules: the pending operation, connection and cause are the disposition's; the condition is an event with no wake time; no TTL; an approval binding only with its expiry and its source pinned; a resumed one carries the refresh, for the parked principal, covering what is required, taken after the park and no later than the claim; and no other wait carries either.",
   "schema": "run-wait.json",
   "items": [
     {
@@ -717,6 +717,280 @@
         "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
         "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "changes": []
+      }
+    },
+    {
+      "version": 1,
+      "resource": "run-reauth",
+      "wait": "wait-1",
+      "reason": "reauthorization",
+      "pending": {
+        "kind": "reauthorization",
+        "operation": "dispatch-1",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "connection": "tracker-conn",
+        "cause": "expired"
+      },
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker-conn"
+        }
+      },
+      "limits": {
+        "waitMs": 86400000
+      },
+      "deadline": {
+        "at": "2026-01-02T00:00:00.000Z",
+        "by": "wait",
+        "wait": "2026-01-02T00:00:00.000Z"
+      },
+      "continuation": "continue-reauth-1",
+      "checkpoint": {
+        "revision": "rev-50",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+          }
+        ],
+        "artifacts": []
+      },
+      "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+      "release": [
+        {
+          "resource": "provider-account",
+          "outcome": "released"
+        }
+      ],
+      "parked": {
+        "owner": "worker-a",
+        "epoch": "3",
+        "at": "2026-01-01T00:00:00.000Z"
+      },
+      "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+      "state": "parked",
+      "reauthorization": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "resource": "run-refreshed",
+      "wait": "wait-1",
+      "reason": "reauthorization",
+      "pending": {
+        "kind": "reauthorization",
+        "operation": "dispatch-4",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "connection": "tracker-conn",
+        "cause": "expired"
+      },
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker-conn"
+        }
+      },
+      "continuation": "continue-refreshed-1",
+      "checkpoint": {
+        "revision": "rev-51",
+        "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "tracker",
+            "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+          }
+        ],
+        "artifacts": []
+      },
+      "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+      "release": [],
+      "parked": {
+        "owner": "worker-a",
+        "epoch": "1",
+        "at": "2026-01-01T00:00:00.000Z"
+      },
+      "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+      "state": "resumed",
+      "disposition": {
+        "evidence": "refreshed-1",
+        "kind": "event",
+        "at": "2026-01-01T00:01:00.000Z",
+        "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+      },
+      "resumed": {
+        "owner": "worker-b",
+        "epoch": "2",
+        "at": "2026-01-01T00:02:00.000Z"
+      },
+      "revalidation": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+        "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "changes": []
+      },
+      "reauthorization": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "operation": {
+          "run": "run-refreshed",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+        "fence": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "owner": "worker-a",
+          "epoch": "1"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      },
+      "reauthorized": {
+        "actor": "person-owner",
+        "at": "2026-01-01T00:01:30.000Z",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write"
+        ],
+        "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+      }
+    },
+    {
+      "version": 1,
+      "resource": "run-bound",
+      "wait": "wait-2",
+      "reason": "reauthorization",
+      "pending": {
+        "kind": "reauthorization",
+        "operation": "dispatch-9",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "connection": "tracker.conn:eu-1",
+        "cause": "revoked"
+      },
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker.conn:eu-1"
+        }
+      },
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "approval",
+        "approval": "2026-01-01T01:00:00.000Z"
+      },
+      "approval": {
+        "callId": "call-31",
+        "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+        "source": "tracker"
+      },
+      "continuation": "continue-bound-2",
+      "checkpoint": {
+        "revision": "rev-52",
+        "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "tracker",
+            "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+          }
+        ],
+        "artifacts": []
+      },
+      "wakeKeyDigest": "sha256:1a9e0c7a561cf66c3e34d9b0a3a872aee74fe46c913f989fab6f8f8ab42746df",
+      "release": [],
+      "parked": {
+        "owner": "worker-b",
+        "epoch": "2",
+        "at": "2026-01-01T00:10:00.000Z"
+      },
+      "attention": "sha256:fe33170f27037afb78afb4bc6b1c57893e041e0871f31cfc3d471548fa1b7211",
+      "state": "parked",
+      "reauthorization": {
+        "version": 1,
+        "resource": "run-bound",
+        "operation": {
+          "run": "run-bound",
+          "operation": "dispatch-9",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "idempotencyKey": "sha256:185a3385a6b10f904f07c0daaf8beef62e76e7119390e6c609d6ab3a86112af0",
+        "fence": {
+          "version": 1,
+          "resource": "run-bound",
+          "owner": "worker-b",
+          "epoch": "2"
+        },
+        "cause": "revoked",
+        "connection": "tracker.conn:eu-1",
+        "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+        "permissions": [],
+        "requires": []
       }
     }
   ],
@@ -2028,6 +2302,391 @@
             ],
             "text": ""
           }
+        }
+      }
+    },
+    {
+      "problem": "#226: an unknown cause",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "unauthorized"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a token in the disposition",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ],
+          "token": "SENTINEL-ACCESS-TOKEN"
+        }
+      }
+    },
+    {
+      "problem": "#226: a token in the recorded refresh",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83",
+          "token": "SENTINEL-REFRESHED-TOKEN"
+        }
+      }
+    },
+    {
+      "problem": "#226: a connection that is not a bounded reference",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "Bearer abc",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
         }
       }
     }
@@ -6285,6 +6944,1899 @@
             ],
             "text": ""
           }
+        }
+      }
+    },
+    {
+      "problem": "#226: a reauthorization with a wake time",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          },
+          "wakeAt": "2026-01-01T01:00:00.000Z"
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a reauthorization with only a wake time",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "wakeAt": "2026-01-01T01:00:00.000Z"
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a pending operation that is not the disposition's",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-2",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a pending connection that is not the disposition's",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "other-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a pending cause that is not the disposition's",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "revoked"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a reauthorization wait without its disposition",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked"
+      }
+    },
+    {
+      "problem": "#226: a reauthorization wait with an approval TTL",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000,
+          "approvalTtlMs": 3600000
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "approval",
+          "wait": "2026-01-02T00:00:00.000Z",
+          "approval": "2026-01-01T01:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a disposition keyed by another operation",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:3b5c01343ba39ed8931f1c3ae8a9d1348e270ddf6bc7ecea9397d73556cb1eac",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: another run's disposition",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-other",
+          "operation": {
+            "run": "run-other",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:b5c7a432de88f738bf793e68896172cf0856c6c15f42f7db82daede19e91d230",
+          "fence": {
+            "version": 1,
+            "resource": "run-other",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: an approval wait carrying a disposition",
+      "record": {
+        "version": 1,
+        "resource": "run-approval",
+        "wait": "wait-1",
+        "reason": "approval",
+        "pending": {
+          "kind": "approval",
+          "callId": "call-7",
+          "name": "tracker__create_issue",
+          "tool": "create_issue"
+        },
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-7"
+          },
+          "wakeAt": "2026-01-02T09:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-08T00:00:00.000Z",
+        "limits": {
+          "run": "2026-01-05T00:00:00.000Z",
+          "approvalTtlMs": 172800000
+        },
+        "deadline": {
+          "at": "2026-01-03T00:00:00.000Z",
+          "by": "approval",
+          "run": "2026-01-05T00:00:00.000Z",
+          "approval": "2026-01-03T00:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-7",
+          "callDigest": "sha256:c885f48a1c56dda4f97d6aaac41c803a690c981e3804b3dcba4f1d481cc4c62d",
+          "source": "tracker"
+        },
+        "continuation": "continue-approval-1",
+        "checkpoint": {
+          "revision": "rev-12",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "anthropic",
+            "model": "model-b"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": []
+        },
+        "chat": {
+          "id": "chat-approval",
+          "revision": "chat-rev-3"
+        },
+        "wakeKeyDigest": "sha256:1e5545432fe2661182146190c72cd0c4aad300ab460f75d1824a262acee28e82",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          },
+          {
+            "resource": "browser-tab",
+            "outcome": "not-held"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:711268b834a208802a488ceb20c74995f65b466f509b93b8a4897440348e936a",
+        "retainUntil": "2026-04-01T00:00:00.000Z",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-approval",
+          "operation": {
+            "run": "run-approval",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:2824834e33a987fe75e7b7fca3551a4d3947e5c9fd6b67e6e5cc02bebca2e545",
+          "fence": {
+            "version": 1,
+            "resource": "run-approval",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a parked reauthorization wait with a recorded refresh",
+      "record": {
+        "version": 1,
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "limits": {
+          "waitMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-02T00:00:00.000Z"
+        },
+        "continuation": "continue-reauth-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "3",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-reauth",
+          "operation": {
+            "run": "run-reauth",
+            "operation": "dispatch-1",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+          "fence": {
+            "version": 1,
+            "resource": "run-reauth",
+            "owner": "worker-a",
+            "epoch": "3"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:00:00.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: a resumed reauthorization wait without its refresh",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        }
+      }
+    },
+    {
+      "problem": "#226: a refresh for another principal",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: a refresh whose permissions do not cover the operation",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: a refresh before the park",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2025-12-31T23:59:59.999Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: a refresh after the claim",
+      "record": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-4",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker-conn",
+          "cause": "expired"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "continuation": "continue-refreshed-1",
+        "checkpoint": {
+          "revision": "rev-51",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:626ce84087e5243c1da2172ee15a40305960e3d46e4555b0a3e00e144ec341e2"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "refreshed-1",
+          "kind": "event",
+          "at": "2026-01-01T00:01:00.000Z",
+          "digest": "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:02:00.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "wait": "wait-1",
+          "pins": "sha256:327264f92a97406133a0da3d533a4b42f3923d609cbb07d4e76fb67e4eeecf10",
+          "evidence": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "changes": []
+        },
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-refreshed",
+          "operation": {
+            "run": "run-refreshed",
+            "operation": "dispatch-4",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+          },
+          "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+          "fence": {
+            "version": 1,
+            "resource": "run-refreshed",
+            "owner": "worker-a",
+            "epoch": "1"
+          },
+          "cause": "expired",
+          "connection": "tracker-conn",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:read",
+            "issues:write"
+          ],
+          "requires": [
+            "issues:write"
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:02:00.001Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: a refresh on a resumed approval wait",
+      "record": {
+        "version": 1,
+        "resource": "run-switch",
+        "wait": "wait-2",
+        "reason": "approval",
+        "pending": {
+          "kind": "approval",
+          "callId": "call-21",
+          "name": "tracker__create_issue",
+          "tool": "create_issue"
+        },
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-21"
+          }
+        },
+        "limits": {
+          "approvalTtlMs": 86400000
+        },
+        "deadline": {
+          "at": "2026-01-02T00:00:00.000Z",
+          "by": "approval",
+          "approval": "2026-01-02T00:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-21",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        },
+        "continuation": "continue-switch-2",
+        "checkpoint": {
+          "revision": "rev-40",
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "plan": {
+            "revision": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+          },
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "brief.md",
+              "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:314efcbef64f5b1c339f33e7697ad84f1b7aa8f1ff8fd201c59762587535ae9d",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "2",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:cc14eb56ee251749a1dfedfed69c584f15ff175e3838dda0e3ac8b5eece6505e",
+        "state": "resumed",
+        "disposition": {
+          "evidence": "decision-switch-1",
+          "kind": "event",
+          "at": "2026-01-01T03:00:00.000Z",
+          "digest": "sha256:ca4eeb4b52f0ee8b5dc30c4209076eb2fc6f1b94384c58a3d61b7d8954a89b79"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "3",
+          "at": "2026-01-01T03:00:05.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-switch",
+          "wait": "wait-2",
+          "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
+          "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
+          "changes": [
+            {
+              "kind": "model",
+              "subject": "model",
+              "from": "openai/model-a",
+              "to": "openai/model-c",
+              "actor": "person-owner",
+              "at": "2026-01-01T02:59:00.000Z"
+            },
+            {
+              "kind": "reference",
+              "subject": "artifact:brief.md",
+              "from": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "to": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "actor": "person-owner",
+              "at": "2026-01-01T02:59:00.000Z"
+            }
+          ]
+        },
+        "reauthorized": {
+          "actor": "person-owner",
+          "at": "2026-01-01T00:01:30.000Z",
+          "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+          "permissions": [
+            "issues:write"
+          ],
+          "digest": "sha256:8af36e9be58ea08307b3aa549a7f1c4bcb101ea625ff1d8a096dca8343fefe83"
+        }
+      }
+    },
+    {
+      "problem": "#226: an approval binding without the approval's expiry",
+      "record": {
+        "version": 1,
+        "resource": "run-bound",
+        "wait": "wait-2",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-9",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker.conn:eu-1",
+          "cause": "revoked"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker.conn:eu-1"
+          }
+        },
+        "approval": {
+          "callId": "call-31",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        },
+        "continuation": "continue-bound-2",
+        "checkpoint": {
+          "revision": "rev-52",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:1a9e0c7a561cf66c3e34d9b0a3a872aee74fe46c913f989fab6f8f8ab42746df",
+        "release": [],
+        "parked": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:10:00.000Z"
+        },
+        "attention": "sha256:fe33170f27037afb78afb4bc6b1c57893e041e0871f31cfc3d471548fa1b7211",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-bound",
+          "operation": {
+            "run": "run-bound",
+            "operation": "dispatch-9",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "idempotencyKey": "sha256:185a3385a6b10f904f07c0daaf8beef62e76e7119390e6c609d6ab3a86112af0",
+          "fence": {
+            "version": 1,
+            "resource": "run-bound",
+            "owner": "worker-b",
+            "epoch": "2"
+          },
+          "cause": "revoked",
+          "connection": "tracker.conn:eu-1",
+          "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+          "permissions": [],
+          "requires": []
+        }
+      }
+    },
+    {
+      "problem": "#226: an approval binding with only a run deadline",
+      "record": {
+        "version": 1,
+        "resource": "run-bound",
+        "wait": "wait-2",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-9",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker.conn:eu-1",
+          "cause": "revoked"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker.conn:eu-1"
+          }
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "run",
+          "run": "2026-01-01T01:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-31",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        },
+        "continuation": "continue-bound-2",
+        "checkpoint": {
+          "revision": "rev-52",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "tracker",
+              "descriptorDigest": "sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:1a9e0c7a561cf66c3e34d9b0a3a872aee74fe46c913f989fab6f8f8ab42746df",
+        "release": [],
+        "parked": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:10:00.000Z"
+        },
+        "attention": "sha256:fe33170f27037afb78afb4bc6b1c57893e041e0871f31cfc3d471548fa1b7211",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-bound",
+          "operation": {
+            "run": "run-bound",
+            "operation": "dispatch-9",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "idempotencyKey": "sha256:185a3385a6b10f904f07c0daaf8beef62e76e7119390e6c609d6ab3a86112af0",
+          "fence": {
+            "version": 1,
+            "resource": "run-bound",
+            "owner": "worker-b",
+            "epoch": "2"
+          },
+          "cause": "revoked",
+          "connection": "tracker.conn:eu-1",
+          "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+          "permissions": [],
+          "requires": []
+        }
+      }
+    },
+    {
+      "problem": "#226: an approval binding whose source is not pinned",
+      "record": {
+        "version": 1,
+        "resource": "run-bound",
+        "wait": "wait-2",
+        "reason": "reauthorization",
+        "pending": {
+          "kind": "reauthorization",
+          "operation": "dispatch-9",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "connection": "tracker.conn:eu-1",
+          "cause": "revoked"
+        },
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker.conn:eu-1"
+          }
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "approval",
+          "approval": "2026-01-01T01:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-31",
+          "callDigest": "sha256:a8acc7983798fd2c6bf8b7848cc4cc42a5f1ae4b3548b6f39ebba9762092669e",
+          "source": "tracker"
+        },
+        "continuation": "continue-bound-2",
+        "checkpoint": {
+          "revision": "rev-52",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:1a9e0c7a561cf66c3e34d9b0a3a872aee74fe46c913f989fab6f8f8ab42746df",
+        "release": [],
+        "parked": {
+          "owner": "worker-b",
+          "epoch": "2",
+          "at": "2026-01-01T00:10:00.000Z"
+        },
+        "attention": "sha256:fe33170f27037afb78afb4bc6b1c57893e041e0871f31cfc3d471548fa1b7211",
+        "state": "parked",
+        "reauthorization": {
+          "version": 1,
+          "resource": "run-bound",
+          "operation": {
+            "run": "run-bound",
+            "operation": "dispatch-9",
+            "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+            "tool": "create_issue",
+            "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+          },
+          "idempotencyKey": "sha256:185a3385a6b10f904f07c0daaf8beef62e76e7119390e6c609d6ab3a86112af0",
+          "fence": {
+            "version": 1,
+            "resource": "run-bound",
+            "owner": "worker-b",
+            "epoch": "2"
+          },
+          "cause": "revoked",
+          "connection": "tracker.conn:eu-1",
+          "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+          "permissions": [],
+          "requires": []
         }
       }
     }

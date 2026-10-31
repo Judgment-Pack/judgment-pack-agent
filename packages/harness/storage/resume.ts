@@ -70,10 +70,11 @@ export function readWaitLimits(v:unknown):WaitLimits{
 export function readRunLimit(v:unknown):RunLimit{const held=shape(v,['version','resource','run']);if(held.version!==1)return invalid();return {version:1,resource:id(held.resource),run:time(held.run)}}
 const BY=['run','wait','approval'] as const
 /** The deadline a park stamps: the earliest of the run's deadline (the earliest the store holds and this park's), the
- * park time plus waitMs and, for an approval wait, plus approvalTtlMs. Undefined when none applies. */
-export function stampDeadline(limits:WaitLimits|undefined,parkedAt:number,runCeiling:number|undefined):WaitDeadline|undefined{
+ * park time plus waitMs and, for an approval wait, plus approvalTtlMs. #226: for a reauthorization wait parked while the
+ * run's approved call is unsettled, `approvalAt` is that approval's expiry. Undefined when none applies. */
+export function stampDeadline(limits:WaitLimits|undefined,parkedAt:number,runCeiling:number|undefined,approvalAt?:number):WaitDeadline|undefined{
  const run=[limits?.run===undefined?undefined:millis(limits.run),runCeiling].filter((t):t is number=>t!==undefined)
- const times={run:run.length?Math.min(...run):undefined,wait:limits?.waitMs===undefined?undefined:parkedAt+limits.waitMs,approval:limits?.approvalTtlMs===undefined?undefined:parkedAt+limits.approvalTtlMs}
+ const times={run:run.length?Math.min(...run):undefined,wait:limits?.waitMs===undefined?undefined:parkedAt+limits.waitMs,approval:approvalAt!==undefined?approvalAt:limits?.approvalTtlMs===undefined?undefined:parkedAt+limits.approvalTtlMs}
  const present=BY.filter(by=>times[by]!==undefined)
  if(!present.length)return undefined
  const at=Math.min(...present.map(by=>times[by]!))
@@ -81,8 +82,9 @@ export function stampDeadline(limits:WaitLimits|undefined,parkedAt:number,runCei
  const by=present.find(name=>times[name]===at)!
  return {at:iso(at),by,...Object.fromEntries(present.map(name=>[name,iso(times[name]!)]))}
 }
-/** Reads a stamped deadline and holds its rules against the park's limits and time. */
-export function readWaitDeadline(v:unknown,limits:WaitLimits|undefined,parkedAt:string):WaitDeadline{
+/** Reads a stamped deadline and holds its rules against the park's limits and time. #226: `bound`, for a reauthorization
+ * wait that carries the run's unsettled approval binding: its approval time is that approval's expiry, and present. */
+export function readWaitDeadline(v:unknown,limits:WaitLimits|undefined,parkedAt:string,bound=false):WaitDeadline{
  const held=shape(v,['at','by'],['run','wait','approval'])
  const deadline:WaitDeadline={at:time(held.at),by:one(held.by,BY),...(held.run===undefined?{}:{run:time(held.run)}),...(held.wait===undefined?{}:{wait:time(held.wait)}),...(held.approval===undefined?{}:{approval:time(held.approval)})}
  const present=BY.filter(by=>deadline[by]!==undefined),parked=millis(parkedAt)
@@ -91,7 +93,8 @@ export function readWaitDeadline(v:unknown,limits:WaitLimits|undefined,parkedAt:
  if(millis(deadline.at)!==at||present.find(by=>millis(deadline[by]!)===at)!==deadline.by||at<=parked)return invalid()
  // The wait and approval times are the park's own durations; the run's is never later than this park's run limit.
  if((limits?.waitMs===undefined)!==(deadline.wait===undefined)||deadline.wait!==undefined&&millis(deadline.wait)!==parked+limits!.waitMs!)return invalid()
- if((limits?.approvalTtlMs===undefined)!==(deadline.approval===undefined)||deadline.approval!==undefined&&millis(deadline.approval)!==parked+limits!.approvalTtlMs!)return invalid()
+ if(bound){if(deadline.approval===undefined||limits?.approvalTtlMs!==undefined)return invalid()}
+ else if((limits?.approvalTtlMs===undefined)!==(deadline.approval===undefined)||deadline.approval!==undefined&&millis(deadline.approval)!==parked+limits!.approvalTtlMs!)return invalid()
  if(limits?.run!==undefined&&(deadline.run===undefined||millis(deadline.run)>millis(limits.run)))return invalid()
  return deadline
 }
@@ -170,10 +173,11 @@ export function approvalBinding(approval:ApprovalRecord):ApprovalBinding{
 /** The execution authority a park pins, read from the retained checkpoint, with the model the trusted host admitted the
  * run with: the resolved policy's identity, the Plan lineage, each source's identity digest (and the asked approval's
  * source with its descriptor digest), and the last observed revision of each artifact. */
-export function pinsFrom(checkpoint:ExecutionCheckpoint,model:PinnedModel):ResumePins{
+export function pinsFrom(checkpoint:ExecutionCheckpoint,model:PinnedModel,reauthorization=false):ResumePins{
  const sources=new Map<string,SourcePin>()
  for(const row of checkpoint.sourceIdentities??[])sources.set(row.source,{source:row.source,identityDigest:row.identityDigest})
- const asked=checkpoint.approval?.state==='asked'?checkpoint.approval:undefined
+ // #226: a reauthorization wait pins an approved call not yet settled as an asked one: its source and descriptor.
+ const asked=checkpoint.approval?.state==='asked'||reauthorization&&checkpoint.approval?.state==='approved'?checkpoint.approval:undefined
  if(asked){
   const record=asked.source,pin={...(sources.get(record.id)??{source:record.id})}
   if(record.identityDigest!==undefined){if(pin.identityDigest!==undefined&&pin.identityDigest!==record.identityDigest)return invalid();pin.identityDigest=record.identityDigest}
@@ -236,7 +240,8 @@ export function revalidateResume(wait:RevalidatedWait,input:unknown):Revalidatio
   changes.push({kind:'policy',subject:'policy',from:pins.policy,to:current.policy.digest,layer:current.policy.layer})
  }
  // #225: an approval is bound to the reviewed call's source, descriptor and policy identities; a changed one cannot run.
- if(wait.reason==='approval'){
+ // #226: so is a reauthorization wait's operation under the run's unsettled approval.
+ if(wait.reason==='approval'||wait.approval!==undefined){
   const binding=readApprovalBinding(wait.approval)
   if(changes.some(c=>c.kind==='policy'||c.kind==='reference'&&c.subject===`source:${binding.source}`))throw new ResumeRefused('approval-changed')
  }
