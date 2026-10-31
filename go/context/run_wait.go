@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf16"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -45,7 +46,7 @@ type WaitReport = contract.RunWaitReport
 type WaitReportEntry = contract.RunWaitReportEntry
 type WaitExport = contract.RunWaitExport
 
-var WaitRefusalReasons = []string{"invalid", "nothing-pending", "wait-pending", "conflict", "checkpoint-changed", "no-wait", "unauthenticated", "mismatch", "not-due", "stale", "unacknowledged", "already-resumed", "decision-required", "timed-out", "release-uncertain", "chat-changed", "deadline-passed", "closed", "approval-ttl-required"}
+var WaitRefusalReasons = []string{"invalid", "nothing-pending", "wait-pending", "conflict", "checkpoint-changed", "no-wait", "unauthenticated", "mismatch", "not-due", "stale", "unacknowledged", "already-resumed", "decision-required", "timed-out", "release-uncertain", "chat-changed", "deadline-passed", "closed", "approval-ttl-required", "key-reused", "not-resumable"}
 var WaitCapabilityReasons = []string{"store-unsupported", "store-lifetime", "chat-store-unsupported"}
 
 // WaitRefused is a named wait refusal. Nothing changed.
@@ -79,7 +80,50 @@ func (e *WaitCapabilityRefused) Record() contract.RunWaitCapabilityRefusal {
 func waitInvalid() error              { return &WaitRefused{Reason: "invalid"} }
 func waitRefused(reason string) error { return &WaitRefused{Reason: reason} }
 
-var waitKeyPattern = regexp.MustCompile(`^[!-~]{16,512}$`)
+var waitKeyPattern = regexp.MustCompile(`^[!-~]{32,512}$`)
+
+// ValidWakeKey (#265 M1): a wake key is 32 to 512 printable ASCII characters, at least 16 of them
+// distinct. The host mints a fresh one for each wait from a cryptographic random source (32 random bytes
+// in base64url, for example); the rule refuses a short or repetitive key, and cannot tell a guessable one.
+func ValidWakeKey(key string) bool {
+	if !waitKeyPattern.MatchString(key) {
+		return false
+	}
+	distinct := map[byte]bool{}
+	for i := 0; i < len(key); i++ {
+		distinct[key[i]] = true
+	}
+	return len(distinct) >= 16
+}
+
+// waitSpace (#265 M4) is one whitespace set in both languages: unicode.IsSpace and U+FEFF, which is
+// JavaScript's \s and U+0085.
+func waitSpace(r rune) bool { return unicode.IsSpace(r) || r == '\uFEFF' }
+
+// waitBlank: a text made only of waitSpace.
+func waitBlank(text string) bool { return strings.TrimFunc(text, waitSpace) == "" }
+
+// waitFold (#265 M4) is one case fold in both languages: the text trimmed of waitSpace, each code point
+// lowercased on its own (U+0130 is i with U+0307, as JavaScript lowercases it) and final sigma read as
+// sigma.
+func waitFold(text string) string {
+	var out strings.Builder
+	for _, r := range strings.TrimFunc(text, waitSpace) {
+		switch {
+		case r == '\u0130':
+			out.WriteString("i\u0307")
+		case r == '\u03C2':
+			out.WriteRune('\u03C3')
+		default:
+			if r = unicode.ToLower(r); r == '\u03C2' {
+				r = '\u03C3'
+			}
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
 var waitOptionPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,100}$`)
 
 // jsLength is a string's length as JavaScript counts it, in UTF-16 code units.
@@ -197,7 +241,7 @@ func readWaitQuestion(raw json.RawMessage) (contract.Question, error) {
 	}
 	nonBlank := func(name string, max int) error {
 		value, err := m.text(name, 1, max)
-		if err != nil || strings.TrimSpace(value) == "" {
+		if err != nil || waitBlank(value) {
 			return waitInvalid()
 		}
 		return nil
@@ -220,13 +264,13 @@ func readWaitQuestion(raw json.RawMessage) (contract.Question, error) {
 		}
 		id, _ := o.str("id")
 		label, err := o.text("label", 1, 100)
-		if err != nil || !waitOptionPattern.MatchString(id) || strings.TrimSpace(label) == "" || ids[id] || labels[strings.ToLower(strings.TrimSpace(label))] {
+		if err != nil || !waitOptionPattern.MatchString(id) || waitBlank(label) || ids[id] || labels[waitFold(label)] {
 			return contract.Question{}, waitInvalid()
 		}
 		if _, err := o.text("description", 0, 240); err != nil {
 			return contract.Question{}, err
 		}
-		ids[id], labels[strings.ToLower(strings.TrimSpace(label))] = true, true
+		ids[id], labels[waitFold(label)] = true, true
 	}
 	null := func(name string) bool { return string(bytes.TrimSpace(m[name])) == "null" }
 	if null("recommendedOptionId") != null("recommendation") {
@@ -286,7 +330,7 @@ func readWaitAnswer(raw json.RawMessage, question *contract.Question) (contract.
 
 // realAnswer: a chosen option or non-blank free text. An empty draft is not an answer.
 func realAnswer(draft contract.QuestionDraft) bool {
-	return len(draft.Selected) > 0 || strings.TrimSpace(draft.Text) != ""
+	return len(draft.Selected) > 0 || !waitBlank(draft.Text)
 }
 func waitCanonicalDigest(value any) string {
 	raw, err := canonicalRaw(value)
@@ -315,7 +359,7 @@ func WaitAttentionID(resource, wait string) string {
 
 // WakeKeyDigest is the SHA-256 of the host's wake key; the key itself stays the host's.
 func WakeKeyDigest(key string) (string, error) {
-	if !waitKeyPattern.MatchString(key) {
+	if !ValidWakeKey(key) {
 		return "", waitInvalid()
 	}
 	return durableDigest([]byte(key)), nil
@@ -405,7 +449,8 @@ func readWaitPending(raw json.RawMessage, reason string, redacted bool) (contrac
 			return contract.RunWaitPending{}, err
 		}
 		budget := contract.RunWaitPendingBudget{Kind: "budget"}
-		if budget.Unit, err = m.enum("unit", "model-requests", "provider-managed"); err != nil {
+		// #265 M3: a provider-managed allowance takes no grant, so no wait carries one.
+		if budget.Unit, err = m.enum("unit", "model-requests"); err != nil {
 			return contract.RunWaitPending{}, err
 		}
 		if budget.Limit, err = m.integer("limit", 1, 100); err != nil {
@@ -734,7 +779,7 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 		if err != nil {
 			return RunWait{}, err
 		}
-		if expired.Kind != "deadline" || wait.Deadline == nil || waitTimeMillis(expired.At) < waitTimeMillis(wait.Deadline.At) || m.has("resumed") {
+		if expired.Kind != "deadline" || wait.Deadline == nil || waitTimeMillis(expired.At) < waitTimeMillis(wait.Deadline.At) {
 			return RunWait{}, waitInvalid()
 		}
 		wait.Expired = &expired
@@ -747,6 +792,15 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 				return RunWait{}, waitInvalid()
 			}
 			wait.Disposition = &disposition
+		}
+		// #266 N1: an approved call that did not settle by the approval's expiry ends its resumed wait there;
+		// its outcome is unknown. Only an approval wait, woken and claimed, is expired after its claim.
+		if m.has("resumed") {
+			resumed, err := readWaitActor(m["resumed"])
+			if err != nil || wait.Reason != "approval" || wait.Disposition == nil || wait.Disposition.Kind == "timeout" || wait.Deadline.Approval == nil || waitTimeMillis(expired.At) < waitTimeMillis(*wait.Deadline.Approval) || waitTimeMillis(resumed.At) < waitTimeMillis(wait.Disposition.At) || waitTimeMillis(expired.At) < waitTimeMillis(resumed.At) {
+				return RunWait{}, waitInvalid()
+			}
+			wait.Resumed = &resumed
 		}
 	} else {
 		if m.has("expired") {
@@ -800,7 +854,7 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 	// #227: a claimed continuation records the revalidation it was claimed after, for this wait and its
 	// pins.
 	if m.has("revalidation") {
-		if wait.State != "resumed" {
+		if wait.Resumed == nil {
 			return RunWait{}, waitInvalid()
 		}
 		revalidation, err := ReadRevalidation(m["revalidation"])
@@ -812,11 +866,11 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 			return RunWait{}, waitInvalid()
 		}
 		wait.Revalidation = &revalidation
-	} else if wait.State == "resumed" {
+	} else if wait.Resumed != nil {
 		return RunWait{}, waitInvalid()
 	}
 	if m.has("reconciled") {
-		if wait.State != "resumed" {
+		if wait.Resumed == nil {
 			return RunWait{}, waitInvalid()
 		}
 		if wait.Reconciled, err = readWaitReleaseList(m["reconciled"]); err != nil {
@@ -847,7 +901,7 @@ func ReadWakeEvidence(raw []byte) (WakeEvidence, error) {
 	if (evidence.Kind == "event") != m.has("event") || m.has("answer") != m.has("actor") || m.has("answer") && evidence.Kind != "event" {
 		return WakeEvidence{}, waitInvalid()
 	}
-	if evidence.Key, err = m.str("key"); err != nil || !waitKeyPattern.MatchString(evidence.Key) {
+	if evidence.Key, err = m.str("key"); err != nil || !ValidWakeKey(evidence.Key) {
 		return WakeEvidence{}, waitInvalid()
 	}
 	if evidence.Resource, err = m.id("resource"); err != nil {
@@ -1287,10 +1341,13 @@ type WaitClaim struct {
 }
 
 // WaitStore is the wait port a store kind implements beside its lease port. Every transition is atomic
-// with the store's commits and checked against its own clock. Until a wait is resumed it holds its run:
-// the store's AcquireLease refuses the run (wait-pending, or closed once a wait ended terminally) and
-// only ResumeWait leases it. From a run's deadline every lease of the run expires no later than that
-// deadline, and AcquireLease refuses deadline-passed.
+// with the store's commits and checked against its own clock, and everything it decides by survives the
+// store's restarts: the waits, their attention events and deliveries, each run's earliest deadline, and
+// an approved call not yet settled with its expiry and binding. Until a wait is resumed it holds its run:
+// the store's AcquireLease refuses the run (wait-pending, or closed once a wait ended terminally), so does
+// its unfenced Commit (#266 M4), and only ResumeWait leases it. From a run's deadline every lease of the
+// run expires no later than that deadline, and AcquireLease and an unfenced Commit refuse deadline-passed.
+// The package checks none of this in a host store; CheckRunStoreWaitConformance does.
 type WaitStore interface {
 	WaitVersion() int
 	// WaitLifetime is durable when waits and attention events survive the store's process, process when
@@ -1299,21 +1356,29 @@ type WaitStore interface {
 	// ParkWait is one transaction: check the fence and the run head (checkpoint-changed), refuse while a
 	// wait not yet resumed holds the run (wait-pending; closed after a terminal one), stamp the deadline
 	// from the limits, the run's earliest deadline and the store clock (deadline-passed when it is not
-	// after the park), commit the wait and its one needs_attention event, and release the lease. A repeat
-	// of the same park returns it.
+	// after the park), refuse a WakeKeyDigest any other wait of the store holds (key-reused), commit the
+	// wait and its one needs_attention event, and release the lease. A repeat of the same park under the
+	// same fence returns it; anything else under its wait id is conflict. A refused park changes nothing
+	// and leaves the lease held.
 	ParkWait(context.Context, RunWait, LeaseFence) (RunWait, AttentionEvent, error)
-	// WakeWait: the first valid wake wins; a duplicate returns the retained disposition; anything else
-	// changes nothing. At or after the wait's deadline only a deadline wake is accepted, and it ends the
-	// wait terminally (expired).
+	// WakeWait: the first valid wake wins, decided against the named wait only; a duplicate returns the
+	// retained disposition; anything else changes nothing, and a resumed wait is never woken again. At or
+	// after the wait's deadline or the run's only a deadline wake is accepted, and it ends the wait
+	// terminally (expired). A resumed approval wait whose approved call has not settled is ended by a
+	// deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown.
 	WakeWait(context.Context, WakeEvidence) (WakeDisposition, error)
 	// ResumeWait is one transaction: check the acknowledged wake, the deadline, the head and the release
 	// reconciliation, then lease the run (the only lease a held run is granted) and claim the
-	// continuation once. From an approval wait's claim until its approved call settles, no lease of the
-	// run (the claim's, a takeover's or a re-acquired one) is granted, renewed or held past the approval's
-	// expiry, and every checkpoint the run commits must carry exactly the reviewed call.
+	// continuation once; a ceiling of the run not after the store's time refuses it (deadline-passed).
+	// The lease ends no later than the run's deadline and any unsettled approval's expiry. From an
+	// approval wait's claim until its approved call settles, no lease of the run (the claim's, a
+	// takeover's or a re-acquired one) is granted, renewed or held past the approval's expiry, and every
+	// checkpoint the run commits, fenced or not, must carry exactly the reviewed call (approval-changed
+	// otherwise); the commit that records the call executed, refused or answered settles it in the same
+	// transaction. ResumeParked checks what this returns.
 	ResumeWait(context.Context, WaitClaim) (RunWait, RunLease, error)
-	// LimitRun sets the run's deadline; the earliest one the store holds wins, and a held lease is
-	// shortened to it.
+	// LimitRun sets the run's deadline; the earliest one the store holds wins, a held lease is shortened
+	// to it, and every wait of the run not yet resumed or ended is stamped again with it (#266 M1).
 	LimitRun(context.Context, RunLimit) (RunLimit, error)
 	ReadWait(ctx context.Context, resource, wait string) (*RunWait, error)
 	// ExportWaits is the run's waits in park order, with their attention events and deliveries: the
@@ -1337,6 +1402,7 @@ type WaitRunStore interface {
 type waitApproval struct {
 	at      int64
 	binding ApprovalBinding
+	wait    string
 }
 
 // WaitTable holds the wait transitions in memory. MemoryRunStore calls it under its own lock; a host
@@ -1456,6 +1522,12 @@ func (t *WaitTable) CommitApproval(resource string, checkpoint []byte) (bool, er
 // SettleApproval lifts a settled approval's expiry from the run.
 func (t *WaitTable) SettleApproval(resource string) { delete(t.approvals, resource) }
 
+// passed (#266 M1): whether the run's deadline the store holds is at or before now (equal time is past).
+func (t *WaitTable) passed(resource, now string) bool {
+	ceiling, ok := t.ceilings[resource]
+	return ok && waitTimeMillis(now) >= ceiling
+}
+
 // AdmitAcquire (#265 M2): a committed park closes the run. It refuses acquiring the run's lease while a
 // wait not yet resumed holds it, for good once a wait ended terminally, and from the run's deadline.
 func (t *WaitTable) AdmitAcquire(resource string) error {
@@ -1495,6 +1567,22 @@ func (t *WaitTable) Limit(input RunLimit) (RunLimit, error) {
 		next = held
 	}
 	t.ceilings[limit.Resource] = next
+	// #266 M1: a run deadline set after a park reaches the run's waits. Each wait not yet resumed or ended
+	// is stamped again with it, so no wake, answer, decision or claim is accepted from it and its deadline
+	// wake is due at it; a deadline before the park is stamped as the earliest a committed park can carry,
+	// a millisecond after it.
+	for _, row := range t.rows[limit.Resource] {
+		if row.State == "resumed" || terminalWait(row) {
+			continue
+		}
+		parked := waitTimeMillis(row.Parked.At)
+		ceiling := max(next, parked+1)
+		deadline, err := StampDeadline(row.Limits, parked, &ceiling)
+		if err != nil {
+			return RunLimit{}, asWait(err)
+		}
+		row.Deadline = deadline
+	}
 	run, _ := leaseExpiryAt(next)
 	return RunLimit{Version: ResumeRecordVersion, Resource: limit.Resource, Run: run}, nil
 }
@@ -1528,6 +1616,13 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	// #265 M2: every wait not yet resumed holds the run, so one pause is never parked, and claimed, twice.
 	if err := t.holds(park.Resource); err != nil {
 		return RunWait{}, AttentionEvent{}, err
+	}
+	// #265 M1: a wake key belongs to one wait. A park whose key digest any other wait of the store holds
+	// is refused.
+	for _, rows := range t.rows {
+		if slices.ContainsFunc(rows, func(row *RunWait) bool { return row.WakeKeyDigest == park.WakeKeyDigest }) {
+			return RunWait{}, AttentionEvent{}, waitRefused("key-reused")
+		}
 	}
 	if !waitHeadMatches(head, park.Checkpoint) {
 		return RunWait{}, AttentionEvent{}, waitRefused("checkpoint-changed")
@@ -1595,7 +1690,25 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 			}
 			return *row.Expired, nil
 		}
-		// A resumed wait, or one that already ended, has nothing left for its deadline to end.
+		// #266 N1: an approved call that has not settled by the approval's expiry ends its resumed wait
+		// there. Its outcome is unknown (it may have been performed); nothing dispatches it, and the run is
+		// closed for good.
+		if unsettled, ok := t.approvals[row.Resource]; ok && row.State == "resumed" && unsettled.wait == row.Wait {
+			now, err := t.stamp()
+			if err != nil {
+				return WakeDisposition{}, err
+			}
+			if waitTimeMillis(now) < unsettled.at {
+				return WakeDisposition{}, waitRefused("not-due")
+			}
+			expired := WakeDisposition{Evidence: evidence.Evidence, Kind: "deadline", At: now, Digest: digest}
+			row.Expired = &expired
+			row.State = "expired"
+			delete(t.approvals, row.Resource)
+			return expired, nil
+		}
+		// A resumed wait whose call settled, or one that already ended, has nothing left for its deadline
+		// to end.
 		if row.State == "resumed" || terminalWait(row) {
 			return WakeDisposition{}, waitRefused("stale")
 		}
@@ -1639,7 +1752,7 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 	// #225: late evidence changes nothing. From the deadline only the deadline wake ends the wait; from
 	// the timeout only the timeout does: an answer or a decision delivered after either is refused, equal
 	// time included.
-	if row.Deadline != nil && waitTimeMillis(now) >= waitTimeMillis(row.Deadline.At) {
+	if row.Deadline != nil && waitTimeMillis(now) >= waitTimeMillis(row.Deadline.At) || t.passed(row.Resource, now) {
 		return WakeDisposition{}, waitRefused("deadline-passed")
 	}
 	if evidence.Kind != "timeout" && row.TimeoutAt != nil && waitTimeMillis(now) >= waitTimeMillis(*row.TimeoutAt) {
@@ -1765,8 +1878,10 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	if err != nil || revalidation.Resource != row.Resource || revalidation.Wait != row.Wait || revalidation.Pins != pins {
 		return RunWait{}, RunLease{}, waitInvalid()
 	}
-	// #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's
-	// expiry bounds it.
+	// #265 M2: the claim is the one lease a held run is granted, taken in this transaction. Every ceiling
+	// of the run bounds it (#266 N2: an earlier approval not yet settled too), and so does this wait's own
+	// approval, which then bounds every later lease of the run until the approved call settles (#266 H1).
+	// A ceiling not after the store's time refuses it.
 	ceiling, approval := t.Ceiling(row.Resource), (*int64)(nil)
 	if row.Reason == "approval" && row.Deadline != nil && row.Deadline.Approval != nil {
 		at := waitTimeMillis(*row.Deadline.Approval)
@@ -1775,12 +1890,15 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 			ceiling = approval
 		}
 	}
+	if ceiling != nil && *ceiling <= waitTimeMillis(now) {
+		return RunWait{}, RunLease{}, waitRefused("deadline-passed")
+	}
 	lease, err := leases.acquireWithin(claim.Lease, head.Revision, ceiling)
 	if err != nil {
 		return RunWait{}, RunLease{}, err
 	}
 	if approval != nil {
-		t.approvals[row.Resource] = waitApproval{at: *approval, binding: *row.Approval}
+		t.approvals[row.Resource] = waitApproval{at: *approval, binding: *row.Approval, wait: row.Wait}
 	}
 	row.State = "resumed"
 	row.Resumed = &contract.RunWaitActor{Owner: lease.Owner, Epoch: lease.Epoch, At: now}
@@ -2047,7 +2165,13 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		if input.Question != "" {
 			return RunWait{}, AttentionEvent{}, waitInvalid()
 		}
-		if approval := checkpoint.Approval; approval != nil && approval.State == "asked" {
+		asked := checkpoint.Approval != nil && checkpoint.Approval.State == "asked"
+		// #265 M3, #266 M5: a pause no package input can resume is never parked, so it never closes its run.
+		// A plan decision is no grant, and a provider-managed allowance takes none (extendExecution).
+		if !asked && (checkpoint.PlanState != nil && checkpoint.PlanState.Pending != nil || checkpoint.Unit != "model-requests") {
+			return RunWait{}, AttentionEvent{}, waitRefused("not-resumable")
+		}
+		if approval := checkpoint.Approval; asked {
 			park.Reason = "approval"
 			park.Pending = contract.RunWaitPending{Approval: &contract.RunWaitPendingApproval{Kind: "approval", CallID: approval.CallID, Name: approval.Name, Tool: approval.Tool}}
 			// #225: an unattended approval never waits indefinitely; it is bound to the exact call the
@@ -2062,7 +2186,7 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 			park.Approval = &binding
 		} else {
 			park.Reason = "budget"
-			park.Pending = contract.RunWaitPending{Budget: &contract.RunWaitPendingBudget{Kind: "budget", Unit: checkpoint.Unit, Used: checkpoint.Used, Limit: checkpoint.Limit}}
+			park.Pending = contract.RunWaitPending{Budget: &contract.RunWaitPendingBudget{Kind: "budget", Unit: "model-requests", Used: checkpoint.Used, Limit: checkpoint.Limit}}
 		}
 	} else {
 		if input.Question == "" {
@@ -2157,7 +2281,8 @@ func waitDecision(wait RunWait, input ResumeInput) error {
 		if input.Approval != nil || grant == nil || pending.Unit != "model-requests" || grant.From != pending.Limit || grant.To <= grant.From || grant.To > 100 {
 			return waitRefused("decision-required")
 		}
-		if _, err := time.Parse(time.RFC3339Nano, grant.At); err != nil {
+		// #265 M4: the grant is dated by a store-clock time, the form both writers produce, in both languages.
+		if _, ok := leaseExpiryMillis(grant.At); !ok {
 			return waitRefused("decision-required")
 		}
 	default:
@@ -2179,12 +2304,21 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	wait, err := store.ReadWait(ctx, input.Resource, input.Wait)
+	if !validStorageID(input.Resource) || !validStorageID(input.Wait) {
+		return ResumedWait{}, waitInvalid()
+	}
+	held, err := store.ReadWait(ctx, input.Resource, input.Wait)
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	if wait == nil {
+	if held == nil {
 		return ResumedWait{}, waitRefused("no-wait")
+	}
+	// #265 M6: the store's record is read through the reader, and it must be the wait asked for; a
+	// malformed one is invalid, never dereferenced.
+	wait, err := readStoreWait(*held)
+	if err != nil || wait.Resource != input.Resource || wait.Wait != input.Wait {
+		return ResumedWait{}, waitInvalid()
 	}
 	if wait.Disposition == nil || wait.Disposition.Evidence != input.Evidence {
 		return ResumedWait{}, waitRefused("unacknowledged")
@@ -2198,7 +2332,7 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if wait.State == "expired" {
 		return ResumedWait{}, waitRefused("deadline-passed")
 	}
-	if err := waitDecision(*wait, input); err != nil {
+	if err := waitDecision(wait, input); err != nil {
 		return ResumedWait{}, err
 	}
 	if wait.Chat != nil {
@@ -2213,7 +2347,11 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	resumed, lease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs}, Reconciled: input.Reconciled, Revalidation: revalidation})
+	claimedWait, claimedLease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs}, Reconciled: input.Reconciled, Revalidation: revalidation})
+	if err != nil {
+		return ResumedWait{}, err
+	}
+	resumed, lease, err := readClaimed(claimedWait, claimedLease, wait, input.Owner, revalidation)
 	if err != nil {
 		return ResumedWait{}, err
 	}
@@ -2223,6 +2361,53 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 		out.Resolution = &resolution
 	}
 	return out, nil
+}
+
+// readStoreWait reads a wait a store returned through ReadRunWait.
+func readStoreWait(held RunWait) (RunWait, error) {
+	raw, err := json.Marshal(held)
+	if err != nil {
+		return RunWait{}, waitInvalid()
+	}
+	return ReadRunWait(raw)
+}
+
+// readClaimed (#266 M6) checks the store's claim before its fence is handed out. It must be this wait,
+// resumed by the lease it returns, with the revalidation it was given, and that lease must be held by the
+// claimer for this run and end no later than the run's deadline and an approval's expiry the wait records.
+// A store that answers otherwise is refused invalid: nothing of the continuation is handed to the host.
+func readClaimed(claimed RunWait, claimedLease RunLease, wait RunWait, owner string, revalidation Revalidation) (RunWait, RunLease, error) {
+	held, err := readStoreWait(claimed)
+	if err != nil {
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	raw, err := json.Marshal(claimedLease)
+	if err != nil {
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	lease, err := ReadRunLease(raw)
+	if err != nil {
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	a, _ := canonicalRaw(held.Revalidation)
+	b, _ := canonicalRaw(revalidation)
+	expiry := waitTimeMillis(lease.Expiry)
+	bounds := []*string{}
+	if held.Deadline != nil {
+		bounds = append(bounds, held.Deadline.Run)
+		if held.Reason == "approval" {
+			bounds = append(bounds, held.Deadline.Approval)
+		}
+	}
+	beyond := held.Reason == "approval" && (held.Deadline == nil || held.Deadline.Approval == nil)
+	for _, bound := range bounds {
+		beyond = beyond || bound != nil && expiry > waitTimeMillis(*bound)
+	}
+	if held.Resource != wait.Resource || held.Wait != wait.Wait || held.State != "resumed" || held.Resumed == nil || held.Resumed.Owner != lease.Owner || held.Resumed.Epoch != lease.Epoch || !bytes.Equal(a, b) || held.Checkpoint != wait.Checkpoint ||
+		lease.Resource != wait.Resource || lease.Owner != owner || lease.State != "held" || beyond {
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	return held, lease, nil
 }
 
 // ReportFromExport is the park/wake report of one run, read from its retained waits, never from a
@@ -2287,18 +2472,25 @@ func ReportFromExport(source WaitExport, now time.Time) (WaitReport, error) {
 			}
 		}
 		// #225: a deadline that ended the wait is reported after what woke it, and before the unanswered
-		// end it caused.
+		// end it caused; #266 N1: one that ended an unsettled approved call after its claim is reported after
+		// the resume.
+		deadline := func() {
+			if e := wait.Expired; e != nil {
+				report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "deadline", Reason: wait.Reason, At: e.At, Evidence: str(e.Evidence), Wake: str("deadline")})
+			}
+		}
 		if wait.Disposition != nil {
 			resolution()
 		}
-		if e := wait.Expired; e != nil {
-			report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "deadline", Reason: wait.Reason, At: e.At, Evidence: str(e.Evidence), Wake: str("deadline")})
+		if wait.Resumed == nil {
+			deadline()
 		}
 		if wait.Disposition == nil {
 			resolution()
 		}
 		if r := wait.Resumed; r != nil {
 			report.Entries = append(report.Entries, WaitReportEntry{Wait: wait.Wait, Decision: "resume", Reason: wait.Reason, At: r.At, Owner: str(r.Owner), Epoch: str(r.Epoch)})
+			deadline()
 		}
 	}
 	out, err := json.Marshal(report)

@@ -80,7 +80,7 @@ $pkg/planning/planning.test.ts|$a/planning/planning.test.tsx|1250de0fe011e72112a
 $pkg/planning/policy.ts|$a/planning/policy.ts|eb906233f116c4bee6263a25ecdc5608115279dd14a271165939758c8a7a7750|agent#13: Plan mode's Runtime reads derived from the gate's ceiling, less the evaluation and the test run; ADR-0010 pre-release batch (#111): the planning session no longer sets the boolean alias; agent#179: canonical bytes for the pinned historical plan
 $pkg/planning/tools.ts|$a/planning/tools.ts|8eab06b1e82f104a668bff08e6f6b6416de66261fa20f0957e1bf5d4e45389f0|injection points: Chat and ChatStore (types), readFile, dialectAPI, PreparationReply (type); agent#179: host-resolved opaque references and asynchronous revision-checked chat plan updates; v0.11: proposal taxonomy on the package plan tool
 $pkg/questionFailure.ts|$a/questionFailure.ts|dba6a633523a01fc9499eaafd49a743b7c0c85fad7b7067309f114425f9c5da0|injection points: sourceMessage
-$pkg/questions.ts|$a/questions.ts|4c4ef5a7a3491e662cd841e51ba58889b309639489fea03a0f356b10edb4cb5f|v0.11: ask taxonomy on the package question tool
+$pkg/questions.ts|$a/questions.ts|65d267a29dd648316fc8198686fc13aacda730a8b3fadbc44f0b17ef2031659f|v0.11: ask taxonomy on the package question tool; agent#265 (#264 review M4): option labels compared lowercased by toLowerCase, not by the locale (toLocaleLowerCase), so the fold is the same in every locale and in Go
 $pkg/refutation.ts|$a/refutation.ts|2a18ea8380e44d84097d073fef1c7dc2ddf8c7fba52dabd148164f9d877f4b95|injection points: sourceMessage; agent#6: proposalNote, criticNote; agent#10: the critic's allow-list (CRITIC_TOOLS, criticRefusal), the default (criticRuns), the declared cases and the outcome comparison (readCriticCases, compareTheRest), the figures; agent#10 review rows 1, 2, 3 and 6: an uncompared case unsettled (incomplete), whole dispositions only to the test tool, the sets compared in any order, the critic's readers; ADR-0009: the critic may call the skill loaders (criticMayRead); ADR-0010: criticRuns removed, the decision in criticSwitch.ts; ADR cross-provider (#117)
 $pkg/refutation.test.ts|$a/refutation.test.ts|-|-
 $pkg/session.ts|$a/session.ts|63163ed323f057cef1efc3195fa98386a0cc811d0d6e3b473d26ab4813cecd21|injection points: aiHeaders, AITarget, deskHeaders, currentLanguage, chassisUrl, DeskWebSocketTransport, socketProtocols, socketURL, the session store (NO_SESSION_MESSAGE, NoSession, discardBody, forgetSession, refusalCode, sessionBearer, sessionEnded, whenSessionEnds), EndpointKind (type); agent#100 fix round 2: guard gate notice text before host delivery; v0.11: current paginated Runtime metadata validation and original Runtime action connector ownership
@@ -383,6 +383,9 @@ $pkg/storage/wait.ts
 $pkg/storage/wait.test.ts
 $pkg/storage/resume.ts
 $pkg/storage/resume.test.ts
+$pkg/storage/waitConformance.ts
+$pkg/storage/waitConformance.test.ts
+$pkg/storage/waitReview.test.ts
 EOF
 }
 

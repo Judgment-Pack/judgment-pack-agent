@@ -494,7 +494,7 @@
               }
             ]
           },
-          "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+          "wakeKeyDigest": "sha256:d07a209c428c8050f8b74d79f1fe6d40e6544d97a35f943df98533023ec5b76f",
           "release": [
             {
               "resource": "agent-invocation",
@@ -592,7 +592,7 @@
             ],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+          "wakeKeyDigest": "sha256:6c8fb5832dcd6ca1ed98a978ea9691e3475972e102256b6a110510b12b4ccb7a",
           "release": [
             {
               "resource": "provider-account",
@@ -703,7 +703,7 @@
             "sources": [],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
+          "wakeKeyDigest": "sha256:38a8a04f43468b1c829d9ae1396a10ce97db46a096c95e09d4ddbf358e16b52a",
           "release": [
             {
               "resource": "provider-account",
@@ -786,7 +786,7 @@
             "sources": [],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+          "wakeKeyDigest": "sha256:fa47ba1cf7d14f12b8aaaf8ebab1654efa4614cbbb45dd6e3f6e887bf2c2887f",
           "release": [
             {
               "resource": "provider-account",
@@ -896,7 +896,7 @@
             "sources": [],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
+          "wakeKeyDigest": "sha256:a270dd44834528acff96369b6b9ba8d6ed7ae26235b9396a8047f439750665eb",
           "release": [],
           "parked": {
             "owner": "worker-b",
@@ -985,7 +985,7 @@
             ],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+          "wakeKeyDigest": "sha256:5be178ac5bb62247d0cb6bff69196159982d6cac917fac3c9296e85da49dc70b",
           "release": [
             {
               "resource": "provider-account",
@@ -1088,7 +1088,7 @@
             "sources": [],
             "artifacts": []
           },
-          "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+          "wakeKeyDigest": "sha256:03f7fda79f823a7cbae754116f3258ad6b9bd9d01af1ae242390126d5d1e969f",
           "release": [],
           "parked": {
             "owner": "worker-c",

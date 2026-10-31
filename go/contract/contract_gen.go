@@ -20573,10 +20573,12 @@ func (v RunResumeSourcePin) MarshalJSON() ([]byte, error) {
 // carries no disposition, resolution, resumed or expired; woken and timed-out carry a disposition
 // (timeout exactly for timed-out) and resumed carries a disposition, resumed and revalidation;
 // expired carries expired (kind deadline, at or after its deadline) and the disposition it was
-// woken with, if any; a question wait that is woken carries an answered resolution and one that
-// timed out an unanswered one, a question that expired unwoken an unanswered one at its expiry,
-// and no other wait carries a resolution; reconciled and revalidation only with resumed; release
-// resources are unique; times are the store clock's.
+// woken with, if any, and an approval wait expired after its claim (#266 N1) also carries resumed
+// and revalidation, its expiry at or after the approval's and after the claim; a question wait
+// that is woken carries an answered resolution and one that timed out an unanswered one, a
+// question that expired unwoken an unanswered one at its expiry, and no other wait carries a
+// resolution; reconciled and revalidation only with resumed; every wait has its own wakeKeyDigest
+// within its store; release resources are unique; times are the store clock's.
 type RunWait struct {
 	Version       int64                    `json:"version"`
 	Resource      string                   `json:"resource"`
@@ -21044,7 +21046,9 @@ func (v RunWaitPendingApproval) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-wait.json#/$defs/pendingBudget. The paused checkpoint's allowance.
+// From run-wait.json#/$defs/pendingBudget. The paused checkpoint's allowance in model requests. A
+// provider-managed allowance takes no grant (extendExecution), so no wait carries one: such a
+// pause is never parked (#265 M3).
 type RunWaitPendingBudget struct {
 	Kind  string `json:"kind"`
 	Unit  string `json:"unit"`
@@ -21107,7 +21111,10 @@ func (v RunWaitPendingQuestion) MarshalJSON() ([]byte, error) {
 // run's, the wait's or the approval's deadline is at or before the store's time. closed: the run
 // ended at a terminal wait (timed-out approval or budget, or expired); nothing continues it.
 // approval-ttl-required: an approval wait needs the host's approval TTL. wait-pending: a wait not
-// yet resumed holds the run, so nothing else parks it or leases it.
+// yet resumed holds the run, so nothing else parks it or leases it. key-reused: another wait of
+// the store holds the park's wake key digest; a key belongs to one wait (#265 M1). not-resumable:
+// the pause is one no package input can resume (a plan decision, or a provider-managed allowance),
+// so it is never parked and never closes its run (#265 M3).
 type RunWaitRefusal struct {
 	Version int64  `json:"version"`
 	Reason  string `json:"reason"`

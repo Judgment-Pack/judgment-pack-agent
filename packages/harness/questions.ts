@@ -28,7 +28,7 @@ export function readUserQuestion(v: unknown): UserQuestion {
   if (!Array.isArray(v.options) || v.options.length === 1 || v.options.length > 4
     || v.options.some(o => !object(o) || !exact(o, ['id','label','description']) || !id(o.id) || !text(o.label, 100) || !text(o.description, 240, true))
     || new Set(v.options.map(o => o.id)).size !== v.options.length
-    || new Set(v.options.map(o => o.label.trim().toLocaleLowerCase())).size !== v.options.length) throw new QuestionFormatError('options')
+    || new Set(v.options.map(o => o.label.trim().toLowerCase())).size !== v.options.length) throw new QuestionFormatError('options')
   if (!(v.recommendedOptionId === null || id(v.recommendedOptionId) && v.options.some(o => o.id === v.recommendedOptionId))
     || !(v.recommendation === null || text(v.recommendation, 240))
     || (v.recommendedOptionId === null) !== (v.recommendation === null)) throw new QuestionFormatError('recommendation')

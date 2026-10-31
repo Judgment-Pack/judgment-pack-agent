@@ -1,0 +1,91 @@
+{
+  "description": "Handwritten budget grants a resume checks before anything is claimed (#265 M4). A grant is dated by a store-clock time: UTC with exactly millisecond precision, a valid instant (the form both writers produce). items are accepted by both languages; readerRefused are schema-valid grants whose time is no store-clock time (a date alone, a time without milliseconds, an offset, more digits, an impossible date, a space for the T, or nothing), each refused decision-required by both. Written by hand from checkpoint.json#/$defs/grant and the #264 review's parity finding M4(a); not recorded from a run of the code under test.",
+  "schema": "checkpoint.json#/$defs/grant",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/wait.ts (resumeParked)"
+    ]
+  },
+  "items": [
+    {
+      "from": 20,
+      "to": 30,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "from": 20,
+      "to": 30,
+      "at": "2026-01-01T23:59:59.999Z"
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "a date alone",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-01-01"
+      }
+    },
+    {
+      "problem": "a date in words",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "Jan 1 2026"
+      }
+    },
+    {
+      "problem": "a time without milliseconds",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-01-01T00:00:00Z"
+      }
+    },
+    {
+      "problem": "an offset for Z",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-01-01T00:00:00.000+00:00"
+      }
+    },
+    {
+      "problem": "more digits than milliseconds",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-01-01T00:00:00.0000Z"
+      }
+    },
+    {
+      "problem": "an impossible date",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-02-30T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "a space for the T",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": "2026-01-01 00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "nothing",
+      "grant": {
+        "from": 20,
+        "to": 30,
+        "at": ""
+      }
+    }
+  ]
+}

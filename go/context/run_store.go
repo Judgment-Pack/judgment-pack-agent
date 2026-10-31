@@ -58,7 +58,11 @@ func (e *StorageCommitMismatch) Unwrap() error {
 }
 
 // Empty ExpectedRevision means create only if absent. Nil Checkpoint leaves it unchanged.
-// Record validation, guarding and canonicalization happen in the Agent writer, before the store.
+// Record validation, guarding and canonicalization happen in the Agent writer, before the store. A store
+// with the wait port does not take the checkpoint on the writer's word (#266 N3): while an approved call is
+// unsettled it reads every committed checkpoint's approval and refuses one that is not exactly the
+// reviewed call (approval-changed), and it settles the call in the same transaction as the commit that
+// records it executed, refused or answered.
 type RunCommit struct {
 	RunID, ExpectedRevision, CommitID string
 	Checkpoint                        []byte
@@ -79,6 +83,11 @@ type RunEventPage struct {
 	NextCursor string
 	HasMore    bool
 }
+
+// RunStore is one injected store, bound to an authorized host resource scope. With the wait port
+// (#266 M4), an unfenced Commit refuses a run a wait holds (wait-pending), one a terminal wait closed
+// (closed) and one past its deadline or an unsettled approval's expiry (deadline-passed), as AcquireLease
+// does: only the resume's claim continues a parked run.
 type RunStore interface {
 	Durability() string
 	Load(context.Context, string) (*RunHead, error)
@@ -219,6 +228,13 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 			return RunReceipt{}, RunHistoryReceipt{}, &StorageCommitMismatch{}
 		}
 		return prior.receipt, historyClone(prior.historyReceipt), nil
+	}
+	// #266 M4: a commit not presented under a fence continues no run a wait holds, closed or past its
+	// deadline.
+	if fence == nil {
+		if err := m.waits.AdmitAcquire(frozen.RunID); err != nil {
+			return RunReceipt{}, RunHistoryReceipt{}, err
+		}
 	}
 	if held.head.Revision != frozen.ExpectedRevision {
 		return RunReceipt{}, RunHistoryReceipt{}, &StorageConflict{ExpectedRevision: frozen.ExpectedRevision, ActualRevision: held.head.Revision}

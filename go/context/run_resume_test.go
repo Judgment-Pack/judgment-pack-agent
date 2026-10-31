@@ -613,7 +613,8 @@ func TestResumeARunLimitSetByAParkBoundsTheClaim(t *testing.T) {
 		t.Fatalf("claim lease %+v %v", resumed.Lease, err)
 	}
 	clock.advance(29 * leaseMinute)
-	if _, err := WakeRun(ctx, store, WakeEvidence{Version: 1, Resource: "run-approval", Wait: "wait-1", Evidence: "deadline-1", Kind: "deadline", Key: waitKey}); waitReasonOf(err) != "stale" {
+	// #266 N1: the approved call has not settled, so only the approval's expiry ends the resumed wait.
+	if _, err := WakeRun(ctx, store, WakeEvidence{Version: 1, Resource: "run-approval", Wait: "wait-1", Evidence: "deadline-1", Kind: "deadline", Key: waitKey}); waitReasonOf(err) != "not-due" {
 		t.Fatalf("a deadline after the claim: %v", err)
 	}
 	if held, _ := store.ReadWait(ctx, "run-approval", "wait-1"); held.State != "resumed" {
@@ -793,15 +794,17 @@ func TestResumeARunDeadlineAtTheUnixEpochBoundsTheClaim(t *testing.T) {
 	if _, err := LimitRun(ctx, store, RunLimit{Version: 1, Resource: "run-approval", Run: "1970-01-01T00:00:00.000Z"}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := ResumeParked(ctx, approvedResume(t, store))
-	if err != nil || resumed.Lease.Expiry != "1970-01-01T00:00:00.000Z" {
-		t.Fatalf("claim lease %+v %v", resumed.Lease, err)
+	// #266 M1: a ceiling not after the store's time refuses the claim itself; nothing is leased.
+	if _, err := ResumeParked(ctx, approvedResume(t, store)); waitReasonOf(err) != "deadline-passed" {
+		t.Fatalf("a claim past the deadline: %v", err)
 	}
-	if _, err := store.CommitFenced(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "late", Checkpoint: pausedCheckpoint(t, nil)}, resumed.Fence); leaseReason(err) != "expired" {
-		t.Fatalf("a commit under it: %v", err)
+	if lease, _ := store.ReadLease(ctx, wait.Resource); lease.State != "released" || lease.Epoch != "1" {
+		t.Fatalf("a refused claim took a lease: %+v", lease)
 	}
-	if _, err := store.RenewLease(ctx, resumed.Fence, waitHour); leaseReason(err) != "expired" {
-		t.Fatalf("a renewal under it: %v", err)
+	// The lease table bounds a lease by a ceiling at the epoch like any other.
+	zero := int64(0)
+	if lease, err := NewLeaseTable(clock.now).acquireWithin(LeaseAcquire{Resource: "run-z", Owner: "worker-z", DurationMs: waitHour}, "", &zero); err != nil || lease.Expiry != "1970-01-01T00:00:00.000Z" {
+		t.Fatalf("a ceiling at the epoch: %+v %v", lease, err)
 	}
 }
 
