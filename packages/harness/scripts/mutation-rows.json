@@ -9682,6 +9682,90 @@
    "origin": "agent#265",
    "note": "Go twin (by hand): drop the owner and epoch comparison in WaitTable.Park's repeat branch; caught at ^TestWaitReviewTheSameParkUnderAnotherFenceIsAConflict$. The #264 review's MR5."
   },
+{
+  "name": "retained-column selector names the RC2 tuple again",
+  "file": "dialects.ts",
+  "find": "spec:Object.freeze({version:'0.3.0',revision:'27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc',",
+  "replace": "spec:Object.freeze({version:'0.3.0-rc.2',revision:'bcac15b7537ce21879201b5e5dfe795496225121',",
+  "tests": [
+    "dialects-pin.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#269",
+  "note": "Go twin (by hand): the same break in go/context/dialects.go DialectRetainedColumnDraft; caught at ^TestDialectSelectorIsRunnerInstalledConversionSpec$ (and ^TestDialectPublishedFinalIdentity$)."
+},
+{
+  "name": "Runtime identity admission takes a lone surrogate",
+  "file": "context/session.ts",
+  "find": " if(runtime&&[runtime.identity,runtime.version].some(text=>typeof text==='string'&&!scalarText(text)))throw authoredFailure('configuration',RUNTIME_IDENTITY_REFUSED,'context')\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the same break in go/context/session.go ContextualSessionWithEnrollment; caught at ^TestTheRuntimeIdentityVectorAdmission$."
+},
+{
+  "name": "Runtime identity admission keeps the host's own object",
+  "file": "context/session.ts",
+  "find": " if(runtime)session={...session,context:{...session.context,runtime:{identity:runtime.identity,version:runtime.version}}}\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the Runtime copy removed in go/context/session.go; caught at ^TestTheRuntimeIdentityVectorAdmission$."
+},
+{
+  "name": "read-cache key takes a string with a lone surrogate",
+  "file": "context/chat.ts",
+  "find": " if(runtimeBound&&(!scalarText(runtime!.identity)||!scalarText(runtime!.version))||!scalarText(tool)||!scalarValue(args))return undefined\n",
+  "replace": "",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): the UTF-8 and raw-argument checks removed from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
+},
+{
+  "name": "read wrapper caches arguments with a lone surrogate",
+  "file": "execution/controller.ts",
+  "find": "const cacheable=immutable&&scalarValue(args)",
+  "replace": "const cacheable=immutable",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): cacheable := immutable in go/context/controller.go WrapRead; caught at ^TestTheReadWrapperKeepsNoArgumentsWithALoneSurrogate$."
+},
+{
+  "name": "read-cache key ignores argument member names",
+  "file": "context/chat.ts",
+  "find": "every(([name,member])=>scalarText(name)&&scalarValue(member))",
+  "replace": "every(([,member])=>scalarValue(member))",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): go/context/chat.go checks member names on the raw bytes (cacheableArguments); dropping its escape check is caught at ^TestTheRuntimeIdentityVectorKeys$ (the member-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
+},
+{
+  "name": "read-cache key ignores the tool name",
+  "file": "context/chat.ts",
+  "find": "||!scalarText(tool)||",
+  "replace": "||",
+  "tests": [
+    "context/chat.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#246",
+  "note": "Go twin (by hand): !utf8.ValidString(tool) dropped from go/context/chat.go ReadCacheKeyOf; caught at ^TestTheRuntimeIdentityVectorKeys$ (the tool-name row) and ^TestReadCacheKeyOfNeverSharesAKeyAcrossLoneSurrogates$."
+},
   {
    "name": "reauth A1 a refusal minted and then performed is trusted",
    "file": "storage/lease.ts",

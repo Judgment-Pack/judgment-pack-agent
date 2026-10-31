@@ -1,0 +1,10 @@
+{
+  "contract": "retained-column/1",
+  "profile": "base",
+  "spec": {
+    "version": "0.3.0-rc.2",
+    "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+    "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
+    "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
+  }
+}

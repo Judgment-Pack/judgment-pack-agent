@@ -102,7 +102,7 @@
     ],
     "summary": "Map structured amount and explicit evidence availability."
   },
-  "expectedFingerprint": "sha256:b3df2503efa48e305843dc688e4be4c6d981f718450b0e39ef24eb3c71388e5a",
+  "expectedFingerprint": "sha256:5a5ed85ccf72ae74be2537b882207e398735c1311092a74e0e22f2e9ecca2bcc",
   "expectedMappingDigest": "sha256:ceb61c4b35b5c6895c13d0b723cc096dc39d723014677f3e8237ea4e31c8e203",
   "expectedDocument": "{\"case\":{\"evidence\":[{\"availability\":{\"column\":\"availability\",\"contractVersion\":\"1\"},\"requirement\":\"receipt\",\"source\":\"/retained\"}],\"facts\":[{\"conversion\":{\"column\":\"amount/raw~value\",\"contractVersion\":\"1\",\"kind\":\"decimal\"},\"source\":\"/retained\",\"target\":\"/amount\"}]},\"evidence\":null,\"facts\":null,\"provider\":\"\",\"unmapped\":[],\"unmappedEvidence\":[],\"version\":2}",
   "conversions": [
@@ -194,8 +194,8 @@
     "contract": "retained-column/1",
     "profile": "base",
     "spec": {
-      "version": "0.3.0-rc.2",
-      "revision": "bcac15b7537ce21879201b5e5dfe795496225121",
+      "version": "0.3.0",
+      "revision": "27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc",
       "schemaSha256": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557",
       "corpusSha256": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
     }

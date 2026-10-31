@@ -14,7 +14,7 @@ export * from '../engines/index'
 export * from '../host'
 export * from '../capabilities'
 export * from '../images'
-export { ChatContext, canonicalJSON, readCacheKey, type ChatScope, type ReadCacheKey, type RuntimeIdentity } from '../context/chat'
+export { ChatContext, RUNTIME_IDENTITY_REFUSED, canonicalJSON, readCacheKey, type ChatScope, type ReadCacheKey, type RuntimeIdentity } from '../context/chat'
 export type { ContextInput } from '../context/session'
 export { CRITIC_TOOLS, readCriticCases, criticMatrix } from '../refutation'
 // ADR-0010: the critic's switch, which replaced criticRuns.

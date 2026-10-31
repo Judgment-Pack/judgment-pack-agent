@@ -7,15 +7,16 @@
  * a runtime behind the real tool gate. The scripted model reads what the index does not list, so a
  * run whose first message lists a result does not ask for it again.
  */
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import indexVector from '../../../contract/vectors/chat/turn-index.json'
 import keyVector from '../../../contract/vectors/chat/cache-key.json'
 import harnessDefaults from '../../../contract/vectors/budget/harness-defaults.json'
-import { ChatContext, EVICTED, INDEX_NOTICE, INDEX_SHARE, INDEX_SOURCE, canonicalJSON, partBytes, readCacheKey, type RuntimeIdentity } from './chat'
+import { ChatContext, EVICTED, INDEX_NOTICE, INDEX_SHARE, INDEX_SOURCE, RUNTIME_IDENTITY_REFUSED, canonicalJSON, partBytes, readCacheKey, scalarText, type RuntimeIdentity } from './chat'
 import { ContextLedger, contextDigest } from './ledger'
 import { CONTEXT_DEFAULTS, ContextBudgetError, contextPolicy, inputBytes, utf8Bytes } from './policy'
 import { READ_TOOL } from './reader'
-import { SessionContext } from './session'
+import { SessionContext, contextualSession } from './session'
 import { OPENING, unframeData } from '../framing'
 import { codexTurn, ofType, runtimeAnswer, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
 import { normalize } from '../thinking'
@@ -325,6 +326,94 @@ async function keep(run: ReturnType<typeof fixtureRun>, result: FixtureResult) {
   await run.store.keep(run.ledger, result.tool, result.arguments as Record<string, unknown>, answerOf(result))
 }
 const MARKER = 'a'.repeat(32)
+
+describe('a lone UTF-16 surrogate in a Runtime identity or a key (#246)', () => {
+  // Read with JSON.parse, which keeps a lone surrogate escape; the bundler's JSON reader refuses one.
+  const identityVector = JSON.parse(readFileSync('../../contract/vectors/chat/runtime-identity.json', 'utf8')) as { refusal: string; items: unknown[]; outcomes: unknown[] }
+  const items = identityVector.items as { tool: string; arguments: Record<string, unknown>; runtime?: RuntimeIdentity }[]
+  const outcomes = identityVector.outcomes as { label: string; admission: 'admitted' | 'refused'; canonical?: string; sha256?: string; key?: 'none' }[]
+
+  it('keys each vector item as the contract states, and gives no key where a string holds one', async () => {
+    expect(identityVector.refusal).toBe(RUNTIME_IDENTITY_REFUSED)
+    expect(items).toHaveLength(outcomes.length)
+    for (const [at, item] of items.entries()) {
+      const outcome = outcomes[at]!
+      const key = await readCacheKey(item.tool, item.arguments, item.runtime !== undefined, item.runtime)
+      if (outcome.canonical !== undefined) {
+        expect(canonicalJSON(item), outcome.label).toBe(outcome.canonical)
+        expect(key, outcome.label).toBe(outcome.sha256)
+      } else {
+        expect(outcome.key, outcome.label).toBe('none')
+        expect(key, outcome.label).toBeUndefined()
+      }
+    }
+  })
+
+  it('tells a scalar string from one with a lone surrogate, a pair and U+FFFD included', () => {
+    expect(['0.39.0', '0.39.0-\ud83d\ude00', '0.39.0-\ufffd', ''].map(scalarText)).toEqual([true, true, true, true])
+    expect(['0.39.0-\ud800', '0.39.0-\udc00', '\ude00\ud83d', '\ud800'].map(scalarText)).toEqual([false, false, false, false])
+  })
+
+  it('refuses a run whose context.runtime holds one before anything is sent, and admits every other vector Runtime', async () => {
+    for (const [at, item] of items.entries()) {
+      const outcome = outcomes[at]!
+      const { hostTools } = sources()
+      const run = await vercelTurn({
+        answer: () => streamed(sseTurn({ text: 'Done.' })),
+        hostTools,
+        session: { context: { currentRequest: { message: 'Write it.', input: 'Write it.' }, chat: new ChatContext(), runtime: item.runtime } }
+      })
+      const errors = ofType(run.events, 'error')
+      if (outcome.admission === 'refused') {
+        expect(run.requests, outcome.label).toHaveLength(0)
+        expect(run.seen, outcome.label).toHaveLength(0)
+        expect(errors.map((event) => event.failure), outcome.label).toEqual([expect.objectContaining({ code: 'configuration', source: 'context', detail: RUNTIME_IDENTITY_REFUSED })])
+      } else {
+        expect(errors, outcome.label).toEqual([])
+        expect(run.requests.length, outcome.label).toBeGreaterThan(0)
+      }
+    }
+  })
+
+  it('admits a copy of the Runtime: a change the host makes after the run opens never reaches its keys', async () => {
+    const chat = new ChatContext()
+    let reads = 0
+    const open = (runtime: RuntimeIdentity) => contextualSession({
+      prompt: 'Read.', testPrompt: '', tools: [], hostTools: [], callTool: async () => { throw Error('unused') },
+      model: { family: 'openai-compatible', model: 'fixture', call: async () => { throw Error('unused') } },
+      thinking: normalize('off', 'openai-compatible'), signal: new AbortController().signal, allowConversation: true, interactive: true, critic: 'off',
+      context: { currentRequest: { message: 'Read.', input: 'Read.' }, chat, runtime }
+    } as AssistantSession)
+    const read = (ready: Awaited<ReturnType<typeof open>>) => ready.context.execution.wrapRead('get_schema', async () => { reads++; return { content: [{ type: 'text', text: 'schema' }] } }, { immutable: true }, true, { runtime: true })({ spec_version: '0.3.0' })
+    const runtime = { identity: 'jpack', version: '0.39.0' }
+    const first = await open(runtime)
+    // The host changes its own object after the run opened: the run keys by what it admitted.
+    runtime.version = '0.40.0'
+    await read(first)
+    first.context.close()
+    const second = await open({ identity: 'jpack', version: '0.39.0' })
+    await read(second)
+    second.context.close()
+    expect(reads).toBe(1)
+  })
+
+  it('keeps a read whose arguments hold one in neither cache: within a run or across runs, it is read every time', async () => {
+    const twice = (version: string) => (request: EndpointRequest) => {
+      const called = calledIn(request).length
+      return called < 2 ? streamed(sseTurn({ tool: { name: 'get_schema', args: { spec_version: version }, id: `call_get_schema_${called}` } })) : streamed(sseTurn({ text: 'Done.' }))
+    }
+    const reads = async (version: string) => {
+      const chat = new ChatContext()
+      const { hostTools } = sources()
+      const first = await turn({ chat, message: 'Write the pack.', hostTools, model: twice(version) })
+      const second = await turn({ chat, message: 'Again.', hostTools, model: twice(version) })
+      return [first.runtimeReads, second.runtimeReads]
+    }
+    expect(await reads('0.3.0-\ud800')).toEqual([2, 2])
+    // The same reads with scalar text are served from the cache: once in the first run, never in the second.
+    expect(await reads('0.3.0-\ufffd')).toEqual([1, 0])
+  })
+})
 
 describe('the index of earlier results', () => {
   it('is what the hand-written vector states, for the next run', async () => {

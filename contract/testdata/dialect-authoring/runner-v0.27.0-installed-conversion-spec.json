@@ -1,0 +1,14 @@
+{
+  "description": "A handwritten copy of the retained-column tuple Runner v0.27.0 compiles and installs (#269). sourceLine is the declaration copied verbatim from the cited file; json is the JSON encoding/json writes for that value through Runner's ConversionSpec type, whose members are version, revision, schemaSha256 and corpusSha256 in that order. Both languages hold DialectRetainedColumnDraft().Spec / DIALECT_RETAINED_COLUMN_DRAFT.spec to json byte for byte, and the Go test also reads the four values out of sourceLine. Its schema and corpus digests are the SHA-256 of schema/retained-column/1/contract.schema.json and conformance/retained-column/1/cases.json in the Spec v0.3.0 release archive, whose release-identity.json names source commit 27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc.",
+  "source": {
+    "repository": "Judgment-Pack/judgment-pack-runner",
+    "tag": "v0.27.0",
+    "commit": "1164d78cb401f169e63623700853db5c6e635848",
+    "path": "internal/runner/column_role_v1.go",
+    "blob": "77d9a481471a872fe63bacb99a7d23fa97eb63e2",
+    "line": 35,
+    "symbol": "installedConversionSpec"
+  },
+  "sourceLine": "var installedConversionSpec = ConversionSpec{Version: \"0.3.0\", Revision: \"27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc\", SchemaSHA256: \"sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557\", CorpusSHA256: \"sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863\"}",
+  "json": "{\"version\":\"0.3.0\",\"revision\":\"27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc\",\"schemaSha256\":\"sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557\",\"corpusSha256\":\"sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863\"}"
+}

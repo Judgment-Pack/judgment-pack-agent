@@ -738,6 +738,53 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(canonical(item), key["canonical"])
                 self.assertEqual(sha256(key["canonical"]), key["sha256"])
 
+    def test_a_lone_surrogate_has_no_key_and_every_other_runtime_string_keys_as_written(self):
+        # #246: the outcome of each item follows from its strings: a lone UTF-16 surrogate (no UTF-8
+        # form) anywhere in the key gives none, and in the Runtime's identity or version a refusal.
+        vector = self.vectors["chat/runtime-identity.json"]
+        self.assertEqual(len(vector["outcomes"]), len(vector["items"]))
+
+        def scalar(text):
+            try:
+                text.encode("utf-8")
+                return True
+            except UnicodeEncodeError:
+                return False
+
+        def strings(value):
+            if isinstance(value, str):
+                yield value
+            elif isinstance(value, list):
+                for item in value:
+                    yield from strings(item)
+            elif isinstance(value, dict):
+                for name, item in value.items():
+                    yield name
+                    yield from strings(item)
+        refused = keyless = 0
+        for item, outcome in zip(vector["items"], vector["outcomes"]):
+            with self.subTest(outcome=outcome["label"]):
+                runtime = item.get("runtime", {})
+                admitted = all(scalar(text) for text in runtime.values())
+                self.assertEqual(outcome["admission"], "admitted" if admitted else "refused")
+                refused += not admitted
+                if all(scalar(text) for text in strings(item)):
+                    self.assertEqual(canonical(item), outcome["canonical"])
+                    self.assertEqual(sha256(outcome["canonical"]), outcome["sha256"])
+                else:
+                    self.assertEqual(outcome["key"], "none")
+                    self.assertNotIn("canonical", outcome)
+                    keyless += 1
+        versions = [item["runtime"]["version"] for item in vector["items"]]
+        # The issue's example, a valid pair and a literal U+FFFD are among the cases.
+        self.assertIn("0.39.0-\ud800", versions)
+        self.assertIn("0.39.0-\U0001F600", versions)
+        self.assertIn("0.39.0-\ufffd", versions)
+        self.assertEqual((refused, keyless), (4, 7))
+        # The tool name and an argument member name each hold one in a row of their own.
+        self.assertTrue(any(not scalar(item["tool"]) for item in vector["items"]))
+        self.assertTrue(any(not all(scalar(name) for name in item["arguments"]) for item in vector["items"]))
+
     def test_the_turn_index_rows_follow_from_the_fixture(self):
         vector = self.vectors["chat/turn-index.json"]
         fixture = vector["fixture"]
