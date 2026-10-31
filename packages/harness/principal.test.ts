@@ -43,10 +43,11 @@ const opened=(name:string,now:string|null,answer:unknown,reads:AdmissionRead[])=
 describe('the agent host chains (handwritten, independently signed)',()=>{
  it('admits each chain, its record naming the leaf and every digest',async()=>{
   const root=await openPrincipal({chain:chainOf('root'),keys:chains.keys,software:chains.software,audience:'desk',admission:()=>({admission:'admit'})})
-  expect(root.record).toEqual({actor:{agent:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',host:'desk',software:chains.software},subject:chains.items[0]![0]!.sub,delegation:{id:'33333333333333333333333333333333',digest:chains.digests.root},chain:[chains.digests.root]})
+  expect(root.record).toEqual({actor:{agent:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',host:'desk',software:chains.software},rootActor:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',subject:chains.items[0]![0]!.sub,delegation:{id:'33333333333333333333333333333333',digest:chains.digests.root},chain:[chains.digests.root]})
   const child=await openPrincipal({chain:chainOf('child'),keys:chains.keys,software:chains.software,audience:'desk',admission:()=>({admission:'admit'})})
   expect(child.record.delegation).toEqual({id:'44444444444444444444444444444444',digest:chains.digests.child})
   expect(child.record.actor.agent).toBe('b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2')
+  expect(child.record.rootActor).toBe('b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1')
   expect(child.record.chain).toEqual([chains.digests.root,chains.digests.child])
  })
  for(const refused of chains.refused)it(refused.problem,async()=>{

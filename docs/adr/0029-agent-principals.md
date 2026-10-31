@@ -59,8 +59,8 @@ rules, and the next admission refuses.
 
 **Records carry actor and subject under new versions.** A delegated run's `tool_call`,
 `tool_result` and delegation refusals carry `principal` (`run-principal.json`: the leaf's
-agent, issuing host and software as the actor, the chain's subject, the leaf by id and digest,
-and every link's digest) and are event 3; its checkpoint carries `principal` and is version 4,
+agent, issuing host and software as the actor, the root link's agent, the chain's subject, the
+leaf by id and digest, and every link's digest) and are event 3; its checkpoint carries `principal` and is version 4,
 whatever a feature writer stamps; its run report is version 3. ADR-0019's identity keeps its form
 and meaning beside it. The record never carries a credential, a token, statement bytes or a
 label. A run with no delegation writes the earlier versions and members byte for byte. Readers
@@ -70,9 +70,9 @@ by digest), so neither can carry a principal, and readers that predate these ver
 them by ADR-0024 before reading the body.
 
 **A resume keeps its principals.** A delegated checkpoint resumes only with a delegation of the
-same subject and agent principal; a re-issued chain for them replaces the record. Another subject
-or agent, a delegated run resumed without its delegation, and an undelegated run resumed with
-one are refused (`principal-changed`).
+same subject and root actor; a chain re-issued or narrowed for them replaces the record. Another
+subject or root actor, a delegated run resumed without its delegation, and an undelegated run
+resumed with one are refused (`principal-changed`).
 
 ## Departures from RFC 0030
 
@@ -93,8 +93,8 @@ one are refused (`principal-changed`).
   are unchanged.
 - **The Runtime's own tools** are not admitted against the scope: a scope names sources, and the
   Runtime's tools have none. Acting Runtime metadata keeps its own approval path.
-- **A resume compares subject and agent principal**, not the root actor, since the checkpoint names
-  the leaf's actor; the lease's principal binding (the root actor) is the stacked follow-up below.
+- **The record adds `rootActor`** beside the RFC's members: the checkpoint needs it to hold a resume
+  to RFC §7 rule 2's subject and root actor, which the chain's digests do not name.
 - **Expiry or revocation while a run holds its lease refuses the call** and the run continues with
   the refusal; the re-authorization park naming the delegation (ADR-0025 decision 4) is not built.
 

@@ -121,7 +121,9 @@ type PrincipalAudience struct {
 
 // PrincipalRecord is the record member every delegated record carries (run-principal.json).
 type PrincipalRecord struct {
-	Agent, Host    string
+	Agent, Host string
+	// RootActor is the root link's agent: with the subject, what a resume and a takeover must keep.
+	RootActor      string
 	Software       PrincipalSoftware
 	Subject        PrincipalReference
 	DelegationID   string
@@ -137,6 +139,7 @@ func (r PrincipalRecord) Value() *Value {
 	}
 	return ObjectOf(
 		"actor", ObjectOf("agent", String(r.Agent), "host", String(r.Host), "software", r.Software.Value()),
+		"rootActor", String(r.RootActor),
 		"subject", r.Subject.Value(),
 		"delegation", ObjectOf("id", String(r.DelegationID), "digest", String(r.DelegationHash)),
 		"chain", chain,
@@ -732,7 +735,7 @@ func VerifyPrincipalChain(text []byte, keys PrincipalPinnedKeys) (*PrincipalChai
 // Record is the record member of a verified chain.
 func (c *PrincipalChain) Record() PrincipalRecord {
 	leaf := c.Links[len(c.Links)-1]
-	return PrincipalRecord{Agent: leaf.Agent, Host: leaf.Host, Software: leaf.Software, Subject: leaf.Sub, DelegationID: leaf.ID, DelegationHash: leaf.Digest, Chain: append([]string(nil), c.Digests...)}
+	return PrincipalRecord{Agent: leaf.Agent, Host: leaf.Host, RootActor: c.Links[0].Agent, Software: leaf.Software, Subject: leaf.Sub, DelegationID: leaf.ID, DelegationHash: leaf.Digest, Chain: append([]string(nil), c.Digests...)}
 }
 
 // OpenedPrincipal is a delegated run's principal, opened.
@@ -983,7 +986,10 @@ func principalString(v *Value) (string, bool) {
 
 // validPrincipalValue reports a principal record member of its exact form (run-principal.json).
 func validPrincipalValue(v *Value) bool {
-	if !principalExact(v, "actor", "subject", "delegation", "chain") {
+	if !principalExact(v, "actor", "rootActor", "subject", "delegation", "chain") {
+		return false
+	}
+	if root, ok := principalString(v.Get("rootActor")); !ok || !principalOpaque.MatchString(root) {
 		return false
 	}
 	actor, subject, delegation, chain := v.Get("actor"), v.Get("subject"), v.Get("delegation"), v.Get("chain")

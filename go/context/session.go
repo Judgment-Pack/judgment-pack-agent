@@ -1483,12 +1483,12 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			return err
 		}
 		// ADR-0029: a delegated run's checkpoint carries its principal (version 4). A resume continues
-		// only under the same subject and agent principal: a re-issued chain replaces the record;
-		// another principal, a run that was not delegated, or one that is no longer, is refused
-		// (principal-changed).
+		// only under the same subject and root actor: a re-issued or narrowed chain replaces the
+		// record; another principal, a run that was not delegated, or one that is no longer, is
+		// refused (principal-changed).
 		saved := held.Execution.State().Principal
 		restoring := session.Context != nil && session.Context.Execution != nil
-		if restoring && (saved == nil) != (principal == nil) || saved != nil && principal != nil && (saved.Subject.Kind != principal.Record.Subject.Kind || saved.Subject.Issuer != principal.Record.Subject.Issuer || saved.Subject.Subject != principal.Record.Subject.Subject || saved.Actor.Agent != principal.Record.Agent || saved.Actor.Host != principal.Record.Host) {
+		if restoring && (saved == nil) != (principal == nil) || saved != nil && principal != nil && (saved.Subject.Kind != principal.Record.Subject.Kind || saved.Subject.Issuer != principal.Record.Subject.Issuer || saved.Subject.Subject != principal.Record.Subject.Subject || saved.RootActor != principal.Record.RootActor || saved.Actor.Host != principal.Record.Host) {
 			return failure.Authored("stale-state", "The run continues under another principal than it began under (principal-changed). Nothing was sent.", "context")
 		}
 		if principal != nil {

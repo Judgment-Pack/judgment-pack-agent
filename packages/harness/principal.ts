@@ -48,6 +48,8 @@ export interface Audience {kind: 'gateway' | 'agent-host'; name: string}
 /** The record member every delegated record carries (`run-principal.json`). */
 export interface PrincipalRecord {
   actor: {agent: string; host: string; software: Software}
+  /** The root link's agent: with the subject, what a resume and a takeover must keep. */
+  rootActor: string
   subject: PrincipalReference
   delegation: {id: string; digest: string}
   chain: string[]
@@ -370,7 +372,8 @@ function readSoftware(v: unknown): Software {
 }
 /** Whether a value is a principal record member of its exact form (`run-principal.json`). */
 export function validPrincipalRecord(v: unknown): v is PrincipalRecord {
-  if (!object(v) || !hasOnly(v, ['actor', 'subject', 'delegation', 'chain'])) return false
+  if (!object(v) || !hasOnly(v, ['actor', 'rootActor', 'subject', 'delegation', 'chain'])) return false
+  if (typeof v.rootActor !== 'string' || !OPAQUE.test(v.rootActor)) return false
   const a = v.actor, d = v.delegation
   if (!object(a) || !hasOnly(a, ['agent', 'host', 'software']) || typeof a.agent !== 'string' || !OPAQUE.test(a.agent) || !flatToken(a.host) || !software(a.software)) return false
   if (!principalReference(v.subject)) return false
@@ -380,7 +383,7 @@ export function validPrincipalRecord(v: unknown): v is PrincipalRecord {
 /** The record member of a verified chain: the leaf's actor and link, the chain's subject and digests. */
 export function principalRecord(chain: VerifiedChain): PrincipalRecord {
   const leaf = chain.links[chain.links.length - 1]!
-  return {actor: {agent: leaf.agent, host: leaf.host, software: structuredClone(leaf.software)}, subject: {...leaf.sub}, delegation: {id: leaf.id, digest: leaf.digest}, chain: [...chain.digests]}
+  return {actor: {agent: leaf.agent, host: leaf.host, software: structuredClone(leaf.software)}, rootActor: chain.links[0]!.agent, subject: {...leaf.sub}, delegation: {id: leaf.id, digest: leaf.digest}, chain: [...chain.digests]}
 }
 
 /**

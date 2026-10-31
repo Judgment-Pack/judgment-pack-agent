@@ -924,10 +924,10 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
  await context.execution.initialize()
  // ADR-0029: a delegated run's checkpoint carries its principal (version 4). A resume continues only under
- // the same subject and agent principal: a re-issued chain replaces the record, another principal, a run
- // that was not delegated, or one that is no longer, is refused (principal-changed).
+ // the same subject and root actor: a re-issued or narrowed chain replaces the record; another principal, a
+ // run that was not delegated, or one that is no longer, is refused (principal-changed).
  const saved=context.execution.state.principal,restoring=session.context?.execution!==undefined
- if(restoring&&(saved===undefined)!==(principal===undefined)||saved!==undefined&&principal!==undefined&&(canonicalJSON(saved.subject)!==canonicalJSON(principal.record.subject)||saved.actor.agent!==principal.record.actor.agent||saved.actor.host!==principal.record.actor.host))throw authoredFailure('stale-state','The run continues under another principal than it began under (principal-changed). Nothing was sent.','context')
+ if(restoring&&(saved===undefined)!==(principal===undefined)||saved!==undefined&&principal!==undefined&&(canonicalJSON(saved.subject)!==canonicalJSON(principal.record.subject)||saved.rootActor!==principal.record.rootActor||saved.actor.host!==principal.record.actor.host))throw authoredFailure('stale-state','The run continues under another principal than it began under (principal-changed). Nothing was sent.','context')
  if(principal)context.execution.mutate({principal:structuredClone(principal.record)})
  const persistence=session.context?.[durableOwner]
  const legacyID=legacyCheckpointIdentity(session.context?.checkpoint)

@@ -2,10 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-principal.json",
   "title": "Run principal",
-  "description": "The principal a delegated run acts as and for (spec RFC 0030, a Draft; agent #260, ADR-0029): the record member principal that tool_call and tool_result (run event 3), a delegation refusal's guardrail (run event 3), the checkpoint (version 4) and the run report (version 3) carry. actor is the agent principal (the chain leaf's act.agent, its issuing host and its bound software), subject the chain's sub, delegation the leaf link by id and digest, chain every link's digest, root first. The record carries no credential, no token, no token digest, no statement bytes and no label. The issuing host supplies the chain when it starts the run; the model never chooses or changes it. The definitions also state the delegation statement as the agent reads it (RFC 0030 §2 version 1, the forms the reference gateway's SPEC.md §11.1 reads), the admission read the package hands the host's admission port and its answer, and the named refusals. A run with no delegation configured carries none of this and writes the earlier record versions byte for byte.",
+  "description": "The principal a delegated run acts as and for (spec RFC 0030, a Draft; agent #260, ADR-0029): the record member principal that tool_call and tool_result (run event 3), a delegation refusal's guardrail (run event 3), the checkpoint (version 4) and the run report (version 3) carry. actor is the agent principal (the chain leaf's act.agent, its issuing host and its bound software), rootActor the root link's act.agent, subject the chain's sub, delegation the leaf link by id and digest, chain every link's digest, root first. The record carries no credential, no token, no token digest, no statement bytes and no label. The issuing host supplies the chain when it starts the run; the model never chooses or changes it. The definitions also state the delegation statement as the agent reads it (RFC 0030 §2 version 1, the forms the reference gateway's SPEC.md §11.1 reads), the admission read the package hands the host's admission port and its answer, and the named refusals. A run with no delegation configured carries none of this and writes the earlier record versions byte for byte.",
   "type": "object",
   "required": [
     "actor",
+    "rootActor",
     "subject",
     "delegation",
     "chain"
@@ -13,6 +14,10 @@
   "properties": {
     "actor": {
       "$ref": "#/$defs/actor"
+    },
+    "rootActor": {
+      "description": "The root link's act.agent: with the subject, what a resume and a lease takeover must keep (RFC 0030 §7 rule 2). A chain re-issued or narrowed for the same subject and root actor is the same principals.",
+      "$ref": "#/$defs/opaqueIdentifier"
     },
     "subject": {
       "$ref": "#/$defs/principalReference"

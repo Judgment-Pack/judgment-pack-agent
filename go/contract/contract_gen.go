@@ -19773,22 +19773,23 @@ func (v RunLeaseRefusal) MarshalJSON() ([]byte, error) {
 // agent #260, ADR-0029): the record member principal that tool_call and tool_result (run event 3),
 // a delegation refusal's guardrail (run event 3), the checkpoint (version 4) and the run report
 // (version 3) carry. actor is the agent principal (the chain leaf's act.agent, its issuing host
-// and its bound software), subject the chain's sub, delegation the leaf link by id and digest,
-// chain every link's digest, root first. The record carries no credential, no token, no token
-// digest, no statement bytes and no label. The issuing host supplies the chain when it starts the
-// run; the model never chooses or changes it. The definitions also state the delegation statement
-// as the agent reads it (RFC 0030 §2 version 1, the forms the reference gateway's SPEC.md §11.1
-// reads), the admission read the package hands the host's admission port and its answer, and the
-// named refusals. A run with no delegation configured carries none of this and writes the earlier
-// record versions byte for byte.
+// and its bound software), rootActor the root link's act.agent, subject the chain's sub,
+// delegation the leaf link by id and digest, chain every link's digest, root first. The record
+// carries no credential, no token, no token digest, no statement bytes and no label. The issuing
+// host supplies the chain when it starts the run; the model never chooses or changes it. The
+// definitions also state the delegation statement as the agent reads it (RFC 0030 §2 version 1,
+// the forms the reference gateway's SPEC.md §11.1 reads), the admission read the package hands
+// the host's admission port and its answer, and the named refusals. A run with no delegation
+// configured carries none of this and writes the earlier record versions byte for byte.
 type RunPrincipal struct {
 	Actor      RunPrincipalActor              `json:"actor"`
+	RootActor  string                         `json:"rootActor"`
 	Subject    RunPrincipalPrincipalReference `json:"subject"`
 	Delegation RunPrincipalDelegation         `json:"delegation"`
 	Chain      []string                       `json:"chain"`
 }
 
-var runPrincipalMembers = []string{"actor", "subject", "delegation", "chain"}
+var runPrincipalMembers = []string{"actor", "rootActor", "subject", "delegation", "chain"}
 
 // UnmarshalJSON decodes a RunPrincipal object and refuses a member the closed schema does not name.
 func (v *RunPrincipal) UnmarshalJSON(data []byte) error {

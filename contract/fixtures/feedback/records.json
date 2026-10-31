@@ -416,7 +416,8 @@
           },
           "chain": [
             "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
-          ]
+          ],
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
         }
       },
       "report": {
@@ -469,7 +470,8 @@
           },
           "chain": [
             "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
-          ]
+          ],
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
         }
       },
       "feedback": {

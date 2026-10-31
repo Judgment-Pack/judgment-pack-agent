@@ -1,5 +1,5 @@
 {
- "description": "Handwritten principal record members (ADR-0029; RFC 0030 §6): the actor (the leaf's agent, its issuing host and its software), the subject, the leaf link by id and digest, and every link's digest, root first. The root's and the narrowed child's are those of chains.json, whose digests the independent signer computed; the third names a service subject and a harness digest, forms a record may carry. refused are members the readers refuse.",
+ "description": "Handwritten principal record members (ADR-0029; RFC 0030 §6): the actor (the leaf's agent, its issuing host and its software), the root actor (the root link's agent), the subject, the leaf link by id and digest, and every link's digest, root first. The root's and the narrowed child's are those of chains.json, whose digests the independent signer computed; the third names a service subject and a harness digest, forms a record may carry. refused are members the readers refuse.",
  "schema": "run-principal.json",
  "source": {
   "harness": {
@@ -32,7 +32,8 @@
    },
    "chain": [
     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
-   ]
+   ],
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
   },
   {
    "actor": {
@@ -55,7 +56,8 @@
    "chain": [
     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
     "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
-   ]
+   ],
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
   },
   {
    "actor": {
@@ -76,7 +78,8 @@
    },
    "chain": [
     "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
-   ]
+   ],
+   "rootActor": "c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1c1"
   }
  ],
  "refused": [
@@ -103,7 +106,8 @@
     "chain": [
      "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
     ],
-    "token": "never"
+    "token": "never",
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
    }
   },
   {
@@ -128,7 +132,8 @@
     },
     "chain": [
      "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
-    ]
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
    }
   },
   {
@@ -151,7 +156,8 @@
      "id": "33333333333333333333333333333333",
      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
     },
-    "chain": []
+    "chain": [],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
    }
   },
   {
@@ -177,7 +183,8 @@
     },
     "chain": [
      "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
-    ]
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
    }
   },
   {
@@ -202,7 +209,8 @@
     },
     "chain": [
      "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
-    ]
+    ],
+    "rootActor": "agent-1"
    }
   },
   {
@@ -213,6 +221,32 @@
      "host": "desk",
      "software": {
       "package": "@judgment-pack/harness"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "problem": "a record without its root actor",
+   "record": {
+    "actor": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
      }
     },
     "subject": {

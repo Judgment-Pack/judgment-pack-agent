@@ -172,10 +172,11 @@ func TestPrincipalSessionRecordsAndResume(t *testing.T) {
 	t.Run("a resume continues only under the principals it began under", func(t *testing.T) {
 		delegated := principalLastCheckpoint(principalRunEvents(t, openRun(t, principalSession(t, &principalRan{}, 0, nil)))).Checkpoint
 		undelegated := principalLastCheckpoint(principalRunEvents(t, openRun(t, principalSession(t, &principalRan{}, -1, nil)))).Checkpoint
+		// The vector's chains: 0 root, 1 child, 2 re-issued, 3 another actor, 4 another subject.
 		for _, row := range []struct {
 			saved contract.Checkpoint
 			chain int
-		}{{delegated, 1}, {delegated, -1}, {undelegated, 0}} {
+		}{{delegated, 3}, {delegated, 4}, {delegated, -1}, {undelegated, 0}} {
 			saved := row.saved
 			saved.Status = "running"
 			_, err := ContextualSession(context.Background(), principalSession(t, &principalRan{}, row.chain, &saved))
@@ -184,12 +185,16 @@ func TestPrincipalSessionRecordsAndResume(t *testing.T) {
 				t.Fatalf("resume under chain %d: %v", row.chain, err)
 			}
 		}
-		saved := delegated
-		saved.Status = "running"
-		ran := &principalRan{}
-		principalRunEvents(t, openRun(t, principalSession(t, ran, 0, &saved)))
-		if !sameStrings(ran.get(), []string{"read_note"}) {
-			t.Fatalf("ran %v", ran.get())
+		// A chain re-issued for the same principals replaces the record; so does one narrowed from
+		// the same root.
+		for chain, id := range map[int]string{0: "33333333333333333333333333333333", 2: "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a", 1: "44444444444444444444444444444444"} {
+			saved := delegated
+			saved.Status = "running"
+			ran := &principalRan{}
+			events := principalRunEvents(t, openRun(t, principalSession(t, ran, chain, &saved)))
+			if !sameStrings(ran.get(), []string{"read_note"}) || principalLastCheckpoint(events).Checkpoint.Principal.Delegation.ID != id {
+				t.Fatalf("chain %d: ran %v", chain, ran.get())
+			}
 		}
 	})
 }

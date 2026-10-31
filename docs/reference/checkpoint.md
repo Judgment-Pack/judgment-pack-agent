@@ -86,7 +86,7 @@ Closed: a member the schema does not name is refused.
 | `usageBudget` |  | `usage-budget.json` |  |
 | `turnRoute` |  | `turn-route.json` |  |
 | `repeatTools` |  | `$defs/repeatTools` |  |
-| `principal` |  | `run-principal.json` | ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the subject, the leaf link and the chain's digests. A resume under another subject or agent principal is refused (principal-changed); a re-issued chain for the same principals replaces it. Never a credential. |
+| `principal` |  | `run-principal.json` | ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential. |
 
 Conditions beyond the members (allOf) are in the schema file.
 

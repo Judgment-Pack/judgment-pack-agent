@@ -18,7 +18,9 @@ import type {AssistantEvent,AssistantSession,HostTool} from './engine'
 
 beforeEach(()=>configureHarness(testHost()))
 const T='2026-10-30T01:00:00.000Z'
-const principalOf=(chain:'root'|'child'='root',over:Partial<RunPrincipal>={}):RunPrincipal=>({chain:JSON.stringify(chain==='child'?chains.items[1]:chains.items[0]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(T),admission:()=>({admission:'admit'}),...over})
+// The vector's chains, by name: root, child, reissued, otherActor, otherSubject.
+const CHAINS={root:0,child:1,reissued:2,otherActor:3,otherSubject:4} as const
+const principalOf=(chain:keyof typeof CHAINS='root',over:Partial<RunPrincipal>={}):RunPrincipal=>({chain:JSON.stringify(chains.items[CHAINS[chain]]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(T),admission:()=>({admission:'admit'}),...over})
 
 async function hostTools(ran:string[]):Promise<HostTool[]>{
  const group=([['read_note','read'],['delete_note','act']] as const).map(([name,effect]):HostTool=>({name,description:name,inputSchema:{type:'object'},taxonomy:{operation:effect,effect} as HostTool['taxonomy'],...(effect==='act'?{approve:()=>'allow' as const}:{}),execute:async()=>{ran.push(name);return {content:[{type:'text',text:'done'}]}},source:{kind:'custom',id:'notes',trust:'first-party'} as HostTool['source']}))
@@ -48,7 +50,7 @@ describe('a delegated run at the boundary (ADR-0029)',()=>{
   const ran:string[]=[]
   const events=await run(session(await hostTools(ran),principalOf()))
   expect(ran).toEqual(['read_note'])
-  const record={actor:{agent:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',host:'desk',software:chains.software},subject:chains.items[0]![0]!.sub,delegation:{id:'33333333333333333333333333333333',digest:chains.digests.root},chain:[chains.digests.root]}
+  const record={actor:{agent:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',host:'desk',software:chains.software},rootActor:'b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1',subject:chains.items[0]![0]!.sub,delegation:{id:'33333333333333333333333333333333',digest:chains.digests.root},chain:[chains.digests.root]}
   const tooled=events.filter(e=>e.type==='tool_call'||e.type==='tool_result')
   expect(tooled.length).toBe(4)
   for(const event of tooled){expect(event).toMatchObject({version:3,principal:record});expect(readRunEvent(JSON.parse(JSON.stringify(event)))).toEqual(event)}
@@ -81,18 +83,22 @@ describe('a delegated run at the boundary (ADR-0029)',()=>{
   expect(events.find(e=>e.type==='error')).toMatchObject({failure:{code:'configuration'}})
   expect(JSON.stringify(events)).toContain('software-mismatch')
  })
- it('continues a run only under the subject and agent principal it began under (principal-changed)',async()=>{
+ it('continues a run only under the subject and root actor it began under (principal-changed)',async()=>{
   const delegated=checkpointOf(await run(session(await hostTools([]),principalOf())))!.checkpoint
   const undelegated=checkpointOf(await run(session(await hostTools([]))))!.checkpoint
-  for(const [saved,principal] of [[delegated,principalOf('child')],[delegated,undefined],[undelegated,principalOf()]] as const){
+  for(const [saved,principal] of [[delegated,principalOf('otherActor')],[delegated,principalOf('otherSubject')],[delegated,undefined],[undelegated,principalOf()]] as const){
    const ran:string[]=[]
    const events=await run(session(await hostTools(ran),principal,{...structuredClone(saved),status:'running'}))
    expect(ran).toEqual([])
    expect(events.find(e=>e.type==='error')).toMatchObject({failure:{code:'stale-state'}})
    expect(JSON.stringify(events)).toContain('principal-changed')
   }
-  const ran:string[]=[]
-  await run(session(await hostTools(ran),principalOf(),{...structuredClone(delegated),status:'running'}))
-  expect(ran).toEqual(['read_note'])
+  // A chain re-issued for the same principals replaces the record; so does one narrowed from the same root.
+  for(const [chain,id] of [['root','33333333333333333333333333333333'],['reissued','3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a'],['child','44444444444444444444444444444444']] as const){
+   const ran:string[]=[]
+   const events=await run(session(await hostTools(ran),principalOf(chain),{...structuredClone(delegated),status:'running'}))
+   expect(ran).toEqual(['read_note'])
+   expect(checkpointOf(events)!.checkpoint.principal!.delegation.id).toBe(id)
+  }
  })
 })

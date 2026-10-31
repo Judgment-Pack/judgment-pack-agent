@@ -1,5 +1,5 @@
 {
- "description": "Handwritten delegation chains for the agent host (RFC 0030 §§2-3, ADR-0029): a root admitting two host sources of the agent host desk and one gateway source, a child narrowed from it for a sub-agent, a child that adds a tool (widened), and a grandchild below a link that permits none (widened). The statements are written by hand; their signatures and digests were made by an independent signer (Python's cryptography package) under the key below, never by the code under test. items are the chains both readers admit, with each link's digest; refused names each chain's first refusal.",
+ "description": "Handwritten delegation chains for the agent host (RFC 0030 §§2-3, ADR-0029): a root admitting two host sources of the agent host desk and one gateway source, a child narrowed from it for a sub-agent, a child that adds a tool (widened), and a grandchild below a link that permits none (widened). The statements are written by hand; their signatures and digests were made by an independent signer (Python's cryptography package) under the key below, never by the code under test. Three more roots serve a resume and a takeover: one re-issued for the same subject and actor, one of another actor, one of another subject. items are the chains both readers admit, in that order, with each link's digest; refused names each chain's first refusal.",
  "schema": "run-principal.json#/$defs/chain",
  "source": {
   "harness": {
@@ -23,7 +23,10 @@
  "audience": "desk",
  "digests": {
   "root": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
-  "child": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+  "child": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c",
+  "reissued": "sha256:0c35f003e1ceb181be8aaeb5ad3a88eb8d80ccf83ba62adea6917f32dc014a87",
+  "otherActor": "sha256:dde0adfbce423a83bc96dabf39978d9457d98a2a459f71f324503a6719ca3aeb",
+  "otherSubject": "sha256:08758f9781fc5e614731976328189471e87107eb7fb02945423d1c670ad233cf"
  },
  "items": [
   [
@@ -229,6 +232,243 @@
     },
     "depth": 1,
     "signature": "c4d0338c8d49980dde53ce36eb29034a0a2ffc65278948a3bbbd9c90ddd4f97744b8185745085bac5996d18ef3dbd1c6bdd07ebdc2397b1ec174ca14a3892709"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:30:00.000Z",
+    "expiresAt": "2026-10-30T08:30:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "eee561577e0839854ff4693797c6e09b109db8f996b4abc9fc0a4c3216002ef6e5cb43b339954c4a1b20e6622bba7b5975ad62dbcb40844ac04ab2f0a3902500"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "47c33db91cedeb49a26d4945e36da8bba06d9912e01f6e7e43d0e8d6d754b39a12ed5e9a5a6e6b19ff4484f8fe5eb341e10adaf29ba1ffca143629c78859f10e"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+    "host": "desk",
+    "keyId": "52aac879cf44aa379ed14a290e559e0c",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "other@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "c76f143ca8f0907601b978e6239e8ce3280646c6f6f2b7dc200715b34b086d6a9858e546fae0b6fc9adbcf61234416c65753e0663fc44248d00fa35b49c27a02"
    }
   ]
  ],

@@ -137,6 +137,9 @@ func TestPrincipalAgentHostChains(t *testing.T) {
 	if root.Record.Agent != "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1" || root.Record.Host != "desk" || root.Record.DelegationID != "33333333333333333333333333333333" || root.Record.DelegationHash != v.Digests.Root || len(root.Record.Chain) != 1 || root.Record.Chain[0] != v.Digests.Root {
 		t.Fatalf("root record %+v", root.Record)
 	}
+	if root.Record.RootActor != root.Record.Agent {
+		t.Fatalf("root actor %s", root.Record.RootActor)
+	}
 	if root.Record.Subject != (PrincipalReference{"person", "https://login.example.com/", "approver@example.com"}) {
 		t.Fatalf("subject %+v", root.Record.Subject)
 	}
@@ -144,7 +147,7 @@ func TestPrincipalAgentHostChains(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if child.Record.Agent != "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2" || child.Record.DelegationHash != v.Digests.Child || len(child.Record.Chain) != 2 || child.Record.Chain[0] != v.Digests.Root || child.Record.Chain[1] != v.Digests.Child {
+	if child.Record.Agent != "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2" || child.Record.RootActor != "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1" || child.Record.DelegationHash != v.Digests.Child || len(child.Record.Chain) != 2 || child.Record.Chain[0] != v.Digests.Root || child.Record.Chain[1] != v.Digests.Child {
 		t.Fatalf("child record %+v", child.Record)
 	}
 	for _, refused := range v.Refused {
