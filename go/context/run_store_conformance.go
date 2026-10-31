@@ -447,6 +447,22 @@ func leasePrincipalConformance(ctx context.Context, create func(now func() time.
 	}
 	none := a
 	none.Version, none.Principal = LeaseRecordVersion, nil
+	// #253's ports, the commits a history store takes, hold the principals too.
+	if history, ok := store.(LeaseHistoryRunStore); ok && history.HistoryVersion() == 1 {
+		for name, other := range map[string]*PrincipalBinding{"actor": &otherActor, "subject": &otherSubject, "kind": &otherKind, "none": nil} {
+			forged := a
+			forged.Principal = other
+			if other == nil {
+				forged = none
+			}
+			if _, err := history.CommitHistoryFenced(ctx, RunHistoryCommit{Run: RunCommit{RunID: run, ExpectedRevision: opened.Revision, CommitID: "forged-history-" + name, Checkpoint: []byte(`{"commit":"forged-history"}`)}, Observations: []HistoryObjectRef{}}, forged); !refuses(err, "principal-changed") {
+				return fail("lease.principal.history." + name)
+			}
+			if _, err := history.CommitContextSnapshotFenced(ctx, ContextSnapshotUpdate{ChatID: "lease-delegated-chat", Manifest: HistoryObjectRef{Digest: "sha256:" + strings.Repeat("a", 64), Bytes: 2}}, "forged-snapshot-"+name, forged); !refuses(err, "principal-changed") {
+				return fail("lease.principal.snapshot." + name)
+			}
+		}
+	}
 	if !refuses(store.CheckFence(ctx, none), "principal-changed") {
 		return fail("lease.principal.fence-none")
 	}

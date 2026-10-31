@@ -105,7 +105,9 @@ opened, so a child never runs with no admission (`RequireOpenedPrincipal`). In T
 call site is unreachable once the parent opens; its helper is pinned, and Go pins the call too.
 
 **A delegated child gets the narrowed link the issuing host signs, never its parent's reach.**
-Under a delegation a child starts only with its own chain. The coordinator asks the host's child port
+Under a delegation a child starts only with its own chain, and only from a delegation that stands: the
+coordinator first reads the parent's standing (`source: local`, tool `delegate_tasks`), so a revoked or
+expired parent starts no child and is told why, on a resumed batch as on a first. It then asks the host's child port
 (`RunPrincipal.child`, Go `RunPrincipal.Child`) for it at the child's start, naming the host, the
 parent's chain digests, the task, the profile and the tools the child is offered, once per task. The
 chain answered must be the parent's chain plus exactly one link, verified to the same rules
@@ -128,9 +130,9 @@ or a version 2 row taken without principals, refuses `principal-changed` before 
 after a release, since the row is kept. A fence checks against the row (`principal-changed`), so the
 reference effect host refuses a dispatch under other principals and performs nothing, and a session
 opening on a fenced store refuses a fence that does not hold the run's principals, in both directions,
-before anything is committed. A store kind must keep and return the member: it declares
-`leasePrincipals()` (Go `LeasePrincipalStore`), `fencedRunStore` refuses a delegated fence on one that
-does not, and the store conformance kit proves it (`lease.principal.*`). The idempotency key names
+before anything is committed. A store kind must keep and return the member: it declares it with the
+property `leasePrincipals = true` (Go, the method of `LeasePrincipalStore`), `fencedRunStore` refuses a delegated fence on one that
+does not, and the store conformance kit proves it (`lease.principal.*`, including the history and snapshot commits, on any store that has them), and names a store holding the member in another form. The idempotency key names
 neither the principals nor the epoch, so it is unchanged. A wait's pins hold the binding, its claim
 lease holds it, and a resume's evidence names it: missing evidence for a delegated wait is
 `evidence-missing` and another binding is `principal-changed`, never a refresh an admission could

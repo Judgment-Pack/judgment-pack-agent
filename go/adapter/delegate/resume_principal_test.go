@@ -70,6 +70,7 @@ type resumeFixture struct {
 	mu         sync.Mutex
 	dispatched int
 	childRuns  int
+	asked      int
 	reads      []runcontext.PrincipalAdmissionRead
 	host       runcontext.HostTool
 	chains     resumeChains
@@ -94,6 +95,13 @@ func newResumeFixture(t *testing.T) *resumeFixture {
 func (f *resumeFixture) principal(chain int, answer string) *runcontext.RunPrincipal {
 	v := f.chains
 	return &runcontext.RunPrincipal{Chain: v.Items[chain], Keys: v.Keys, Software: runcontext.PrincipalSoftware{Package: v.Software.Package, Version: v.Software.Version}, Audience: v.Audience,
+		Child: func(context.Context, runcontext.PrincipalChildRequest) ([]byte, error) {
+			f.mu.Lock()
+			f.asked++
+			f.mu.Unlock()
+			text, _ := json.Marshal(string(v.Items[1]))
+			return []byte(`{"chain":` + string(text) + `}`), nil
+		},
 		Admission: func(_ context.Context, read runcontext.PrincipalAdmissionRead) ([]byte, error) {
 			f.mu.Lock()
 			f.reads = append(f.reads, read)
@@ -191,13 +199,31 @@ func TestDelegatedRunResumedAtItsHandoff(t *testing.T) {
 				f := newResumeFixture(t)
 				memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
 				f.stopped(t, memory, state, taskSteps, f.principal(0, admit))
-				before := len(f.reads)
-				f.resumed(t, memory, taskSteps, f.principal(0, revoked))
-				if f.dispatched != 0 {
-					t.Fatalf("dispatched %d", f.dispatched)
+				before, askedBefore := len(f.reads), f.asked
+				events := f.resumed(t, memory, taskSteps, f.principal(0, revoked))
+				if f.dispatched != 0 || f.childRuns != 0 {
+					t.Fatalf("dispatched %d, child runs %d", f.dispatched, f.childRuns)
 				}
 				if len(f.reads) == before {
 					t.Fatal("no admission read after the resume")
+				}
+				// The child port is not asked of a delegation that no longer stands, and the refusal is
+				// recorded and told to the parent.
+				if f.asked != askedBefore {
+					t.Fatalf("the child port was asked %d times", f.asked-askedBefore)
+				}
+				named, failed := false, false
+				for _, event := range events {
+					if g := event.Guardrail; g != nil && g.Refusal != nil && g.Refusal.Name == "revoked" && g.Principal != nil {
+						named = true
+					}
+					if task := event.DelegatedTask; task != nil && task.Task.State == "failed" && task.Task.Problem != nil && strings.Contains(*task.Task.Problem, "revoked") && task.Task.Failure != nil && task.Task.Failure.Code == "permission" {
+						failed = true
+					}
+				}
+				if !named || !failed {
+					raw, _ := json.Marshal(events)
+					t.Fatalf("named %v, failed %v: %.1500s", named, failed, raw)
 				}
 			})
 			for label, chain := range map[string]int{"another subject": 4, "no delegation at all": -1} {

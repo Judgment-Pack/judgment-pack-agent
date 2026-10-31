@@ -446,6 +446,9 @@ export async function narrowChild(parent: OpenedPrincipal, request: {task: strin
   if (!leaf.mayDelegate) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the link this run acts under permits no child')
   const port = parent.input.child
   if (port === undefined) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the host issues no child link')
+  // Nothing of a child starts from a delegation that no longer stands: a resumed batch has no earlier check to rely on.
+  const standing = await admitStanding(parent, 'delegate_tasks', 'pure', signal)
+  if (standing !== undefined) throw new DelegationRefused(standing, 'the delegation this run acts under no longer stands')
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, {once: true})

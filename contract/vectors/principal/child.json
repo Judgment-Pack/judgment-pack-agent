@@ -210,6 +210,67 @@
    },
    "expect": "admission-unknown",
    "asked": true
+  },
+  {
+   "name": "a narrowed link that may itself delegate",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "relay"
+    ]
+   },
+   "expect": {
+    "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+    "links": 2
+   },
+   "asked": true
+  },
+  {
+   "name": "the parent's chain and two valid links below it",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "relay",
+     "relayLeaf"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "another root's chain at the right length",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "otherActor",
+     "otherActorChild"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "another subject's chain at the right length",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "otherSubject",
+     "otherSubjectChild"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
   }
  ]
 }

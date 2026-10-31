@@ -1597,6 +1597,20 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	if input == nil || input.Persistence != nil {
 		return input, nil
 	}
+	// ADR-0029: a durable root's delegation is refused, by name, before its store is touched.
+	if input.RunStore != nil {
+		var record *PrincipalRecord
+		if input.Principal != nil {
+			opened, err := OpenRunPrincipal(input.Principal, nil)
+			if err != nil {
+				return nil, err
+			}
+			record = &opened.Record
+		}
+		if err := holdLeasePrincipal(input.RunStore.Store, record); err != nil {
+			return nil, err
+		}
+	}
 	if input.Capture != nil {
 		if input.RunStore == nil || input.RunStore.Store == nil || input.RunStore.Store.Durability() == RunStoreSingleWriterCallback {
 			return nil, &ReplayUnavailable{}

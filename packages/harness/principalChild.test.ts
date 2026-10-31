@@ -11,13 +11,15 @@ import {narrowChild,openChildPrincipal,openPrincipal,principalBinding,sameBindin
 import {withDelegation} from './delegation'
 import {DELEGATE_TOOL} from './delegationContract'
 import {MemoryRunStore} from './storage/run'
-import {LeaseCapabilityRefused,LeaseRefused,LeaseTable,ReferenceEffectHost,effectAdmission,fenceOf,fencedRunStore} from './storage/lease'
+import {LeaseCapabilityRefused,LeaseRefused,LeaseTable,ReferenceEffectHost,effectAdmission,fenceOf,fencedRunStore,type LeaseFence} from './storage/lease'
 import {runStoreLeaseConformance,StorageConformanceFailure} from './storage/conformance'
 import {parkRun,resumeParked,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime} from './storage/wait'
 import {canonicalJSON} from './context/chat'
 import recordVectors from '../../contract/vectors/principal/record.json'
 import pauseVector from '../../contract/vectors/approval/pause.json'
 import {managedContext} from './context/managed'
+import {contextualSession} from './context/session'
+import {durableSession} from './storage/writer'
 import {readRunEvent} from './recordReader'
 import {toolListDigest} from './toolSources'
 import {normalize} from './thinking'
@@ -26,7 +28,7 @@ import {testHost} from './testing/host'
 import type {AssistantEvent,AssistantSession,Engine,EngineSession,HostTool} from './engine'
 
 beforeEach(()=>configureHarness(testHost()))
-const LINKS:Record<string,unknown>={root:chains.items[0]![0],child:chains.items[1]![1],widened:chains.refused[0]!.chain[1],grandchild:chains.refused[1]!.chain[2],otherActor:chains.items[3]![0]}
+const LINKS:Record<string,unknown>={root:chains.items[0]![0],child:chains.items[1]![1],widened:chains.refused[0]!.chain[1],grandchild:chains.refused[1]!.chain[2],otherActor:chains.items[3]![0],otherSubject:chains.items[4]![0],relay:chains.items[6]![1],relayLeaf:chains.items[7]![2],otherActorChild:chains.items[8]![1],otherSubjectChild:chains.items[9]![1]}
 const text=(names:readonly string[])=>JSON.stringify(names.map(name=>LINKS[name]))
 const T='2026-10-30T01:00:00.000Z'
 const input=(names:readonly string[],child?:RunPrincipal['child']):RunPrincipal=>({chain:text(names),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(T),admission:()=>({admission:'admit'}),...(child?{child}:{})})
@@ -76,7 +78,7 @@ async function readTool(ran:string[]):Promise<HostTool>{
  const tool={name:'read_note',description:'read_note',inputSchema:{type:'object'},taxonomy:{operation:'read',effect:'read'} as const}
  return {...tool,delegation:'read',execute:async()=>{ran.push('read_note');return {content:[{type:'text',text:'note'}]}},source:{kind:'custom',id:'notes',trust:'first-party',toolListDigest:await toolListDigest([tool] as never)}} as unknown as HostTool
 }
-const session=(hostTools:HostTool[],principal?:RunPrincipal):AssistantSession=>({prompt:'Parent',testPrompt:'',tools:[],callTool:vi.fn(),hostTools,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',model:{family:'openai-compatible',model:'small',call:async()=>{throw Error('no model call here')}},thinking:normalize('off','openai-compatible'),context:{currentRequest:{message:'Parent',input:'Parent'},...(principal?{principal}:{})}} as AssistantSession)
+const session=(hostTools:HostTool[],principal?:RunPrincipal,extra:Record<string,unknown>={}):AssistantSession=>({prompt:'Parent',testPrompt:'',tools:[],callTool:vi.fn(),hostTools,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',model:{family:'openai-compatible',model:'small',call:async()=>{throw Error('no model call here')}},thinking:normalize('off','openai-compatible'),context:{currentRequest:{message:'Parent',input:'Parent'},...(principal?{principal}:{}),...extra}} as AssistantSession)
 const engineFor=(childStarted:EngineSession[]):Engine=>({id:'vercel',start(s){return managedContext(s,async function*(ready){
  const delegate=ready.values.hostTools.find(t=>t.name===DELEGATE_TOOL)
  if(delegate){await delegate.execute({tasks:[task]},ready.signal);yield {type:'message' as const,text:'done'};yield {type:'end' as const};return}
@@ -175,6 +177,37 @@ describe("a lease holds a delegated run's principals",()=>{
   class Ignores extends MemoryRunStore {override acquireLease(acquire:Parameters<MemoryRunStore['acquireLease']>[0],signal?:AbortSignal){const {principal:_,...rest}=acquire;return super.acquireLease(rest,signal)}}
   await expect(runStoreLeaseConformance(now=>new Ignores({now}))).rejects.toEqual(expect.objectContaining({property:'lease.principal.version'}))
   expect(StorageConformanceFailure).toBeDefined()
+ })
+ it('a store that keeps the member in any other form fails the kit by name',async()=>{
+  // The form a reader of Go's interface might write: a method, where TypeScript's declaration is the property true.
+  class Method extends MemoryRunStore {override readonly leasePrincipals=(()=>true) as never}
+  await expect(runStoreLeaseConformance(now=>new Method({now}))).rejects.toEqual(expect.objectContaining({property:'lease.principal.declared'}))
+ })
+ it("a store that forgives the fence's principals on its history commits fails the kit by name",async()=>{
+  const rowFence=async(store:MemoryRunStore,fence:LeaseFence):Promise<LeaseFence>=>{const row=await store.readLease(fence.resource);return row?{...fence,version:row.version,...(row.principal?{principal:row.principal}:{})}:fence}
+  class History extends MemoryRunStore {override async commitHistoryFenced(given:Parameters<MemoryRunStore['commitHistoryFenced']>[0],fence:LeaseFence,signal?:AbortSignal){return super.commitHistoryFenced(given,await rowFence(this,fence),signal)}}
+  class Snapshot extends MemoryRunStore {override async commitContextSnapshotFenced(given:Parameters<MemoryRunStore['commitContextSnapshotFenced']>[0],commitId:string,fence:LeaseFence,signal?:AbortSignal){return super.commitContextSnapshotFenced(given,commitId,await rowFence(this,fence),signal)}}
+  await expect(runStoreLeaseConformance(now=>new History({now}))).rejects.toEqual(expect.objectContaining({property:expect.stringMatching(/^lease\.principal\.history\./)}))
+  await expect(runStoreLeaseConformance(now=>new Snapshot({now}))).rejects.toEqual(expect.objectContaining({property:expect.stringMatching(/^lease\.principal\.snapshot\./)}))
+ })
+ it('an acquisition with an unreadable binding is refused, and takes nothing',()=>{
+  const table=new LeaseTable(()=>new Date(T))
+  expect(()=>table.acquire({resource:'run-delegated',owner:'worker-a',expectedRevision:null,durationMs:1000,principal:{rootActor:'x'} as never},null)).toThrow(LeaseRefused)
+  expect(()=>table.acquire({resource:'run-delegated',owner:'worker-a',expectedRevision:null,durationMs:1000,principal:{...binding as object,token:'x'} as never},null)).toThrow(LeaseRefused)
+  expect(table.acquire({resource:'run-delegated',owner:'worker-a',expectedRevision:null,durationMs:1000,principal:binding},null).epoch).toBe('1')
+ })
+ it("a session on a fenced store is held to it even past a durable root's hold",async()=>{
+  const at=()=>new Date(T)
+  const opened=await openPrincipal(input(['root'])),store=new MemoryRunStore({now:at})
+  const lease=await store.acquireLease({resource:'run-held',owner:'worker-a',expectedRevision:null,durationMs:60_000,principal:principalBinding(opened.record)})
+  const ready=await durableSession(session([],input(['root']),{runStore:{store:fencedRunStore(store,fenceOf(lease)),id:'run-held'}}))
+  const {principal:_,...rest}=ready.context!
+  await expect(contextualSession({...ready,context:rest})).rejects.toThrow(/principal-changed/)
+ })
+ it("a session's child chain is held to its parent at the boundary, whoever issued it",async()=>{
+  const parent=await openPrincipal(input(['root']))
+  const given=session([],input(['otherActor']),{link:{attach(){},principal:()=>parent}})
+  await expect(contextualSession(given)).rejects.toThrow(/delegation is refused \(chain-broken\)/)
  })
  it("a session's fenced store must hold the run's principals",async()=>{
   const at=()=>new Date(T)

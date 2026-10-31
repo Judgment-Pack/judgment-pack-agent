@@ -25,12 +25,22 @@ func principalLinks(t *testing.T) map[string]json.RawMessage {
 		return out
 	}
 	return map[string]json.RawMessage{
-		"root":       statements(v.Items[0])[0],
-		"child":      statements(v.Items[1])[1],
-		"widened":    statements(v.Refused[0].Chain)[1],
-		"grandchild": statements(v.Refused[1].Chain)[2],
-		"otherActor": statements(v.Items[3])[0],
+		"root":              statements(v.Items[0])[0],
+		"child":             statements(v.Items[1])[1],
+		"widened":           statements(v.Refused[0].Chain)[1],
+		"grandchild":        statements(v.Refused[1].Chain)[2],
+		"otherActor":        statements(v.Items[3])[0],
+		"otherSubject":      statements(v.Items[4])[0],
+		"relay":             statements(v.Items[6])[1],
+		"relayLeaf":         statements(v.Items[7])[2],
+		"otherActorChild":   statements(v.Items[8])[1],
+		"otherSubjectChild": statements(v.Items[9])[1],
 	}
+}
+
+// principalChildClock is the host's time within every chain of the vector.
+func principalChildClock() (time.Time, error) {
+	return time.Parse(time.RFC3339Nano, "2026-10-30T01:00:00.000Z")
 }
 
 func principalChainText(t *testing.T, names []string) []byte {
@@ -68,7 +78,7 @@ func TestPrincipalChildVectors(t *testing.T) {
 	for _, c := range vectors.Cases {
 		t.Run(c.Name, func(t *testing.T) {
 			var requests []PrincipalChildRequest
-			input := principalInput(v, principalChainText(t, c.Parent), principalAdmitAll, nil)
+			input := principalInput(v, principalChainText(t, c.Parent), principalAdmitAll, principalChildClock)
 			if string(c.Answer) != `"none"` {
 				input.Child = func(_ context.Context, request PrincipalChildRequest) ([]byte, error) {
 					requests = append(requests, request)
@@ -135,7 +145,7 @@ func TestPrincipalChildPortThatNeverAnswers(t *testing.T) {
 	v := loadPrincipalChains(t)
 	release := make(chan struct{})
 	defer close(release)
-	input := principalInput(v, v.Items[0], principalAdmitAll, nil)
+	input := principalInput(v, v.Items[0], principalAdmitAll, principalChildClock)
 	input.Child = func(context.Context, PrincipalChildRequest) ([]byte, error) {
 		<-release
 		return nil, errors.New("too late")
@@ -231,6 +241,17 @@ func TestPrincipalLeaseBinding(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("an acquisition with an unreadable binding is refused, and takes nothing", func(t *testing.T) {
+		at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		table := NewLeaseTable(func() time.Time { return at })
+		if _, err := table.Acquire(LeaseAcquire{Resource: "run-delegated", Owner: "worker-a", DurationMs: 1000, Principal: &PrincipalBinding{RootActor: "x"}}, ""); leaseReason(err) != "invalid" {
+			t.Fatal(err)
+		}
+		lease, err := table.Acquire(LeaseAcquire{Resource: "run-delegated", Owner: "worker-a", DurationMs: 1000, Principal: &binding}, "")
+		if err != nil || lease.Epoch != "1" {
+			t.Fatalf("%+v %v", lease, err)
+		}
+	})
 	t.Run("a version 1 lease cannot host a delegated run", func(t *testing.T) {
 		at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 		table := NewLeaseTable(func() time.Time { return at })
@@ -289,6 +310,42 @@ func TestPrincipalLeaseBinding(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 	})
+	t.Run("a store that forgives the fence's principals on its history commits fails the kit by name", func(t *testing.T) {
+		for prefix, create := range map[string]func(*MemoryRunStore) LeaseRunStore{
+			"lease.principal.history.":  func(store *MemoryRunStore) LeaseRunStore { return forgivesHistory{store} },
+			"lease.principal.snapshot.": func(store *MemoryRunStore) LeaseRunStore { return forgivesSnapshot{store} },
+		} {
+			err := CheckRunStoreLeaseConformance(context.Background(), func(now func() time.Time) LeaseRunStore {
+				return create(NewMemoryRunStore(MemoryRunStoreOptions{Now: now}))
+			})
+			var failed *StorageConformanceFailure
+			if !errors.As(err, &failed) || !strings.HasPrefix(failed.Property, prefix) {
+				t.Fatalf("%s: %v", prefix, err)
+			}
+		}
+	})
+}
+
+// rowFence is a fence as a store that forgives what it was given would read it: the row's principals.
+func rowFence(ctx context.Context, store *MemoryRunStore, fence LeaseFence) LeaseFence {
+	row, err := store.ReadLease(ctx, fence.Resource)
+	if err != nil || row == nil {
+		return fence
+	}
+	fence.Version, fence.Principal = row.Version, row.Principal
+	return fence
+}
+
+type forgivesHistory struct{ *MemoryRunStore }
+
+func (s forgivesHistory) CommitHistoryFenced(ctx context.Context, commit RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+	return s.MemoryRunStore.CommitHistoryFenced(ctx, commit, rowFence(ctx, s.MemoryRunStore, fence))
+}
+
+type forgivesSnapshot struct{ *MemoryRunStore }
+
+func (s forgivesSnapshot) CommitContextSnapshotFenced(ctx context.Context, update ContextSnapshotUpdate, commitID string, fence LeaseFence) (ContextSnapshotHead, error) {
+	return s.MemoryRunStore.CommitContextSnapshotFenced(ctx, update, commitID, rowFence(ctx, s.MemoryRunStore, fence))
 }
 
 type noPrincipalStore struct{ *MemoryRunStore }
@@ -431,6 +488,62 @@ func TestPrincipalWaitHoldsItsPrincipals(t *testing.T) {
 		input, current := principalParked(t, dropsPrincipalClaim{durable}, durable.MemoryRunStore, binding)
 		input.Current = &current
 		if _, err := ResumeParked(ctx, input); waitReasonOf(err) != "invalid" {
+			t.Fatalf("got %v", err)
+		}
+	})
+}
+
+type principalParentLink struct{ parent *OpenedPrincipal }
+
+func (principalParentLink) Attach(*SessionContext) {}
+
+func (l principalParentLink) ParentPrincipal() *OpenedPrincipal { return l.parent }
+
+func TestPrincipalSessionBoundary(t *testing.T) {
+	v := loadPrincipalChains(t)
+	clock := func() (time.Time, error) { return time.Parse(time.RFC3339Nano, "2026-10-30T01:00:00.000Z") }
+	parent, err := OpenPrincipal(principalInput(v, v.Items[0], principalAdmitAll, clock))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("a session's child chain is held to its parent, whoever issued it", func(t *testing.T) {
+		session := principalSession(t, &principalRan{}, 3, nil)
+		input := *session.Context
+		input.Link = principalParentLink{parent: parent}
+		session.Context = &input
+		run, err := ContextualSession(context.Background(), session)
+		if run != nil {
+			run.Context.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "chain-broken") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("a session on a fenced store is held to it even past a durable root's hold", func(t *testing.T) {
+		store := NewMemoryRunStore(MemoryRunStoreOptions{Now: func() time.Time { return time.Date(2026, 10, 30, 1, 0, 0, 0, time.UTC) }})
+		lease, err := store.AcquireLease(context.Background(), LeaseAcquire{Resource: "run-held", Owner: "worker-a", DurationMs: 60000, Principal: parent.Record.Binding()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		view, err := FencedRunStore(store, FenceOf(lease), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session := principalSession(t, &principalRan{}, 0, nil)
+		input := *session.Context
+		input.RunStore = &DurableRunInput{Store: view, ID: "run-held"}
+		prepared, err := PrepareDurableInput(context.Background(), &input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held := *prepared
+		held.Principal = nil
+		session.Context = &held
+		run, err := ContextualSession(context.Background(), session)
+		if run != nil {
+			run.Context.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "principal-changed") {
 			t.Fatalf("got %v", err)
 		}
 	})

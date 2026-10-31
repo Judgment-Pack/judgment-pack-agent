@@ -805,9 +805,6 @@ func RevalidateResume(wait RevalidatedWait, input ResumeEvidence) (Revalidation,
 	if err != nil {
 		return Revalidation{}, err
 	}
-	if current.Resource != wait.Resource || current.Wait != wait.Wait {
-		return Revalidation{}, resumeInvalid()
-	}
 	// ADR-0029: a resume keeps the wait's principals: evidence of none for a delegated run is missing, and
 	// other principals, or some for an undelegated run, are a changed principal, never a refresh.
 	if pins.Principal != nil && current.Principal == nil {
@@ -815,6 +812,9 @@ func RevalidateResume(wait RevalidatedWait, input ResumeEvidence) (Revalidation,
 	}
 	if !SamePrincipalBinding(pins.Principal, current.Principal) {
 		return Revalidation{}, &ResumeRefused{Reason: "principal-changed"}
+	}
+	if current.Resource != wait.Resource || current.Wait != wait.Wait {
+		return Revalidation{}, resumeInvalid()
 	}
 	sources := map[string]SourcePin{}
 	for _, s := range current.Sources {

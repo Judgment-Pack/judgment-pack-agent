@@ -177,6 +177,8 @@ async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<Leas
 async function leasePrincipalProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>):Promise<void>{
  let at=Date.parse('2026-01-01T00:00:00.000Z')
  const store=await create(()=>new Date(at)),run='lease-delegated'
+ // A store that holds the member as anything but the property true is one written against another form: fencedRunStore refuses it, and the kit names it.
+ check('lease.principal.declared',store.leasePrincipals===undefined||store.leasePrincipals===true)
  if(store.leasePrincipals!==true)return
  const refusesLease=async(property:string,attempt:()=>Promise<unknown>,reason:LeaseRefusalReason)=>{try{await attempt()}catch(error){check(property,error instanceof LeaseRefused&&error.reason===reason);return}throw new StorageConformanceFailure(property)}
  const sub={kind:'person' as const,issuer:'https://kit.example/',subject:'kit-subject'},principal={sub,rootActor:'b1'.repeat(16),host:'kit-host'}
@@ -192,6 +194,13 @@ async function leasePrincipalProperties(create:(now:()=>Date)=>LeaseRunStore|Pro
  for(const [name,other] of [['actor',otherActor],['subject',otherSubject],['kind',otherKind]] as const){
   await refusesLease(`lease.principal.check.${name}`,()=>store.checkFence({...a,principal:other}),'principal-changed')
   await refusesLease(`lease.principal.commit.${name}`,()=>commit(`forged-${name}`,{...a,principal:other}),'principal-changed')
+ }
+ // #253's ports, the commits a history store takes, hold the principals too.
+ const history=store as Partial<HistoryRunStore>&LeaseRunStore
+ if(history.historyVersion===1)for(const [name,other] of [['actor',otherActor],['subject',otherSubject],['kind',otherKind],['none',undefined]] as const){
+  const forged:LeaseFence=other?{...a,principal:other}:{version:1,resource:a.resource,owner:a.owner,epoch:a.epoch}
+  await refusesLease(`lease.principal.history.${name}`,()=>history.commitHistoryFenced!({run:{runId:run,expectedRevision:opened.revision,commitId:`forged-history-${name}`,checkpoint:bytes(`{"commit":"forged-history-${name}"}`),events:[]},observations:[]},forged),'principal-changed')
+  await refusesLease(`lease.principal.snapshot.${name}`,()=>history.commitContextSnapshotFenced!({chatId:'lease-delegated-chat',expectedRevision:null,manifest:{digest:'sha256:'+'a'.repeat(64),bytes:2}},`forged-snapshot-${name}`,forged),'principal-changed')
  }
  const none:LeaseFence={version:1,resource:a.resource,owner:a.owner,epoch:a.epoch}
  await refusesLease('lease.principal.fence-none',()=>store.checkFence(none),'principal-changed')

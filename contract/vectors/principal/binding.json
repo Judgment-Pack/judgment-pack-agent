@@ -47,6 +47,15 @@
    },
    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
    "host": "desk"
+  },
+  {
+   "sub": {
+    "kind": "person",
+    "issuer": "https://login.example.com/",
+    "subject": "approver@example.com"
+   },
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+   "host": "other-host"
   }
  ],
  "refused": [

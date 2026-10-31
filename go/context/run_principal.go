@@ -874,6 +874,15 @@ func NarrowChild(ctx context.Context, parent *OpenedPrincipal, task, profile str
 	if port == nil {
 		return nil, principalRefuse("delegation-not-permitted", "the host issues no child link")
 	}
+	// Nothing of a child starts from a delegation that no longer stands: a resumed batch has no earlier
+	// check to rely on.
+	standing, err := parent.AdmitPrincipalStanding(ctx, "delegate_tasks", "pure")
+	if err != nil {
+		return nil, err
+	}
+	if standing != nil {
+		return nil, &DelegationRefused{Refusal: *standing}
+	}
 	bounded, cancel := context.WithTimeout(ctx, PrincipalAdmissionTimeout)
 	defer cancel()
 	type answer struct {

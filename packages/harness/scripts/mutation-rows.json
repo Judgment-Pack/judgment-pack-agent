@@ -10643,16 +10643,16 @@
    "note": "Go twin (by hand): return the parent's input with no child port in NarrowChild; caught at ^TestPrincipalChildVectors$."
   },
   {
-   "name": "principal P34 a chain that is not the parent's plus one link is a child's",
+   "name": "principal P34 a chain of its parent's plus two links is a child's",
    "file": "principal.ts",
-   "find": "  if (digests.length !== held.length + 1 || held.some((digest, at) => digests[at] !== digest)) throw new DelegationRefused({name: 'chain-broken'}, \"the child's chain is not its parent's with one link below it\")",
-   "replace": "  void [held, digests]",
+   "find": "  if (digests.length !== held.length + 1 || held.some(",
+   "replace": "  if (held.some(",
    "tests": [
     "principalChild.test.ts"
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "Go twin (by hand): drop the parent's-chain-plus-one check in OpenChildPrincipal; caught at ^TestPrincipalChildVectors$."
+   "note": "Go twin (by hand): hold only the prefix in OpenChildPrincipal; caught at ^TestPrincipalChildVectors$."
   },
   {
    "name": "principal P35 the coordinator starts a child under no link",
@@ -10713,6 +10713,126 @@
    "status": "caught",
    "origin": "agent#260",
    "note": "Go twin (by hand): relax validLeaseVersion to the version alone; caught at ^TestPrincipalLeaseBinding$."
+  },
+  {
+   "name": "principal P62 a chain that does not begin with its parent's is a child's",
+   "file": "principal.ts",
+   "find": " || held.some((digest, at) => digests[at] !== digest)) throw new DelegationRefused({name: 'chain-broken'}",
+   "replace": ") throw new DelegationRefused({name: 'chain-broken'}",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): hold only the length in OpenChildPrincipal; caught at ^TestPrincipalChildVectors$."
+  },
+  {
+   "name": "principal P63 an acquisition takes an unreadable binding",
+   "file": "storage/lease.ts",
+   "find": "||request.principal!==undefined&&!validPrincipalBinding(request.principal))return invalid()",
+   "replace": ")return invalid()",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the binding's form from LeaseTable's acquire; caught at ^TestPrincipalLeaseBinding$."
+  },
+  {
+   "name": "principal P64 two hosts' root actors are the same principals",
+   "file": "principal.ts",
+   "find": "a.rootActor === b.rootActor && a.host === b.host",
+   "replace": "a.rootActor === b.rootActor",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): compare without Host in SamePrincipalBinding; caught at ^TestPrincipalBindingVectors$."
+  },
+  {
+   "name": "principal P65 a session is not held to its writer's fenced store",
+   "file": "context/session.ts",
+   "find": " if(durableStore)holdLeasePrincipal(durableStore,principal?.record)\n",
+   "replace": " void durableStore;void holdLeasePrincipal\n",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the hold on Persistence's writer store; caught at ^TestPrincipalSessionBoundary$."
+  },
+  {
+   "name": "principal P66 a session's child chain is not held to its parent",
+   "file": "principal.ts",
+   "find": "try { return parent ? await openChildPrincipal(parent, input) : await openPrincipal(input) } catch (error) {",
+   "replace": "try { void parent; return await openPrincipal(input) } catch (error) {",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): always OpenPrincipal in OpenRunPrincipal; caught at ^TestPrincipalSessionBoundary$."
+  },
+  {
+   "name": "principal P67 a child starts from a delegation that no longer stands",
+   "file": "principal.ts",
+   "find": "  if (standing !== undefined) throw new DelegationRefused(standing, 'the delegation this run acts under no longer stands')\n",
+   "replace": "  void standing\n",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the standing refusal in NarrowChild; caught at ^TestDelegatedRunResumedAtItsHandoff$."
+  },
+  {
+   "name": "principal P68 the kit does not hold history commits to the principals",
+   "file": "storage/conformance.ts",
+   "find": " if(history.historyVersion===1)for(const [name,other] of [['actor',otherActor]",
+   "replace": " if(false as boolean)for(const [name,other] of [['actor',otherActor]",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip the history section of leasePrincipalConformance; caught at ^TestPrincipalLeaseBinding$."
+  },
+  {
+   "name": "principal P69 the kit passes a store with the member in another form",
+   "file": "storage/conformance.ts",
+   "find": " check('lease.principal.declared',store.leasePrincipals===undefined||store.leasePrincipals===true)\n",
+   "replace": "",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "No Go twin: Go's declaration is a typed method, so no other form compiles."
+  },
+  {
+   "name": "principal P70 a durable root's fence is not held before its store",
+   "file": "storage/writer.ts",
+   "find": " if(config)holdLeasePrincipal(config.store,delegation?.record)\n",
+   "replace": " void holdLeasePrincipal\n",
+   "tests": [
+    "principalChild.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip the hold in PrepareDurableInput; caught at ^TestARefusedChainIsRefusedBeforeTheStoreIsTouched$."
+  },
+  {
+   "name": "principal P71 a resume reads its wait before its principals",
+   "file": "storage/resume.ts",
+   "find": " if(pins.principal&&!current.principal)throw new ResumeRefused('evidence-missing')\n if(!sameBinding(pins.principal,current.principal))throw new ResumeRefused('principal-changed')\n if(current.resource!==wait.resource||current.wait!==wait.wait)return invalid()\n",
+   "replace": " if(current.resource!==wait.resource||current.wait!==wait.wait)return invalid()\n if(pins.principal&&!current.principal)throw new ResumeRefused('evidence-missing')\n if(!sameBinding(pins.principal,current.principal))throw new ResumeRefused('principal-changed')\n",
+   "tests": [
+    "storage/resume.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): check the resource and wait first in RevalidateResume; caught at ^TestResumeEvidenceRevalidationAndRefusalVectors$."
   }
  ]
 }

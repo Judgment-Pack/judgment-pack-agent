@@ -175,7 +175,9 @@ func TestDelegatedChildRunsUnderItsNarrowedLink(t *testing.T) {
 	admitted := principal.Admission
 	var chains [][]string
 	principal.Admission = func(ctx context.Context, read runcontext.PrincipalAdmissionRead) ([]byte, error) {
-		chains = append(chains, read.Chain)
+		if read.Call.Source == "notes" {
+			chains = append(chains, read.Chain)
+		}
 		return admitted(ctx, read)
 	}
 	events, childRuns, childCalls := principalDrive(t, principal)
@@ -252,5 +254,44 @@ func TestUndelegatedRunDelegatesAsBefore(t *testing.T) {
 	}
 	if last := lastDelegatedTask(t, events); last.Version == nil || *last.Version != 1 || last.Principal != nil || last.Task.State != "complete" {
 		t.Fatalf("task %+v", last)
+	}
+}
+
+type countingStore struct {
+	runcontext.RunStore
+	loads, commits *int
+}
+
+func (s countingStore) Load(ctx context.Context, id string) (*runcontext.RunHead, error) {
+	*s.loads++
+	return s.RunStore.Load(ctx, id)
+}
+
+func (s countingStore) Commit(ctx context.Context, in runcontext.RunCommit) (runcontext.RunReceipt, error) {
+	*s.commits++
+	return s.RunStore.Commit(ctx, in)
+}
+
+func TestARefusedChainIsRefusedBeforeTheStoreIsTouched(t *testing.T) {
+	v := readPrincipalChains(t)
+	loads, commits := 0, 0
+	store := countingStore{runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{}), &loads, &commits}
+	var events []contract.RunEvent
+	run := lifecycleRun(store, "refused", false, func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error {
+		t.Error("the provider was reached")
+		return nil
+	}, func(event contract.RunEvent) { events = append(events, event) })
+	bad := v.input(v.Items[0], nil)
+	bad.Software.Version = "other"
+	run.Context.Principal = bad
+	lifecycleExecute(t, context.Background(), run)
+	errors := []string{}
+	for _, event := range events {
+		if event.Error != nil {
+			errors = append(errors, event.Error.Message)
+		}
+	}
+	if loads != 0 || commits != 0 || len(errors) != 1 || !strings.Contains(errors[0], "software-mismatch") {
+		t.Fatalf("loads %d, commits %d, errors %v", loads, commits, errors)
 	}
 }

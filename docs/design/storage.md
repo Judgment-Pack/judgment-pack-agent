@@ -317,9 +317,11 @@ delegated run's principals: `principal`, `{sub, rootActor, host}`. `acquireLease
 a store kind compares it with the row's, before the epoch moves, at every acquisition, released and
 expired rows included, and refuses any difference, a version 1 row or a request with none as
 `principal-changed`. `checkFence` refuses a fence whose `principal` differs from the row's. The store
-kind keeps the member in its row and returns it unchanged, and declares that with `leasePrincipals()`
-(Go `LeasePrincipals()`): `fencedRunStore` refuses a version 2 fence on a store that does not, and the
-conformance kit's `lease.principal.*` rows prove it. A fence's `principal` must also be the delegated
+kind keeps the member in its row and returns it unchanged, and declares that with the property
+`readonly leasePrincipals = true` (Go, the method `LeasePrincipals() bool`): `fencedRunStore` refuses a
+version 2 fence on a store that does not, and the conformance kit's `lease.principal.*` rows prove it,
+over `commitFenced`, `commitHistoryFenced` and `commitContextSnapshotFenced`. The kit fails a store whose
+member is anything but `true`, such as a method. A fence's `principal` must also be the delegated
 run's own: the session refuses any other, either way, before it commits anything. The effect
 idempotency key does not change: it names neither the principals nor the epoch.
 
