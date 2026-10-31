@@ -1103,7 +1103,7 @@ class VectorTests(unittest.TestCase):
         # reader-only refusal is schema-valid (the readers hold it), and every digest is the one an
         # independent canonical JSON gives.
         rows = {name: vector for name, vector in self.vectors.items() if name.startswith("wait/")}
-        self.assertEqual(set(rows), {"wait/wait.json", "wait/evidence.json", "wait/attention.json", "wait/report.json", "wait/refusal.json", "wait/capability.json"})
+        self.assertEqual(set(rows), {"wait/wait.json", "wait/evidence.json", "wait/attention.json", "wait/report.json", "wait/refusal.json", "wait/capability.json", "wait/decision.json"})
         schema = self.schemas["run-wait.json"]
         carried = [(row["schema"], row["items"]) for row in rows.values()]
         carried += [("run-wait.json#/$defs/delivery", rows["wait/attention.json"]["deliveries"]), ("run-wait.json#/$defs/export", rows["wait/report.json"]["exports"])]
@@ -1152,6 +1152,11 @@ class VectorTests(unittest.TestCase):
             for refused in rows[name]["readerRefused"]:
                 with self.subTest(vector=name, reader=refused["problem"]):
                     self.assertEqual(problems(check, [refused[member]]), [])
+        # #265 M4: a grant whose time is no store-clock time is schema-valid; the readers refuse it.
+        grant = validator(self.schemas, rows["wait/decision.json"]["schema"])
+        for refused in rows["wait/decision.json"]["readerRefused"]:
+            with self.subTest(vector="wait/decision.json", reader=refused["problem"]):
+                self.assertEqual(problems(grant, [refused["grant"]]), [])
         delivery = validator(self.schemas, "run-wait.json#/$defs/delivery")
         for refused in rows["wait/attention.json"]["deliveriesRefused"]:
             self.assertNotEqual(problems(delivery, [refused["delivery"]]), [])

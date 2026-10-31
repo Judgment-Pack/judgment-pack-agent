@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten wake evidence: an approval decision event, a wake time, a question answered by a chosen option, a timeout, a free-text answer, and the new waits' decisions and deadline wakes (a deadline wake is due at the wait's deadline and ends it). digests are each record's SHA-256 over its canonical JSON without the key, the disposition digest. A key is checked against the wait's wakeKeyDigest by the store, never stored.",
+  "description": "Handwritten wake evidence: an approval decision event, a wake time, a question answered by a chosen option, a timeout, a free-text answer, and the new waits' decisions and deadline wakes (a deadline wake is due at the wait's deadline and ends it). digests are each record's SHA-256 over its canonical JSON without the key, the disposition digest. A key is checked against the wait's wakeKeyDigest by the store, never stored. Each wait has its own key (#265 M1): 32 to 512 printable ASCII characters, at least 16 of them distinct; keys.refused are refused wherever a key is read.",
   "schema": "run-wait.json#/$defs/wakeEvidence",
   "items": [
     {
@@ -12,7 +12,7 @@
         "kind": "approval-decision",
         "subject": "call-7"
       },
-      "key": "host-wake-key-0001-alpha"
+      "key": "wk.run-approval.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -20,7 +20,7 @@
       "wait": "wait-1",
       "evidence": "clock-tick-3",
       "kind": "time",
-      "key": "host-wake-key-0002-bravo"
+      "key": "wk.run-budget.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -39,7 +39,7 @@
         "text": ""
       },
       "actor": "person-reviewer",
-      "key": "host-wake-key-0001-alpha"
+      "key": "wk.run-question.wait-2.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -47,7 +47,7 @@
       "wait": "wait-1",
       "evidence": "deadline-tick-1",
       "kind": "timeout",
-      "key": "host-wake-key-0002-bravo"
+      "key": "wk.run-silent.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -64,7 +64,7 @@
         "text": "Start with the northern sites."
       },
       "actor": "person-lead",
-      "key": "host-wake-key-0001-alpha"
+      "key": "wk.run-redacted.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -76,7 +76,7 @@
         "kind": "approval-decision",
         "subject": "call-12"
       },
-      "key": "host-wake-key-0003-charlie"
+      "key": "wk.run-late.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -84,7 +84,7 @@
       "wait": "wait-1",
       "evidence": "deadline-late-1",
       "kind": "deadline",
-      "key": "host-wake-key-0003-charlie"
+      "key": "wk.run-late.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -92,7 +92,7 @@
       "wait": "wait-1",
       "evidence": "deadline-quiet-1",
       "kind": "deadline",
-      "key": "host-wake-key-0003-charlie"
+      "key": "wk.run-quiet.wait-1.Q7z2Xm9LpV4cR8tN"
     },
     {
       "version": 1,
@@ -104,7 +104,27 @@
         "kind": "approval-decision",
         "subject": "call-21"
       },
-      "key": "host-wake-key-0003-charlie"
+      "key": "wk.run-switch.wait-2.Q7z2Xm9LpV4cR8tN"
+    },
+    {
+      "version": 1,
+      "resource": "run-unsettled",
+      "wait": "wait-1",
+      "evidence": "decision-unsettled-1",
+      "kind": "event",
+      "event": {
+        "kind": "approval-decision",
+        "subject": "call-12"
+      },
+      "key": "wk.run-unsettled.wait-1.Q7z2Xm9LpV4cR8tN"
+    },
+    {
+      "version": 1,
+      "resource": "run-unsettled",
+      "wait": "wait-1",
+      "evidence": "deadline-unsettled-1",
+      "kind": "deadline",
+      "key": "wk.run-unsettled.wait-1.Q7z2Xm9LpV4cR8tN"
     }
   ],
   "digests": [
@@ -116,27 +136,80 @@
     "sha256:4d875fb1321ccf688362a92d40572a7a96b0325095daabf956392d10172bddd7",
     "sha256:1235cdfe6ebe0e2f86c86fbeffc37f54af747ba9963c1dbdd1145d8f4ed90876",
     "sha256:619d7bef573e8615989487906619c76bd21ac27982f0ce141c45c3507a0d4a0b",
-    "sha256:ca4eeb4b52f0ee8b5dc30c4209076eb2fc6f1b94384c58a3d61b7d8954a89b79"
+    "sha256:ca4eeb4b52f0ee8b5dc30c4209076eb2fc6f1b94384c58a3d61b7d8954a89b79",
+    "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a",
+    "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
   ],
   "keys": {
     "digests": [
       [
-        "host-wake-key-0001-alpha",
-        "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2"
+        "wk.run-approval.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:1e5545432fe2661182146190c72cd0c4aad300ab460f75d1824a262acee28e82"
       ],
       [
-        "host-wake-key-0002-bravo",
-        "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206"
+        "wk.run-budget.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:a270dd44834528acff96369b6b9ba8d6ed7ae26235b9396a8047f439750665eb"
       ],
       [
-        "host-wake-key-0003-charlie",
-        "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1"
+        "wk.run-codex.wait-9.Q7z2Xm9LpV4cR8tN",
+        "sha256:9ea4ade1764b85eca1fd2b6ca14377d0154aaef1eff905cb47548b30194a3a2f"
+      ],
+      [
+        "wk.run-late.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:5be178ac5bb62247d0cb6bff69196159982d6cac917fac3c9296e85da49dc70b"
+      ],
+      [
+        "wk.run-question.wait-2.Q7z2Xm9LpV4cR8tN",
+        "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c"
+      ],
+      [
+        "wk.run-quiet.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:03f7fda79f823a7cbae754116f3258ad6b9bd9d01af1ae242390126d5d1e969f"
+      ],
+      [
+        "wk.run-redacted.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:fa47ba1cf7d14f12b8aaaf8ebab1654efa4614cbbb45dd6e3f6e887bf2c2887f"
+      ],
+      [
+        "wk.run-silent.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:38a8a04f43468b1c829d9ae1396a10ce97db46a096c95e09d4ddbf358e16b52a"
+      ],
+      [
+        "wk.run-switch.wait-2.Q7z2Xm9LpV4cR8tN",
+        "sha256:314efcbef64f5b1c339f33e7697ad84f1b7aa8f1ff8fd201c59762587535ae9d"
+      ],
+      [
+        "wk.run-two.wait-2.Q7z2Xm9LpV4cR8tN",
+        "sha256:d07a209c428c8050f8b74d79f1fe6d40e6544d97a35f943df98533023ec5b76f"
+      ],
+      [
+        "wk.run-two.wait-3.Q7z2Xm9LpV4cR8tN",
+        "sha256:6c8fb5832dcd6ca1ed98a978ea9691e3475972e102256b6a110510b12b4ccb7a"
+      ],
+      [
+        "wk.run-unsettled.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9"
+      ],
+      [
+        "abcdefghijklmnopabcdefghijklmnop",
+        "sha256:df43a9994adffa1484525827764397252d90ef618363e5d381a158ac38b11a8a"
+      ],
+      [
+        "Q7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tN",
+        "sha256:039f8f151aabbc3a821515573c7425a0fd40450d7ba18969609a5b7065c8c48c"
       ]
+    ],
+    "refused": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "abababababababababababababababab",
+      "abcdefghijklmnoabcdefghijklmnoab",
+      "wk.short.Q7z2Xm9LpV4cR8tNb3Yh6D",
+      "Q7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNx"
     ]
   },
   "refused": [
     {
-      "problem": "a key shorter than sixteen characters",
+      "problem": "a key shorter than thirty-two characters",
       "evidence": {
         "version": 1,
         "resource": "run-approval",
@@ -147,7 +220,7 @@
           "kind": "approval-decision",
           "subject": "call-7"
         },
-        "key": "short-key"
+        "key": "wk.short.Q7z2Xm9LpV4cR8tNb3Yh6D"
       }
     },
     {
@@ -162,7 +235,7 @@
           "kind": "approval-decision",
           "subject": "call-7"
         },
-        "key": "host wake key 0001 alpha"
+        "key": "wk run-approval wait-1 Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -187,7 +260,7 @@
         "wait": "wait-1",
         "evidence": "clock-tick-3",
         "kind": "poll",
-        "key": "host-wake-key-0002-bravo"
+        "key": "wk.run-budget.wait-1.Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -199,7 +272,7 @@
         "evidence": "clock-tick-3",
         "kind": "time",
         "at": "2026-01-01T06:00:00.000Z",
-        "key": "host-wake-key-0002-bravo"
+        "key": "wk.run-budget.wait-1.Q7z2Xm9LpV4cR8tN"
       }
     }
   ],
@@ -212,7 +285,7 @@
         "wait": "wait-1",
         "evidence": "decision-mail-17",
         "kind": "event",
-        "key": "host-wake-key-0001-alpha"
+        "key": "wk.run-approval.wait-1.Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -227,7 +300,7 @@
           "kind": "tick",
           "subject": "run-budget"
         },
-        "key": "host-wake-key-0002-bravo"
+        "key": "wk.run-budget.wait-1.Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -248,7 +321,7 @@
           ],
           "text": ""
         },
-        "key": "host-wake-key-0001-alpha"
+        "key": "wk.run-question.wait-2.Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -266,7 +339,7 @@
           "text": ""
         },
         "actor": "person-reviewer",
-        "key": "host-wake-key-0002-bravo"
+        "key": "wk.run-silent.wait-1.Q7z2Xm9LpV4cR8tN"
       }
     },
     {
@@ -277,7 +350,7 @@
         "wait": "wait-1",
         "evidence": "deadline-late-1",
         "kind": "deadline",
-        "key": "host-wake-key-0003-charlie",
+        "key": "wk.run-late.wait-1.Q7z2Xm9LpV4cR8tN",
         "event": {
           "kind": "deadline",
           "subject": "run-late"

@@ -106,6 +106,24 @@ func TestWaitEvidenceAttentionAndRefusalVectors(t *testing.T) {
 			t.Errorf("key digest %s", digest)
 		}
 	}
+	// #265 M1: a short or repetitive key is refused wherever a key is read.
+	var refusedKeys struct{ Refused []string }
+	_ = json.Unmarshal(evidence["keys"], &refusedKeys)
+	for _, key := range refusedKeys.Refused {
+		if _, err := WakeKeyDigest(key); waitReasonOf(err) != "invalid" {
+			t.Errorf("key %q accepted", key)
+		}
+		var item map[string]any
+		_ = json.Unmarshal(waitList(t, evidence["items"])[0], &item)
+		item["key"] = key
+		raw, _ := json.Marshal(item)
+		if _, err := ReadWakeEvidence(raw); waitReasonOf(err) != "invalid" {
+			t.Errorf("evidence with key %q accepted", key)
+		}
+	}
+	if len(refusedKeys.Refused) == 0 {
+		t.Fatal("no refused keys")
+	}
 	for _, name := range []string{"refused", "readerRefused"} {
 		for _, row := range waitList(t, evidence[name]) {
 			if _, err := ReadWakeEvidence(waitMember(t, row, "evidence")); waitReasonOf(err) != "invalid" {
@@ -240,8 +258,8 @@ func (durableWaitStore) LeaseLifetime() string { return LeaseLifetimeDurable }
 func (durableWaitStore) WaitLifetime() string  { return WaitLifetimeDurable }
 
 const waitHour = 60 * leaseMinute
-const waitKey = "host-wake-key-for-tests-0001"
-const waitOtherKey = "host-wake-key-for-other-run-02"
+const waitKey = "wk.tests.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+const waitOtherKey = "wk.other-run.02.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2"
 
 func waitTime(clock *leaseClock, offset int64) string {
 	at, _ := leaseExpiryAt(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli() + offset)
@@ -620,9 +638,11 @@ func TestWaitTimeoutAndMovedRunRefusals(t *testing.T) {
 	if _, err := WakeRun(ctx, moved, decisionEvidence()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := moved.Commit(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: parked.Checkpoint.Revision, CommitID: "outside", Events: [][]byte{[]byte(`{"version":1}`)}}); err != nil {
-		t.Fatal(err)
+	// #266 M4: the store's own ports move no parked run; a host row moved by anything else is simulated.
+	if _, err := moved.Commit(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: parked.Checkpoint.Revision, CommitID: "outside", Events: [][]byte{[]byte(`{"version":1}`)}}); waitReasonOf(err) != "wait-pending" {
+		t.Fatalf("an unfenced commit to a parked run: %v", err)
 	}
+	moveHead(moved.MemoryRunStore, "run-approval")
 	if _, err := ResumeParked(ctx, withCurrent(t, ResumeInput{Store: moved, Resource: "run-approval", Wait: "wait-1", Evidence: "decision-1", Owner: "worker-b", DurationMs: waitHour, Approval: &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}})); waitReasonOf(err) != "checkpoint-changed" {
 		t.Fatalf("moved run: %v", err)
 	}
@@ -660,9 +680,7 @@ func TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim(t *testing.T) {
 	if _, _, err := store.ResumeWait(ctx, other); waitReasonOf(err) != "invalid" {
 		t.Fatalf("other pins: %v", err)
 	}
-	if _, err := store.Commit(ctx, RunCommit{RunID: "run-approval", ExpectedRevision: wait.Checkpoint.Revision, CommitID: "moved", Events: [][]byte{[]byte(`{"version":1}`)}}); err != nil {
-		t.Fatal(err)
-	}
+	moveHead(store.MemoryRunStore, "run-approval")
 	if _, _, err := store.ResumeWait(ctx, claim); waitReasonOf(err) != "checkpoint-changed" {
 		t.Fatalf("moved head: %v", err)
 	}
@@ -672,6 +690,16 @@ func TestWaitStoreRevalidatesTheHeadTheLeaseAndThePinsAtTheClaim(t *testing.T) {
 	if lease, _ := store.ReadLease(ctx, "run-approval"); lease.State != "released" || lease.Epoch != "1" {
 		t.Fatalf("a refused claim took a lease: %+v", lease)
 	}
+}
+
+// moveHead stands for a host store's row moved by something other than its ports: the head gets a new
+// revision over the same bytes.
+func moveHead(store *MemoryRunStore, run string) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	held := store.runs[run]
+	held.head.Revision = "rev-moved"
+	store.runs[run] = held
 }
 
 // questionStore commits a completed run whose stored log ends with a user_question envelope.

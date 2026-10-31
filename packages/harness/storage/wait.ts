@@ -5,7 +5,7 @@ import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
 import {storageId,STORAGE_PAGE_LIMIT} from './common'
-import {LeaseRefused,readLeaseFence,validLeaseEpoch,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease} from './lease'
+import {LeaseRefused,readLeaseFence,readRunLease,validLeaseEpoch,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease} from './lease'
 import type {StorageRevision} from './common'
 import type {RunStore} from './run'
 import type {ChatStore} from './chat'
@@ -22,9 +22,9 @@ export const WAIT_RECORD_VERSION=1 as const
 export type WaitReason='approval'|'budget'|'question'
 export type WaitState='parked'|'woken'|'timed-out'|'resumed'|'expired'
 export type WaitLifetime='durable'|'process'
-export type WaitRefusalReason='invalid'|'nothing-pending'|'wait-pending'|'conflict'|'checkpoint-changed'|'no-wait'|'unauthenticated'|'mismatch'|'not-due'|'stale'|'unacknowledged'|'already-resumed'|'decision-required'|'timed-out'|'release-uncertain'|'chat-changed'|'deadline-passed'|'closed'|'approval-ttl-required'
+export type WaitRefusalReason='invalid'|'nothing-pending'|'wait-pending'|'conflict'|'checkpoint-changed'|'no-wait'|'unauthenticated'|'mismatch'|'not-due'|'stale'|'unacknowledged'|'already-resumed'|'decision-required'|'timed-out'|'release-uncertain'|'chat-changed'|'deadline-passed'|'closed'|'approval-ttl-required'|'key-reused'|'not-resumable'
 export type WaitCapabilityReason='store-unsupported'|'store-lifetime'|'chat-store-unsupported'
-export const WAIT_REFUSAL_REASONS:readonly WaitRefusalReason[]=['invalid','nothing-pending','wait-pending','conflict','checkpoint-changed','no-wait','unauthenticated','mismatch','not-due','stale','unacknowledged','already-resumed','decision-required','timed-out','release-uncertain','chat-changed','deadline-passed','closed','approval-ttl-required']
+export const WAIT_REFUSAL_REASONS:readonly WaitRefusalReason[]=['invalid','nothing-pending','wait-pending','conflict','checkpoint-changed','no-wait','unauthenticated','mismatch','not-due','stale','unacknowledged','already-resumed','decision-required','timed-out','release-uncertain','chat-changed','deadline-passed','closed','approval-ttl-required','key-reused','not-resumable']
 export const WAIT_CAPABILITY_REASONS:readonly WaitCapabilityReason[]=['store-unsupported','store-lifetime','chat-store-unsupported']
 /** At most this many release entries per park, and waits per export page. */
 export const WAIT_RELEASE_LIMIT=16
@@ -34,7 +34,7 @@ export interface EventCondition {kind:string;subject:string}
 export interface WaitCondition {event?:EventCondition;wakeAt?:string}
 export type PendingDecision=
  |{kind:'approval';callId:string;name:string;tool:string}
- |{kind:'budget';unit:'model-requests'|'provider-managed';used:number;limit:number}
+ |{kind:'budget';unit:'model-requests';used:number;limit:number}
  |{kind:'question';event:string;questionDigest:string;question?:UserQuestion}
 export interface ReleaseEvidence {resource:string;outcome:'released'|'not-held'|'uncertain'}
 export interface WaitActor {owner:string;epoch:string;at:string}
@@ -70,7 +70,11 @@ export class WaitCapabilityRefused extends AIFailureError {
  record():{version:1;reason:WaitCapabilityReason}{return {version:1,reason:this.reason}}
 }
 
-const TIME=/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/,DIGEST=/^sha256:[a-f0-9]{64}$/,KEY=/^[!-~]{16,512}$/
+const TIME=/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/,DIGEST=/^sha256:[a-f0-9]{64}$/,KEY=/^[!-~]{32,512}$/
+/** #265 M1: a wake key is 32 to 512 printable ASCII characters, at least 16 of them distinct. The host mints a fresh one
+ * for each wait from a cryptographic random source (32 random bytes in base64url, for example); the rule refuses a short
+ * or repetitive key, and cannot tell a guessable one. */
+export const validWakeKey=(v:unknown):v is string=>typeof v==='string'&&KEY.test(v)&&new Set(v).size>=16
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&(Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null)
 const invalid=():never=>{throw new WaitRefused('invalid')}
 /** Exactly the required members, and of the optional ones only those named. */
@@ -89,7 +93,18 @@ const integer=(v:unknown,min:number,max:number):number=>Number.isSafeInteger(v)&
 const version=(v:Record<string,unknown>)=>{if(v.version!==1)invalid()}
 const one=<T extends string>(v:unknown,values:readonly T[]):T=>values.includes(v as T)?v as T:invalid()
 const at=(text:string)=>Date.parse(text)
-function question(v:unknown):UserQuestion{try{return readUserQuestion(v)}catch{return invalid()}}
+/** #265 M4: one whitespace set and one case fold in both languages. Blank is only JavaScript's \s and U+0085 (Go:
+ * unicode.IsSpace and U+FEFF); labels are compared trimmed of them, each code point lowercased on its own (U+0130 is i
+ * with U+0307) and final sigma read as sigma. */
+const BLANK=/^[\s\u0085]*$/u,EDGES=/^[\s\u0085]+|[\s\u0085]+$/gu
+const blank=(text:string)=>BLANK.test(text)
+const fold=(text:string)=>[...text.replace(EDGES,'')].map(c=>c.toLowerCase()).join('').replace(/\u03c2/gu,'\u03c3')
+function question(v:unknown):UserQuestion{
+ let prompt:UserQuestion
+ try{prompt=readUserQuestion(v)}catch{return invalid()}
+ if(blank(prompt.title)||blank(prompt.question)||prompt.recommendation!==null&&blank(prompt.recommendation)||prompt.options.some(o=>blank(o.label))||new Set(prompt.options.map(o=>fold(o.label))).size!==prompt.options.length)return invalid()
+ return prompt
+}
 function answer(prompt:UserQuestion|undefined,v:unknown):QuestionDraft{
  const held=shape(v,['selected','text'])
  if(!Array.isArray(held.selected)||held.selected.length>4||held.selected.some(s=>typeof s!=='string'||!/^[a-zA-Z0-9_-]{1,100}$/.test(s))||new Set(held.selected).size!==held.selected.length||typeof held.text!=='string'||held.text.length>4000)return invalid()
@@ -97,7 +112,7 @@ function answer(prompt:UserQuestion|undefined,v:unknown):QuestionDraft{
  return {selected:[...held.selected] as string[],text:held.text}
 }
 /** A real answer: a chosen option or non-blank free text. An empty draft is not an answer. */
-const realAnswer=(draft:QuestionDraft)=>draft.selected.length>0||draft.text.trim().length>0
+const realAnswer=(draft:QuestionDraft)=>draft.selected.length>0||!blank(draft.text)
 
 function readEventCondition(v:unknown):EventCondition{const held=shape(v,['kind','subject']);return {kind:id(held.kind),subject:id(held.subject)}}
 export function readWaitCondition(v:unknown):WaitCondition{
@@ -108,7 +123,8 @@ export function readWaitCondition(v:unknown):WaitCondition{
 function readPending(v:unknown,reason:WaitReason,redacted:boolean):PendingDecision{
  if(!object(v)||v.kind!==reason)return invalid()
  if(reason==='approval'){const held=shape(v,['kind','callId','name','tool']);return {kind:'approval',callId:text(held.callId,1,256),name:text(held.name,1,256),tool:text(held.tool,1,128)}}
- if(reason==='budget'){const held=shape(v,['kind','unit','used','limit']);const limit=integer(held.limit,1,100);return {kind:'budget',unit:one(held.unit,['model-requests','provider-managed'] as const),used:integer(held.used,0,limit),limit}}
+ // #265 M3: a provider-managed allowance takes no grant, so no wait carries one.
+ if(reason==='budget'){const held=shape(v,['kind','unit','used','limit']);const limit=integer(held.limit,1,100);return {kind:'budget',unit:one(held.unit,['model-requests'] as const),used:integer(held.used,0,limit),limit}}
  const held=shape(v,['kind','event','questionDigest'],['question'])
  // A question is carried until the wait is redacted, and never after; its digest is always kept.
  if(redacted===(held.question!==undefined))return invalid()
@@ -176,8 +192,14 @@ export function readRunWait(v:unknown):RunWait{
  else if(state==='expired'){
   // A deadline ends the wait for good: it keeps the wake it was woken with, if any, and is never resumed.
   wait.expired=readDisposition(held.expired)
-  if(wait.expired.kind!=='deadline'||!wait.deadline||at(wait.expired.at)<at(wait.deadline.at)||held.resumed!==undefined)return invalid()
+  if(wait.expired.kind!=='deadline'||!wait.deadline||at(wait.expired.at)<at(wait.deadline.at))return invalid()
   if(held.disposition!==undefined){wait.disposition=readDisposition(held.disposition);if(wait.disposition.kind==='deadline'||at(wait.disposition.at)<at(wait.parked.at)||at(wait.expired.at)<at(wait.disposition.at))return invalid()}
+  // #266 N1: an approved call that did not settle by the approval's expiry ends its resumed wait there; its outcome is
+  // unknown. Only an approval wait, woken and claimed, is expired after its claim.
+  if(held.resumed!==undefined){
+   wait.resumed=readActor(held.resumed)
+   if(wait.reason!=='approval'||!wait.disposition||wait.disposition.kind==='timeout'||wait.deadline.approval===undefined||at(wait.expired.at)<at(wait.deadline.approval)||at(wait.resumed.at)<at(wait.disposition.at)||at(wait.expired.at)<at(wait.resumed.at))return invalid()
+  }
  }else{
   if(held.expired!==undefined)return invalid()
   wait.disposition=readDisposition(held.disposition)
@@ -198,11 +220,11 @@ export function readRunWait(v:unknown):RunWait{
  }else if(held.resolution!==undefined)return invalid()
  // #227: a claimed continuation records the revalidation it was claimed after, for this wait and its pins.
  if(held.revalidation!==undefined){
-  if(state!=='resumed')return invalid()
+  if(!wait.resumed)return invalid()
   wait.revalidation=within(()=>readRevalidation(held.revalidation))
   if(wait.revalidation.resource!==wait.resource||wait.revalidation.wait!==wait.wait||wait.revalidation.pins!==pinsDigest(wait.pins))return invalid()
- }else if(state==='resumed')return invalid()
- if(held.reconciled!==undefined){if(state!=='resumed')return invalid();wait.reconciled=readReleaseList(held.reconciled)}
+ }else if(wait.resumed)return invalid()
+ if(held.reconciled!==undefined){if(!wait.resumed)return invalid();wait.reconciled=readReleaseList(held.reconciled)}
  if(redacted)wait.redacted=true
  return wait
 }
@@ -213,7 +235,7 @@ export function readWakeEvidence(v:unknown):WakeEvidence{
  version(held)
  const kind=one(held.kind,['event','time','timeout','deadline'] as const)
  if((kind==='event')!==(held.event!==undefined)||(held.answer===undefined)!==(held.actor===undefined)||held.answer!==undefined&&kind!=='event')return invalid()
- if(typeof held.key!=='string'||!KEY.test(held.key))return invalid()
+ if(!validWakeKey(held.key))return invalid()
  return {version:1,resource:id(held.resource),wait:id(held.wait),evidence:id(held.evidence),kind,...(held.event===undefined?{}:{event:readEventCondition(held.event)}),...(held.answer===undefined?{}:{answer:answer(undefined,held.answer),actor:id(held.actor)}),key:held.key}
 }
 export function readAttentionEvent(v:unknown):AttentionEvent{
@@ -290,7 +312,7 @@ export const questionDigest=(prompt:UserQuestion)=>`sha256:${sha256(canonicalJSO
 export const answerDigest=(draft:QuestionDraft)=>`sha256:${sha256(canonicalJSON(draft))}`
 /** The evidence's digest, without its key: a duplicate is the same evidence id with this digest. */
 export const wakeEvidenceDigest=(evidence:WakeEvidence)=>{const {key:_,...rest}=readWakeEvidence(evidence);return `sha256:${sha256(canonicalJSON(rest))}`}
-export const wakeKeyDigest=(key:string)=>{if(typeof key!=='string'||!KEY.test(key))return invalid();return `sha256:${sha256(key)}`}
+export const wakeKeyDigest=(key:string)=>{if(!validWakeKey(key))return invalid();return `sha256:${sha256(key)}`}
 export const checkpointBytesDigest=(bytes:Uint8Array)=>`sha256:${sha256(new TextDecoder('utf-8',{fatal:true}).decode(bytes))}`
 /** The one needs_attention event of a committed park. */
 export function attentionFor(wait:RunWait):AttentionEvent{
@@ -302,27 +324,38 @@ export function attentionFor(wait:RunWait):AttentionEvent{
  * revision), the host's reconciliation of each uncertain release, and the revalidation it was claimed after. */
 export interface WaitClaim {resource:string;wait:string;evidence:string;lease:LeaseAcquire;reconciled:ReleaseEvidence[];revalidation:Revalidation}
 /** The wait port a store kind implements beside its lease port. Every transition is atomic with the store's commits and
- * checked against its own clock. Until a wait is resumed it holds its run: the store's acquireLease refuses the run
- * (wait-pending, or closed once a wait ended terminally) and only resumeWait leases it. From a run's deadline every lease
- * of the run expires no later than that deadline, and acquireLease refuses deadline-passed. */
+ * checked against its own clock, and everything it decides by survives the store's restarts: the waits, their attention
+ * events and deliveries, each run's earliest deadline, and an approved call not yet settled with its expiry and binding.
+ * Until a wait is resumed it holds its run: the store's acquireLease refuses the run (wait-pending, or closed once a wait
+ * ended terminally), so does its unfenced commit (#266 M4), and only resumeWait leases it. From a run's deadline every
+ * lease of the run expires no later than that deadline, and acquireLease and an unfenced commit refuse deadline-passed.
+ * The package checks none of this in a host store; runStoreWaitConformance (storage/waitConformance) does. */
 export interface WaitStore {
  readonly waitVersion:1
  /** durable: waits and attention events survive the store's process. process: they end with it (memory test kinds). */
  readonly waitLifetime:WaitLifetime
  /** One transaction: check the fence and the run head (checkpoint-changed), refuse while a wait not yet resumed holds the
   * run (wait-pending; closed after a terminal one), stamp the deadline from the limits, the run's earliest deadline and
-  * the store clock (deadline-passed when it is not after the park), commit the wait and its one needs_attention event,
-  * and release the lease. A repeat of the same park returns it. */
+  * the store clock (deadline-passed when it is not after the park), refuse a wakeKeyDigest any other wait of the store
+  * holds (key-reused), commit the wait and its one needs_attention event, and release the lease. A repeat of the same
+  * park under the same fence returns it; anything else under its wait id is conflict. A refused park changes nothing and
+  * leaves the lease held. */
  parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal):Promise<{wait:RunWait;attention:AttentionEvent}>
- /** The first valid wake wins; a duplicate returns the retained disposition; anything else changes nothing. At or after
-  * the wait's deadline only a deadline wake is accepted, and it ends the wait terminally (expired). */
+ /** The first valid wake wins, decided against the named wait only; a duplicate returns the retained disposition;
+  * anything else changes nothing, and a resumed wait is never woken again. At or after the wait's deadline or the run's
+  * only a deadline wake is accepted, and it ends the wait terminally (expired). A resumed approval wait whose approved
+  * call has not settled is ended by a deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown. */
  wakeWait(evidence:WakeEvidence,signal?:AbortSignal):Promise<WakeDisposition>
  /** One transaction: check the acknowledged wake, the deadline, the head and the release reconciliation, then lease the
-  * run (the only lease a held run is granted) and claim the continuation once. From an approval wait's claim until its
-  * approved call settles, no lease of the run (the claim's, a takeover's or a re-acquired one) is granted, renewed or
-  * held past the approval's expiry, and every checkpoint the run commits must carry exactly the reviewed call. */
+  * run (the only lease a held run is granted) and claim the continuation once; a ceiling of the run not after the store's
+  * time refuses it (deadline-passed). The lease ends no later than the run's deadline and any unsettled approval's
+  * expiry. From an approval wait's claim until its approved call settles, no lease of the run (the claim's, a takeover's
+  * or a re-acquired one) is granted, renewed or held past the approval's expiry, and every checkpoint the run commits,
+  * fenced or not, must carry exactly the reviewed call (approval-changed otherwise); the commit that records the call
+  * executed, refused or answered settles it in the same transaction. resumeParked checks what this returns. */
  resumeWait(claim:WaitClaim,signal?:AbortSignal):Promise<{wait:RunWait;lease:RunLease}>
- /** Sets the run's deadline; the earliest one the store holds wins, and a held lease is shortened to it. */
+ /** Sets the run's deadline; the earliest one the store holds wins, a held lease is shortened to it, and every wait of
+  * the run not yet resumed or ended is stamped again with it (#266 M1). */
  limitRun(limit:RunLimit,signal?:AbortSignal):Promise<RunLimit>
  readWait(resource:string,wait:string,signal?:AbortSignal):Promise<RunWait|undefined>
  /** The run's waits in park order, with their attention events and deliveries: the report's source. */
@@ -350,7 +383,7 @@ export class WaitTable {
  private deliveries=new Map<string,AttentionDelivery[]>()
  /** #225: each run's earliest deadline, and the expiry and binding of an approved call not yet settled. */
  private ceilings=new Map<string,number>()
- private approvals=new Map<string,{at:number;binding:ApprovalBinding}>()
+ private approvals=new Map<string,{at:number;binding:ApprovalBinding;wait:string}>()
  constructor(private readonly clock:()=>Date=()=>new Date()){}
  private now():string{const t=this.clock();const ms=t instanceof Date?t.getTime():NaN;if(!Number.isSafeInteger(ms))return invalid();return new Date(ms).toISOString()}
  private find(resource:string,wait:string):RunWait|undefined{return this.rows.get(resource)?.find(row=>row.wait===wait)}
@@ -374,6 +407,8 @@ export class WaitTable {
   return ['executed','refused','answered'].includes(approval!.state as string)
  }
  settleApproval(resource:string):void{this.approvals.delete(resource)}
+ /** #266 M1: whether the run's deadline the store holds is at or before `now` (equal time is past). */
+ private passed(resource:string,now:string):boolean{const ceiling=this.ceilings.get(resource);return ceiling!==undefined&&at(now)>=ceiling}
  /** #265 M2: a committed park closes the run. Refuses acquiring its lease while a wait not yet resumed holds it, for good
   * once a wait ended terminally, and from the run's deadline. */
  admitAcquire(resource:string):void{
@@ -387,6 +422,13 @@ export class WaitTable {
  limit(input:RunLimit):RunLimit{
   const limit=within(()=>readRunLimit(input)),held=this.ceilings.get(limit.resource),next=Math.min(held??Infinity,at(limit.run))
   this.ceilings.set(limit.resource,next)
+  // #266 M1: a run deadline set after a park reaches the run's waits. Each wait not yet resumed or ended is stamped again
+  // with it, so no wake, answer, decision or claim is accepted from it and its deadline wake is due at it; a deadline
+  // before the park is stamped as the earliest a committed park can carry, a millisecond after it.
+  for(const row of this.rows.get(limit.resource)??[])if(row.state!=='resumed'&&!terminal(row)){
+   const parked=at(row.parked.at)
+   row.deadline=stampDeadline(row.limits,parked,Math.max(next,parked+1))
+  }
   return {version:1,resource:limit.resource,run:new Date(next).toISOString()}
  }
  park(input:WaitPark,fence:LeaseFence,head:{revision:StorageRevision;checkpoint:Uint8Array|null}|undefined,leases:LeaseTable):{wait:RunWait;attention:AttentionEvent}{
@@ -404,6 +446,8 @@ export class WaitTable {
   const rows=this.rows.get(park.resource)??[]
   if(rows.some(terminal))throw new WaitRefused('closed')
   if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')
+  // #265 M1: a wake key belongs to one wait. A park whose key digest any other wait of the store holds is refused.
+  for(const list of this.rows.values())if(list.some(row=>row.wakeKeyDigest===park.wakeKeyDigest))throw new WaitRefused('key-reused')
   if(!head||head.checkpoint===null||head.revision!==park.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==park.checkpoint.digest)throw new WaitRefused('checkpoint-changed')
   const now=this.now()
   // #225: the earliest applicable deadline wins, and this park's run limit never extends the one the store holds.
@@ -429,7 +473,17 @@ export class WaitTable {
     if(row.expired.digest!==digest)throw new WaitRefused('conflict')
     return copy(row.expired)
    }
-   // A resumed wait, or one that already ended, has nothing left for its deadline to end.
+   // #266 N1: an approved call that has not settled by the approval's expiry ends its resumed wait there. Its outcome is
+   // unknown (it may have been performed); nothing dispatches it, and the run is closed for good.
+   const unsettled=row.state==='resumed'?this.approvals.get(row.resource):undefined
+   if(unsettled?.wait===row.wait){
+    const now=this.now()
+    if(at(now)<unsettled.at)throw new WaitRefused('not-due')
+    const expired:WakeDisposition={evidence:evidence.evidence,kind:'deadline',at:now,digest}
+    row.expired=expired;row.state='expired';this.approvals.delete(row.resource)
+    return copy(expired)
+   }
+   // A resumed wait whose call settled, or one that already ended, has nothing left for its deadline to end.
    if(row.state==='resumed'||terminal(row))throw new WaitRefused('stale')
    if(!row.deadline)throw new WaitRefused('mismatch')
    const now=this.now()
@@ -450,7 +504,7 @@ export class WaitTable {
   const now=this.now(),prompt=row.pending.kind==='question'?row.pending.question:undefined
   // #225: late evidence changes nothing. From the deadline only the deadline wake ends the wait; from the timeout only
   // the timeout does: an answer or a decision delivered after either is refused, equal time included.
-  if(row.deadline&&at(now)>=at(row.deadline.at))throw new WaitRefused('deadline-passed')
+  if(row.deadline&&at(now)>=at(row.deadline.at)||this.passed(row.resource,now))throw new WaitRefused('deadline-passed')
   if(evidence.kind!=='timeout'&&row.timeoutAt!==undefined&&at(now)>=at(row.timeoutAt))throw new WaitRefused('timed-out')
   if(evidence.kind==='event'){
    const expected=row.condition.event
@@ -469,7 +523,7 @@ export class WaitTable {
   return copy(disposition)
  }
  resume(input:WaitClaim,head:{revision:StorageRevision;checkpoint:Uint8Array|null}|undefined,leases:LeaseTable):{wait:RunWait;lease:RunLease}{
-  const claim=readClaim(input),row=this.find(claim.resource,claim.wait),settled=claim.reconciled
+  const claim=readClaim(input),row=this.find(claim.resource,claim.wait),settled=claim.reconciled,now=this.now()
   if(!row)throw new WaitRefused('no-wait')
   // An acknowledgement the store does not hold is reconciled by reading, never by dispatching the continuation.
   if(!row.disposition||row.disposition.evidence!==claim.evidence)throw new WaitRefused('unacknowledged')
@@ -477,19 +531,22 @@ export class WaitTable {
   if(claim.lease.resource!==row.resource)throw new LeaseRefused('resource-mismatch')
   if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')
   // #225: nothing continues past the wait's deadline, an approval's expiry or the run's deadline; equal time is past.
-  if(row.state==='expired'||row.deadline&&at(this.now())>=at(row.deadline.at))throw new WaitRefused('deadline-passed')
+  if(row.state==='expired'||row.deadline&&at(now)>=at(row.deadline.at))throw new WaitRefused('deadline-passed')
   if(!head||head.checkpoint===null||head.revision!==row.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==row.checkpoint.digest)throw new WaitRefused('checkpoint-changed')
   const uncertain=row.release.filter(r=>r.outcome==='uncertain').map(r=>r.resource)
   if(uncertain.some(r=>!settled.some(s=>s.resource===r&&s.outcome!=='uncertain'))||settled.some(s=>!uncertain.includes(s.resource)))throw new WaitRefused('release-uncertain')
   // #227: the claim records the revalidation of this wait's own pins.
   if(claim.revalidation.resource!==row.resource||claim.revalidation.wait!==row.wait||claim.revalidation.pins!==pinsDigest(row.pins))throw new WaitRefused('invalid')
-  // #265 M2: the claim is the one lease a held run is granted, taken in this transaction. An approval's expiry bounds it,
-  // and every later lease of the run, until the approved call settles (#266 H1).
+  // #265 M2: the claim is the one lease a held run is granted, taken in this transaction. Every ceiling of the run bounds
+  // it (#266 N2: an earlier approval not yet settled too), and so does this wait's own approval, which then bounds every
+  // later lease of the run until the approved call settles (#266 H1). A ceiling not after the store's time refuses it.
   const approval=row.reason==='approval'&&row.deadline?.approval!==undefined?at(row.deadline.approval):undefined
-  const ceiling=[this.ceilings.get(row.resource),approval].filter((t):t is number=>t!==undefined)
-  const lease=leases.acquire(claim.lease,head.revision,ceiling.length?Math.min(...ceiling):undefined)
-  if(approval!==undefined)this.approvals.set(row.resource,{at:approval,binding:copy(row.approval!)})
-  row.state='resumed';row.resumed={owner:lease.owner,epoch:lease.epoch,at:this.now()};row.revalidation=copy(claim.revalidation)
+  const ceiling=[this.ceiling(row.resource),approval].filter((t):t is number=>t!==undefined)
+  const limit=ceiling.length?Math.min(...ceiling):undefined
+  if(limit!==undefined&&limit<=at(now))throw new WaitRefused('deadline-passed')
+  const lease=leases.acquire(claim.lease,head.revision,limit)
+  if(approval!==undefined)this.approvals.set(row.resource,{at:approval,binding:copy(row.approval!),wait:row.wait})
+  row.state='resumed';row.resumed={owner:lease.owner,epoch:lease.epoch,at:now};row.revalidation=copy(claim.revalidation)
   if(settled.length)row.reconciled=settled
   return {wait:copy(row),lease}
  }
@@ -576,7 +633,10 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
  if(checkpoint.status==='paused'){
   if(input.question!==undefined)return invalid()
   const asked=checkpoint.approval?.state==='asked'?checkpoint.approval:undefined
-  pending=asked?{kind:'approval',callId:asked.callId,name:asked.name,tool:asked.tool}:{kind:'budget',unit:checkpoint.unit,used:checkpoint.used,limit:checkpoint.limit}
+  // #265 M3, #266 M5: a pause no package input can resume is never parked, so it never closes its run. A plan decision
+  // is no grant, and a provider-managed allowance takes none (extendExecution).
+  if(!asked&&(checkpoint.planState?.pending!==undefined||checkpoint.unit!=='model-requests'))throw new WaitRefused('not-resumable')
+  pending=asked?{kind:'approval',callId:asked.callId,name:asked.name,tool:asked.tool}:{kind:'budget',unit:'model-requests',used:checkpoint.used,limit:checkpoint.limit}
   // #225: an unattended approval never waits indefinitely; it is bound to the exact call the person reviews.
   if(asked){if(limits?.approvalTtlMs===undefined)throw new WaitRefused('approval-ttl-required');approval=within(()=>approvalBinding(asked))}
  }else{
@@ -626,7 +686,8 @@ function decisionFor(wait:RunWait,input:ResumeInput):{approval?:ApprovalDecision
  if(wait.reason==='budget'){
   if(input.approval!==undefined)throw new WaitRefused('decision-required')
   const grant=input.grant,pending=wait.pending as {limit:number;unit:string}
-  if(!object(grant)||pending.unit!=='model-requests'||grant.from!==pending.limit||!Number.isSafeInteger(grant.to)||grant.to<=grant.from||grant.to>100||typeof grant.at!=='string'||!Number.isFinite(Date.parse(grant.at))||Object.keys(grant).some(k=>!['from','to','at'].includes(k)))throw new WaitRefused('decision-required')
+  // #265 M4: the grant is dated by a store-clock time, the form both writers produce, in both languages.
+  if(!object(grant)||pending.unit!=='model-requests'||grant.from!==pending.limit||!Number.isSafeInteger(grant.to)||grant.to<=grant.from||grant.to>100||!validWaitTime(grant.at)||Object.keys(grant).some(k=>!['from','to','at'].includes(k)))throw new WaitRefused('decision-required')
   return {grant:{from:grant.from,to:grant.to,at:grant.at}}
  }
  // A question's continuation is its resolution; an approval or a grant is not a question's to take.
@@ -638,9 +699,12 @@ function decisionFor(wait:RunWait,input:ResumeInput):{approval?:ApprovalDecision
  * claim the continuation once, in one transaction. The host then continues the run through the fenced store with the
  * returned decision; nothing is dispatched before that claim. */
 export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
- const store=waitStoreOf(input.store)
- const wait=await store.readWait(id(input.resource),id(input.wait),input.signal)
- if(!wait)throw new WaitRefused('no-wait')
+ const store=waitStoreOf(input.store),resource=id(input.resource),waitId=id(input.wait)
+ const held=await store.readWait(resource,waitId,input.signal)
+ if(!held)throw new WaitRefused('no-wait')
+ // #265 M6: the store's record is read through the reader, and it must be the wait asked for.
+ const wait=readRunWait(copy(held))
+ if(wait.resource!==resource||wait.wait!==waitId)return invalid()
  if(!wait.disposition||wait.disposition.evidence!==input.evidence)throw new WaitRefused('unacknowledged')
  if(wait.state==='resumed')throw new WaitRefused('already-resumed')
  if(wait.state==='timed-out'&&wait.reason!=='question')throw new WaitRefused('timed-out')
@@ -655,9 +719,23 @@ export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
  if(input.current===undefined)throw new ResumeRefused('evidence-missing')
  const revalidation=revalidateResume(wait,input.current)
  const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs}
- const claimed=await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation},input.signal)
+ const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation},input.signal),wait,lease,revalidation)
  const fence={version:1 as const,resource:claimed.lease.resource,owner:claimed.lease.owner,epoch:claimed.lease.epoch}
  return {lease:claimed.lease,fence,wait:claimed.wait,revalidation:copy(claimed.wait.revalidation!),...decision,...(claimed.wait.resolution?{resolution:copy(claimed.wait.resolution)}:{})}
+}
+/** #266 M6: the store's claim is checked before its fence is handed out. It must be this wait, resumed by the lease it
+ * returns, with the revalidation it was given, and that lease must be held by the claimer for this run and end no later
+ * than the run's deadline and an approval's expiry the wait records. A store that answers otherwise is refused invalid:
+ * nothing of the continuation is handed to the host. */
+function readClaimed(value:unknown,wait:RunWait,request:LeaseAcquire,revalidation:Revalidation):{wait:RunWait;lease:RunLease}{
+ if(!object(value))return invalid()
+ const held=readRunWait(copy(value.wait))
+ let lease:RunLease
+ try{lease=readRunLease(copy(value.lease))}catch{return invalid()}
+ const expiry=at(lease.expiry),bound=[held.deadline?.run,held.reason==='approval'?held.deadline?.approval:undefined].filter((t):t is string=>t!==undefined)
+ if(held.resource!==wait.resource||held.wait!==wait.wait||held.state!=='resumed'||held.resumed?.owner!==lease.owner||held.resumed.epoch!==lease.epoch||canonicalJSON(held.revalidation)!==canonicalJSON(revalidation)||canonicalJSON(held.checkpoint)!==canonicalJSON(wait.checkpoint)
+  ||lease.resource!==wait.resource||lease.owner!==request.owner||lease.state!=='held'||held.reason==='approval'&&held.deadline?.approval===undefined||bound.some(t=>expiry>at(t)))return invalid()
+ return {wait:held,lease}
 }
 
 /** The park/wake report of one run, read from its retained waits (exportWaits), never from a prompt. Content whose wait
@@ -678,11 +756,13 @@ export function reportFromExport(source:WaitExport,now?:Date):WaitReport{
    if(wait.resolution.kind==='answered')entries.push({wait:wait.wait,decision:'answer',reason:wait.reason,at:wait.resolution.at,actor:wait.resolution.actor!,content:content({answer:wait.resolution.answer},wait.resolution.answerDigest!)})
    else entries.push({wait:wait.wait,decision:'unanswered',reason:wait.reason,at:wait.resolution.at,content:content({question:pending.question},pending.questionDigest)})
   }
-  // #225: a deadline that ended the wait is reported after what woke it, and before the unanswered end it caused.
+  // #225: a deadline that ended the wait is reported after what woke it, and before the unanswered end it caused; #266
+  // N1: one that ended an unsettled approved call after its claim is reported after the resume.
+  const deadline=()=>{if(wait.expired)entries.push({wait:wait.wait,decision:'deadline',reason:wait.reason,at:wait.expired.at,evidence:wait.expired.evidence,wake:'deadline'})}
   if(wait.disposition)resolution()
-  if(wait.expired)entries.push({wait:wait.wait,decision:'deadline',reason:wait.reason,at:wait.expired.at,evidence:wait.expired.evidence,wake:'deadline'})
+  if(!wait.resumed)deadline()
   if(!wait.disposition)resolution()
-  if(wait.resumed)entries.push({wait:wait.wait,decision:'resume',reason:wait.reason,at:wait.resumed.at,owner:wait.resumed.owner,epoch:wait.resumed.epoch})
+  if(wait.resumed){entries.push({wait:wait.wait,decision:'resume',reason:wait.reason,at:wait.resumed.at,owner:wait.resumed.owner,epoch:wait.resumed.epoch});deadline()}
  }
  return readWaitReport({version:1,resource:held.resource,entries})
 }

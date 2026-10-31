@@ -245,16 +245,21 @@ reference host or one certified by `CertifyEffectHost`), and `CheckRunStoreLease
 checkpoint or event log; the wait and its one `needs_attention` event committed and the lease
 released in one transaction), `WakeRun` (authenticated, run-bound evidence; the first valid wake
 wins), `ResumeParked` (the person's decision, a new lease against the parked revision, one claim),
-`ExportWaits`, `ReportFromExport` and `WaitReportOf`, and the readers of every record. Go has no
-ChatStore: a chat-bound wait is refused as `chat-store-unsupported`. See `docs/design/storage.md`.
+`ExportWaits`, `ReportFromExport` and `WaitReportOf`, and the readers of every record. Each wait has
+its own wake key (`ValidWakeKey`; a reused key digest is `key-reused`), and a pause nothing can resume
+is `not-resumable` (#265). `CheckRunStoreWaitConformance` certifies a host store kind's wait port,
+across restarts of the store (#265 M6). Go has no ChatStore: a chat-bound wait is refused as
+`chat-store-unsupported`. See `docs/design/storage.md`.
 
 ### Deadlines, approval expiry and resume revalidation (#225, #227)
 
 `context/run_resume.go` is the Go twin of `storage/resume.ts`: `LimitRun` (a run's deadline; no lease
 of the run past it), the deadline a park stamps (`StampDeadline`), `PinsFrom` and `ApprovalBindingOf`
 (read from the retained checkpoint), `RevalidateResume` and the readers of every `run-resume.json`
-record. `MemoryRunStore.AcquireLease` refuses a run a wait holds (#265 M2), and `ResumeWait` takes the
-claim's lease in the claim's own transaction; `ParkInput` takes the host's `Model` and `Limits`, and
+record. `MemoryRunStore.AcquireLease` and its unfenced `Commit` refuse a run a wait holds (#265 M2,
+#266 M4), `LimitRun` stamps the waits already parked again (#266 M1), a call not settled by its
+approval's expiry is ended there by the deadline wake (#266 N1), and `ResumeWait` takes the claim's
+lease in the claim's own transaction, which `ResumeParked` reads back through the readers (#266 M6); `ParkInput` takes the host's `Model` and `Limits`, and
 `ResumeInput` the host's `Current` evidence. See `docs/design/storage.md`.
 
 ### Proposal edit host binding

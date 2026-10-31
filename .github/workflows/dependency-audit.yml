@@ -27,7 +27,10 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
-      - name: Check audit reporting and query the registry
+      # The live advisory query, fresh on every pull request, weekly and on demand. The offline test
+      # of the audit's reporting (`dependency-audit`) is a step of the CI `check` job, which runs it
+      # where jpdev.json maps a change to it and on main: it is not run a second time here.
+      - name: Query the registry
         env:
           DEPENDENCY_AUDIT_LIVE: '1'
-        run: scripts/dev/check.sh --only dependency-audit,dependency-audit-live
+        run: scripts/dev/check.sh --only dependency-audit-live

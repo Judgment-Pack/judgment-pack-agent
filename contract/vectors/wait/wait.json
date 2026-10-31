@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten version 1 waits: an approval wait parked on an event or a wake time with a timeout, a run deadline, an approval TTL and a chat binding; a budget wait woken by its wake time; a question woken by a real answer; a question that timed out unanswered with uncertain release; a redacted question resumed after its uncertain release was reconciled and after a new policy layer; a provider-managed budget wait with a wait limit; an approval woken by a decision a millisecond before its expiry and then ended by its deadline; a question its run deadline ended unwoken, unanswered; an approval resumed under an admitted model and an admitted artifact revision. Every wait pins its execution authority; an approval wait carries its binding and expires. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state and fail both readers.",
+  "description": "Handwritten version 1 waits: an approval wait parked on an event or a wake time with a timeout, a run deadline, an approval TTL and a chat binding; a budget wait woken by its wake time; a question woken by a real answer; a question that timed out unanswered with uncertain release; a redacted question resumed after its uncertain release was reconciled and after a new policy layer; an approval woken by a decision a millisecond before its expiry and then ended by its deadline; a question its run deadline ended unwoken, unanswered; an approval resumed under an admitted model and an admitted artifact revision; an approval whose approved call did not settle by its expiry, ended after its claim (#266 N1). Each wait has its own wake key (#265 M1). Every wait pins its execution authority; an approval wait carries its binding and expires. refused fail the schema and both readers; readerRefused hold the rules the schema cannot state and fail both readers. readerRefused also pins one whitespace set and one case fold (#265 M4): blank is only JavaScript's \\s and U+0085, and labels are compared trimmed, each code point lowercased alone, final sigma as sigma.",
   "schema": "run-wait.json",
   "items": [
     {
@@ -59,7 +59,7 @@
         "id": "chat-approval",
         "revision": "chat-rev-3"
       },
-      "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+      "wakeKeyDigest": "sha256:1e5545432fe2661182146190c72cd0c4aad300ab460f75d1824a262acee28e82",
       "release": [
         {
           "resource": "provider-account",
@@ -107,7 +107,7 @@
         "sources": [],
         "artifacts": []
       },
-      "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
+      "wakeKeyDigest": "sha256:a270dd44834528acff96369b6b9ba8d6ed7ae26235b9396a8047f439750665eb",
       "release": [],
       "parked": {
         "owner": "worker-b",
@@ -198,7 +198,7 @@
           }
         ]
       },
-      "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+      "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
       "release": [
         {
           "resource": "agent-invocation",
@@ -270,7 +270,7 @@
         "sources": [],
         "artifacts": []
       },
-      "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
+      "wakeKeyDigest": "sha256:38a8a04f43468b1c829d9ae1396a10ce97db46a096c95e09d4ddbf358e16b52a",
       "release": [
         {
           "resource": "provider-account",
@@ -325,7 +325,7 @@
         "sources": [],
         "artifacts": []
       },
-      "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+      "wakeKeyDigest": "sha256:fa47ba1cf7d14f12b8aaaf8ebab1654efa4614cbbb45dd6e3f6e887bf2c2887f",
       "release": [
         {
           "resource": "provider-account",
@@ -382,60 +382,6 @@
     },
     {
       "version": 1,
-      "resource": "run-codex",
-      "wait": "wait-9",
-      "reason": "budget",
-      "pending": {
-        "kind": "budget",
-        "unit": "provider-managed",
-        "used": 1,
-        "limit": 1
-      },
-      "condition": {
-        "event": {
-          "kind": "budget-grant",
-          "subject": "run-codex"
-        }
-      },
-      "limits": {
-        "waitMs": 604800000
-      },
-      "deadline": {
-        "at": "2026-01-08T00:00:00.000Z",
-        "by": "wait",
-        "wait": "2026-01-08T00:00:00.000Z"
-      },
-      "continuation": "continue-codex-9",
-      "checkpoint": {
-        "revision": "rev-1",
-        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-      },
-      "pins": {
-        "model": {
-          "provider": "openai",
-          "model": "model-a"
-        },
-        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-        "sources": [],
-        "artifacts": []
-      },
-      "wakeKeyDigest": "sha256:1939a71a6d1ff20a1d95f364553a75a876bc23ac2794540b7bba731dfee07206",
-      "release": [
-        {
-          "resource": "provider-account",
-          "outcome": "released"
-        }
-      ],
-      "parked": {
-        "owner": "worker-d",
-        "epoch": "1",
-        "at": "2026-01-01T00:00:00.000Z"
-      },
-      "attention": "sha256:30f7e43c3fc60af9bc02621f8a73230dfbd6b394bc900edb04b9b930c74628d4",
-      "state": "parked"
-    },
-    {
-      "version": 1,
       "resource": "run-late",
       "wait": "wait-1",
       "reason": "approval",
@@ -484,7 +430,7 @@
         ],
         "artifacts": []
       },
-      "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+      "wakeKeyDigest": "sha256:5be178ac5bb62247d0cb6bff69196159982d6cac917fac3c9296e85da49dc70b",
       "release": [
         {
           "resource": "provider-account",
@@ -559,7 +505,7 @@
         "sources": [],
         "artifacts": []
       },
-      "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+      "wakeKeyDigest": "sha256:03f7fda79f823a7cbae754116f3258ad6b9bd9d01af1ae242390126d5d1e969f",
       "release": [],
       "parked": {
         "owner": "worker-c",
@@ -637,7 +583,7 @@
           }
         ]
       },
-      "wakeKeyDigest": "sha256:f16ef9f4e42d7dda211e2e046d9da7e95aaca8a02c498d877c56ff04e69bf8b1",
+      "wakeKeyDigest": "sha256:314efcbef64f5b1c339f33e7697ad84f1b7aa8f1ff8fd201c59762587535ae9d",
       "release": [],
       "parked": {
         "owner": "worker-a",
@@ -681,6 +627,96 @@
             "at": "2026-01-01T02:59:00.000Z"
           }
         ]
+      }
+    },
+    {
+      "version": 1,
+      "resource": "run-unsettled",
+      "wait": "wait-1",
+      "reason": "approval",
+      "pending": {
+        "kind": "approval",
+        "callId": "call-12",
+        "name": "ledger__post_entry",
+        "tool": "post_entry"
+      },
+      "condition": {
+        "event": {
+          "kind": "approval-decision",
+          "subject": "call-12"
+        }
+      },
+      "limits": {
+        "approvalTtlMs": 3600000
+      },
+      "deadline": {
+        "at": "2026-01-01T01:00:00.000Z",
+        "by": "approval",
+        "approval": "2026-01-01T01:00:00.000Z"
+      },
+      "approval": {
+        "callId": "call-12",
+        "callDigest": "sha256:0076193b2d19a86cdfd18fe4daa10b8caa21a01d72416be5ac1d1696f41e37a6",
+        "source": "ledger"
+      },
+      "continuation": "continue-unsettled-1",
+      "checkpoint": {
+        "revision": "rev-50",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "pins": {
+        "model": {
+          "provider": "anthropic",
+          "model": "model-b"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [
+          {
+            "source": "ledger",
+            "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+          }
+        ],
+        "artifacts": []
+      },
+      "wakeKeyDigest": "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9",
+      "release": [
+        {
+          "resource": "provider-account",
+          "outcome": "released"
+        }
+      ],
+      "parked": {
+        "owner": "worker-a",
+        "epoch": "2",
+        "at": "2026-01-01T00:00:00.000Z"
+      },
+      "attention": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+      "state": "expired",
+      "disposition": {
+        "evidence": "decision-unsettled-1",
+        "kind": "event",
+        "at": "2026-01-01T00:10:00.000Z",
+        "digest": "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a"
+      },
+      "expired": {
+        "evidence": "deadline-unsettled-1",
+        "kind": "deadline",
+        "at": "2026-01-01T01:00:00.000Z",
+        "digest": "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+      },
+      "resumed": {
+        "owner": "worker-b",
+        "epoch": "3",
+        "at": "2026-01-01T00:10:01.000Z"
+      },
+      "revalidation": {
+        "version": 1,
+        "resource": "run-unsettled",
+        "wait": "wait-1",
+        "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+        "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "changes": []
       }
     }
   ],
@@ -1824,6 +1860,174 @@
           "wait": "wait-2",
           "pins": "sha256:c2ca87e587d44a2cf3d6cb228e72006500e012d119656b734d03d6836454576f",
           "evidence": "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4"
+        }
+      }
+    },
+    {
+      "problem": "a budget wait waits for a grant, and a provider-managed allowance takes none",
+      "record": {
+        "version": 1,
+        "resource": "run-codex",
+        "wait": "wait-9",
+        "reason": "budget",
+        "pending": {
+          "kind": "budget",
+          "unit": "provider-managed",
+          "used": 1,
+          "limit": 1
+        },
+        "condition": {
+          "event": {
+            "kind": "budget-grant",
+            "subject": "run-codex"
+          }
+        },
+        "limits": {
+          "waitMs": 604800000
+        },
+        "deadline": {
+          "at": "2026-01-08T00:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-08T00:00:00.000Z"
+        },
+        "continuation": "continue-codex-9",
+        "checkpoint": {
+          "revision": "rev-1",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:9ea4ade1764b85eca1fd2b6ca14377d0154aaef1eff905cb47548b30194a3a2f",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-d",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:30f7e43c3fc60af9bc02621f8a73230dfbd6b394bc900edb04b9b930c74628d4",
+        "state": "parked"
+      }
+    },
+    {
+      "problem": "a title of only U+0085 is blank",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:56d5ae0fc4a49166a6bad93e1f53d80d0330ddea53ad5a1e3b8311f0b3e1aaab",
+          "question": {
+            "title": "",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Head of operations",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "Risk or compliance lead",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
         }
       }
     }
@@ -3758,7 +3962,7 @@
         "reason": "budget",
         "pending": {
           "kind": "budget",
-          "unit": "provider-managed",
+          "unit": "model-requests",
           "used": 1,
           "limit": 1
         },
@@ -4807,6 +5011,1250 @@
           ]
         },
         "wakeKeyDigest": "sha256:f9dd2b1feb1868b03b3ec7e328dd72ccdccf640d45c8139b35e3536d373ba8a2",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "an approved call is ended after its claim only at the approval's expiry",
+      "record": {
+        "version": 1,
+        "resource": "run-unsettled",
+        "wait": "wait-1",
+        "reason": "approval",
+        "pending": {
+          "kind": "approval",
+          "callId": "call-12",
+          "name": "ledger__post_entry",
+          "tool": "post_entry"
+        },
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-12"
+          }
+        },
+        "limits": {
+          "run": "2026-01-01T00:30:00.000Z",
+          "approvalTtlMs": 3600000
+        },
+        "deadline": {
+          "at": "2026-01-01T00:30:00.000Z",
+          "by": "run",
+          "run": "2026-01-01T00:30:00.000Z",
+          "approval": "2026-01-01T01:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-12",
+          "callDigest": "sha256:0076193b2d19a86cdfd18fe4daa10b8caa21a01d72416be5ac1d1696f41e37a6",
+          "source": "ledger"
+        },
+        "continuation": "continue-unsettled-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "anthropic",
+            "model": "model-b"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "ledger",
+              "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "2",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+        "state": "expired",
+        "disposition": {
+          "evidence": "decision-unsettled-1",
+          "kind": "event",
+          "at": "2026-01-01T00:10:00.000Z",
+          "digest": "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a"
+        },
+        "expired": {
+          "evidence": "deadline-unsettled-1",
+          "kind": "deadline",
+          "at": "2026-01-01T00:45:00.000Z",
+          "digest": "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "3",
+          "at": "2026-01-01T00:10:01.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-unsettled",
+          "wait": "wait-1",
+          "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+          "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "changes": []
+        }
+      }
+    },
+    {
+      "problem": "only an approval wait is ended after its claim",
+      "record": {
+        "version": 1,
+        "resource": "run-unsettled",
+        "wait": "wait-1",
+        "reason": "budget",
+        "pending": {
+          "kind": "budget",
+          "unit": "model-requests",
+          "used": 20,
+          "limit": 20
+        },
+        "condition": {
+          "wakeAt": "2026-01-01T00:10:00.000Z"
+        },
+        "limits": {
+          "waitMs": 3600000
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "wait",
+          "wait": "2026-01-01T01:00:00.000Z"
+        },
+        "continuation": "continue-unsettled-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "anthropic",
+            "model": "model-b"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "ledger",
+              "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "2",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+        "state": "expired",
+        "disposition": {
+          "evidence": "decision-unsettled-1",
+          "kind": "time",
+          "at": "2026-01-01T00:10:00.000Z",
+          "digest": "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a"
+        },
+        "expired": {
+          "evidence": "deadline-unsettled-1",
+          "kind": "deadline",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "3",
+          "at": "2026-01-01T00:10:01.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-unsettled",
+          "wait": "wait-1",
+          "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+          "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "changes": []
+        }
+      }
+    },
+    {
+      "problem": "a claim comes before the expiry that ended it",
+      "record": {
+        "version": 1,
+        "resource": "run-unsettled",
+        "wait": "wait-1",
+        "reason": "approval",
+        "pending": {
+          "kind": "approval",
+          "callId": "call-12",
+          "name": "ledger__post_entry",
+          "tool": "post_entry"
+        },
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-12"
+          }
+        },
+        "limits": {
+          "approvalTtlMs": 3600000
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "approval",
+          "approval": "2026-01-01T01:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-12",
+          "callDigest": "sha256:0076193b2d19a86cdfd18fe4daa10b8caa21a01d72416be5ac1d1696f41e37a6",
+          "source": "ledger"
+        },
+        "continuation": "continue-unsettled-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "anthropic",
+            "model": "model-b"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "ledger",
+              "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "2",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+        "state": "expired",
+        "disposition": {
+          "evidence": "decision-unsettled-1",
+          "kind": "event",
+          "at": "2026-01-01T00:10:00.000Z",
+          "digest": "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a"
+        },
+        "expired": {
+          "evidence": "deadline-unsettled-1",
+          "kind": "deadline",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "3",
+          "at": "2026-01-01T01:00:00.001Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-unsettled",
+          "wait": "wait-1",
+          "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+          "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "changes": []
+        }
+      }
+    },
+    {
+      "problem": "an expired claim keeps the wake it was claimed after",
+      "record": {
+        "version": 1,
+        "resource": "run-unsettled",
+        "wait": "wait-1",
+        "reason": "approval",
+        "pending": {
+          "kind": "approval",
+          "callId": "call-12",
+          "name": "ledger__post_entry",
+          "tool": "post_entry"
+        },
+        "condition": {
+          "event": {
+            "kind": "approval-decision",
+            "subject": "call-12"
+          }
+        },
+        "limits": {
+          "approvalTtlMs": 3600000
+        },
+        "deadline": {
+          "at": "2026-01-01T01:00:00.000Z",
+          "by": "approval",
+          "approval": "2026-01-01T01:00:00.000Z"
+        },
+        "approval": {
+          "callId": "call-12",
+          "callDigest": "sha256:0076193b2d19a86cdfd18fe4daa10b8caa21a01d72416be5ac1d1696f41e37a6",
+          "source": "ledger"
+        },
+        "continuation": "continue-unsettled-1",
+        "checkpoint": {
+          "revision": "rev-50",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "anthropic",
+            "model": "model-b"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [
+            {
+              "source": "ledger",
+              "identityDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "descriptorDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+            }
+          ],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:9013e07a5cd149371fca7b541b18fd82276286748bfb55d61f99c48c1e30a4d9",
+        "release": [
+          {
+            "resource": "provider-account",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "2",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:7fdfa7f5f63a39966cba2dadd01fbd815a1dbd1dc3405d71af4c1eccc8fb7bfa",
+        "state": "expired",
+        "expired": {
+          "evidence": "deadline-unsettled-1",
+          "kind": "deadline",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+        },
+        "resumed": {
+          "owner": "worker-b",
+          "epoch": "3",
+          "at": "2026-01-01T00:10:01.000Z"
+        },
+        "revalidation": {
+          "version": 1,
+          "resource": "run-unsettled",
+          "wait": "wait-1",
+          "pins": "sha256:5e156ea44d405b805a27bf4225de5db0986ca7609c6dd9bc552e437699af5930",
+          "evidence": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "changes": []
+        }
+      }
+    },
+    {
+      "problem": "free text of only U+FEFF is no answer",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:19573f0eca7fb773c4fb8e1e276623871734efe845409fcd3e455d9a85e49e27",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Head of operations",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "Risk or compliance lead",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:2968670aa70d31f827b0276f70171141a4aa23b7b1ac68269222148ad22247ca",
+          "answer": {
+            "selected": [],
+            "text": "﻿"
+          }
+        }
+      }
+    },
+    {
+      "problem": "free text of only U+0085 is no answer",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:19573f0eca7fb773c4fb8e1e276623871734efe845409fcd3e455d9a85e49e27",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Head of operations",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "Risk or compliance lead",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:448c9d8ef2cd02f81f3d9fcdee47506c0b2fa311f31dd4d01e796fb874a33aac",
+          "answer": {
+            "selected": [],
+            "text": " 　"
+          }
+        }
+      }
+    },
+    {
+      "problem": "a title of only U+FEFF is blank",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:5bce5f1645c24b0bdbf941ac182b775dc3aa44994452635a39735f7777df3ace",
+          "question": {
+            "title": "﻿",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Head of operations",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "Risk or compliance lead",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "a recommendation of only U+0085 and U+FEFF is blank",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:fc888a6df11338e0adcad92fd15e21a6a29c0598b7606fc26c46e6279093e2c9",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Head of operations",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "Risk or compliance lead",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": " ﻿"
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "labels İ and i̇ fold alike",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:0ab7ddd03627fb3dee1f5949f1d570f0351d188406acdb3d597e586e9f0165c1",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "İ",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "i̇",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "labels that differ by final sigma fold alike",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:82b6c0fa4570ca2876e7b0cbece897ddf6c9ba4c8b905e3197e33df7dab753f0",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "ΑΣ",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "ας",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "labels that differ by a sigma's form anywhere fold alike",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:c3615802832e9d55a0318c24cee252f80e293d060739d8fb1d96f0df19157f2b",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "σα",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "ςα",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
+        "release": [
+          {
+            "resource": "agent-invocation",
+            "outcome": "released"
+          }
+        ],
+        "parked": {
+          "owner": "worker-c",
+          "epoch": "999999999999999999",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:a0b5b4d3949b816f3a9dc155c7d0bce3f3d42ac64f925bec9ee8890d82e1098b",
+        "state": "woken",
+        "disposition": {
+          "evidence": "answer-form-9",
+          "kind": "event",
+          "at": "2026-01-01T01:30:00.250Z",
+          "digest": "sha256:2123f47a9de83c3bee70b0aa48a47ec251b8e5c1465fdae1955e92f17ac614a4"
+        },
+        "resolution": {
+          "kind": "answered",
+          "at": "2026-01-01T01:30:00.250Z",
+          "actor": "person-reviewer",
+          "answerDigest": "sha256:441764d13f930c340865b3cbf9a4770caac2a056231e791941beb7f2cba1f6b1",
+          "answer": {
+            "selected": [
+              "risk"
+            ],
+            "text": ""
+          }
+        }
+      }
+    },
+    {
+      "problem": "labels that differ by U+0085 at an edge fold alike",
+      "record": {
+        "version": 1,
+        "resource": "run-question",
+        "wait": "wait-2",
+        "reason": "question",
+        "pending": {
+          "kind": "question",
+          "event": "question-event-4",
+          "questionDigest": "sha256:a30efa7450e1ec63925c16f19e43eaa5794ab0fa1d45ea413c71f618f66ea017",
+          "question": {
+            "title": "Buyer",
+            "question": "Who should we focus on as the first buyer?",
+            "selection": "single",
+            "options": [
+              {
+                "id": "operations",
+                "label": "Risk",
+                "description": "Owns recurring exception approvals."
+              },
+              {
+                "id": "risk",
+                "label": "risk",
+                "description": "Owns oversight and decision records."
+              }
+            ],
+            "recommendedOptionId": "operations",
+            "recommendation": "A starting hypothesis for recurring exception approvals."
+          }
+        },
+        "condition": {
+          "event": {
+            "kind": "question-answer",
+            "subject": "question-event-4"
+          }
+        },
+        "timeoutAt": "2026-01-03T00:00:00.000Z",
+        "continuation": "continue-question-2",
+        "checkpoint": {
+          "revision": "rev-30",
+          "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8",
+          "plan": {
+            "revision": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "accepted": "plan-rev-2"
+          },
+          "sources": [
+            {
+              "source": "gateway",
+              "identityDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "descriptorDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            },
+            {
+              "source": "tracker",
+              "identityDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+            }
+          ],
+          "artifacts": [
+            {
+              "kind": "artifact",
+              "id": "report.md",
+              "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+            },
+            {
+              "kind": "dialect",
+              "id": "tax-rules",
+              "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+            }
+          ]
+        },
+        "wakeKeyDigest": "sha256:65f95a77c38856d8af6cabb392b64be01479e7ad0084b4560683a69f38edcb4c",
         "release": [
           {
             "resource": "agent-invocation",

@@ -128,7 +128,7 @@ it; the rest follow in later releases.
 `scripts/dev/check.sh` runs every check CI runs, in order, and prints one summary block of passes,
 failures and skips; `--setup` runs the install steps first, `--only NAME` re-runs one check. The
 checks are listed in [`dev.json`](dev.json), the manifest of the Judgment Pack devkit
-(v0.1.0), whose runner is vendored here unchanged. `AGENTS.md` and `CLAUDE.md` carry the same
+(v0.13.0), whose runner is vendored here unchanged. `AGENTS.md` and `CLAUDE.md` carry the same
 instructions for agent sessions, shared rules first and this repository's own after them; CI checks
 the two are identical (`scripts/sync-agent-docs.sh` writes `CLAUDE.md` from `AGENTS.md`). The parity
 step needs a checkout of the Desk named by `JPDEV_DESK`, at the commit `scripts/parity.sh` pins.

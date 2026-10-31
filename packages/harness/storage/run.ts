@@ -9,7 +9,10 @@ import type {RunLimit} from './resume'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
  runId:string;expectedRevision:StorageRevision|null;commitId:string
- /** Exact canonical record bytes, already validated/guarded by the Agent writer. null leaves it unchanged. */
+ /** Exact canonical record bytes, already validated/guarded by the Agent writer. null leaves it unchanged. A store with
+  * the wait port does not take them on the writer's word (#266 N3): while an approved call is unsettled it reads every
+  * committed checkpoint's approval and refuses one that is not exactly the reviewed call (approval-changed), and it
+  * settles the call in the same transaction as the commit that records it executed, refused or answered. */
  checkpoint:Uint8Array|null;events:Uint8Array[]
 }
 export interface RunReceipt {revision:StorageRevision;cursor:StorageCursor|null;commitId:string}
@@ -20,6 +23,9 @@ export interface RunEventPage {items:StoredRunEvent[];nextCursor:StorageCursor|n
  * A commit atomically publishes checkpoint + ordered events + idempotent receipt. A receipt proves
  * a past storage transaction, not current authority or external success. An uncertain acknowledgement
  * grants no dispatch. Repeat commit ids require identical bytes AND the original expected revision.
+ * With the wait port (#266 M4), an unfenced commit refuses a run a wait holds (wait-pending), one a terminal wait closed
+ * (closed) and one past its deadline or an unsettled approval's expiry (deadline-passed), as acquireLease does: only
+ * the resume's claim continues a parked run.
  */
 export interface RunStore {
  readonly durability:RunStoreDurability
@@ -114,6 +120,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
    fenced()
    const held=this.runs.get(frozen.runId),prior=held?.commits.get(frozen.commitId)
    if(prior){if(!identical(prior.input,frozen)||prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();return {receipt:{...prior.receipt},historyReceipt:structuredClone(prior.historyReceipt!)}}
+   // #266 M4: a commit not presented under a fence continues no run a wait holds, closed or past its deadline.
+   if(!fence)this.waits.admitAcquire(frozen.runId)
    if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)
    // #225 H1 and M3: an unsettled approved call is committed only as the person reviewed it; the commit that records it
    // settled lifts its expiry from the run.

@@ -847,23 +847,33 @@ memory and callback kinds and an effect host that is neither the reference host 
 question, `parkRun` reads the pending decision (an asked approval, a budget pause, or the latest
 retained `user_question`) from the store and has it commit the wait and its one `needs_attention`
 event and release the lease in one transaction (`WaitStore.parkWait`). `wakeRun` takes the host's
-evidence, bound to the run by its wake key; the first valid wake wins and a duplicate returns its
-disposition. `resumeParked` needs the person's decision or grant (a wake is neither), takes a new
+evidence, bound to its wait by the wait's own wake key: a fresh key of 32 to 512 printable characters
+(at least 16 distinct) for every wait, and the store refuses a park whose key digest another wait holds
+(`key-reused`, #265 M1). The first valid wake wins and a duplicate returns its disposition. A pause
+nothing can resume (a plan decision, a provider-managed allowance) is refused `not-resumable` and never
+parked. `resumeParked` needs the person's decision or grant (a wake is neither), takes a new
 lease against the parked revision and claims the continuation once; a question's timeout is
 `unanswered`. `waitReport` reads the retained waits, never a prompt. The memory kind's waits end with
-its process, so `parkRun` on it refuses `store-lifetime`. See `docs/design/storage.md`.
+its process, so `parkRun` on it refuses `store-lifetime`. A host store kind's wait port is certified
+by `runStoreWaitConformance` (`storage/waitConformance`, #265 M6): the key check, the single winner,
+the lease release, claim-once, the run closure, the deadline and approval ceilings and the commit-time
+approval binding, across restarts of the store. See `docs/design/storage.md`.
 
 ### Deadlines, approval expiry and resume revalidation (#225, #227)
 
 `storage/resume.ts` implements ADR-0025 decisions 3 and 5 with `storage/wait.ts`. A committed park
 closes its run: until the wait is resumed the store leases it to nobody (`wait-pending`, or `closed`
 after a terminal wait), and `resumeParked`'s claim takes the run's next lease in the same transaction
-(#265 M2). `limitRun` sets a run's deadline, past which no lease of the run is granted, renewed or
-held; a park's `limits` stamp the wait's deadline (the earliest of the run's, the wait's and an
-approval's TTL), and only a `deadline` wake ends the wait then. An approval wait needs
+(#265 M2), and nor does its unfenced `commit` (#266 M4). `limitRun` sets a run's deadline, past which
+no lease of the run is granted, renewed or held and no wake or claim is accepted; it stamps every wait
+not yet resumed again (#266 M1). A park's `limits` stamp the wait's deadline (the earliest of the
+run's, the wait's and an approval's TTL), and only a `deadline` wake ends the wait then. An approval wait needs
 `limits.approvalTtlMs`, is bound to the reviewed call, its source and the pinned identities, and from
 its claim until the approved call settles no lease of the run outlives the approval's expiry and every
-committed checkpoint must carry the reviewed call. Every park pins the host's admitted `model` and what the
+committed checkpoint must carry the reviewed call; a call not settled by the expiry is ended there by
+the `deadline` wake, its outcome unknown, and the run is closed (#266 N1). `resumeParked` reads the
+store's wait and its claim through the readers and refuses one that is not this wait resumed under a
+lease within the run's deadline and the approval's expiry (#266 M6). Every park pins the host's admitted `model` and what the
 checkpoint holds (policy identity, Plan lineage, source and artifact pins); `resumeParked` needs the
 host's `current` evidence and refuses missing evidence, a changed identity or lineage, a retired
 model, a changed model or reference without its explicit admission, a changed policy without the

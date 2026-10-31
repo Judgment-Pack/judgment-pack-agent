@@ -25,7 +25,7 @@ const ms=(text:string|undefined)=>text===undefined?undefined:Date.parse(text)
 /** Stands for a host store kind whose leases and waits outlive its process. */
 class DurableWaitStore extends MemoryRunStore {override readonly leaseLifetime:LeaseLifetime='durable';override readonly waitLifetime:WaitLifetime='durable'}
 function clocked(){const clock={at:T0};const store=new DurableWaitStore({now:()=>new Date(clock.at)});return {clock,store}}
-const KEY='host-wake-key-for-resume-0001'
+const KEY='wk.resume.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K'
 const MODEL={provider:'openai',model:'fixture'}
 
 describe('shared resume vectors (#225, #227)',()=>{
@@ -245,13 +245,14 @@ describe('#225: deadlines and approval expiry by the store clock; equal time is 
   await expect(wakeRun(store,{version:1,resource:'run-a',wait:'wait-1',evidence:'decision-late',kind:'event',event:{kind:'approval-decision',subject:'call_2_1'},key:KEY})).rejects.toEqual(waitRefusal('timed-out'))
   expect((await wakeRun(store,{version:1,resource:'run-a',wait:'wait-1',evidence:'timeout-1',kind:'timeout',key:KEY})).kind).toBe('timeout')
  })
- it('a run limit set by a park bounds the claim\'s lease; a deadline wake ends nothing after the claim',async()=>{
+ it('a run limit set by a park bounds the claim\'s lease; after the claim a deadline wake ends nothing before the approval\'s expiry',async()=>{
   const {clock,store,asked,decision}=await parkedApproval(4*HOUR,{run:iso(T0+30*MINUTE)})
   clock.at+=MINUTE;await wakeRun(store,decision)
   const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
   expect(resumed.lease.expiry).toBe(iso(T0+30*MINUTE))
   clock.at=T0+30*MINUTE
-  await expect(wakeRun(store,{version:1,resource:'run-a',wait:'wait-1',evidence:'deadline-1',kind:'deadline',key:KEY})).rejects.toEqual(waitRefusal('stale'))
+  // #266 N1: the approved call has not settled, so only the approval's expiry ends the resumed wait.
+  await expect(wakeRun(store,{version:1,resource:'run-a',wait:'wait-1',evidence:'deadline-1',kind:'deadline',key:KEY})).rejects.toEqual(waitRefusal('not-due'))
   expect((await store.readWait('run-a','wait-1'))!.state).toBe('resumed')
  })
  it('a question its deadline ends before any answer is unanswered, and the report says so',async()=>{
@@ -372,14 +373,15 @@ describe('#266 fix round: the approval binds the run until its call settles',()=
   await drive(fencedRunStore(store,resumed.fence,host),'run-a',[await actTool(execute)],provider([{say:'Filed.'}]).call,{resume:true,approval:resumed.approval})
   expect(calls).toEqual([{title:'Mileage'}])
  })
- it('M2: a run deadline at the Unix epoch bounds the claim\'s lease like any other',async()=>{
-  const {clock,store,asked,parked,decision}=await parkedApproval(4*HOUR)
+ it('M2: a run deadline at the Unix epoch bounds the claim like any other',async()=>{
+  const {clock,store,asked,decision}=await parkedApproval(4*HOUR)
   clock.at=T0+MINUTE;await wakeRun(store,decision)
   await limitRun(store,{version:1,resource:'run-a',run:'1970-01-01T00:00:00.000Z'})
-  const resumed=await resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})
-  expect(resumed.lease.expiry).toBe('1970-01-01T00:00:00.000Z')
-  await expect(store.commitFenced({runId:'run-a',expectedRevision:parked.wait.checkpoint.revision,commitId:'late',checkpoint:(await store.load('run-a'))!.checkpoint,events:[]},resumed.fence)).rejects.toEqual(leaseRefusal('expired'))
-  await expect(store.renewLease(resumed.fence,HOUR)).rejects.toEqual(leaseRefusal('expired'))
+  // #266 M1: a ceiling not after the store's time refuses the claim itself; nothing is leased.
+  await expect(resumeParked({store,resource:'run-a',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true},current:await unchanged(store,'run-a','wait-1')})).rejects.toEqual(waitRefusal('deadline-passed'))
+  expect(await store.readLease('run-a')).toMatchObject({state:'released',epoch:'1'})
+  // The lease table bounds a lease by a ceiling at the epoch like any other.
+  expect(new LeaseTable(()=>new Date(T0)).acquire({resource:'run-z',owner:'worker-z',expectedRevision:null,durationMs:HOUR},null,0).expiry).toBe('1970-01-01T00:00:00.000Z')
  })
  it('M7: the claim checks the head\'s digest as well as its revision',()=>{
   const clock={at:T0},leases=new LeaseTable(()=>new Date(clock.at)),table=new WaitTable(()=>new Date(clock.at))
