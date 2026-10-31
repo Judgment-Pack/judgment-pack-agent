@@ -50,7 +50,7 @@ root is not.
 | Schema | What it describes | Root | Closed parts | Read from (Desk file, symbol) |
 | --- | --- | --- | --- | --- |
 | `tool-taxonomy.json` | Owner-declared operation and effect (ADR-0027), with derived capability profiles | closed | `$defs/profile` | `packages/harness/toolTaxonomy.ts`, `go/adapter/wire/tooltaxonomy.go` |
-| `chat-context-snapshot.json` | Complete portable chat state, ordered JSON sources, aliases and active turns (#160) | closed | | `context/chat.ts`, `go/context/chat_snapshot.go` |
+| `chat-context-snapshot.json` | Complete portable chat state, ordered JSON sources, aliases and active turns (#160); version 2 says its cache rows were keyed from exact arguments, and a version 1 snapshot restores without them (#271) | closed | | `context/chat.ts`, `go/context/chat_snapshot.go` |
 | `history-chunk.json` | Resource-scoped content-addressed retained object chunks | closed | | `history/codec.ts`, `go/context/history_codec.go` |
 | `history-entry.json` | Storage-observed commit history with sequence/time and exact context binding | closed | | `storage/history.ts`, `go/context/history_store.go` |
 | `dialect-authoring.json` | Exact read and complete replacement review-only tool inputs (#171); the paged read of original declarations and the read port's page request and page, bound to the collection revision and inventory digest (#243); the read port's revision field index request and page, checked against the top index entry (#252) | open | `$defs/conversion`, `$defs/read`, `$defs/fact`, `$defs/evidence`, `$defs/propose`, `$defs/pageRequest`, `$defs/declaration`, `$defs/page`, `$defs/indexField`, `$defs/fieldIndex`, `$defs/fieldIndexRequest`, `$defs/fieldIndexPage` | `packages/harness/dialects.ts`, `go/context/dialects.go` |
@@ -183,6 +183,12 @@ files they were rendered from.
   (`cache-key.json`). Written by hand from the schema; `context/chat.test.ts` builds the same chat
   and holds the code to both, and the contract tests derive each row and digest again. This
   harness's (agent#8).
+  `read-arguments.json` states which raw argument texts may key a cached read at all (#271), in Go
+  and in TypeScript; `context/readKeys.test.ts` and `go/context/read_arguments_test.go` hold the
+  code to it, and the contract tests derive each outcome from its text.
+  `context-snapshot-v1-cache.json` states a snapshot a published release wrote and what it restores
+  as (#271): byte for byte the v0.12.0 tag's output for its reads, then the current version with no
+  cache rows.
 - Vectors added for the members the v0.2.0 release review found without one (#43), written by hand
   from the schemas: `delegation/record-resumed.json`, `delegation/answer-resumed.json` (a resumed,
   summarized task), `delegation/brief-partial.json` (an earlier exchange that stopped at its time

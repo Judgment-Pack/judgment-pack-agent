@@ -64,7 +64,7 @@ func TestHistoryFoundationSnapshotAliasesAndBinding(t *testing.T) {
 	if restored.TurnCount() != c.TurnCount() {
 		t.Fatal("turn incremented")
 	}
-	bad := bytes.Replace(raw, []byte(`"version":1`), []byte(`"version":2`), 1)
+	bad := bytes.Replace(raw, []byte(`"version":2`), []byte(`"version":3`), 1)
 	var unsupported *UnsupportedContextSnapshotVersion
 	if _, err = RestoreChatContext(bad); !errors.As(err, &unsupported) {
 		t.Fatal("future accepted", err)
@@ -129,7 +129,8 @@ func TestHistoryFoundationAtomicPortAndPinnedRows(t *testing.T) {
 func TestHistoryFoundationSharedSnapshots(t *testing.T) {
 	vector := readJSON(t, "contract/vectors/chat/context-snapshot.json")
 	for _, item := range vector.Get("items").Items() {
-		raw := []byte(CanonicalJSON(item))
+		// The items are version 1; the same state at the version written now is what round-trips (#271).
+		raw := []byte(CanonicalJSON(item.Clone().Set("version", Number(chatSnapshotVersion))))
 		chat, err := RestoreChatContext(raw)
 		if err != nil {
 			t.Fatal(err)
@@ -176,7 +177,7 @@ func TestHistoryFoundationSharedSnapshots(t *testing.T) {
 func TestHistoryFoundationGoNilThreadDomain(t *testing.T) {
 	vector := readJSON(t, "contract/vectors/chat/context-snapshot.json")
 	for _, item := range vector.Get("goOnly").Items() {
-		raw := []byte(CanonicalJSON(item))
+		raw := []byte(CanonicalJSON(item.Clone().Set("version", Number(chatSnapshotVersion))))
 		chat, err := RestoreChatContext(raw)
 		if err != nil {
 			t.Fatal(err)
