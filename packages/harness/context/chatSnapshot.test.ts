@@ -1,7 +1,7 @@
 import {it,expect,vi} from 'vitest'
 import vectors from '../../../contract/vectors/chat/context-snapshot.json'
 import {ChatContext,canonicalJSON} from './chat'
-import {readChatContextSnapshot,ContextSnapshotInvalid,ContextTurnBindingInvalid,UnsupportedContextSnapshotVersion} from './chatSnapshot'
+import {CHAT_SNAPSHOT_VERSION,readChatContextSnapshot,ContextSnapshotInvalid,ContextTurnBindingInvalid,UnsupportedContextSnapshotVersion} from './chatSnapshot'
 import {StoredChatScope,restoreStoredChatScope,readStoredChatSnapshot} from './storedChat'
 import {MemoryRunStore} from '../storage/run'
 import {HistoryChanged,HistoryInputInvalid,historyObject,HISTORY_OBJECT_BYTES,chunkHistoryValue} from '../history/codec'
@@ -13,7 +13,8 @@ import {extendExecution,readExecution} from '../execution/state'
 import type {AssistantSession} from '../engine'
 const bytes=(v:unknown)=>new TextEncoder().encode(canonicalJSON(v))
 it('reads both handwritten complete snapshots and preserves aliases/order/empty revision',()=>{
- for(const vector of vectors.items){const raw=bytes(vector),chat=ChatContext.restore(raw);expect(chat.snapshot()).toEqual(raw);expect(chat.entries.get('shared:entry')!.value).toEqual({z:false,a:null,number:0.1});expect(JSON.stringify(chat.entries.get('shared:entry')!.value)).toBe(vector.entries[0]!.valueJSON);expect(chat.entries.get('shared:entry')!.revision).toBe('')
+ // The items are version 1; the same state at the version written now is what round-trips (#271).
+ for(const vector of vectors.items){const raw=bytes({...vector,version:CHAT_SNAPSHOT_VERSION}),chat=ChatContext.restore(raw);expect(chat.snapshot()).toEqual(raw);expect(chat.entries.get('shared:entry')!.value).toEqual({z:false,a:null,number:0.1});expect(JSON.stringify(chat.entries.get('shared:entry')!.value)).toBe(vector.entries[0]!.valueJSON);expect(chat.entries.get('shared:entry')!.revision).toBe('')
  expect(chat.task('one')).toBe(chat.task('two'));chat.task('one')!.visible.add('shared:later');expect(chat.task('two')!.visible.has('shared:later')).toBe(true)
  const scope=chat.resumeTurn(2),turn=scope.openTurn();expect(turn.use('shared:later')).toBeUndefined();expect(()=>scope.openTurn()).toThrow(ContextTurnBindingInvalid);expect(chat.turnCount).toBe(3)
  // Both offered rows alias the same object even when the pending list no longer contains it.
@@ -23,7 +24,7 @@ it('reads both handwritten complete snapshots and preserves aliases/order/empty 
 it('refuses unknown/conflicting references, lossy source, future version and excess bounds before restore',()=>{
  const base=vectors.items[0]!
  for(const mutate of [(v:any)=>v.unknown=1,(v:any)=>v.tasks[0].thread=4,(v:any)=>v.open.push({...v.open[0]}),(v:any)=>v.size++,(v:any)=>v.entries[0].valueJSON='{"duplicate":1,"duplicate":2}',(v:any)=>v.visibility.push([]),(v:any)=>v.open[0].visible=null,(v:any)=>v.disposed=true]){const v=structuredClone(base);mutate(v);expect(()=>ChatContext.restore(bytes(v))).toThrow(ContextSnapshotInvalid)}
- expect(()=>ChatContext.restore(bytes({...base,version:2}))).toThrow(UnsupportedContextSnapshotVersion)
+ expect(()=>ChatContext.restore(bytes({...base,version:CHAT_SNAPSHOT_VERSION+1}))).toThrow(UnsupportedContextSnapshotVersion)
  expect(()=>ChatContext.restore(new TextEncoder().encode('{"version":1,"version":1}'))).toThrow(ContextSnapshotInvalid)
  expect(()=>ChatContext.restore(bytes({...base,turns:9007199254740992}))).toThrow(ContextSnapshotInvalid)
 })
@@ -157,5 +158,5 @@ it('preserves paused critic checkpoint and typed pending request through acknowl
 
 it('preserves structurally typed extra host members in supported TS task/reuse rows',()=>{
  const value=structuredClone(vectors.items[0]!);value.threads[0]!.exchangesJSON='[{"objective":"Ask","result":"Old","hostExtra":{"z":false,"a":null}}]';value.reusable[0]!.value.questionsJSON='[{"kind":"question","text":"Typed","hostExtra":false}]'
- const raw=bytes(value),restored=ChatContext.restore(raw);expect(restored.snapshot()).toEqual(raw);expect((restored.task('one')!.exchanges[0] as any).hostExtra).toEqual({z:false,a:null})
+ const raw=bytes({...value,version:CHAT_SNAPSHOT_VERSION}),restored=ChatContext.restore(raw);expect(restored.snapshot()).toEqual(raw);expect((restored.task('one')!.exchanges[0] as any).hostExtra).toEqual({z:false,a:null})
 })

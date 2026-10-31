@@ -73,6 +73,8 @@ func TestHistoryFoundationExportedScopeAtomicResume(t *testing.T) {
 func TestHistoryFoundationExportedSnapshotFixedRefusals(t *testing.T) {
 	all := retainedFixture(t, "chat/context-snapshot.json")
 	for _, item := range all.Get("items").Items() {
+		// The items are version 1; the same state at the version written now round-trips (#271).
+		item = item.Clone().Set("version", rc.Number(2))
 		raw := []byte(rc.CanonicalJSON(item))
 		c, err := rc.RestoreChatContext(raw)
 		if err != nil {

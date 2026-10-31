@@ -1,4 +1,4 @@
-import {readChatContextSnapshot,supportsTypeScriptChatSnapshot,canonicalChatContextSnapshot,ContextTurnBindingInvalid,ContextSnapshotInvalid,type ChatContextSnapshot,type SnapshotEviction} from './chatSnapshot'
+import {CHAT_SNAPSHOT_VERSION,readChatContextSnapshot,supportsTypeScriptChatSnapshot,canonicalChatContextSnapshot,ContextTurnBindingInvalid,ContextSnapshotInvalid,type ChatContextSnapshot,type SnapshotEviction} from './chatSnapshot'
 /**
  * The chat-scoped context (agent#8): the context ledger and the read cache kept across the runs of
  * one chat, so a later run reads what an earlier one read without asking the source again.
@@ -82,7 +82,17 @@ export function scalarValue(value:unknown):boolean{
  return true
 }
 
-/** True where value is one JSON holds and its JSON text reads back as the same value: not a number JSON.stringify writes as another (a non-finite one as null, -0 as 0), and nothing it writes as something else or leaves out. */
+/** One code point as the simple case folding Go's encoding/json matches names by: the lower case of its upper case, where each is one code point. Dotless i is in no set; its upper case I is in i's. */
+function foldPoint(point:string):string{
+ if(point==='\u0131')return point
+ const upper=point.toUpperCase(),lower=([...upper].length===1?upper:point).toLowerCase()
+ return [...lower].length===1?lower:point
+}
+
+/** A member name as Go's encoding/json matches it to a struct field (foldName in go/context/chat.go): two names are equal here where Go's bytes.EqualFold says so. */
+const foldName=(name:string)=>/^[\x00-\x7f]*$/.test(name)?name.toLowerCase():[...name].map(foldPoint).join('')
+
+/** True where value is one JSON holds and its JSON text reads back as the same value: not a number JSON.stringify writes as another (a non-finite one as null, -0 as 0), nothing it writes as something else or leaves out, and no object with two names Go's encoding/json folds together. */
 function exactValue(value:unknown):boolean{
  if(value===null||typeof value==='string'||typeof value==='boolean')return true
  if(typeof value==='number')return Number.isFinite(value)&&!Object.is(value,-0)
@@ -91,6 +101,7 @@ function exactValue(value:unknown):boolean{
   return true
  }
  if(typeof value!=='object')return false
+ if(new Set(Object.keys(value).map(foldName)).size!==Object.keys(value).length)return false
  const prototype:unknown=Object.getPrototypeOf(value)
  return (prototype===null||Object.getPrototypeOf(prototype)===null)&&Object.values(value).every(exactValue)
 }
@@ -100,7 +111,8 @@ function exactValue(value:unknown):boolean{
  * exactly. Go runs a tool with the bytes the model wrote and also refuses arguments its parsed form
  * does not say exactly (repeated names, a number that does not read back as written:
  * `exactArguments` in go/context/chat.go); here JSON.parse has already read those, and the tool is run
- * with what it read, so they key as what is run.
+ * with what it read, so they key as what is run. Names Go's encoding/json folds together are refused
+ * here as well, so both languages answer alike: a tool here is run with one sorted form for both orders.
  */
 export function exactArguments(args:unknown):boolean{
  return args!==null&&typeof args==='object'&&!Array.isArray(args)&&exactValue(args)
@@ -231,7 +243,7 @@ export class ChatContext {
   const evicted=this.evicted.map(eviction),tasks=[...this.tasks].map(([id,value])=>({id,thread:thread(value)}))
   const savedThreads=threads.map(value=>({profile:value.profile,title:value.title,exchangesJSON:JSON.stringify(value.exchanges),visible:set(value.visible)}))
   const open=[...this.open].sort((a,b)=>a.number-b.number).map(turn=>turn.snapshotState(set,eviction))
-  const snapshot:ChatContextSnapshot={version:1,scope:this.scope,turns:this.turns,disposed:this.disposed,size:this.size,
+  const snapshot:ChatContextSnapshot={version:CHAT_SNAPSHOT_VERSION,scope:this.scope,turns:this.turns,disposed:this.disposed,size:this.size,
    entries:[...this.entries.values()].map(({value,...entry})=>({...entry,valueJSON:JSON.stringify(value)})),
    ages:[...this.ages].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([id,turn])=>({id,turn})),results:structuredClone([...this.results.values()]),
    cache:[...this.cache].sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,entry])=>({key,entry})),gone:[...this.gone],
@@ -239,7 +251,7 @@ export class ChatContext {
    reusable:[...this.reusableResults].map(([key,value])=>({key,value:{task:value.task,model:value.model,text:value.text,questionsJSON:JSON.stringify(value.questions)}})),open}
   const bytes=canonicalChatContextSnapshot(snapshot);readChatContextSnapshot(bytes);return bytes
  }
- /** Validate everything before constructing any live context; no authority to resume is inferred. */
+ /** Validate everything before constructing any live context; no authority to resume is inferred. A version 1 snapshot's entries and index are restored and its cache rows are not. */
  static restore(bytes:Uint8Array):ChatContext{
   const saved=readChatContextSnapshot(bytes)
   if(!supportsTypeScriptChatSnapshot(saved))throw new ContextSnapshotInvalid()
@@ -247,7 +259,8 @@ export class ChatContext {
   context.turns=saved.turns;context.disposed=saved.disposed;context.size=saved.size
   for(const {valueJSON,...entry} of saved.entries)context.entries.set(entry.id,{...entry,value:JSON.parse(valueJSON)})
   context.ages=new Map(saved.ages.map(row=>[row.id,row.turn]));context.results=new Map(saved.results.map(row=>[row.tool+'\n'+row.arguments,{...row}]))
-  context.cache=new Map(saved.cache.map(row=>[row.key,row.entry]));context.gone=new Set(saved.gone);context.evicted=saved.evicted.map(ref=>evictions[ref]!)
+  // A version 1 cache row may hold the answer to other arguments than its key names (#271, CHAT_SNAPSHOT_VERSION): a cold cache costs one call, never a wrong answer.
+  context.cache=new Map(saved.version>=CHAT_SNAPSHOT_VERSION?saved.cache.map(row=>[row.key,row.entry]):[]);context.gone=new Set(saved.gone);context.evicted=saved.evicted.map(ref=>evictions[ref]!)
   const threads=saved.threads.map(row=>({profile:row.profile,title:row.title,exchanges:JSON.parse(row.exchangesJSON),visible:visibility[row.visible!]!}))
   context.tasks=new Map(saved.tasks.map(row=>[row.id,threads[row.thread]!]));context.reusableResults=new Map(saved.reusable.map(row=>[row.key,{task:row.value.task,model:row.value.model,text:row.value.text,questions:JSON.parse(row.value.questionsJSON)}]))
   for(const row of saved.open){const turn=new ChatTurn(context,row.number,row.visible===undefined?undefined:visibility[row.visible]);turn.restoreState(row.referenced,row.offered.map(ref=>evictions[ref]!));context.open.add(turn);context.restoredTurns.add(row.number)}

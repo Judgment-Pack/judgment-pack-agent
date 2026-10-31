@@ -1446,8 +1446,12 @@ one `ChatContext` per chat and hand it to every run of that chat as `context.cha
   Go runs the tool with the bytes the model wrote, so it refuses as well a repeated member name and any
   number not written as `JSON.stringify` writes it (`1.0`, `1e2`, `9007199254740993`); TypeScript runs
   the tool with what `JSON.parse` read, so it keys those as what runs
-  (`contract/vectors/chat/read-arguments.json`). Whitespace, member order and a string's escapes stay out of
-  the key. A mutable tool is never served from the cache. The cache serves only a name the
+  (`contract/vectors/chat/read-arguments.json`). Two names Go's `encoding/json` folds together are refused
+  in both languages, at any depth, because a Go tool decoding into a struct reads whichever came last.
+  Whitespace and a string's escapes stay out of both keys. Member order stays out of the chat's key,
+  which sorts it, and the run's key keeps it, so reordered arguments cost the run one more call. A chat
+  snapshot's version 1 cache rows are not restored (`docs/design/storage.md`). A mutable tool is never
+  served from the cache. The cache serves only a name the
   run's session offers: for a name it does not offer (a delegated child's profile that lacks the
   tool), the call goes on to the offer check and the gate as any other, and the cached entry is not
   added to the run's view. A cached result is the ledger's entry for it: evicted, it is no longer

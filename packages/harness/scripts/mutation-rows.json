@@ -9873,6 +9873,138 @@
   "status": "caught",
   "origin": "agent#271",
   "note": "Go twin (by hand): the recursive exactValue result ignored in go/context/chat.go; caught at ^TestTheReadArgumentsVectorKeys$ (out of range and nested) and ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$."
+},
+{
+  "name": "a restored version 1 snapshot keeps its cache rows",
+  "file": "context/chat.ts",
+  "find": "new Map(saved.version>=CHAT_SNAPSHOT_VERSION?saved.cache.map(row=>[row.key,row.entry]):[])",
+  "replace": "new Map(saved.cache.map(row=>[row.key,row.entry]))",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): if saved.Version >= chatSnapshotVersion made if true in go/context/chat_snapshot.go; caught at ^TestASnapshotFromBeforeTheFixRestoresWithoutItsCacheRows$, ^TestAStoredChatFromBeforeTheFixServesNoCachedAnswer$ and, through both adapters, ^TestAChatStoredBeforeTheFixServesNoOldAnswer$."
+},
+{
+  "name": "a restored current snapshot loses its cache rows",
+  "file": "context/chat.ts",
+  "find": "new Map(saved.version>=CHAT_SNAPSHOT_VERSION?saved.cache.map(row=>[row.key,row.entry]):[])",
+  "replace": "new Map([] as [string,string][])",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the same line made if false; caught at ^TestASnapshotFromBeforeTheFixRestoresWithoutItsCacheRows$ and ^TestAChatStoredBeforeTheFixServesNoOldAnswer$ (the current snapshot's rows are served)."
+},
+{
+  "name": "the snapshot writer stamps the old version",
+  "file": "context/chat.ts",
+  "find": "const snapshot:ChatContextSnapshot={version:CHAT_SNAPSHOT_VERSION,scope:this.scope,",
+  "replace": "const snapshot:ChatContextSnapshot={version:1,scope:this.scope,",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): Version: 1 in go/context/chat_snapshot.go snapshotLocked; caught at ^TestASnapshotFromBeforeTheFixRestoresWithoutItsCacheRows$ and ^TestAChatStoredBeforeTheFixServesNoOldAnswer$."
+},
+{
+  "name": "the snapshot reader refuses what a published release wrote",
+  "file": "context/chatSnapshot.ts",
+  "find": "!count(input.version,1)",
+  "replace": "!count(input.version,2)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): !snapshotCount(v.Get(\"version\"), 2) in go/context/chat_snapshot.go ReadChatContextSnapshot; caught at ^TestASnapshotFromBeforeTheFixRestoresWithoutItsCacheRows$."
+},
+{
+  "name": "the snapshot reader takes a later version",
+  "file": "context/chatSnapshot.ts",
+  "find": "count(input.version,CHAT_SNAPSHOT_VERSION+1)",
+  "replace": "count(input.version,CHAT_SNAPSHOT_VERSION+2)",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): snapshotCount(v.Get(\"version\"), chatSnapshotVersion+2); caught at ^TestASnapshotFromBeforeTheFixRestoresWithoutItsCacheRows$ and ^TestHistoryFoundationSnapshotAliasesAndBinding$."
+},
+{
+  "name": "two names that fold together keep their key",
+  "file": "context/chat.ts",
+  "find": " if(new Set(Object.keys(value).map(foldName)).size!==Object.keys(value).length)return false\n",
+  "replace": "",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): folded := name in go/context/chat.go exactValue; caught at ^TestTheReadArgumentsVectorKeys$, ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$ and, through both adapters, ^TestAModelToolCallIsAnsweredForItsOwnArguments$."
+},
+{
+  "name": "an ASCII name does not fold",
+  "file": "context/chat.ts",
+  "find": "?name.toLowerCase():",
+  "replace": "?name:",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): the same as the row above; ASCII and Unicode share foldName in Go."
+},
+{
+  "name": "a name beyond ASCII does not fold",
+  "file": "context/chat.ts",
+  "find": "[...name].map(foldPoint).join('')",
+  "replace": "name",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): folded := strings.ToLower(name) in go/context/chat.go exactValue, which misses the long s; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheReadWrapperServesNoCallAnotherCallsAnswer$."
+},
+{
+  "name": "dotless i folds with i",
+  "file": "context/chat.ts",
+  "find": " if(point==='\\u0131')return point\n",
+  "replace": "",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin (by hand): folded := strings.ToLower(strings.ToUpper(name)) in go/context/chat.go exactValue; caught at ^TestTheReadArgumentsVectorKeys$ (the dotless i row and the capital I with a dot row)."
+},
+{
+  "name": "a fold takes an upper case of several code points",
+  "file": "context/chat.ts",
+  "find": "([...upper].length===1?upper:point).toLowerCase()",
+  "replace": "upper.toLowerCase()",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin: none; Go folds by unicode.SimpleFold, one rune to one (^TestFoldNameIsWhatEncodingJSONMatches$)."
+},
+{
+  "name": "a fold takes a lower case of several code points",
+  "file": "context/chat.ts",
+  "find": "return [...lower].length===1?lower:point",
+  "replace": "return lower",
+  "tests": [
+    "context/readKeys.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#271",
+  "note": "Go twin: none; Go folds by unicode.SimpleFold, one rune to one (^TestFoldNameIsWhatEncodingJSONMatches$)."
 }
  ]
 }

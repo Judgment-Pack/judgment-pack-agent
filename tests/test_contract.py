@@ -808,6 +808,16 @@ class VectorTests(unittest.TestCase):
             )
             return ("-" if value < 0 else "") + written
 
+        def fold(name):
+            # Simple case folding, one code point to one: the lower case of the upper case where each
+            # is one code point. Dotless i is in no set; its upper case I is in i's.
+            folded = []
+            for point in name:
+                upper = point.upper()
+                lower = (upper if len(upper) == 1 else point).lower()
+                folded.append(point if point == "\u0131" or len(lower) != 1 else lower)
+            return "".join(folded)
+
         def typescript(text):
             # float: JavaScript has no other number. A last repeated name wins, as json.loads keeps it.
             if text == "":
@@ -823,7 +833,7 @@ class VectorTests(unittest.TestCase):
             if isinstance(value, list):
                 return all(exact_in_javascript(item) for item in value)
             if isinstance(value, dict):
-                return all(exact_in_javascript(item) for item in value.values())
+                return len({fold(name) for name in value}) == len(value) and all(exact_in_javascript(item) for item in value.values())
             return True
 
         def in_go(text):
@@ -837,7 +847,7 @@ class VectorTests(unittest.TestCase):
                 return value
 
             def members(pairs):
-                names = [name for name, _ in pairs]
+                names = [fold(name) for name, _ in pairs]
                 if len(names) != len(set(names)):
                     raise ValueError(names)
                 return dict(pairs)
@@ -877,6 +887,37 @@ class VectorTests(unittest.TestCase):
         keyed = {case["go"]["canonical"] for case in vector["cases"] if "canonical" in case["go"]}
         for item in vector["items"]:
             self.assertIn(canonical(item), keyed)
+        # Rows that name an escape hold a backslash, and those that name a code point hold it.
+        escaped = [case["text"] for case in vector["cases"] if "escape" in case["label"]]
+        self.assertEqual(len(escaped), 3)
+        for text in escaped:
+            self.assertIn(chr(0x5c) + "u", text)
+        self.assertIn('{"' + chr(0x212a) + '":1,"k":2}', texts)
+        self.assertIn('{"' + chr(0x17f) + '":1,"s":2}', texts)
+
+    def test_a_snapshot_a_published_release_wrote_loses_only_its_cache_rows(self):
+        # #271: each row of the published snapshot follows from its read. The answer is to the earlier
+        # arguments and the key to the call, so a row answers a call it was not made for; restored, the
+        # same state is the current version with no cache rows.
+        vector = self.vectors["chat/context-snapshot-v1-cache.json"]
+        written, restored = vector["items"]
+        self.assertEqual((written["version"], restored["version"]), (1, 2))
+        self.assertEqual({**written, "version": 2, "cache": []}, restored)
+        self.assertEqual(len(written["cache"]), len(vector["reads"]))
+        rows = {row["key"]: row["entry"] for row in written["cache"]}
+        by_id = {entry["id"]: entry for entry in written["entries"]}
+        for read, result in zip(vector["reads"], written["results"]):
+            with self.subTest(read=read["label"]):
+                self.assertNotEqual(read["earlier"], read["call"])
+                self.assertEqual(read["answer"], "answer to " + read["earlier"])
+                value = json.dumps({"content": [{"type": "text", "text": read["answer"]}]}, ensure_ascii=False, separators=(",", ":"))
+                digest = sha256(value)
+                entry = by_id["%s:result-lookup-%s:%s" % (written["scope"], digest, digest[:16])]
+                self.assertEqual((entry["valueJSON"], entry["digest"], entry["bytes"]), (value, digest, len(value.encode("utf-8"))))
+                self.assertEqual(result["entry"], entry["id"])
+                self.assertEqual(result["arguments"], sha256(canonical(json.loads(read["call"]))))
+                key = sha256(canonical({"tool": "lookup", "arguments": json.loads(read["call"])}))
+                self.assertEqual(rows[key], entry["id"])
 
     def test_the_turn_index_rows_follow_from_the_fixture(self):
         vector = self.vectors["chat/turn-index.json"]

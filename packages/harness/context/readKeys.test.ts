@@ -5,11 +5,16 @@
  * the same ones from the raw bytes (go/context/read_arguments_test.go).
  *
  * The runs drive the `vercel` and `deepagents` engines against a scripted endpoint whose calls carry
- * exactly the argument text given.
+ * exactly the argument text given. A chat stored before the fix holds rows no key can tell apart from a
+ * sound one: contract/vectors/chat/context-snapshot-v1-cache.json states one, and how it restores.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { ChatContext, canonicalJSON, readCacheKey } from './chat'
+import { CHAT_SNAPSHOT_VERSION, ContextSnapshotInvalid, UnsupportedContextSnapshotVersion, readChatContextSnapshot } from './chatSnapshot'
+import { restoreStoredChatScope } from './storedChat'
+import { chunkHistoryValue } from '../history/codec'
+import { MemoryRunStore } from '../storage/run'
 import { contextDigest } from './ledger'
 import { contextualSession } from './session'
 import { deepagents } from '../engines/deepagents'
@@ -104,7 +109,10 @@ describe('the arguments a read may be cached under (#271)', () => {
       it.each([
         ['out of range, one way and the other', '{"q":1e400}', '{"q":-1e400}'],
         ['out of range and null', '{"q":1e400}', '{"q":null}'],
-        ['negative zero and zero', '{"q":-0}', '{"q":0}']
+        ['negative zero and zero', '{"q":-0}', '{"q":0}'],
+        ['two names Go folds together, in both orders', '{"ID":1,"id":2}', '{"id":2,"ID":1}'],
+        ['the Kelvin sign and k', `{"${String.fromCodePoint(0x212a)}":1,"k":2}`, `{"k":2,"${String.fromCodePoint(0x212a)}":1}`],
+        ['the long s and s', `{"${String.fromCodePoint(0x17f)}":1,"s":2}`, `{"s":2,"${String.fromCodePoint(0x17f)}":1}`]
       ])('runs each of two calls whose JSON text is one: %s', async (_label, first, second) => {
         const out = await run(engine, chat(), [first, second])
         expect(out.answers).toEqual(['answer 1', 'answer 2'])
@@ -112,8 +120,8 @@ describe('the arguments a read may be cached under (#271)', () => {
       })
 
       it('still serves ordinary arguments, and what JSON.parse has read alike, without a call: what runs is what it read', async () => {
-        const out = await run(engine, chat(), ['{"id":7,"ratio":1.5}', '{ "id" : 7, "ratio" : 1.50 }'])
-        expect(out.answers).toEqual(['answer 1', 'answer 1'])
+        const out = await run(engine, chat(), ['{"id":7,"ratio":1.5}', '{ "id" : 7, "ratio" : 1.50 }', '\n{"id":7,"ratio":1.5}', '\t{"id":7,"ratio":1.5}'])
+        expect(out.answers).toEqual(['answer 1', 'answer 1', 'answer 1', 'answer 1'])
         expect(out.executed).toEqual([{ id: 7, ratio: 1.5 }])
       })
     })
@@ -129,6 +137,82 @@ describe('the arguments a read may be cached under (#271)', () => {
     const refused = await run(deepagents as typeof vercel, undefined, twice)
     expect(refused.executed).toEqual([])
     expect(refused.answers[1]).toContain('not a JSON object')
+  })
+
+  // The folding is the one the engine's own `iu` regular expressions compare by (simple case folding):
+  // for every code point with a case mapping, two names are refused together exactly where they match.
+  it('refuses two names together exactly where simple case folding makes them one', async () => {
+    const quoted = (point: string) => point.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&')
+    let folded = 0
+    for (let code = 0x80; code <= 0x10ffff; code++) {
+      if (code >= 0xd800 && code <= 0xdfff) continue
+      const point = String.fromCodePoint(code), upper = point.toUpperCase()
+      const other = ([...upper].length === 1 ? upper : point).toLowerCase()
+      if (other === point || [...other].length !== 1) continue
+      const one = new RegExp(`^${quoted(point)}$`, 'iu').test(other)
+      if (one) folded++
+      const key = await readCacheKey('lookup', { [point]: 1, [other]: 2 }, false)
+      expect(key === undefined, `U+${code.toString(16)} and ${other}`).toBe(one)
+    }
+    expect(folded).toBeGreaterThan(1000)
+  })
+
+  describe('a chat stored before the fix', () => {
+    const generations = JSON.parse(readFileSync('../../contract/vectors/chat/context-snapshot-v1-cache.json', 'utf8')) as {
+      reads: { label: string; earlier: string; call: string; answer: string }[]
+      items: Record<string, unknown>[]
+    }
+    const encoded = (value: unknown) => new TextEncoder().encode(canonicalJSON(value))
+    const [written, next] = [encoded(generations.items[0]), encoded(generations.items[1])]
+    const calls = generations.reads.map((row) => row.call)
+
+    it('still reads as written, and restores with its entries and index and without its cache rows', () => {
+      const read = readChatContextSnapshot(written)
+      expect(read.version).toBe(1)
+      expect(read.cache).toHaveLength(generations.reads.length)
+      const chat = ChatContext.restore(written)
+      expect(chat.entries.size).toBe(generations.reads.length)
+      expect(chat.snapshot()).toEqual(next)
+    })
+
+    it('reads only the versions written: a later one is refused by its version, before the body', () => {
+      expect(() => ChatContext.restore(encoded({ ...generations.items[0], version: CHAT_SNAPSHOT_VERSION + 1 }))).toThrow(UnsupportedContextSnapshotVersion)
+      for (const version of [0, -1, 1.5]) expect(() => ChatContext.restore(encoded({ ...generations.items[0], version }))).toThrow(ContextSnapshotInvalid)
+    })
+
+    it('keeps the cache rows of a snapshot at the version written now', () => {
+      const current = encoded({ ...generations.items[0], version: CHAT_SNAPSHOT_VERSION })
+      const chat = ChatContext.restore(current)
+      expect(chat.snapshot()).toEqual(current)
+    })
+
+    it.each([['vercel', vercel], ['deepagents', deepagents]] as const)('runs each call its rows would have answered, through %s, and serves them once the snapshot is current', async (_name, engine) => {
+      const chat = ChatContext.restore(written)
+      const first = await run(engine, chat, calls)
+      expect(first.executed).toHaveLength(calls.length)
+      expect(first.answers).toEqual(calls.map((_, at) => `answer ${at + 1}`))
+      for (const row of generations.reads) expect(first.answers).not.toContain(row.answer)
+      const current = chat.snapshot()
+      expect(readChatContextSnapshot(current).version).toBe(CHAT_SNAPSHOT_VERSION)
+      const second = await run(engine, ChatContext.restore(current), calls)
+      expect(second.executed).toEqual([])
+      expect(second.answers).toEqual(first.answers)
+    })
+
+    it('serves none of them through the store, resumed on its open turn', async () => {
+      const store = new MemoryRunStore(), turn = 1
+      const chunks = await chunkHistoryValue(encoded({ ...generations.items[0], open: [{ number: turn, referenced: [], offered: [] }] }))
+      await store.stageHistoryObjects({ kind: 'chat', id: 'stored' }, [chunks.manifest, ...chunks.objects])
+      const head = await store.commitContextSnapshot({ chatId: 'stored', expectedRevision: null, manifest: { digest: chunks.manifest.digest, bytes: chunks.manifest.bytes }, turn }, 'commit-v1')
+      const scope = await restoreStoredChatScope(store, { ...head, turn })
+      const opened = scope.openTurn()
+      for (const row of generations.reads) {
+        const key = await readCacheKey('lookup', JSON.parse(row.call) as Record<string, unknown>, false)
+        expect(key, row.label).toBeDefined()
+        expect(opened.cached(key!), row.label).toBeUndefined()
+      }
+      expect(scope.context.entries.size).toBe(generations.reads.length)
+    })
   })
 
   // Below the engines: the wrapper hands its own execute the value itself, where the value is what differs.

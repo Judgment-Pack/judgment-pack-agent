@@ -62,6 +62,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -108,13 +109,19 @@ func cacheableArguments(raw []byte) bool {
 }
 
 // exactArguments reports whether raw is one JSON object that its parsed form says exactly (#271):
-// nothing follows it, no object repeats a member name (the parsed form keeps the last value, where a
-// tool's own reader may keep another or merge them), and every number is written as the parsed form
-// writes it. A number that is not is out of range (1e400 reads as null), past what a float64 holds
+// nothing follows it; no object repeats a member name, or holds two names encoding/json folds together
+// (the parsed form keeps the last value of a repeated name, where a tool's own reader may keep another
+// or merge them, and a Go tool decoding into a struct reads whichever of two folded names came last,
+// so their order is part of what it runs); and every number is written as the parsed form writes it.
+// A number that is not is out of range (1e400 reads as null), past what a float64 holds
 // (9007199254740993 reads as 9007199254740992), or another spelling of its value (1.0, 1e2, -0), and
-// the tool is still run with what was written. Two exact arguments share a key only where they differ
-// in whitespace, member order or a string's escapes, which the published key form leaves out and a
-// JSON reader cannot tell apart (exactArguments in context/chat.ts, whose arguments are already read).
+// the tool is still run with what was written.
+//
+// Two exact arguments share a chat key only where they differ in whitespace, a string's escapes or the
+// order of names that do not fold together; the run's key keeps that order. No JSON reader can tell
+// the first two apart. A reader that walks a document's tokens can tell the order, and the published
+// key form leaves it out: a tool declared immutable answers the same for it (contextPolicy.immutable).
+// See exactArguments in context/chat.ts, whose arguments are already read.
 func exactArguments(raw []byte) bool {
 	if text := bytes.TrimLeft(raw, " \t\r\n"); len(text) == 0 || text[0] != '{' {
 		return false
@@ -143,10 +150,11 @@ func exactValue(decoder *json.Decoder) bool {
 			if held == '{' {
 				token, err := decoder.Token()
 				name, _ := token.(string)
-				if err != nil || names[name] {
+				folded := foldName(name)
+				if err != nil || names[folded] {
 					return false
 				}
-				names[name] = true
+				names[folded] = true
 			}
 			if !exactValue(decoder) {
 				return false
@@ -189,6 +197,20 @@ func ReadCacheKeyOf(tool string, arguments json.RawMessage, runtimeBound bool, r
 		key.Runtime = runtime
 	}
 	return ContextDigest(CanonicalJSON(key.Value())), true
+}
+
+// foldName is a member name as encoding/json matches it to a struct field: each rune as the smallest
+// of its simple case folding set, so two names are equal here exactly where bytes.EqualFold says so.
+func foldName(name string) string {
+	return strings.Map(func(r rune) rune {
+		for {
+			next := unicode.SimpleFold(r)
+			if next <= r {
+				return next
+			}
+			r = next
+		}
+	}, name)
 }
 
 // IndexShare is the most of the prompt's allowance the index may take (agent#8): a quarter.

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -109,9 +110,14 @@ func TestAModelToolCallIsAnsweredForItsOwnArguments(t *testing.T) {
 		{"out of range", `{"q":1e400}`, `{"q":2e400}`},
 		{"past a float64", `{"id":9007199254740993}`, `{"id":9007199254740992}`},
 		{"repeated member", `{"a":{"x":1},"a":{"y":2}}`, `{"a":{"y":2}}`},
+		{"repeated member, escaped", `{"a":1,"` + string(rune(0x5c)) + `u0061":2}`, `{"a":2}`},
 		{"spelling", `{"q":1.0}`, `{"q":1}`},
 		{"negative zero", `{"q":-0}`, `{"q":0}`},
 		{"underflow", `{"q":1e-400}`, `{"q":0}`},
+		{"upper-case exponent", `{"q":1E+21}`, `{"q":1e+21}`},
+		{"names that fold together, as a struct reader reads them", `{"ID":1,"id":2}`, `{"id":2,"ID":1}`},
+		{"Kelvin sign and k", `{"` + string(rune(0x212a)) + `":1,"k":2}`, `{"k":2,"` + string(rune(0x212a)) + `":1}`},
+		{"long s and s", `{"` + string(rune(0x017f)) + `":1,"s":2}`, `{"s":2,"` + string(rune(0x017f)) + `":1}`},
 	}
 	for _, engine := range []string{"native", "api"} {
 		for scope, chat := range readKeyChats() {
@@ -159,7 +165,7 @@ func TestArgumentsThatAreNotAnObjectAreAnsweredForThemselves(t *testing.T) {
 func TestTextThatIsNotJSONIsNotAnsweredForAnEmptyObject(t *testing.T) {
 	for scope, chat := range readKeyChats() {
 		t.Run(scope, func(t *testing.T) {
-			calls := []string{`{}`, `{bad`, `{"q":1} {"q":2}`}
+			calls := []string{`{}`, `{bad`, `{"q":1} {"q":2}`, `{"q":1} ]`, `{"q":2} ]`}
 			executed, answered := readKeyRun(t, "native", chat, runcontext.PolicyLayer{"outputGuard": "off"}, calls)
 			if fmt.Sprint(executed) != fmt.Sprint(calls) {
 				t.Fatalf("executed %q, answered %q", executed, answered)
@@ -170,7 +176,7 @@ func TestTextThatIsNotJSONIsNotAnsweredForAnEmptyObject(t *testing.T) {
 
 // The fix turns no cache off: ordinary arguments, the same again, are served without a call.
 func TestAnOrdinaryReadIsStillServedFromTheCache(t *testing.T) {
-	calls := []string{`{"id":7,"ratio":1.5}`, `{ "id": 7, "ratio": 1.5 }`}
+	calls := []string{`{"id":7,"ratio":1.5}`, `{ "id": 7, "ratio": 1.5 }`, "\n" + `{"id":7,"ratio":1.5}`, "\t" + `{"id":7,"ratio":1.5}`}
 	for _, engine := range []string{"native", "api"} {
 		for scope, chat := range readKeyChats() {
 			t.Run(engine+"/"+scope, func(t *testing.T) {
@@ -178,10 +184,60 @@ func TestAnOrdinaryReadIsStillServedFromTheCache(t *testing.T) {
 					chat = runcontext.NewChatContext("read-keys")
 				}
 				executed, answered := readKeyRun(t, engine, chat, nil, calls)
-				if len(executed) != 1 || len(answered) != 2 || answered[0] != answered[1] {
+				if len(executed) != 1 || len(answered) != len(calls) {
 					t.Fatalf("executed %q, answered %q", executed, answered)
+				}
+				for _, answer := range answered {
+					if answer != answered[0] {
+						t.Fatalf("executed %q, answered %q", executed, answered)
+					}
 				}
 			})
 		}
+	}
+}
+
+// A stored chat a published release wrote (#271): contract/vectors/chat/context-snapshot-v1-cache.json
+// is byte for byte what the v0.12.0 tag's code writes. Its cache rows hold other arguments' answers
+// under the keys of these calls, so restored, each call runs and is answered for itself; the snapshot
+// written next is the current version, and its rows are then served.
+func TestAChatStoredBeforeTheFixServesNoOldAnswer(t *testing.T) {
+	raw, err := os.ReadFile("../../../contract/vectors/chat/context-snapshot-v1-cache.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	vector := runcontext.MustParseJSON(string(raw))
+	calls, answers := []string{}, []string{}
+	for _, row := range vector.Get("reads").Items() {
+		calls = append(calls, row.Get("call").Str())
+		answers = append(answers, "answer to "+row.Get("call").Str())
+	}
+	written := []byte(runcontext.CanonicalJSON(vector.Get("items").Items()[0]))
+	for _, engine := range []string{"native", "api"} {
+		t.Run(engine, func(t *testing.T) {
+			chat, err := runcontext.RestoreChatContext(written)
+			if err != nil {
+				t.Fatal(err)
+			}
+			executed, answered := readKeyRun(t, engine, chat, nil, calls)
+			if fmt.Sprint(executed) != fmt.Sprint(calls) || fmt.Sprint(answered) != fmt.Sprint(answers) {
+				t.Fatalf("restored from the published snapshot: executed %q, answered %q", executed, answered)
+			}
+			next, err := chat.Snapshot()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if version := runcontext.MustParseJSON(string(next)).Get("version").Num(); version != 2 {
+				t.Fatalf("the next snapshot is version %v", version)
+			}
+			again, err := runcontext.RestoreChatContext(next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			executed, answered = readKeyRun(t, engine, again, nil, calls)
+			if len(executed) != 0 || fmt.Sprint(answered) != fmt.Sprint(answers) {
+				t.Fatalf("restored from the current snapshot: executed %q, answered %q", executed, answered)
+			}
+		})
 	}
 }
