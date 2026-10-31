@@ -21,11 +21,21 @@ const PolicyVersion = 1
 
 //go:embed record_shapes.json
 var recordShapesJSON []byte
+
+// ADR-0029: the frozen v0.12 inventory of checkpoint 3 and event 2, packaged beside the current one.
+//
+//go:embed record_shapes_v012.json
+var recordShapesV012JSON []byte
 var recordShapes = func() map[string]map[string]any {
 	var out map[string]map[string]any
 	if err := json.Unmarshal(recordShapesJSON, &out); err != nil {
 		panic(err)
 	}
+	var published012 map[string]any
+	if err := json.Unmarshal(recordShapesV012JSON, &published012); err != nil {
+		panic(err)
+	}
+	out["published012"] = published012
 	return out
 }()
 
@@ -92,12 +102,16 @@ func recordVersion(kind string, value any) (int64, error) {
 	if err != nil || f < 1 || f > 9007199254740991 || math.Trunc(f) != f {
 		return 0, errRecord
 	}
+	// ADR-0029: checkpoint 4 and event 3 carry a delegated run's principal.
 	current := int64(1)
-	if kind == "event" || kind == "policy" {
+	if kind == "policy" {
 		current = 2
 	}
-	if kind == "checkpoint" {
+	if kind == "event" {
 		current = 3
+	}
+	if kind == "checkpoint" {
+		current = 4
 	}
 	version := int64(f)
 	if version > current {
@@ -261,11 +275,15 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 	if err != nil {
 		return err
 	}
+	// ADR-0029: checkpoint 4 and event 3 read the current schemas; checkpoint 3 and event 2 the
+	// inventory frozen at v0.12.0.
 	generation := "published"
 	if version == 0 || kind == "checkpoint" && version == 1 {
 		generation = "historical"
-	} else if kind == "checkpoint" && version == 3 || kind == "event" && version == 2 || kind == "policy" && version == 2 {
+	} else if kind == "checkpoint" && version == 4 || kind == "event" && version == 3 || kind == "policy" && version == 2 {
 		generation = "current"
+	} else if kind == "checkpoint" && version == 3 || kind == "event" && version == 2 {
+		generation = "published012"
 	}
 	graph := recordShapes[generation]
 	file := map[string]string{"checkpoint": "checkpoint.json", "event": "run-event.json", "policy": "policy.json"}[kind]
@@ -295,8 +313,10 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 			generation := "published"
 			if version == 1 {
 				generation = "historical"
-			} else if version == 3 {
+			} else if version == 4 {
 				generation = "current"
+			} else if version == 3 {
+				generation = "published012"
 			}
 			nested := recordShapes[generation]
 			// A nested record keeps its own traversal budget, as the TypeScript root reader does.
@@ -580,12 +600,46 @@ func patchRecordIntegers(data []byte, replacements map[string]string) ([]byte, e
 
 // StampEvent is the writer boundary; codecs keep historical records unchanged.
 func StampEvent(event RunEvent) RunEvent {
+	if delegatedEvent(event) {
+		return stampEventVersion(event, 3)
+	}
 	feature := event.PlanDriftDecided != nil && event.PlanDriftDecided.NativeInvocation != nil || event.RepeatDetected != nil || event.RouteDecided != nil || event.RouteWidened != nil || event.ApprovalRequested != nil && event.ApprovalRequested.Runtime != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 3 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 3
 	return stampEvent(event, feature)
 }
 
 // StampFeatureEvent explicitly selects current event2 for a feature-bearing producer.
-func StampFeatureEvent(event RunEvent) RunEvent { return stampEvent(event, true) }
+func StampFeatureEvent(event RunEvent) RunEvent {
+	if delegatedEvent(event) {
+		return stampEventVersion(event, 3)
+	}
+	return stampEvent(event, true)
+}
+
+// delegatedEvent reports an event that carries a delegated run's principal or its checkpoint 4
+// (ADR-0029): event 3.
+func delegatedEvent(event RunEvent) bool {
+	return event.ToolCall != nil && event.ToolCall.Principal != nil || event.ToolResult != nil && event.ToolResult.Principal != nil || event.Guardrail != nil && event.Guardrail.Principal != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 4 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 4
+}
+
+// stampEventVersion sets one version on the event's variant.
+func stampEventVersion(event RunEvent, v int64) RunEvent {
+	out := reflect.ValueOf(&event).Elem()
+	for i := 0; i < out.NumField(); i++ {
+		field := out.Field(i)
+		if field.Kind() != reflect.Pointer || field.IsNil() {
+			continue
+		}
+		copy := reflect.New(field.Elem().Type())
+		copy.Elem().Set(field.Elem())
+		if version := copy.Elem().FieldByName("Version"); version.IsValid() {
+			held := v
+			version.Set(reflect.ValueOf(&held))
+		}
+		field.Set(copy)
+	}
+	return event
+}
+
 func stampEvent(event RunEvent, feature bool) RunEvent {
 	out := reflect.ValueOf(&event).Elem()
 	for i := 0; i < out.NumField(); i++ {

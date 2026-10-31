@@ -1,0 +1,287 @@
+{
+ "description": "A handwritten run report version 3 (ADR-0029): a delegated run's terminal checkpoint 4 projected with its principal beside report 2's members. A run with no delegation is reported as version 1 or 2, unchanged. refused are reports the readers refuse.",
+ "schema": "run-report-v3.json",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/runReport.ts (projectRunReport)",
+   "packages/harness/runReportReader.ts (readRunReport)"
+  ]
+ },
+ "items": [
+  {
+   "version": 3,
+   "checkpointVersion": 4,
+   "id": "delegated-run",
+   "phase": "work",
+   "status": "complete",
+   "unit": "model-requests",
+   "used": 1,
+   "limit": 20,
+   "grants": [],
+   "explanation": "",
+   "plan": [],
+   "sources": [
+    {
+     "source": "runtime",
+     "kind": "runtime",
+     "calls": 0,
+     "refused": 0,
+     "proposed": 0,
+     "bytes": 0,
+     "milliseconds": 0
+    },
+    {
+     "source": "notes",
+     "kind": "custom",
+     "calls": 1,
+     "refused": 1,
+     "proposed": 0,
+     "bytes": 64,
+     "milliseconds": 3
+    }
+   ],
+   "principal": {
+    "actor": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  }
+ ],
+ "refused": [
+  {
+   "problem": "a version 3 report without its principal",
+   "report": {
+    "version": 3,
+    "checkpointVersion": 4,
+    "id": "delegated-run",
+    "phase": "work",
+    "status": "complete",
+    "unit": "model-requests",
+    "used": 1,
+    "limit": 20,
+    "grants": [],
+    "explanation": "",
+    "plan": [],
+    "sources": [
+     {
+      "source": "runtime",
+      "kind": "runtime",
+      "calls": 0,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 0,
+      "milliseconds": 0
+     },
+     {
+      "source": "notes",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 64,
+      "milliseconds": 3
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a version 3 report of checkpoint 3",
+   "report": {
+    "version": 3,
+    "checkpointVersion": 3,
+    "id": "delegated-run",
+    "phase": "work",
+    "status": "complete",
+    "unit": "model-requests",
+    "used": 1,
+    "limit": 20,
+    "grants": [],
+    "explanation": "",
+    "plan": [],
+    "sources": [
+     {
+      "source": "runtime",
+      "kind": "runtime",
+      "calls": 0,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 0,
+      "milliseconds": 0
+     },
+     {
+      "source": "notes",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 64,
+      "milliseconds": 3
+     }
+    ],
+    "principal": {
+     "actor": {
+      "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "host": "desk",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "subject": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "delegation": {
+      "id": "33333333333333333333333333333333",
+      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     },
+     "chain": [
+      "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     ],
+     "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    }
+   }
+  },
+  {
+   "problem": "a version 2 report carrying a principal",
+   "report": {
+    "version": 2,
+    "checkpointVersion": 3,
+    "id": "delegated-run",
+    "phase": "work",
+    "status": "complete",
+    "unit": "model-requests",
+    "used": 1,
+    "limit": 20,
+    "grants": [],
+    "explanation": "",
+    "plan": [],
+    "sources": [
+     {
+      "source": "runtime",
+      "kind": "runtime",
+      "calls": 0,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 0,
+      "milliseconds": 0
+     },
+     {
+      "source": "notes",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 64,
+      "milliseconds": 3
+     }
+    ],
+    "principal": {
+     "actor": {
+      "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "host": "desk",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "subject": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "delegation": {
+      "id": "33333333333333333333333333333333",
+      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     },
+     "chain": [
+      "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     ],
+     "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    }
+   }
+  },
+  {
+   "problem": "a report whose chain does not end with its leaf",
+   "report": {
+    "version": 3,
+    "checkpointVersion": 4,
+    "id": "delegated-run",
+    "phase": "work",
+    "status": "complete",
+    "unit": "model-requests",
+    "used": 1,
+    "limit": 20,
+    "grants": [],
+    "explanation": "",
+    "plan": [],
+    "sources": [
+     {
+      "source": "runtime",
+      "kind": "runtime",
+      "calls": 0,
+      "refused": 0,
+      "proposed": 0,
+      "bytes": 0,
+      "milliseconds": 0
+     },
+     {
+      "source": "notes",
+      "kind": "custom",
+      "calls": 1,
+      "refused": 1,
+      "proposed": 0,
+      "bytes": 64,
+      "milliseconds": 3
+     }
+    ],
+    "principal": {
+     "actor": {
+      "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "host": "desk",
+      "software": {
+       "package": "@judgment-pack/harness",
+       "version": "0.13.0"
+      }
+     },
+     "subject": {
+      "kind": "person",
+      "issuer": "https://login.example.com/",
+      "subject": "approver@example.com"
+     },
+     "delegation": {
+      "id": "33333333333333333333333333333333",
+      "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+     },
+     "chain": [
+      "sha256:efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+     ],
+     "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    }
+   }
+  }
+ ]
+}

@@ -13,20 +13,22 @@ export const MAX_RUN_REPORT_EVENTS=400
 /** Each intended source is copied whole, in recorded array order. */
 export const RUN_REPORT_SOURCES=['id','phase','status','unit','used','limit','requestCap','grants','reason','explanation','prompts','sources','sourceIdentities','skills','critic','delegation','usage','childUsage','failover','completions','plan','planState'] as const
 /** Internal state is deliberately outside this presentation contract. */
-export const RUN_REPORT_EXCLUDED=['schema','digest','retainUntil','records','requestKey','operations','context','testCalls','durable','handoff','approval','outputGuard','memories','draft','policy','crossProvider','compaction','steers','usageBudget','turnRoute','repeatTools'] as const
+export const RUN_REPORT_EXCLUDED=['schema','digest','retainUntil','records','requestKey','operations','context','testCalls','durable','handoff','approval','outputGuard','memories','draft','policy','crossProvider','compaction','steers','usageBudget','turnRoute','repeatTools','principal'] as const
 export type RunReportFacts=Pick<ExecutionCheckpoint,typeof RUN_REPORT_SOURCES[number]>
 export type RunReport={version:1;checkpointVersion:1|2}&RunReportFacts
 export type RunReportV2={version:2;checkpointVersion:1|2|3;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport}&RunReportFacts
+/** ADR-0029: a delegated run's report, of its checkpoint 4: report 2's members and the principal it acted as and for. */
+export type RunReportV3={version:3;checkpointVersion:4;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport;principal:import('./principal').PrincipalRecord}&RunReportFacts
 export interface RepeatToolsReport {executions:Omit<RepeatTools['executions'][number],'seen'>[];policy:Pick<PolicyMembers,'repeatTools.mode'|'repeatTools.remindAt'|'repeatTools.stopAt'>}
 /** Only admitted state and its actual three policy members reach the presentation. */
 export function projectRepeatTools(checkpoint:Pick<ExecutionCheckpoint,'version'|'repeatTools'|'policy'>):RepeatToolsReport|undefined {
- if(checkpoint.version!==3||!checkpoint.repeatTools)return undefined
+ if(checkpoint.version<3||!checkpoint.repeatTools)return undefined
  const policy=checkpoint.policy
  if(!policy||policy['repeatTools.mode']?.value!=='on'||!policy['repeatTools.remindAt']||!policy['repeatTools.stopAt'])throw new RunReportInputInvalid()
  return {executions:checkpoint.repeatTools.executions.map(({execution,remindAt,stopAt,count,reminded,reminderDelivered,stopped})=>({execution,remindAt,stopAt,count,reminded,reminderDelivered,stopped})),policy:{'repeatTools.mode':structuredClone(policy['repeatTools.mode']),'repeatTools.remindAt':structuredClone(policy['repeatTools.remindAt']),'repeatTools.stopAt':structuredClone(policy['repeatTools.stopAt'])}}
 }
 /** Consumers narrow on version before reading feature-bearing totals. */
-export type RetainedRunReport=RunReport|RunReportV2
+export type RetainedRunReport=RunReport|RunReportV2|RunReportV3
 export class RunReportInputInvalid extends Error {constructor(){super('RunReportInputInvalid: a valid complete or stopped checkpoint is required.');this.name='RunReportInputInvalid'}}
 export class RunReportPrefixInvalid extends Error {constructor(){super('RunReportPrefixInvalid: the supplied event prefix does not match the terminal head.');this.name='RunReportPrefixInvalid'}}
 export class RunReportOverflow extends Error {constructor(){super('RunReportOverflow: the report or retained event prefix exceeds its bounds.');this.name='RunReportOverflow'}}
@@ -37,8 +39,9 @@ function terminal(value:unknown):ExecutionCheckpoint {
 /** Pure projection: no clock, store access, totals, default zeros, or inferred provider facts. */
 export function projectRunReport(value:ExecutionCheckpoint):RetainedRunReport {
  const checkpoint=terminal(value)
- const feature=checkpoint.version===3
- const out:Record<string,unknown>={version:feature?2:1,checkpointVersion:checkpoint.version,...(feature&&checkpoint.usageBudget?{usageTotals:usageTotals(checkpoint.usageBudget)}:{}),...(feature&&checkpoint.turnRoute?{route:structuredClone(checkpoint.turnRoute)}:{})}
+ const feature=checkpoint.version>=3
+ // ADR-0029: checkpoint 4 (a delegated run's) is reported as version 3, with its principal.
+ const out:Record<string,unknown>={version:checkpoint.version===4?3:feature?2:1,checkpointVersion:checkpoint.version,...(checkpoint.version===4?{principal:structuredClone(checkpoint.principal)}:{}),...(feature&&checkpoint.usageBudget?{usageTotals:usageTotals(checkpoint.usageBudget)}:{}),...(feature&&checkpoint.turnRoute?{route:structuredClone(checkpoint.turnRoute)}:{})}
  for(const name of RUN_REPORT_SOURCES)if(Object.hasOwn(checkpoint,name))out[name]=structuredClone(checkpoint[name])
  const repeatTools=projectRepeatTools(checkpoint);if(repeatTools)out.repeatTools=repeatTools
  const report=out as RetainedRunReport

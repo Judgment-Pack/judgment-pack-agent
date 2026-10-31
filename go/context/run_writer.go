@@ -945,7 +945,7 @@ func (w *RunWriter) CommitRoute(ctx context.Context, binding RunBinding, state c
 	if event.RouteWidened != nil {
 		route = &event.RouteWidened.Route
 	}
-	if binding.Writer != w || state.ID != binding.Scope.Execution || state.Version != 3 || state.TurnRoute == nil || route == nil || usageCanonical(route) != usageCanonical(state.TurnRoute) {
+	if binding.Writer != w || state.ID != binding.Scope.Execution || state.Version < 3 || state.TurnRoute == nil || route == nil || usageCanonical(route) != usageCanonical(state.TurnRoute) {
 		return contract.RunEvent{}, &ContinuationIdentityChanged{}
 	}
 	if len(w.planDelivery) >= 400 {

@@ -62,6 +62,17 @@ type ToolSource struct {
 	DescriptorSnapshot        []byte
 	DescriptorApproval        *DescriptorApproval
 	CurrentDescriptorSnapshot func(ctx context.Context) ([]byte, error)
+	// GatewayScope (ADR-0029): for a source a gateway serves, the gateway's authority label (its
+	// receipts' authority) and the source name it gives the source, which a delegated run's scope
+	// names. A delegated run refuses every call of a gateway source declared without it
+	// (out-of-scope, source). It is the host's declaration, never carried on the source record.
+	GatewayScope *GatewayScope
+}
+
+// GatewayScope maps a gateway source to its delegation scope entry (ADR-0029).
+type GatewayScope struct {
+	Authority string
+	Source    string
 }
 
 // Record is the source as the contract's sourceRecord carries it, with the tool's own name.
@@ -993,6 +1004,10 @@ type SourceGate struct {
 	book            ApprovalBook
 	decisions       map[string]decision
 	queuedDecisions map[string][]decision
+	// principal is a delegated run's (ADR-0029), whose chain admits each call before dispatch; a
+	// child's gate holds its parent's through parentGate.
+	principal  *OpenedPrincipal
+	parentGate *SourceGate
 }
 
 type loadedSchema struct {
@@ -1018,6 +1033,7 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, r
 		g.identityState = identityState[0]
 	}
 	if parent != nil {
+		g.parentGate = parent
 		g.identityState = parent.identityState
 		g.rows, g.mu, g.changed, g.changedIdentity, g.serviceActs = parent.rows, parent.mu, parent.changed, parent.changedIdentity, parent.serviceActs
 	}
@@ -1061,6 +1077,63 @@ func NewSourceGate(declared *Declared, policy *Policy, marker, schemas string, r
 		g.notices = append(g.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: withheld.Tool, Action: "refused", Detail: withheld.Detail}})
 	}
 	return g
+}
+
+// UsePrincipal hands the gate a delegated run's principal (ADR-0029), once, before any call.
+func (g *SourceGate) UsePrincipal(principal *OpenedPrincipal) { g.principal = principal }
+
+// Principal is the principal this gate admits calls under: its own, or its delegating run's.
+func (g *SourceGate) Principal() *OpenedPrincipal {
+	if g == nil {
+		return nil
+	}
+	if g.principal != nil {
+		return g.principal
+	}
+	return g.parentGate.Principal()
+}
+
+// delegated is one admission of a call under the run's delegation (ADR-0029), or nil where the run
+// has none. A gateway source is checked against the entry of the gateway's authority and source name
+// its declaration maps it to (a gateway source with no mapping is out of scope); any other source is
+// this host's own, under its agent-host audience and its source id. Only a dispatch this package is
+// the enforcing host of counts: a gateway counts its own.
+func (g *SourceGate) delegated(ctx context.Context, entry *SourceEntry, count bool) (*PrincipalRefusal, error) {
+	principal := g.Principal()
+	if principal == nil {
+		return nil, nil
+	}
+	call := PrincipalCall{Source: entry.Record.ID}
+	if entry.Record.Tool != nil {
+		call.Tool = *entry.Record.Tool
+	}
+	if entry.Declared.Taxonomy != nil {
+		call.Effect = entry.Declared.Taxonomy.Effect
+	}
+	switch mapped := entry.Declared.Source.GatewayScope; {
+	case mapped != nil:
+		call.Audience = &PrincipalAudience{Kind: "gateway", Name: mapped.Authority}
+		call.Source = mapped.Source
+		count = false
+	case entry.Record.Kind == "gateway":
+		count = false
+	default:
+		call.Audience = &PrincipalAudience{Kind: "agent-host", Name: principal.Audience}
+	}
+	return principal.AdmitPrincipalCall(ctx, call, count)
+}
+
+// refuseDelegation is a delegation refusal (ADR-0029): its guardrail names the refusal and the run's
+// actor and subject, never a credential. The caller holds the lock.
+func (g *SourceGate) refuseDelegation(name string, refusal PrincipalRefusal) error {
+	detail := PrincipalRefusalDetail(name, refusal)
+	reason := "delegation refused"
+	notice := &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Detail: detail, Reason: &reason, Refusal: refusal.Contract()}
+	if principal := g.Principal(); principal != nil {
+		notice.Principal = principal.Record.Contract()
+	}
+	g.notices = append(g.notices, contract.RunEvent{Guardrail: notice})
+	return failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail})
 }
 
 // IdentityRows snapshots the identity checkpoint state under the shared lock.
@@ -1256,6 +1329,13 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 	if closed == "" {
 		identityChanged = g.identityChanged(WithCallID(ctx, callID), entry)
 	}
+	// ADR-0029: a call the delegation does not admit is never put to the person; its Call refuses it
+	// by name. The check is made with counting unset, outside the lock, before the policy is asked.
+	delegationRefused := false
+	if closed == "" && g.Principal() != nil && !(g.book != nil && g.book.Current() != nil && g.book.Current().State == "asked") {
+		refusal, err := g.delegated(WithCallID(ctx, callID), entry, false)
+		delegationRefused = err != nil || refusal != nil
+	}
 	g.mu.Lock()
 	defer func() { g.publishLocked(); g.mu.Unlock() }()
 	held := decision{}
@@ -1270,6 +1350,8 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		held = decision{answer: "closed", detail: closed}
 	case identityChanged || !served || g.changed[id] || int(row.Calls+row.Proposed) >= g.policy.SourceCallsPerTurn ||
 		entry.Catalogued && (!g.isLoaded(name) || ArgumentProblem(g.loadedSchema(name), orNullValue(given)) != ""):
+		held = decision{answer: "checked"}
+	case delegationRefused:
 		held = decision{answer: "checked"}
 	case g.book != nil && g.book.Current() != nil && g.book.Current().State == "asked":
 		held = decision{answer: "pending", detail: name + " acts on " + id + ", and another act call of this run waits for the person's decision; one call waits at a time, so this call was not run and nothing was changed. Call it again once the person has decided."}
@@ -1479,6 +1561,22 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 			g.mu.Unlock()
 			return refusedWith(err)
 		}
+	}
+	// ADR-0029: the approval carries no authority past the delegation; the call is admitted again,
+	// counted, immediately before it runs.
+	if refusal, err := g.delegated(ctx, entry, true); err != nil || refusal != nil {
+		g.mu.Lock()
+		g.giveBackCall(g.row(id), *entry.Record.Identity)
+		g.publishLocked()
+		g.mu.Unlock()
+		if err != nil {
+			return ToolResult{}, false, err
+		}
+		g.mu.Lock()
+		err := g.refused(entry, record.CallID, g.refuseDelegation(record.Name, *refusal))
+		g.publishLocked()
+		g.mu.Unlock()
+		return refusedWith(err)
 	}
 	limit := time.Duration(min(g.policy.SourceCallMilliseconds, g.policy.ToolCallMilliseconds)) * time.Millisecond
 	started := time.Now()
@@ -1737,6 +1835,25 @@ func (g *SourceGate) Call(ctx context.Context, name string, args json.RawMessage
 			g.changed[id] = true
 			giveBack()
 			err := g.refused(entry, callID, g.refuse(name, g.changedDetail(entry)))
+			g.publishLocked()
+			g.mu.Unlock()
+			return ToolResult{}, err
+		}
+	}
+	// ADR-0029: admitted under the run's delegation immediately before dispatch, counted only where
+	// this call is dispatched here (not a proposal, which is held, and not an act call no allow was
+	// given for).
+	if g.Principal() != nil {
+		count := !proposal && (decided == nil || decided.answer == "allow") && ctx.Err() == nil
+		refusal, err := g.delegated(ctx, entry, count)
+		if err != nil || refusal != nil {
+			g.mu.Lock()
+			giveBack()
+			if err != nil {
+				g.mark(name, callID, mark{})
+			} else {
+				err = g.refused(entry, callID, g.refuseDelegation(name, *refusal))
+			}
 			g.publishLocked()
 			g.mu.Unlock()
 			return ToolResult{}, err

@@ -46,8 +46,15 @@
       "$ref": "tool-offer.json#/$defs/sourceRecord"
     },
     "version": {
-      "const": 1,
-      "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+      "enum": [
+        1,
+        3
+      ],
+      "description": "Event wire format version. Absent only on historical records; current writers emit 1, and 3 where the event carries a delegated run's principal (ADR-0029)."
+    },
+    "principal": {
+      "description": "ADR-0029: the principal a delegated run acts as and for (run event 3 only): the agent principal, the subject, the leaf link and the chain's digests. Never a credential.",
+      "$ref": "run-principal.json"
     }
   },
   "additionalProperties": false,

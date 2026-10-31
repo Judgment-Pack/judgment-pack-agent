@@ -124,7 +124,7 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	if err != nil {
 		return nil, nil, err
 	}
-	if saved.RetainUntil == nil || saved.Digest == nil || (saved.Version != 2 && saved.Version != 3) {
+	if saved.RetainUntil == nil || saved.Digest == nil || (saved.Version != 2 && saved.Version != 3 && saved.Version != 4) {
 		return nil, nil, &ContinuationNotRecoverable{}
 	}
 	if err = RefuseExpired(*saved.RetainUntil, time.Now()); err != nil {

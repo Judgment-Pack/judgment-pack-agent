@@ -151,7 +151,9 @@ func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard Record
 	version := 1
 	if schema == CheckpointSchema {
 		version = contract.CheckpointVersion
-		if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) || nativePlanRecordFields(out) {
+		if out.Has("principal") {
+			version = 4
+		} else if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) || nativePlanRecordFields(out) {
 			version = 3
 		}
 	}
@@ -292,7 +294,7 @@ func supportedRecordVersion(v *Value) bool {
 	if n == nil || n.Kind() != KindNumber {
 		return false
 	}
-	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && (n.Num() == 2 || n.Num() == 3)
+	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && (n.Num() == 2 || n.Num() == 3 || n.Num() == 4)
 }
 
 func nativePlanRecordFields(value *Value) bool {
