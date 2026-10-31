@@ -10244,6 +10244,30 @@
    "status": "caught",
    "origin": "agent#260",
    "note": "Go twin (by hand): relax validLeaseVersion to the version alone; caught at ^TestPrincipalLeaseBinding$."
+  },
+  {
+   "name": "principal P40 a raw delegation read is admitted past a durable root's admission",
+   "file": "policySession.test.ts",
+   "find": "if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return",
+   "replace": "if(relative==='storage/writer.ts'&&name==='principal')return",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "No Go twin: this guard reads TypeScript's types at its request boundary, and Go has no such guard."
+  },
+  {
+   "name": "principal P41 a durable root's admission reads other raw members",
+   "file": "policySession.test.ts",
+   "find": "if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return",
+   "replace": "if(relative==='storage/writer.ts'&&fn==='durableSession')return",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "No Go twin: this guard reads TypeScript's types at its request boundary, and Go has no such guard."
   }
  ]
 }
