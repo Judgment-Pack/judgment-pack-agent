@@ -2,6 +2,7 @@ import {AIFailureError,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {storageId} from './common'
+import {principalBinding,sameBinding,validPrincipalBinding,type PrincipalBinding} from '../principal'
 import type {ApprovalRecord,ExecutionCheckpoint} from '../execution/state'
 import type {PolicyMembers} from '../policy'
 /* Deadlines, approval expiry and resume revalidation for unattended runs (ADR-0025 decisions 3 and 5, #225 and #227;
@@ -15,8 +16,8 @@ export const RESUME_SOURCE_LIMIT=64
 export const RESUME_ARTIFACT_LIMIT=256
 export const RESUME_ADMISSION_LIMIT=64
 export const RESUME_CHANGE_LIMIT=384
-export type ResumeRefusalReason='invalid'|'evidence-missing'|'identity-changed'|'lineage-changed'|'model-retired'|'model-changed'|'reference-changed'|'policy-changed'|'approval-changed'|'admission-invalid'
-export const RESUME_REFUSAL_REASONS:readonly ResumeRefusalReason[]=['invalid','evidence-missing','identity-changed','lineage-changed','model-retired','model-changed','reference-changed','policy-changed','approval-changed','admission-invalid']
+export type ResumeRefusalReason='invalid'|'evidence-missing'|'identity-changed'|'lineage-changed'|'model-retired'|'model-changed'|'reference-changed'|'policy-changed'|'approval-changed'|'admission-invalid'|'principal-changed'
+export const RESUME_REFUSAL_REASONS:readonly ResumeRefusalReason[]=['invalid','evidence-missing','identity-changed','lineage-changed','model-retired','model-changed','reference-changed','policy-changed','approval-changed','admission-invalid','principal-changed']
 
 export interface WaitLimits {run?:string;waitMs?:number;approvalTtlMs?:number}
 export interface RunLimit {version:1;resource:string;run:string}
@@ -26,9 +27,9 @@ export interface PinnedModel {provider:string;model:string}
 export interface SourcePin {source:string;identityDigest?:string;descriptorDigest?:string}
 export interface ArtifactPin {kind:'artifact'|'dialect';id:string;digest:string}
 export interface PlanPin {revision:string;accepted?:string}
-export interface ResumePins {model:PinnedModel;policy:string;plan?:PlanPin;sources:SourcePin[];artifacts:ArtifactPin[]}
+export interface ResumePins {model:PinnedModel;policy:string;plan?:PlanPin;sources:SourcePin[];artifacts:ArtifactPin[];/** ADR-0029: the principals a delegated run's wait holds; a resume keeps them. */principal?:PrincipalBinding}
 export interface ResumeAdmission {kind:'model'|'reference';subject:string;from:string;to:string;actor:string;at:string}
-export interface ResumeEvidence {version:1;resource:string;wait:string;model:PinnedModel&{status:'available'|'retired'};policy:{digest:string;layer?:string};plan?:PlanPin;sources:SourcePin[];artifacts:ArtifactPin[];admissions?:ResumeAdmission[]}
+export interface ResumeEvidence {version:1;resource:string;wait:string;model:PinnedModel&{status:'available'|'retired'};policy:{digest:string;layer?:string};plan?:PlanPin;sources:SourcePin[];artifacts:ArtifactPin[];admissions?:ResumeAdmission[];principal?:PrincipalBinding}
 export interface ResumeChange {kind:'model'|'reference'|'policy';subject:string;from:string;to:string;actor?:string;at?:string;layer?:string}
 export interface Revalidation {version:1;resource:string;wait:string;pins:string;evidence:string;changes:ResumeChange[]}
 
@@ -114,17 +115,18 @@ function readArtifactPins(v:unknown):ArtifactPin[]{
  return list
 }
 function readPlanPin(v:unknown):PlanPin{const held=shape(v,['revision'],['accepted']);return {revision:digest(held.revision),...(held.accepted===undefined?{}:{accepted:id(held.accepted)})}}
+function readBinding(v:unknown):PrincipalBinding{return validPrincipalBinding(v)?{sub:{kind:v.sub.kind,issuer:v.sub.issuer,subject:v.sub.subject},rootActor:v.rootActor,host:v.host}:invalid()}
 export function readResumePins(v:unknown):ResumePins{
- const held=shape(v,['model','policy','sources','artifacts'],['plan'])
- return {model:readModel(held.model),policy:digest(held.policy),...(held.plan===undefined?{}:{plan:readPlanPin(held.plan)}),sources:readSourcePins(held.sources),artifacts:readArtifactPins(held.artifacts)}
+ const held=shape(v,['model','policy','sources','artifacts'],['plan','principal'])
+ return {model:readModel(held.model),policy:digest(held.policy),...(held.plan===undefined?{}:{plan:readPlanPin(held.plan)}),sources:readSourcePins(held.sources),artifacts:readArtifactPins(held.artifacts),...(held.principal===undefined?{}:{principal:readBinding(held.principal)})}
 }
 function readAdmission(v:unknown):ResumeAdmission{const held=shape(v,['kind','subject','from','to','actor','at']);return {kind:one(held.kind,['model','reference'] as const),subject:label(held.subject),from:label(held.from),to:label(held.to),actor:id(held.actor),at:time(held.at)}}
 export function readResumeEvidence(v:unknown):ResumeEvidence{
- const held=shape(v,['version','resource','wait','model','policy','sources','artifacts'],['plan','admissions'])
+ const held=shape(v,['version','resource','wait','model','policy','sources','artifacts'],['plan','admissions','principal'])
  if(held.version!==1)return invalid()
  const model=shape(held.model,['provider','model','status']),policy=shape(held.policy,['digest'],['layer'])
  const evidence:ResumeEvidence={version:1,resource:id(held.resource),wait:id(held.wait),model:{...readModel({provider:model.provider,model:model.model}),status:one(model.status,['available','retired'] as const)},policy:{digest:digest(policy.digest),...(policy.layer===undefined?{}:{layer:digest(policy.layer)})},
-  ...(held.plan===undefined?{}:{plan:readPlanPin(held.plan)}),sources:readSourcePins(held.sources),artifacts:readArtifactPins(held.artifacts)}
+  ...(held.plan===undefined?{}:{plan:readPlanPin(held.plan)}),sources:readSourcePins(held.sources),artifacts:readArtifactPins(held.artifacts),...(held.principal===undefined?{}:{principal:readBinding(held.principal)})}
  if(held.admissions!==undefined){
   if(!Array.isArray(held.admissions)||held.admissions.length>RESUME_ADMISSION_LIMIT)return invalid()
   const admissions=held.admissions.map(readAdmission)
@@ -183,7 +185,7 @@ export function pinsFrom(checkpoint:ExecutionCheckpoint,model:PinnedModel):Resum
  const artifacts=new Map<string,ArtifactPin>()
  for(const row of checkpoint.durable?.observations??[])if(row.artifact)artifacts.set(canonicalJSON([row.artifact.kind,row.artifact.id]),{kind:row.artifact.kind,id:row.artifact.id,digest:row.artifact.digest})
  const plan=checkpoint.planState?{revision:checkpoint.planState.revision,...(checkpoint.planState.accepted?{accepted:checkpoint.planState.accepted.revision}:{})}:undefined
- return readResumePins({model,policy:policyIdentity(checkpoint.policy),...(plan?{plan}:{}),sources:[...sources.values()].sort((a,b)=>byteOrder(a.source,b.source)),artifacts:[...artifacts.values()].sort(artifactOrder)})
+ return readResumePins({model,policy:policyIdentity(checkpoint.policy),...(plan?{plan}:{}),sources:[...sources.values()].sort((a,b)=>byteOrder(a.source,b.source)),artifacts:[...artifacts.values()].sort(artifactOrder),...(checkpoint.principal?{principal:principalBinding(checkpoint.principal)}:{})})
 }
 
 /** What revalidation reads of a wait: its run, identity, reason, pins and an approval wait's binding. */
@@ -195,6 +197,9 @@ export interface RevalidatedWait {resource:string;wait:string;reason:string;pins
  * descriptor or policy changed cannot run. Returns the record of what the continuation runs under, old and new. */
 export function revalidateResume(wait:RevalidatedWait,input:unknown):Revalidation{
  const current=readResumeEvidence(input),pins=readResumePins(wait.pins)
+ // ADR-0029: a resume keeps the wait's principals: evidence of none for a delegated run is missing, and other principals, or some for an undelegated run, are a changed principal, never a refresh.
+ if(pins.principal&&!current.principal)throw new ResumeRefused('evidence-missing')
+ if(!sameBinding(pins.principal,current.principal))throw new ResumeRefused('principal-changed')
  if(current.resource!==wait.resource||current.wait!==wait.wait)return invalid()
  const sources=new Map(current.sources.map(s=>[s.source,s])),artifacts=new Map(current.artifacts.map(a=>[canonicalJSON([a.kind,a.id]),a]))
  for(const pin of pins.sources){

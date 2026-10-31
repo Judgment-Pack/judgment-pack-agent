@@ -4,7 +4,9 @@ package runcontext
 // the ADR's: a lease has an owner, an authoritative expiry decided by the store clock and an exact,
 // monotonically increasing epoch. The fence (resource, owner, epoch) is the evidence presented at every
 // checkpoint commit and checked by the effect host at every admission. A lease grants neither tool
-// permission nor approval. The TypeScript twin is packages/harness/storage/lease.ts.
+// permission nor approval. A delegated run's lease is version 2 and holds the run's principals (ADR-0029):
+// leases bound time and delegations bound authority, and a takeover is a new epoch of the same subject and
+// root actor, never a change of principal. The TypeScript twin is packages/harness/storage/lease.ts.
 import (
 	"bytes"
 	"context"
@@ -48,9 +50,12 @@ type EffectAdmission = contract.RunLeaseEffectAdmission
 type LeaseAcquire struct {
 	Resource, Owner, ExpectedRevision string
 	DurationMs                        int64
+	// Principal is a delegated run's subject, root actor and issuing host (ADR-0029); nil on an
+	// undelegated run's lease.
+	Principal *PrincipalBinding
 }
 
-var LeaseRefusalReasons = []string{"invalid", "no-lease", "held", "revision-changed", "stale-epoch", "other-owner", "expired", "released", "epoch-exhausted", "resource-mismatch", "already-admitted"}
+var LeaseRefusalReasons = []string{"invalid", "no-lease", "held", "revision-changed", "stale-epoch", "other-owner", "expired", "released", "epoch-exhausted", "resource-mismatch", "already-admitted", "principal-changed"}
 var LeaseCapabilityReasons = []string{"store-unsupported", "store-lifetime", "effect-host-unfenced"}
 
 // LeaseRefused is a named lease or fence refusal. Nothing was committed or admitted, except
@@ -158,11 +163,38 @@ func leaseObject(raw []byte, members ...string) (map[string]json.RawMessage, err
 	}
 	if version, ok := object["version"]; ok {
 		var number float64
-		if json.Unmarshal(version, &number) != nil || number != LeaseRecordVersion {
+		// ADR-0029: only a lease or fence record naming its principal is version 2.
+		if json.Unmarshal(version, &number) != nil || number != LeaseRecordVersion && !(number == 2 && slices.Contains(members, "principal")) {
 			return nil, leaseInvalid()
 		}
 	}
 	return object, nil
+}
+
+// leaseVersionedObject reads a lease or fence record: version 1 names no principal, and version 2
+// (ADR-0029) names exactly the run's.
+func leaseVersionedObject(raw []byte, members ...string) (map[string]json.RawMessage, int64, *PrincipalBinding, error) {
+	var probe struct {
+		Version *float64 `json:"version"`
+	}
+	if json.Unmarshal(raw, &probe) == nil && probe.Version != nil && *probe.Version == 2 {
+		object, err := leaseObject(raw, append(append([]string{}, members...), "principal")...)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		principal, err := readPrincipalBinding(object["principal"])
+		if err != nil {
+			return nil, 0, nil, leaseInvalid()
+		}
+		return object, 2, principal, nil
+	}
+	object, err := leaseObject(raw, members...)
+	return object, LeaseRecordVersion, nil, err
+}
+
+// validLeaseVersion: version 1 names no principal, and version 2 names a valid one.
+func validLeaseVersion(version int64, principal *PrincipalBinding) bool {
+	return version == LeaseRecordVersion && principal == nil || version == 2 && principal != nil && ValidPrincipalBinding(*principal)
 }
 func leaseString(object map[string]json.RawMessage, member string) (string, error) {
 	var value string
@@ -172,23 +204,23 @@ func leaseString(object map[string]json.RawMessage, member string) (string, erro
 	return value, nil
 }
 func validLeaseFence(fence LeaseFence) bool {
-	return fence.Version == LeaseRecordVersion && validStorageID(fence.Resource) && validStorageID(fence.Owner) && ValidLeaseEpoch(fence.Epoch)
+	return validLeaseVersion(fence.Version, fence.Principal) && validStorageID(fence.Resource) && validStorageID(fence.Owner) && ValidLeaseEpoch(fence.Epoch)
 }
 func validRunLease(lease RunLease) bool {
 	_, ok := leaseExpiryMillis(lease.Expiry)
-	return lease.Version == LeaseRecordVersion && validStorageID(lease.Resource) && validStorageID(lease.Owner) && ValidLeaseEpoch(lease.Epoch) && ok && (lease.State == "held" || lease.State == "released")
+	return validLeaseVersion(lease.Version, lease.Principal) && validStorageID(lease.Resource) && validStorageID(lease.Owner) && ValidLeaseEpoch(lease.Epoch) && ok && (lease.State == "held" || lease.State == "released")
 }
 func validEffectOperation(op EffectOperation) bool {
 	return validStorageID(op.Run) && validStorageID(op.Operation) && validStorageID(op.Source) && validStorageID(op.Tool) && leaseDigestPattern.MatchString(op.RequestDigest)
 }
 
-// ReadLeaseFence reads a version 1 fence record.
+// ReadLeaseFence reads a fence record: version 1, or version 2 with its principal (ADR-0029).
 func ReadLeaseFence(raw []byte) (LeaseFence, error) {
-	object, err := leaseObject(raw, "version", "resource", "owner", "epoch")
+	object, version, principal, err := leaseVersionedObject(raw, "version", "resource", "owner", "epoch")
 	if err != nil {
 		return LeaseFence{}, err
 	}
-	fence := LeaseFence{Version: LeaseRecordVersion}
+	fence := LeaseFence{Version: version, Principal: principal}
 	if fence.Resource, err = leaseString(object, "resource"); err != nil {
 		return LeaseFence{}, err
 	}
@@ -204,13 +236,13 @@ func ReadLeaseFence(raw []byte) (LeaseFence, error) {
 	return fence, nil
 }
 
-// ReadRunLease reads a version 1 lease record.
+// ReadRunLease reads a lease record: version 1, or version 2 with its principal (ADR-0029).
 func ReadRunLease(raw []byte) (RunLease, error) {
-	object, err := leaseObject(raw, "version", "resource", "owner", "epoch", "expiry", "state")
+	object, version, principal, err := leaseVersionedObject(raw, "version", "resource", "owner", "epoch", "expiry", "state")
 	if err != nil {
 		return RunLease{}, err
 	}
-	lease := RunLease{Version: LeaseRecordVersion}
+	lease := RunLease{Version: version, Principal: principal}
 	for member, target := range map[string]*string{"resource": &lease.Resource, "owner": &lease.Owner, "epoch": &lease.Epoch, "expiry": &lease.Expiry, "state": &lease.State} {
 		if *target, err = leaseString(object, member); err != nil {
 			return RunLease{}, err
@@ -248,7 +280,7 @@ func ReadLeaseCapabilityRefusal(raw []byte) (contract.RunLeaseCapabilityRefusal,
 
 // FenceOf is the fence a lease's holder presents.
 func FenceOf(lease RunLease) LeaseFence {
-	return LeaseFence{Version: LeaseRecordVersion, Resource: lease.Resource, Owner: lease.Owner, Epoch: lease.Epoch}
+	return LeaseFence{Version: lease.Version, Resource: lease.Resource, Owner: lease.Owner, Epoch: lease.Epoch, Principal: clonePrincipalBinding(lease.Principal)}
 }
 
 // EffectIdempotencyKey is the SHA-256 of the canonical JSON of the operation alone. It carries no epoch,
@@ -319,7 +351,9 @@ type LeaseStore interface {
 	// end with it (the memory kind).
 	LeaseLifetime() string
 	// AcquireLease compares ExpectedRevision with the resource's current revision and refuses held while
-	// an unexpired lease is held.
+	// an unexpired lease is held. It binds the resource to the request's Principal at its first lease and
+	// keeps that binding across release, expiry and restart: another subject or root actor, or none where
+	// one is bound, or one where none is, refuses principal-changed (ADR-0029).
 	AcquireLease(context.Context, LeaseAcquire) (RunLease, error)
 	// RenewLease: current owner and epoch only, before expiry. An expired lease is never revived.
 	RenewLease(context.Context, LeaseFence, int64) (RunLease, error)
@@ -329,6 +363,10 @@ type LeaseStore interface {
 	// CheckFence is the authority an effect host checks a fence against.
 	CheckFence(context.Context, LeaseFence) error
 }
+
+// LeasePrincipalStore is a lease store that holds a run's principals on its leases and refuses
+// principal-changed (ADR-0029); a store that is not one cannot host a delegated run's lease.
+type LeasePrincipalStore interface{ LeasePrincipals() bool }
 
 // LeaseRunStore commits with the fence checked in the same transaction as the revision.
 type LeaseRunStore interface {
@@ -387,7 +425,7 @@ func (t *LeaseTable) Acquire(request LeaseAcquire, currentRevision string) (RunL
 // lease may expire, the run's deadline or an approval's expiry. The caller refuses before it when the
 // ceiling is not after the store's time.
 func (t *LeaseTable) acquireWithin(request LeaseAcquire, currentRevision string, ceiling *int64) (RunLease, error) {
-	if !validStorageID(request.Resource) || !validStorageID(request.Owner) || request.ExpectedRevision != "" && !validStorageID(request.ExpectedRevision) || request.DurationMs < 1 || request.DurationMs > LeaseDurationMaxMs {
+	if !validStorageID(request.Resource) || !validStorageID(request.Owner) || request.ExpectedRevision != "" && !validStorageID(request.ExpectedRevision) || request.DurationMs < 1 || request.DurationMs > LeaseDurationMaxMs || request.Principal != nil && !ValidPrincipalBinding(*request.Principal) {
 		return RunLease{}, leaseInvalid()
 	}
 	now, err := t.millis()
@@ -403,6 +441,10 @@ func (t *LeaseTable) acquireWithin(request LeaseAcquire, currentRevision string,
 			return RunLease{}, &LeaseRefused{Reason: "held"}
 		}
 	}
+	// ADR-0029: a takeover is a new epoch of the same principals, never a change of principal.
+	if held && !SamePrincipalBinding(row.Principal, request.Principal) {
+		return RunLease{}, &LeaseRefused{Reason: "principal-changed"}
+	}
 	epoch, err := NextLeaseEpoch(row.Epoch)
 	if err != nil {
 		return RunLease{}, err
@@ -412,6 +454,9 @@ func (t *LeaseTable) acquireWithin(request LeaseAcquire, currentRevision string,
 		return RunLease{}, err
 	}
 	lease := RunLease{Version: LeaseRecordVersion, Resource: request.Resource, Owner: request.Owner, Epoch: epoch, Expiry: expiry, State: "held"}
+	if request.Principal != nil {
+		lease.Version, lease.Principal = 2, clonePrincipalBinding(request.Principal)
+	}
 	t.rows[lease.Resource] = lease
 	return lease, nil
 }
@@ -434,6 +479,8 @@ func (t *LeaseTable) Check(fence LeaseFence) (RunLease, error) {
 		return RunLease{}, &LeaseRefused{Reason: "stale-epoch"}
 	case row.Owner != fence.Owner:
 		return RunLease{}, &LeaseRefused{Reason: "other-owner"}
+	case !SamePrincipalBinding(row.Principal, fence.Principal):
+		return RunLease{}, &LeaseRefused{Reason: "principal-changed"}
 	case row.State == "released":
 		return RunLease{}, &LeaseRefused{Reason: "released"}
 	case now >= expiry:
@@ -511,6 +558,9 @@ func (m *MemoryRunStore) leaseTransition(ctx context.Context, run func() error) 
 // so it never qualifies for unattended admission and a new instance starts with no leases.
 func (m *MemoryRunStore) LeaseVersion() int     { return LeaseRecordVersion }
 func (m *MemoryRunStore) LeaseLifetime() string { return LeaseLifetimeProcess }
+
+// LeasePrincipals declares that the memory kind holds a run's principals on its leases (ADR-0029).
+func (m *MemoryRunStore) LeasePrincipals() bool { return true }
 
 // AcquireLease: #265 M2 and #225, a run a wait holds is leased only by its resume's claim, and no lease
 // outlives the run's deadline.
@@ -731,6 +781,39 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	if performed != 1 {
 		return fail("host.performed-once")
 	}
+	// ADR-0029: the host hands the whole fence to its authority, so a delegated run's lease holds its
+	// principals at admission.
+	principal := PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+	var held LeaseFence
+	kit.do(func() {
+		var lease RunLease
+		lease, err = kit.table.Acquire(LeaseAcquire{Resource: "host-delegated", Owner: "worker-a", DurationMs: 1000, Principal: &principal}, "")
+		held = FenceOf(lease)
+	})
+	if err != nil {
+		return fail("host.operation")
+	}
+	if err := host.Dispatch(ctx, admission(held, op("op-10", "host-delegated")), perform); err != nil || performed != 2 {
+		return fail("host.principal.admit")
+	}
+	otherActor, otherSubject := principal, principal
+	otherActor.RootActor = strings.Repeat("b2", 16)
+	otherSubject.Sub.Subject = "other"
+	forgedActor, forgedSubject, none := held, held, held
+	forgedActor.Principal, forgedSubject.Principal = &otherActor, &otherSubject
+	none.Version, none.Principal = LeaseRecordVersion, nil
+	if !refuses(admission(forgedActor, op("op-11", "host-delegated")), "principal-changed") {
+		return fail("host.principal.other-actor")
+	}
+	if !refuses(admission(forgedSubject, op("op-12", "host-delegated")), "principal-changed") {
+		return fail("host.principal.other-subject")
+	}
+	if !refuses(admission(none, op("op-13", "host-delegated")), "principal-changed") {
+		return fail("host.principal.none")
+	}
+	if performed != 2 {
+		return fail("host.principal.performed-once")
+	}
 	return nil
 }
 
@@ -909,6 +992,10 @@ func FencedRunStore(store RunStore, fence LeaseFence, host EffectHost) (RunStore
 	if !validLeaseFence(fence) {
 		return nil, leaseInvalid()
 	}
+	// ADR-0029: a store that does not keep a lease's principals cannot host a delegated run's lease.
+	if keeps, ok := store.(LeasePrincipalStore); fence.Principal != nil && (!ok || !keeps.LeasePrincipals()) {
+		return nil, &LeaseCapabilityRefused{Reason: "store-unsupported"}
+	}
 	view := &fencedRunStore{store: lease, fence: fence, host: host}
 	if withHistory && history.HistoryVersion() == 1 {
 		return &fencedHistoryRunStore{HistoryRunStore: history, fenced: view, store: leaseHistory}, nil
@@ -949,6 +1036,23 @@ func leaseViewOf(store RunStore) *fencedRunStore {
 		return view
 	case *fencedHistoryRunStore:
 		return view.fenced
+	}
+	return nil
+}
+
+// holdLeasePrincipal is ADR-0029's check of a fenced store's lease: it holds the run's principals. A
+// lease of others, a delegated run's without them or an undelegated run's with them dispatches nothing.
+func holdLeasePrincipal(store RunStore, record *PrincipalRecord) error {
+	view := leaseViewOf(store)
+	if view == nil {
+		return nil
+	}
+	var binding *PrincipalBinding
+	if record != nil {
+		binding = record.Binding()
+	}
+	if !SamePrincipalBinding(view.fence.Principal, binding) {
+		return failure.Authored("stale-state", "The run's lease holds other principals than the run (principal-changed). Nothing was sent.", "context")
 	}
 	return nil
 }

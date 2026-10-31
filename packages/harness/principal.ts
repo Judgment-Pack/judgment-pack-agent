@@ -26,6 +26,7 @@
  * through the host's `ContextInput.principal`.
  */
 import {readDescriptorJSON} from './descriptorSnapshot'
+import {authoredFailure} from './failures'
 import {sha256} from './records'
 
 export const DELEGATION_CONTEXT = 'judgment-pack/delegation/1:'
@@ -38,7 +39,7 @@ export const EFFECTS = ['pure', 'read', 'read-external', 'propose', 'act'] as co
 export type DelegationEffect = typeof EFFECTS[number]
 export const SCOPE_REASONS = ['source', 'tool', 'effect', 'limit-unknown', 'limit'] as const
 export type ScopeReason = typeof SCOPE_REASONS[number]
-export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed'
+export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor'
 /** A named refusal (`run-principal.json#/$defs/refusal`); `reason` is present exactly for out-of-scope. */
 export interface PrincipalRefusal {name: RefusalName; reason?: ScopeReason}
 
@@ -60,6 +61,11 @@ export interface AdmissionRead {readVersion: '1'; host: string; audience: Audien
 /** The port's answer (`run-principal.json#/$defs/admissionAnswer`). */
 export type AdmissionAnswer = {admission: 'admit'} | {admission: 'refuse'; refusal: string; reason?: string}
 export type AdmissionPort = (read: AdmissionRead, signal: AbortSignal) => AdmissionAnswer | Promise<AdmissionAnswer>
+/** What the host's child port is asked for one delegated child: the parent's chain, the task, its profile and the tools with a source it is offered. */
+export interface ChildLinkRequest {readVersion: '1'; host: string; chain: string[]; task: string; profile: string; tools: {source: string; tool: string}[]}
+/** The child port's answer: the child's whole chain as JSON text (the parent's, and the link the issuing host issued below it), or the host's refusal. */
+export type ChildLinkAnswer = {chain: string} | {refusal: 'delegation-not-permitted' | 'not-parent-actor'}
+export type ChildLinkPort = (request: ChildLinkRequest, signal: AbortSignal) => ChildLinkAnswer | Promise<ChildLinkAnswer>
 
 /**
  * What the host supplies for a delegated run (`ContextInput.principal`). `chain` is the JSON text of
@@ -67,7 +73,8 @@ export type AdmissionPort = (read: AdmissionRead, signal: AbortSignal) => Admiss
  * public keys (64 lowercase hexadecimal characters each) by host; `software` the software the host
  * states the run runs (RFC 0030 §1 rule 3); `audience` the flat token this host declares for the
  * host sources it serves; `admission` the port that answers from the issuing host's state; `clock`
- * the host's authoritative time (the system clock where absent).
+ * the host's authoritative time (the system clock where absent). `child` asks the issuing host for the narrowed link
+ * of a delegated child (RFC 0030 §3); with none, a delegated run starts no child.
  */
 export interface RunPrincipal {
   chain: string
@@ -76,7 +83,10 @@ export interface RunPrincipal {
   audience: string
   admission: AdmissionPort
   clock?: () => Date | number
+  child?: ChildLinkPort
 }
+/** What a lease and a wait hold of a delegated run's principals (`run-principal.json#/$defs/binding`), in the form of the gateway's reservation scope: a takeover or a resume keeps them. */
+export interface PrincipalBinding {sub: PrincipalReference; rootActor: string; host: string}
 
 /** A chain or a principal the package refuses, by name. Its message repeats no statement and no key. */
 export class DelegationRefused extends Error {
@@ -363,6 +373,8 @@ export interface OpenedPrincipal {
   readonly clock: () => Date | number
   /** The chain's JSON text, root first, as the issuing host supplied it. */
   readonly text: string
+  /** The host's input, which a child's principal is opened from with its own chain. */
+  readonly input: RunPrincipal
 }
 
 function readSoftware(v: unknown): Software {
@@ -393,18 +405,85 @@ export function principalRecord(chain: VerifiedChain): PrincipalRecord {
  */
 export async function openPrincipal(input: RunPrincipal): Promise<OpenedPrincipal> {
   if (!object(input)) throw new PrincipalInputInvalid('it is not an object')
-  const known = ['chain', 'keys', 'software', 'audience', 'admission', 'clock']
+  const known = ['chain', 'keys', 'software', 'audience', 'admission', 'clock', 'child']
   if (Object.keys(input).some(name => !known.includes(name))) throw new PrincipalInputInvalid('it carries a member the package does not name')
   if (typeof input.chain !== 'string') throw new PrincipalInputInvalid("chain is not the chain's JSON text")
   if (!flatToken(input.audience)) throw new PrincipalInputInvalid('audience is not a flat token')
   if (typeof input.admission !== 'function') throw new PrincipalInputInvalid('admission is not a function')
   if (input.clock !== undefined && typeof input.clock !== 'function') throw new PrincipalInputInvalid('clock is not a function')
+  if (input.child !== undefined && typeof input.child !== 'function') throw new PrincipalInputInvalid('child is not a function')
   const runSoftware = readSoftware(input.software)
   const keys = await pinKeys(input.keys)
   const chain = await verifyChain(input.chain, keys)
   const leaf = chain.links[chain.links.length - 1]!
   if (canon(leaf.software) !== canon(runSoftware)) throw new DelegationRefused({name: 'software-mismatch'}, "the leaf's software is not the software the host states the run runs")
-  return Object.freeze({chain, record: principalRecord(chain), audience: input.audience, keys, software: runSoftware, admission: input.admission, clock: input.clock ?? (() => Date.now()), text: input.chain})
+  return Object.freeze({chain, record: principalRecord(chain), audience: input.audience, keys, software: runSoftware, admission: input.admission, clock: input.clock ?? (() => Date.now()), text: input.chain, input})
+}
+
+/** The binding a lease and a wait hold of a principal record. */
+export function principalBinding(record: PrincipalRecord): PrincipalBinding {
+  return {sub: {...record.subject}, rootActor: record.rootActor, host: record.actor.host}
+}
+/** Whether a value is a principal binding of its exact form. */
+export function validPrincipalBinding(v: unknown): v is PrincipalBinding {
+  return object(v) && hasOnly(v, ['sub', 'rootActor', 'host']) && principalReference(v.sub) !== undefined && typeof v.rootActor === 'string' && OPAQUE.test(v.rootActor) && flatToken(v.host)
+}
+/** Two bindings, or their absences, are the same principals: all members equal. */
+export const sameBinding = (a: PrincipalBinding | undefined, b: PrincipalBinding | undefined) => (a === undefined || b === undefined) ? a === b : sameReference(a.sub, b.sub) && a.rootActor === b.rootActor && a.host === b.host
+
+/**
+ * The narrowed principal of a delegated child (RFC 0030 §3). A child exists only below a link that permits one
+ * (`delegation-not-permitted`, and with no child port, which issues none) and only with the link the issuing host
+ * issued for it (a port that gives no valid answer in time is `admission-unknown`). The model never names or supplies
+ * the link. Throws `DelegationRefused`. `openChildPrincipal` verifies what this returns.
+ */
+export async function narrowChild(parent: OpenedPrincipal, request: {task: string; profile: string; tools: {source: string; tool: string}[]}, signal?: AbortSignal): Promise<RunPrincipal> {
+  const leaf = parent.chain.links[parent.chain.links.length - 1]!
+  if (!leaf.mayDelegate) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the link this run acts under permits no child')
+  const port = parent.input.child
+  if (port === undefined) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the host issues no child link')
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, {once: true})
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let answer: unknown
+  try {
+    answer = await Promise.race([
+      Promise.resolve().then(() => port({readVersion: '1', host: leaf.host, chain: [...parent.chain.digests], task: request.task, profile: request.profile, tools: structuredClone(request.tools)}, controller.signal)),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('child link timed out')), ADMISSION_MILLISECONDS) }),
+      ...(signal ? [new Promise((_, reject) => { if (signal.aborted) reject(signal.reason); signal.addEventListener('abort', () => reject(signal.reason), {once: true}) })] : []),
+    ])
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new DelegationRefused({name: 'admission-unknown'}, 'the issuing host gave no child link')
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+    controller.abort()
+  }
+  if (object(answer) && hasOnly(answer, ['refusal']) && (answer.refusal === 'delegation-not-permitted' || answer.refusal === 'not-parent-actor')) throw new DelegationRefused({name: answer.refusal})
+  if (!object(answer) || !hasOnly(answer, ['chain']) || typeof answer.chain !== 'string') throw new DelegationRefused({name: 'admission-unknown'}, 'the issuing host gave no child link')
+  return {...parent.input, chain: answer.chain}
+}
+/**
+ * Opens a child's principal under its parent's: steps 1 to 7 over the child's whole chain (a link wider than its parent
+ * is `widened`), and the chain must be the parent's with exactly one link below it (`chain-broken`): never a chain a
+ * child or a tool result supplies, and never its parent's whole reach under another name.
+ */
+export async function openChildPrincipal(parent: OpenedPrincipal, input: RunPrincipal): Promise<OpenedPrincipal> {
+  const opened = await openPrincipal(input)
+  const held = parent.chain.digests, digests = opened.chain.digests
+  if (digests.length !== held.length + 1 || held.some((digest, at) => digests[at] !== digest)) throw new DelegationRefused({name: 'chain-broken'}, "the child's chain is not its parent's with one link below it")
+  return opened
+}
+
+/** Opens a run's principal for its session: a refused chain or an unreadable input ends the run before anything is sent, by name (`configuration`). */
+export async function openRunPrincipal(input: RunPrincipal, parent?: OpenedPrincipal): Promise<OpenedPrincipal> {
+  try { return parent ? await openChildPrincipal(parent, input) : await openPrincipal(input) } catch (error) {
+    if (error instanceof DelegationRefused) throw authoredFailure('configuration', `The run's delegation is refused (${error.refusal.name}). Nothing was sent.`, 'context')
+    if (error instanceof PrincipalInputInvalid) throw authoredFailure('configuration', error.message + ' Nothing was sent.', 'context')
+    throw error
+  }
 }
 
 /** The call the package admits: the audience its source answers to (null or undefined for a gateway source with no mapping), its source, tool and effect. */

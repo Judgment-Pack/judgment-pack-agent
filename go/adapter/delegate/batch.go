@@ -269,6 +269,11 @@ func (l childLink) DelegatedPolicy() *runcontext.DelegatedPolicy { return l.poli
 // ParentSources is the source gate of the run that delegated this one, or nil.
 func (l childLink) ParentSources() *runcontext.SourceGate { return l.sources() }
 
+// ParentPrincipal is the principal of the run that delegated this one, or nil (ADR-0029).
+func (l childLink) ParentPrincipal() *runcontext.OpenedPrincipal {
+	return l.coordinator.parentPrincipal()
+}
+
 func (l childLink) Attach(sc *runcontext.SessionContext) {
 	sc.TaskDispatchCharge = func(ctx context.Context, kind, role string) error {
 		if kind == "model" {
@@ -410,7 +415,24 @@ func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.Tas
 	if c.run.Agent == nil && limit < 1 {
 		return failure.Err("request-limit", "context", "not-started")
 	}
-	input := &runcontext.Input{Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{coordinator: c, definition: p.subagent, limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources, policy: projection}}
+	// ADR-0029: under a delegation a child runs only with the link the issuing host narrowed for it,
+	// verified here and at its opening. A child it cannot have is refused by name and recorded; nothing
+	// of it starts.
+	childPrincipal, refused, err := c.narrowedChild(ctx, task, profile.ID, hosts)
+	if err != nil {
+		return err
+	}
+	if refused != nil {
+		detail := runcontext.PrincipalRefusalDetail(turn.DelegateTool, *refused)
+		reason := "delegation refused"
+		c.deliver(contract.StampEvent(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: turn.DelegateTool, Action: "refused", Detail: detail, Reason: &reason, Refusal: refused.Contract(), Principal: c.parentPrincipal().Record.Contract()}}))
+		held := failure.New("permission", "tool", "not-started")
+		held.Detail = &detail
+		run.failed = detail
+		c.edit(func() { task.Failure = &held })
+		return nil
+	}
+	input := &runcontext.Input{Principal: childPrincipal, Objective: objective, Chat: c.chat.ChildScope(p.visible), Link: childLink{coordinator: c, definition: p.subagent, limit: limit, calls: c.toolCalls, task: task, budget: p.budget, m: m, sources: c.parentSources, policy: projection}}
 	if c.run.Agent == nil {
 		cap := min(limit, runcontext.MaxTurns)
 		input.RequestCap = &cap

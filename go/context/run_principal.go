@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
 // PrincipalDelegationContext is the signing prefix of a version 1 statement.
@@ -196,6 +197,77 @@ type RunPrincipal struct {
 	Audience  string
 	Admission PrincipalAdmissionPort
 	Clock     func() (time.Time, error)
+	// Child asks the issuing host for the narrowed link of a delegated child (RFC 0030 §3); with
+	// none, a delegated run starts no child.
+	Child PrincipalChildPort
+}
+
+// PrincipalChildTool is one tool with a source a delegated child is offered.
+type PrincipalChildTool struct{ Source, Tool string }
+
+// PrincipalChildRequest is what the host's child port is asked for one delegated child
+// (run-principal.json#/$defs/childLinkRequest).
+type PrincipalChildRequest struct {
+	Host          string
+	Chain         []string
+	Task, Profile string
+	Tools         []PrincipalChildTool
+}
+
+// Value is the request as JSON, its members in canonical order.
+func (r PrincipalChildRequest) Value() *Value {
+	chain, tools := Array(), Array()
+	for _, digest := range r.Chain {
+		chain.Append(String(digest))
+	}
+	for _, tool := range r.Tools {
+		tools.Append(ObjectOf("source", String(tool.Source), "tool", String(tool.Tool)))
+	}
+	return ObjectOf("chain", chain, "host", String(r.Host), "profile", String(r.Profile), "readVersion", String("1"), "task", String(r.Task), "tools", tools)
+}
+
+// PrincipalChildPort answers one child request: the JSON of {"chain": text} (the child's whole chain,
+// the parent's and the link issued below it) or {"refusal": R}. An error, another form, or no answer
+// within PrincipalAdmissionTimeout refuses the child as admission-unknown.
+type PrincipalChildPort func(ctx context.Context, request PrincipalChildRequest) ([]byte, error)
+
+// PrincipalBinding is what a lease and a wait hold of a delegated run's principals, in the form of the
+// gateway's reservation scope (run-principal.json#/$defs/binding): a takeover or a resume keeps them.
+type PrincipalBinding = contract.RunPrincipalBinding
+
+// Binding is the binding of a principal record.
+func (r PrincipalRecord) Binding() *PrincipalBinding {
+	return &PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: r.Subject.Kind, Issuer: r.Subject.Issuer, Subject: r.Subject.Subject}, RootActor: r.RootActor, Host: r.Host}
+}
+
+// ValidPrincipalBinding reports a binding of its exact form.
+func ValidPrincipalBinding(b PrincipalBinding) bool {
+	return (b.Sub.Kind == "person" || b.Sub.Kind == "service") && b.Sub.Issuer != "" && b.Sub.Subject != "" && principalOpaque.MatchString(b.RootActor) && PrincipalFlatToken(b.Host)
+}
+
+// SamePrincipalBinding: two bindings, or their absences, are the same principals when every member is equal.
+func SamePrincipalBinding(a, b *PrincipalBinding) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func clonePrincipalBinding(b *PrincipalBinding) *PrincipalBinding {
+	if b == nil {
+		return nil
+	}
+	copied := *b
+	return &copied
+}
+
+// readPrincipalBinding reads a binding of its exact form.
+func readPrincipalBinding(raw []byte) (*PrincipalBinding, error) {
+	var out PrincipalBinding
+	if err := json.Unmarshal(raw, &out); err != nil || !ValidPrincipalBinding(out) {
+		return nil, ErrPrincipalInputInvalid
+	}
+	return &out, nil
 }
 
 var (
@@ -749,6 +821,8 @@ type OpenedPrincipal struct {
 	clock    func() (time.Time, error)
 	// Text is the chain's JSON text as the issuing host supplied it.
 	Text []byte
+	// input is the host's, which a child's principal is opened from with its own chain.
+	input *RunPrincipal
 }
 
 // OpenPrincipal opens the host's Input.Principal: the input's form (ErrPrincipalInputInvalid), the
@@ -783,7 +857,83 @@ func OpenPrincipal(input *RunPrincipal) (*OpenedPrincipal, error) {
 	if clock == nil {
 		clock = func() (time.Time, error) { return time.Now(), nil }
 	}
-	return &OpenedPrincipal{Chain: chain, Record: chain.Record(), Audience: input.Audience, Keys: keys, Software: software, port: input.Admission, clock: clock, Text: append([]byte(nil), input.Chain...)}, nil
+	return &OpenedPrincipal{Chain: chain, Record: chain.Record(), Audience: input.Audience, Keys: keys, Software: software, port: input.Admission, clock: clock, Text: append([]byte(nil), input.Chain...), input: input}, nil
+}
+
+// NarrowChild is the narrowed principal of a delegated child (RFC 0030 §3). A child exists only below a
+// link that permits one (delegation-not-permitted, and with no child port, which issues none) and only
+// with the link the issuing host issued for it (a port that gives no valid answer in time is
+// admission-unknown). The model never names or supplies the link. A refusal is a *DelegationRefused.
+// OpenChildPrincipal verifies what this returns.
+func NarrowChild(ctx context.Context, parent *OpenedPrincipal, task, profile string, tools []PrincipalChildTool) (*RunPrincipal, error) {
+	leaf := parent.Chain.Links[len(parent.Chain.Links)-1]
+	if !leaf.MayDelegate {
+		return nil, principalRefuse("delegation-not-permitted", "the link this run acts under permits no child")
+	}
+	port := parent.input.Child
+	if port == nil {
+		return nil, principalRefuse("delegation-not-permitted", "the host issues no child link")
+	}
+	bounded, cancel := context.WithTimeout(ctx, PrincipalAdmissionTimeout)
+	defer cancel()
+	type answer struct {
+		data []byte
+		err  error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		defer func() {
+			if recover() != nil {
+				done <- answer{err: errors.New("child port panicked")}
+			}
+		}()
+		data, err := port(bounded, PrincipalChildRequest{Host: leaf.Host, Chain: append([]string(nil), parent.Chain.Digests...), Task: task, Profile: profile, Tools: append([]PrincipalChildTool{}, tools...)})
+		done <- answer{data, err}
+	}()
+	var got answer
+	select {
+	case got = <-done:
+	case <-bounded.Done():
+		got.err = bounded.Err()
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	unknown := principalRefuse("admission-unknown", "the issuing host gave no child link")
+	if got.err != nil {
+		return nil, unknown
+	}
+	value, err := descriptorJSON(got.data, true)
+	obj, ok := value.(map[string]any)
+	if err != nil || !ok || len(obj) != 1 {
+		return nil, unknown
+	}
+	if refusal, ok := obj["refusal"].(string); ok && (refusal == "delegation-not-permitted" || refusal == "not-parent-actor") {
+		return nil, principalRefuse(refusal, "the issuing host refused the child")
+	}
+	chain, ok := obj["chain"].(string)
+	if !ok {
+		return nil, unknown
+	}
+	child := *parent.input
+	child.Chain = []byte(chain)
+	return &child, nil
+}
+
+// OpenChildPrincipal opens a child's principal under its parent's: steps 1 to 7 over the child's whole
+// chain (a link wider than its parent is widened), and the chain must be the parent's with exactly one
+// link below it (chain-broken): never a chain a child or a tool result supplies, and never its parent's
+// whole reach under another name.
+func OpenChildPrincipal(parent *OpenedPrincipal, input *RunPrincipal) (*OpenedPrincipal, error) {
+	opened, err := OpenPrincipal(input)
+	if err != nil {
+		return nil, err
+	}
+	held, digests := parent.Chain.Digests, opened.Chain.Digests
+	if len(digests) != len(held)+1 || !slices.Equal(digests[:len(held)], held) {
+		return nil, principalRefuse("chain-broken", "the child's chain is not its parent's with one link below it")
+	}
+	return opened, nil
 }
 
 // PrincipalCall is the call the package admits: the audience its source answers to (nil for a
@@ -1053,4 +1203,24 @@ func (r PrincipalRefusal) Contract() *contract.RunPrincipalRefusal {
 		return nil
 	}
 	return &out
+}
+
+// OpenRunPrincipal opens a run's principal for its session: a refused chain or an unreadable input ends
+// the run before anything is sent, by name (configuration).
+func OpenRunPrincipal(input *RunPrincipal, parent *OpenedPrincipal) (*OpenedPrincipal, error) {
+	var opened *OpenedPrincipal
+	var err error
+	if parent != nil {
+		opened, err = OpenChildPrincipal(parent, input)
+	} else {
+		opened, err = OpenPrincipal(input)
+	}
+	var refused *DelegationRefused
+	switch {
+	case errors.As(err, &refused):
+		return nil, failure.Authored("configuration", "The run's delegation is refused ("+refused.Refusal.Name+"). Nothing was sent.", "context")
+	case err != nil:
+		return nil, failure.Authored("configuration", "The run's principal is invalid. Nothing was sent.", "context")
+	}
+	return opened, nil
 }
