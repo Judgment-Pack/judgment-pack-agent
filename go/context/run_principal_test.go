@@ -211,8 +211,11 @@ func TestPrincipalAdmissionVectors(t *testing.T) {
 				return time.Parse(time.RFC3339Nano, *c.Now)
 			}
 			chain := v.Items[0]
-			if c.Chain == "child" {
+			switch c.Chain {
+			case "child":
 				chain = v.Items[1]
+			case "runtimeRoot":
+				chain = v.Items[5]
 			}
 			principal, err := OpenPrincipal(principalInput(v, chain, port, clock))
 			if err != nil {
@@ -252,6 +255,75 @@ func TestPrincipalAdmissionVectors(t *testing.T) {
 			}
 			if CanonicalJSON(reads[0].Value()) != CanonicalJSON(expected) {
 				t.Fatalf("read %s, want %s", CanonicalJSON(reads[0].Value()), CanonicalJSON(expected))
+			}
+		})
+	}
+}
+
+func TestPrincipalStandingVectors(t *testing.T) {
+	v := loadPrincipalChains(t)
+	raw, err := os.ReadFile("../../contract/vectors/principal/admission.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Items    []json.RawMessage `json:"items"`
+		Standing []struct {
+			Name, Tool, Effect string
+			Now                string
+			Answer             json.RawMessage
+			Expect             json.RawMessage
+			Read               *int
+		} `json:"standing"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors.Standing) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range vectors.Standing {
+		t.Run(c.Name, func(t *testing.T) {
+			var reads []PrincipalAdmissionRead
+			port := func(_ context.Context, read PrincipalAdmissionRead) ([]byte, error) {
+				reads = append(reads, read)
+				if string(c.Answer) == `"throw"` {
+					return nil, errors.New("port down")
+				}
+				return c.Answer, nil
+			}
+			principal, err := OpenPrincipal(principalInput(v, v.Items[0], port, func() (time.Time, error) { return time.Parse(time.RFC3339Nano, c.Now) }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := principal.AdmitPrincipalStanding(context.Background(), c.Tool, c.Effect)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "admit"
+			if string(c.Expect) != `"admit"` {
+				var refusal struct{ Name, Reason string }
+				if err := json.Unmarshal(c.Expect, &refusal); err != nil {
+					t.Fatal(err)
+				}
+				want = refusal.Name + "/" + refusal.Reason
+			}
+			have := "admit"
+			if got != nil {
+				have = got.Name + "/" + got.Reason
+			}
+			if have != want {
+				t.Fatalf("got %s, want %s", have, want)
+			}
+			if c.Read == nil {
+				if len(reads) != 0 {
+					t.Fatalf("a read was made: %+v", reads)
+				}
+				return
+			}
+			expected, err := ParseJSON(vectors.Items[*c.Read])
+			if err != nil || len(reads) != 1 || CanonicalJSON(reads[0].Value()) != CanonicalJSON(expected) {
+				t.Fatalf("reads %+v, %v", reads, err)
 			}
 		})
 	}

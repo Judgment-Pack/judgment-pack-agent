@@ -1,0 +1,363 @@
+{
+  "description": "A chat context snapshot a published release wrote, and what it becomes (#271), written by hand and compared byte for byte with the output of the v0.12.0 tag's own code for the same reads. Through v0.12.0 Go keyed a read's cache row from what its reader made of the arguments and ran the tool with the bytes the model wrote, so a row can hold the answer to arguments other than the ones its key names. A row is a key and an entry, so it cannot be told apart from a sound one. items[0] is version 1 with such rows: it still loads, and a read returns it as it was written. items[1] is the snapshot the current writer makes after restoring it: version 2, the same entries, ages and index rows, and no cache rows. Each of reads is one earlier read, the exact call its row would answer, and the answer that row holds: after a restore the call is run and answered for itself. A cold cache costs one more call per cached read and never a wrong answer. A published reader refuses version 2 with UnsupportedContextSnapshotVersion before it reads the body. context/readKeys.test.ts, go/context/read_arguments_test.go and go/adapter/eino/read_keys_test.go hold the code to it, and tests/test_contract.py derives every row.",
+  "schema": "chat-context-snapshot.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts (ChatContext.snapshot, ChatContext.restore)",
+      "packages/harness/context/chatSnapshot.ts (readChatContextSnapshot)"
+    ]
+  },
+  "reads": [
+    {
+      "label": "an integer a float64 does not hold",
+      "earlier": "{\"id\":9007199254740993}",
+      "call": "{\"id\":9007199254740992}",
+      "answer": "answer to {\"id\":9007199254740993}"
+    },
+    {
+      "label": "an array, which read as {}",
+      "earlier": "[1]",
+      "call": "{}",
+      "answer": "answer to [1]"
+    },
+    {
+      "label": "a number out of range, which read as null",
+      "earlier": "{\"q\":1e400}",
+      "call": "{\"q\":null}",
+      "answer": "answer to {\"q\":1e400}"
+    },
+    {
+      "label": "another spelling of 1",
+      "earlier": "{\"q\":1.0}",
+      "call": "{\"q\":1}",
+      "answer": "answer to {\"q\":1.0}"
+    },
+    {
+      "label": "negative zero, which reads as 0",
+      "earlier": "{\"q\":-0}",
+      "call": "{\"q\":0}",
+      "answer": "answer to {\"q\":-0}"
+    },
+    {
+      "label": "a repeated member name, which keeps the last",
+      "earlier": "{\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+      "call": "{\"a\":{\"y\":2}}",
+      "answer": "answer to {\"a\":{\"x\":1},\"a\":{\"y\":2}}"
+    }
+  ],
+  "items": [
+    {
+      "version": 1,
+      "scope": "read-keys",
+      "turns": 1,
+      "disposed": false,
+      "size": 389,
+      "entries": [
+        {
+          "id": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"id\\\":9007199254740993}\"}]}",
+          "bytes": 74,
+          "digest": "f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b"
+        },
+        {
+          "id": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to [1]\"}]}",
+          "bytes": 52,
+          "digest": "935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109"
+        },
+        {
+          "id": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":1e400}\"}]}",
+          "bytes": 62,
+          "digest": "b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c"
+        },
+        {
+          "id": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":1.0}\"}]}",
+          "bytes": 60,
+          "digest": "bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a"
+        },
+        {
+          "id": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":-0}\"}]}",
+          "bytes": 59,
+          "digest": "ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61"
+        },
+        {
+          "id": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"a\\\":{\\\"x\\\":1},\\\"a\\\":{\\\"y\\\":2}}\"}]}",
+          "bytes": 82,
+          "digest": "bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5"
+        }
+      ],
+      "ages": [
+        {
+          "id": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "24bb430971eb50f964e63784a7ad4f3411bc7cdb1659188e371150793e872da1",
+          "entry": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "bytes": 74,
+          "firstLine": "answer to {\"id\":9007199254740993}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "entry": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "bytes": 52,
+          "firstLine": "answer to [1]",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "0941ac581461747722fa0bcec5912eb80d548de5d06f61ef966d719e983da2c7",
+          "entry": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "bytes": 62,
+          "firstLine": "answer to {\"q\":1e400}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "6ae0f660046dadcf5fe8462c0e00a062db4c8d67be82f4098c5ea4208d19b076",
+          "entry": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "bytes": 60,
+          "firstLine": "answer to {\"q\":1.0}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "45fdf29a2289b96eecf537204497ce4fd0611c6653a090aa82b884380a5c4be6",
+          "entry": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "bytes": 59,
+          "firstLine": "answer to {\"q\":-0}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "eadba9d364383de386cff13ede6e0f00216b073a139ddac7d6c212a8fc34db47",
+          "entry": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "bytes": 82,
+          "firstLine": "answer to {\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+          "turn": 1
+        }
+      ],
+      "cache": [
+        {
+          "key": "243e9dd11c657e3fb16682a7d4b6541fe4735ad743b6d6849454a507f9d0f98b",
+          "entry": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a"
+        },
+        {
+          "key": "5aacf44cb1e0a5e6add8ed72c9f02c5079ff6c37d3ee0333609174372329a9a6",
+          "entry": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034"
+        },
+        {
+          "key": "6196cee8ae81677cb5bf43d50f4af501c5d161c0cc713b36781e2f218db94beb",
+          "entry": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299"
+        },
+        {
+          "key": "6c06dc0c8ebc42abc1950510927dd5aacd1807bd0e7256cca271eae166c03eca",
+          "entry": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0"
+        },
+        {
+          "key": "d532bd6bc608604fa3f33eaddecb8476b72e42d1e924086b9139bde98455b08a",
+          "entry": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d"
+        },
+        {
+          "key": "e00dfcf110bf54bb99503c3f6c345d98497ca6f664ea86d88ad35c185b2bb7d4",
+          "entry": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034"
+        }
+      ],
+      "gone": [],
+      "visibility": [],
+      "evictions": [],
+      "evicted": [],
+      "threads": [],
+      "tasks": [],
+      "reusable": [],
+      "open": []
+    },
+    {
+      "version": 2,
+      "scope": "read-keys",
+      "turns": 1,
+      "disposed": false,
+      "size": 389,
+      "entries": [
+        {
+          "id": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"id\\\":9007199254740993}\"}]}",
+          "bytes": 74,
+          "digest": "f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b"
+        },
+        {
+          "id": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to [1]\"}]}",
+          "bytes": 52,
+          "digest": "935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109"
+        },
+        {
+          "id": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":1e400}\"}]}",
+          "bytes": 62,
+          "digest": "b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c"
+        },
+        {
+          "id": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":1.0}\"}]}",
+          "bytes": 60,
+          "digest": "bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a"
+        },
+        {
+          "id": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"q\\\":-0}\"}]}",
+          "bytes": 59,
+          "digest": "ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61"
+        },
+        {
+          "id": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "kind": "tool",
+          "label": "lookup",
+          "valueJSON": "{\"content\":[{\"type\":\"text\",\"text\":\"answer to {\\\"a\\\":{\\\"x\\\":1},\\\"a\\\":{\\\"y\\\":2}}\"}]}",
+          "bytes": 82,
+          "digest": "bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5"
+        }
+      ],
+      "ages": [
+        {
+          "id": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "turn": 1
+        },
+        {
+          "id": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "turn": 1
+        }
+      ],
+      "results": [
+        {
+          "tool": "lookup",
+          "arguments": "24bb430971eb50f964e63784a7ad4f3411bc7cdb1659188e371150793e872da1",
+          "entry": "read-keys:result-lookup-f4f8182622db7299694963b800166e73c1a447d97fa6eca0aebf41b68113085b:f4f8182622db7299",
+          "bytes": 74,
+          "firstLine": "answer to {\"id\":9007199254740993}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "entry": "read-keys:result-lookup-935debe0639e8034b7935d20ea60d1d1a29ee552b96f15eec8b05b7f57cac109:935debe0639e8034",
+          "bytes": 52,
+          "firstLine": "answer to [1]",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "0941ac581461747722fa0bcec5912eb80d548de5d06f61ef966d719e983da2c7",
+          "entry": "read-keys:result-lookup-b8e8d7d2f3bbd55a089ba580271b5bfdf7a9a872c43d229ba74c6b41c9f4fb7c:b8e8d7d2f3bbd55a",
+          "bytes": 62,
+          "firstLine": "answer to {\"q\":1e400}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "6ae0f660046dadcf5fe8462c0e00a062db4c8d67be82f4098c5ea4208d19b076",
+          "entry": "read-keys:result-lookup-bd164553f5ee3034f7af3e08a757e0e7bdab1e03d003c67084963b4bf597381a:bd164553f5ee3034",
+          "bytes": 60,
+          "firstLine": "answer to {\"q\":1.0}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "45fdf29a2289b96eecf537204497ce4fd0611c6653a090aa82b884380a5c4be6",
+          "entry": "read-keys:result-lookup-ed718ac6486ffe3dad52f754649232e983e7b3b6ba828a2fc5473315e95f3a61:ed718ac6486ffe3d",
+          "bytes": 59,
+          "firstLine": "answer to {\"q\":-0}",
+          "turn": 1
+        },
+        {
+          "tool": "lookup",
+          "arguments": "eadba9d364383de386cff13ede6e0f00216b073a139ddac7d6c212a8fc34db47",
+          "entry": "read-keys:result-lookup-bfeeabaee3560cf0ef1f0704bc8bd02246e6ee179dcb6290e05e5f1333159af5:bfeeabaee3560cf0",
+          "bytes": 82,
+          "firstLine": "answer to {\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+          "turn": 1
+        }
+      ],
+      "cache": [],
+      "gone": [],
+      "visibility": [],
+      "evictions": [],
+      "evicted": [],
+      "threads": [],
+      "tasks": [],
+      "reusable": [],
+      "open": []
+    }
+  ]
+}

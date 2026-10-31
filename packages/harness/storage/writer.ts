@@ -20,9 +20,10 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal} from './lease'
-import {openRunPrincipal} from '../principal'
 import {readingTool} from '../framing'
 import {canonicalJSON} from '../context/chat'
+import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
+import {authoredFailure} from '../failures'
 import {AIFailureError,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
@@ -824,8 +825,9 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  const input=session.context
  if(input?.[durableOwner])return session
  const config=input?.runStore
- // ADR-0029: a durable root's delegation is refused, by name, before its store is touched.
- if(config)holdLeasePrincipal(config.store,input?.principal?(await openRunPrincipal(input.principal)).record:undefined)
+ // ADR-0029: a durable root's delegation is refused, by name, before its store is touched, and a resume under other principals is refused by name before anything of it is bound.
+ const delegation=config&&input?.principal?await openRunPrincipal(input.principal):undefined
+ if(config)holdLeasePrincipal(config.store,delegation?.record)
  if(input?.usageBudget&&(!config||config.store.durability==='single-writer-callback'))throw new UsageBudgetUnsupported()
  if(input?.checkpoint&&checkpointProfiles.has(input.checkpoint)){if(input.execution?.durable)throw new ContinuationNotRecoverable();return session}
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
@@ -837,6 +839,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(head&&!head.checkpoint)throw new ContinuationNotRecoverable()
  const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
+ if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()

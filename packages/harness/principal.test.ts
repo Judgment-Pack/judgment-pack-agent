@@ -11,7 +11,7 @@ import principalEvents from '../../contract/vectors/principal/events.json'
 import reports from '../../contract/vectors/principal/report.json'
 import {readRunEvent} from './recordReader'
 import {readRunReport} from './runReportReader'
-import {verifyChain,pinKeys,keyProblem,openPrincipal,admitCall,validPrincipalRecord,DelegationRefused,type AdmissionRead,type PrincipalCall} from './principal'
+import {verifyChain,pinKeys,keyProblem,openPrincipal,admitCall,admitStanding,validPrincipalRecord,DelegationRefused,type AdmissionRead,type PrincipalCall} from './principal'
 
 const gatewayText=readFileSync(new URL('../../contract/testdata/principal/gateway-statements.json',import.meta.url))
 const gateway=JSON.parse(gatewayText.toString('utf8')) as {keys:Record<string,string[]>;vectors:{name:string;chain:unknown;expect:string}[]}
@@ -37,7 +37,7 @@ describe('the key rule (the gateway SPEC.md §8.4)',()=>{
  })
 })
 
-const chainOf=(name:string)=>JSON.stringify(name==='child'?chains.items[1]:chains.items[0])
+const chainOf=(name:string)=>JSON.stringify(name==='child'?chains.items[1]:name==='runtimeRoot'?chains.items[5]:chains.items[0])
 const opened=(name:string,now:string|null,answer:unknown,reads:AdmissionRead[])=>openPrincipal({chain:chainOf(name),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>now===null?Number.NaN:Date.parse(now),admission:read=>{reads.push(read);if(answer==='throw')throw Error('port down');return answer as never}})
 
 describe('the agent host chains (handwritten, independently signed)',()=>{
@@ -63,6 +63,13 @@ describe('admission before dispatch (handwritten cases)',()=>{
   const reads:AdmissionRead[]=[]
   const principal=await opened(c.chain,c.now,c.answer,reads)
   const got=await admitCall(principal,c.call as PrincipalCall,c.count)
+  expect(got??'admit').toEqual(c.expect)
+  expect(reads).toEqual(c.read===null?[]:[admissions.items[c.read]])
+ })
+ for(const c of admissions.standing)it(c.name,async()=>{
+  const reads:AdmissionRead[]=[]
+  const principal=await opened(c.chain,c.now,c.answer,reads)
+  const got=await admitStanding(principal,c.tool,c.effect)
   expect(got??'admit').toEqual(c.expect)
   expect(reads).toEqual(c.read===null?[]:[admissions.items[c.read]])
  })

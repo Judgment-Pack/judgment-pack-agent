@@ -1105,6 +1105,84 @@ func (p *OpenedPrincipal) AdmitPrincipalCall(ctx context.Context, call Principal
 	return answer, nil
 }
 
+// PrincipalRuntimeSource is the source an acting Runtime call is admitted under, as the source record
+// it carries names itself. PrincipalLocalSource is the source a host tool with no source names to the
+// issuing host: a scope never matches it, and its read is never counted and asks only whether the chain
+// stands.
+const (
+	PrincipalRuntimeSource = "runtime"
+	PrincipalLocalSource   = "local"
+)
+
+// AdmitPrincipalStanding is whether the chain stands, for a call a scope cannot name: a host tool with
+// no source, whose reach is local by its declaration (an act or read-external tool must have a source).
+// Steps 8 to 10 and 12 apply and scope does not: validity at the host's time, then the port's answer,
+// read afresh, under source local with counting unset.
+func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effect string) (*PrincipalRefusal, error) {
+	at, ok := p.hostTime()
+	if !ok {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	for _, l := range p.Chain.Links {
+		if at.Before(l.IssuedAt) {
+			return &PrincipalRefusal{Name: "not-yet-valid"}, nil
+		}
+	}
+	for _, l := range p.Chain.Links {
+		if !at.Before(l.ExpiresAt) {
+			return &PrincipalRefusal{Name: "expired"}, nil
+		}
+	}
+	if principalStrength(effect) < 0 {
+		return &PrincipalRefusal{Name: "out-of-scope", Reason: "effect"}, nil
+	}
+	read := PrincipalAdmissionRead{Host: p.Chain.Links[0].Host, Audience: PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Chain: append([]string(nil), p.Chain.Digests...), Call: PrincipalAdmissionCall{Source: PrincipalLocalSource, Tool: tool, Effect: effect, Count: false}, At: PrincipalTime(at)}
+	data, err := p.askPort(ctx, read)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	answer, ok := principalAnswer(data)
+	if !ok {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	return answer, nil
+}
+
+// AdmitPrincipalRuntimeCall is an acting Runtime call's admission: its source record under the run's
+// agent-host audience, effect act. The host dispatches it, so the final admission counts.
+func (p *OpenedPrincipal) AdmitPrincipalRuntimeCall(ctx context.Context, tool string, count bool) (*PrincipalRefusal, error) {
+	return p.AdmitPrincipalCall(ctx, PrincipalCall{Audience: &PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Source: PrincipalRuntimeSource, Tool: tool, Effect: "act"}, count)
+}
+
+// PrincipalsChanged is whether a resume runs under other principals than it began under: another
+// subject, root actor or issuing host, or a delegation only one side has. A re-issued or narrowed chain
+// of the same three is not.
+func PrincipalsChanged(saved *contract.RunPrincipal, current *PrincipalRecord) bool {
+	if saved == nil || current == nil {
+		return (saved == nil) != (current == nil)
+	}
+	return saved.Subject.Kind != current.Subject.Kind || saved.Subject.Issuer != current.Subject.Issuer || saved.Subject.Subject != current.Subject.Subject ||
+		saved.RootActor != current.RootActor || saved.Actor.Host != current.Host
+}
+
+// HoldsDelegation is whether a run has a delegation to open: one given to it, or a checkpoint it is
+// restored from that carries one.
+func HoldsDelegation(input *Input) bool {
+	return input != nil && (input.Principal != nil || input.Execution != nil && input.Execution.Principal != nil)
+}
+
+// RequireOpenedPrincipal holds a delegated run's child to the run's opened principal: it starts under
+// it, never without it, on every path that reaches a child, whatever opened or did not open before it.
+func RequireOpenedPrincipal(opened *OpenedPrincipal, input *Input) error {
+	if opened == nil && HoldsDelegation(input) {
+		return failure.Authored("stale-state", "The run's delegation is not open, so no child of it starts. Nothing was sent.", "context")
+	}
+	return nil
+}
+
 // PrincipalRefusalDetail is what the model and the host are told of a refused call; it repeats no
 // statement, key or credential.
 func PrincipalRefusalDetail(tool string, refusal PrincipalRefusal) string {

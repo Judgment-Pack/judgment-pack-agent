@@ -1,13 +1,20 @@
 import {canonicalJSON} from './chat'
 import {sha256} from '../records'
 import {readCanonicalHistoryJSON,readHistorySourceJSON,HISTORY_TOTAL_BYTES} from '../history/codec'
+/**
+ * The version a snapshot is written at. Version 2 has version 1's shape and says its cache rows were
+ * keyed only from arguments their JSON text says exactly (#271). A version 1 row may hold the answer to
+ * other arguments than its key names, and being a key and an entry it cannot be told apart, so version
+ * 1 still loads and restores without its cache rows (`ChatContext.restore`).
+ */
+export const CHAT_SNAPSHOT_VERSION=2
 export class ContextSnapshotInvalid extends Error{constructor(){super('ContextSnapshotInvalid: the chat context snapshot is invalid.');this.name='ContextSnapshotInvalid'}}
 export class UnsupportedContextSnapshotVersion extends Error{constructor(){super('UnsupportedContextSnapshotVersion: the chat context snapshot version is unsupported.');this.name='UnsupportedContextSnapshotVersion'}}
 export class ContextTurnBindingInvalid extends Error{constructor(){super('ContextTurnBindingInvalid: the active chat turn cannot be attached.');this.name='ContextTurnBindingInvalid'}}
 export interface SnapshotEntry{id:string;kind:'history'|'artifact'|'request'|'tool';label:string;valueJSON:string;bytes:number;digest:string;revision?:string}
 export interface SnapshotEviction{tool:string;arguments:string;bytes:number}
 export interface ChatContextSnapshot{
- version:1;scope:string;turns:number;disposed:boolean;size:number;entries:SnapshotEntry[];ages:{id:string;turn:number}[]
+ version:1|2;scope:string;turns:number;disposed:boolean;size:number;entries:SnapshotEntry[];ages:{id:string;turn:number}[]
  results:{tool:string;arguments:string;entry:string;bytes:number;firstLine:string;turn:number}[];cache:{key:string;entry:string}[];gone:string[]
  visibility:string[][];evictions:SnapshotEviction[];evicted:number[];threads:{profile:string;title:string;exchangesJSON:string;visible?:number}[]
  tasks:{id:string;thread:number}[];reusable:{key:string;value:{task:string;model:string;text:string;questionsJSON:string}}[]
@@ -23,9 +30,9 @@ const strings=(v:unknown):v is string[]=>Array.isArray(v)&&v.every(text)&&unique
 const sorted=(v:string[])=>v.every((item,i)=>i===0||v[i-1]!<item)
 export function readChatContextSnapshot(bytes:Uint8Array):ChatContextSnapshot{
  let input:unknown;try{input=readCanonicalHistoryJSON(bytes,HISTORY_TOTAL_BYTES)}catch{return invalid()}
- if(object(input)&&count(input.version,2))throw new UnsupportedContextSnapshotVersion()
+ if(object(input)&&count(input.version,CHAT_SNAPSHOT_VERSION+1))throw new UnsupportedContextSnapshotVersion()
  const required=['version','scope','turns','disposed','size','entries','ages','results','cache','gone','visibility','evictions','evicted','threads','tasks','reusable','open']
- if(!closed(input,required)||input.version!==1||!text(input.scope)||!count(input.turns)||typeof input.disposed!=='boolean'||!count(input.size))return invalid()
+ if(!closed(input,required)||!count(input.version,1)||!text(input.scope)||!count(input.turns)||typeof input.disposed!=='boolean'||!count(input.size))return invalid()
  for(const key of required.slice(5))if(!Array.isArray(input[key]))return invalid()
  const v=input as unknown as ChatContextSnapshot,scoped=(id:unknown)=>text(id)&&id.startsWith(v.scope+':')
  let size=0

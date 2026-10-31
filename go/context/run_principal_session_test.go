@@ -172,11 +172,16 @@ func TestPrincipalSessionRecordsAndResume(t *testing.T) {
 	t.Run("a resume continues only under the principals it began under", func(t *testing.T) {
 		delegated := principalLastCheckpoint(principalRunEvents(t, openRun(t, principalSession(t, &principalRan{}, 0, nil)))).Checkpoint
 		undelegated := principalLastCheckpoint(principalRunEvents(t, openRun(t, principalSession(t, &principalRan{}, -1, nil)))).Checkpoint
+		// A resume under the same subject and root actor from another issuing host is another principal.
+		otherHost := delegated
+		foreign := *delegated.Principal
+		foreign.Actor.Host = "other-host"
+		otherHost.Principal = &foreign
 		// The vector's chains: 0 root, 1 child, 2 re-issued, 3 another actor, 4 another subject.
 		for _, row := range []struct {
 			saved contract.Checkpoint
 			chain int
-		}{{delegated, 3}, {delegated, 4}, {delegated, -1}, {undelegated, 0}} {
+		}{{delegated, 3}, {delegated, 4}, {delegated, -1}, {undelegated, 0}, {otherHost, 0}} {
 			saved := row.saved
 			saved.Status = "running"
 			_, err := ContextualSession(context.Background(), principalSession(t, &principalRan{}, row.chain, &saved))

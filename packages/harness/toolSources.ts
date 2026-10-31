@@ -311,6 +311,9 @@ function declarationProblem(tool: HostTool): string {
   if (source.currentIdentity !== undefined && typeof source.currentIdentity !== 'function') return "its source's currentIdentity is not a function"
   if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
   if (source.gatewayScope !== undefined && (!object(source.gatewayScope) || Object.keys(source.gatewayScope).some(k => k !== 'authority' && k !== 'source') || typeof source.gatewayScope.authority !== 'string' || !/^[!-~]{1,256}$/.test(source.gatewayScope.authority) || typeof source.gatewayScope.source !== 'string' || source.gatewayScope.source.length < 1 || source.gatewayScope.source.length > 256)) return "its gateway scope is not {authority, source}, a gateway's authority label and its source name"
+  // ADR-0029: a mapping says a gateway enforces and counts this source, so the host that dispatches any other kind cannot name one; and it names the gateway the receipts pin.
+  if (source.gatewayScope !== undefined && source.kind !== 'gateway') return 'its gatewayScope is for a source a gateway serves, and it is not one'
+  if (source.gatewayScope !== undefined && source.gatewayReceipt !== undefined && (source.gatewayScope as {authority: unknown}).authority !== (source.gatewayReceipt as {authority?: unknown} | null)?.authority) return 'its gatewayScope names another authority than the receipts it pins'
   if (source.descriptorSnapshot !== undefined && source.kind !== 'mcp' && source.kind !== 'gateway') return 'its descriptor snapshot is not an MCP/Gateway snapshot'
   if (source.descriptorSnapshot !== undefined && (source.currentDescriptorSnapshot === undefined || source.descriptorApproval === undefined)) return 'its V2 descriptor snapshot requires an observer and independent approval context'
   if (source.descriptorSnapshot !== undefined && source.currentDigest !== undefined) return 'its snapshot declaration also carries the legacy currentDigest observer'
@@ -788,6 +791,9 @@ export class ReceiptAdmission {
   outcome() { return this.checked }
 }
 const admissions = new WeakMap<AbortSignal, ReceiptAdmission>()
+/** ADR-0029: the admission a dispatch makes last, by its deadline signal, counted. Set only under a delegation; a result served without a dispatch never reaches it. */
+const dispatches = new WeakMap<AbortSignal, () => Promise<void>>()
+export function dispatchAdmission(signal: AbortSignal): (() => Promise<void>) | undefined { return dispatches.get(signal) }
 /** The receipt check of the source call `signal` bounds, or undefined. */
 export function receiptAdmission(signal: AbortSignal): ReceiptAdmission | undefined { return admissions.get(signal) }
 
@@ -863,6 +869,17 @@ export class SourceGate {
     const mapped = entry.declared.source?.gatewayScope
     const audience = mapped !== undefined ? { kind: 'gateway' as const, name: mapped.authority } : entry.record.kind === 'gateway' ? undefined : { kind: 'agent-host' as const, name: principal.audience }
     return admitCall(principal, { audience, source: mapped?.source ?? entry.record.id, tool: entry.record.tool!, effect: entry.declared.taxonomy?.effect }, count && audience?.kind === 'agent-host', signal)
+  }
+  /** The final admission of a call the host is about to dispatch, immediately before it, counted. */
+  private holdDispatch(bounded: AbortSignal, entry: SourceEntry, name: string, callId: string | undefined, giveBack: () => void): void {
+    if (this.principal === undefined) return
+    dispatches.set(bounded, async () => {
+      const refusal = await this.delegated(entry, true, bounded)
+      if (refusal !== undefined) {
+        giveBack()
+        throw this.delegationRefused(entry, name, refusal, callId)
+      }
+    })
   }
   private delegationRefused(entry: SourceEntry, name: string, refusal: PrincipalRefusal, callId: string | undefined): Error {
     return this.refused(entry, this.refuse(name, refusalDetail(name, refusal), 'delegation refused', refusal), callId)
@@ -1103,22 +1120,26 @@ export class SourceGate {
         return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry)), record.callId))
       }
     }
-    // ADR-0029: the approval carries no authority past the delegation; the call is admitted again, counted, immediately before it runs.
-    const refusal = await this.delegated(entry, true, signal).catch((error: unknown) => { giveBack(); throw error })
+    // ADR-0029: the approval carries no authority past the delegation; the call is admitted again, and counted only at its dispatch.
+    const refusal = await this.delegated(entry, false, signal).catch((error: unknown) => { giveBack(); throw error })
     if (refusal !== undefined) {
       giveBack()
       return refusedWith(this.delegationRefused(entry, record.name, refusal, record.callId))
     }
     const limit = Math.min(this.bounds.sourceCallMilliseconds, this.bounds.toolCallMilliseconds)
     const started = Date.now()
+    let refusedAtDispatch = false
     try {
-      const result = await withDeadline((bounded) => run(structuredClone(record.args), bounded), signal, limit, () => toolTimeout(limit))
+      const result = await withDeadline((bounded) => {
+        this.holdDispatch(bounded, entry, record.name, record.callId, () => { refusedAtDispatch = true; giveBack() })
+        return run(structuredClone(record.args), bounded)
+      }, signal, limit, () => toolTimeout(limit))
       const { receipt: _receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
       row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
       return { result: shown, ran: true }
     } catch (error) {
       if (signal.aborted) throw error
-      return { result: toolFailureResult(error), ran: true }
+      return { result: toolFailureResult(error), ran: !refusedAtDispatch }
     } finally {
       row.milliseconds += Date.now() - started;this.publish()
     }
@@ -1192,11 +1213,11 @@ export class SourceGate {
         throw this.refused(entry, this.refuse(tool.name, this.changedDetail(entry)), callId)
       }
     }
-    // ADR-0029: admitted under the run's delegation immediately before dispatch, counted only where this
-    // call is dispatched here (not a proposal, which is held, and not an act call no allow was given for).
+    // ADR-0029: admitted under the run's delegation with counting unset, so a read the caches answer counts nothing.
+    // The count is made by the admission at the dispatch itself (RFC 0030 §2), after the action-key lookup.
     if (this.principal !== undefined) {
       let refusal: PrincipalRefusal | undefined
-      try { refusal = await this.delegated(entry, !proposal && (decided === undefined || decided.answer === 'allow') && !signal.aborted, signal) } catch (error) {
+      try { refusal = await this.delegated(entry, false, signal) } catch (error) {
         giveBackCall()
         this.mark(tool.name, callId, {})
         throw error
@@ -1259,6 +1280,7 @@ export class SourceGate {
       result = await withDeadline((bounded) => {
         if(entry.declared.source!.gatewayReceipt!==undefined) gatewayInvocation=beginGatewayInvocation(bounded)
         if(admission!==undefined) admissions.set(bounded, admission)
+        this.holdDispatch(bounded, entry, tool.name, callId, giveBackCall)
         return run(args,bounded)
       }, signal, limit, () => toolTimeout(limit))
     } catch (error) {

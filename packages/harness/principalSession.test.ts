@@ -86,7 +86,9 @@ describe('a delegated run at the boundary (ADR-0029)',()=>{
  it('continues a run only under the subject and root actor it began under (principal-changed)',async()=>{
   const delegated=checkpointOf(await run(session(await hostTools([]),principalOf())))!.checkpoint
   const undelegated=checkpointOf(await run(session(await hostTools([]))))!.checkpoint
-  for(const [saved,principal] of [[delegated,principalOf('otherActor')],[delegated,principalOf('otherSubject')],[delegated,undefined],[undelegated,principalOf()]] as const){
+  // A resume under the same subject and root actor from another issuing host is another principal.
+  const otherHost={...delegated,principal:{...delegated.principal!,actor:{...delegated.principal!.actor,host:'other-host'}}}
+  for(const [saved,principal] of [[delegated,principalOf('otherActor')],[delegated,principalOf('otherSubject')],[delegated,undefined],[undelegated,principalOf()],[otherHost,principalOf()]] as const){
    const ran:string[]=[]
    const events=await run(session(await hostTools(ran),principal,{...structuredClone(saved),status:'running'}))
    expect(ran).toEqual([])

@@ -1251,11 +1251,13 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 	// A mistaken hint on a write can never suppress or replay that operation.
 	immutable := policy != nil && policy.Immutable && readOnly
 	return func(ctx context.Context, raw json.RawMessage) (ToolResult, error) {
+		// No arguments at all are {}: what runs is what the caches key (#271).
+		if len(raw) == 0 {
+			raw = json.RawMessage(`{}`)
+		}
 		args := Object()
-		if len(raw) > 0 {
-			if held, err := ParseJSON(raw); err == nil && held.IsObject() {
-				args = held
-			}
+		if held, err := ParseJSON(raw); err == nil && held.IsObject() {
+			args = held
 		}
 		if (name == ReadTool || name == "read_context") && strings.HasPrefix(editString(args.Get("id")), "draft:") {
 			return execute(ctx, raw)
@@ -1264,9 +1266,11 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		if kept != nil {
 			chat = c.ledger.Chat()
 		}
-		// #246: arguments with a lone UTF-16 surrogate escape (or bytes that are not UTF-8) are neither
-		// served from nor kept in either cache: ParseJSON reads them as U+FFFD, so two different
-		// arguments would share one key.
+		// #246, #271: both keys are made from args and the tool is run with raw, so arguments args does
+		// not say exactly are neither served from nor kept in either cache: a lone UTF-16 surrogate escape
+		// or bytes that are not UTF-8 (read as U+FFFD), anything but one object (read as {}), a number
+		// that does not read back as written (1e400 as null, 9007199254740993 as ...992), a repeated
+		// member name. Two different arguments would share one key.
 		cacheable := immutable && cacheableArguments(raw)
 		chatKey, hasChatKey := "", false
 		if chat != nil && cacheable {

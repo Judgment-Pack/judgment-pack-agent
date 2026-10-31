@@ -517,6 +517,60 @@
     "count": true
    },
    "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "local",
+    "tool": "local_lookup",
+    "effect": "read",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:98494a48967b27e4c7311b10540b12457ea4dedec02b623c412b78e0dde23215"
+   ],
+   "call": {
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
   }
  ],
  "cases": [
@@ -1251,6 +1305,162 @@
    },
    "expect": {
     "name": "expired"
+   },
+   "read": null
+  },
+  {
+   "name": "an acting Runtime call outside the scope, which names no source runtime",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "source"
+   },
+   "read": 29
+  },
+  {
+   "name": "an acting Runtime call a chain names, counted at its dispatch",
+   "chain": "runtimeRoot",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 30
+  }
+ ],
+ "standing": [
+  {
+   "name": "a tool with no source under a chain that stands",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 28
+  },
+  {
+   "name": "a tool with no source at the instant the chain expires",
+   "chain": "root",
+   "now": "2026-10-30T08:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "expired"
+   },
+   "read": null
+  },
+  {
+   "name": "a tool with no source before the chain is valid",
+   "chain": "root",
+   "now": "2026-10-29T23:59:59.999Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "not-yet-valid"
+   },
+   "read": null
+  },
+  {
+   "name": "a tool with no source after a revocation",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "refuse",
+    "refusal": "revoked"
+   },
+   "expect": {
+    "name": "revoked"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the subject no longer stands",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "refuse",
+    "refusal": "subject-unauthorized"
+   },
+   "expect": {
+    "name": "subject-unauthorized"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the port fails",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": "throw",
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the port answers another form",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "maybe"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source and no effect it can name",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "unknown",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "effect"
    },
    "read": null
   }

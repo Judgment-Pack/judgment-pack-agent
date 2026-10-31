@@ -209,6 +209,17 @@ map; the wire decoder recognizes it, but TypeScript restore explicitly refuses t
 because its public TaskThread requires a Set. Active unrestricted versus restricted turns are
 portable in both languages.
 
+Snapshots are written at version 2, which has version 1's shape and says its cache rows were keyed
+only from arguments their JSON text says exactly (#271). A version 1 row is a key and an entry and
+may hold the answer to other arguments than its key names, so no reader can tell it from a sound one.
+A version 1 snapshot therefore still loads, and a read returns it as written. Restored, it keeps its
+entries, ages and index and has no cache rows, and the next snapshot is version 2. A read its rows
+would have answered runs once more: a cold cache costs one call and never a wrong answer. By ADR-0024
+a new meaning takes the next enclosing version rather than a member a closed reader would refuse as
+malformed: the readers of v0.11.0 and v0.12.0 refuse version 2 by its version
+(`UnsupportedContextSnapshotVersion`) before they read the body
+(`contract/vectors/chat/context-snapshot-v1-cache.json`).
+
 For durable runners, pass the same `StoredChatScope` as `context.chat` and
 `context.runStore.context` (Go `Input.Chat` and `DurableRunInput.Context`). The host chooses its
 chat identity and original owner. `restoreStoredChatScope` / `RestoreStoredChatScope` validates the

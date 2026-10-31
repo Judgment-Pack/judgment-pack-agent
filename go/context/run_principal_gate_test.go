@@ -18,8 +18,10 @@ import (
 type principalPort struct {
 	mu     sync.Mutex
 	answer string
-	reads  []PrincipalAdmissionRead
-	now    string
+	// answerCounted answers a counted read, where it is set.
+	answerCounted string
+	reads         []PrincipalAdmissionRead
+	now           string
 }
 
 func (p *principalPort) set(answer string) { p.mu.Lock(); p.answer = answer; p.mu.Unlock() }
@@ -109,6 +111,9 @@ func delegatedGate(t *testing.T, port *principalPort, tools []HostTool, chain in
 		if port.answer == "throw" {
 			return nil, errors.New("port down")
 		}
+		if read.Call.Count && port.answerCounted != "" {
+			return []byte(port.answerCounted), nil
+		}
 		return []byte(port.answer), nil
 	}, func() (time.Time, error) { return time.Parse(time.RFC3339Nano, port.now) }))
 	if err != nil {
@@ -159,14 +164,26 @@ func sameBools(a, b []bool) bool {
 	return true
 }
 
+// dispatching runs a call as the session does: its final admission, at the dispatch, then the host's execute.
+func dispatching(run func(context.Context, json.RawMessage) (ToolResult, error)) func(context.Context, json.RawMessage) (ToolResult, error) {
+	return func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+		if admit := dispatchAdmissionOf(ctx); admit != nil {
+			if err := admit(ctx); err != nil {
+				return ToolResult{}, err
+			}
+		}
+		return run(ctx, args)
+	}
+}
+
 func TestPrincipalGateAdmitsAndRefusesBeforeDispatch(t *testing.T) {
 	t.Run("a call within the scope runs, counted once", func(t *testing.T) {
 		port, ran := newPrincipalPort(), &principalRan{}
 		gate, byName, _ := delegatedGate(t, port, principalTools(ran, nil, nil), 0)
-		if _, err := callThrough(gate, byName, "notes__read_note", `{}`); err != nil {
+		if _, err := gate.Call(context.Background(), "notes__read_note", json.RawMessage(`{}`), dispatching(byName["notes__read_note"].Execute)); err != nil {
 			t.Fatal(err)
 		}
-		if !sameStrings(ran.get(), []string{"read_note"}) || !sameBools(port.counts(), []bool{true}) {
+		if !sameStrings(ran.get(), []string{"read_note"}) || !sameBools(port.counts(), []bool{false, true}) {
 			t.Fatalf("ran %v counts %v", ran.get(), port.counts())
 		}
 	})
@@ -283,11 +300,40 @@ func TestPrincipalGateAdmitsAndRefusesBeforeDispatch(t *testing.T) {
 			t.Fatalf("answer %s", answer)
 		}
 		port.set(`{"admission":"refuse","refusal":"revoked"}`)
-		if _, err := gate.Call(WithCallID(context.Background(), "call-2"), "notes__write_note", json.RawMessage(`{}`), byName["notes__write_note"].Execute); err == nil {
+		if _, err := gate.Call(WithCallID(context.Background(), "call-2"), "notes__write_note", json.RawMessage(`{}`), dispatching(byName["notes__write_note"].Execute)); err == nil {
 			t.Fatal("ran after revocation")
+		}
+		if len(ran.get()) != 0 || !sameBools(port.counts(), []bool{false, false}) {
+			t.Fatalf("ran %v counts %v", ran.get(), port.counts())
+		}
+	})
+	t.Run("the count is made only at the dispatch, the last read of a call", func(t *testing.T) {
+		port, ran := newPrincipalPort(), &principalRan{}
+		gate, byName, _ := delegatedGate(t, port, principalTools(ran, nil, nil), 0)
+		if answer, _, _ := gate.Decide(context.Background(), "notes__write_note", json.RawMessage(`{}`), "call-2", true); answer != "allow" {
+			t.Fatalf("answer %s", answer)
+		}
+		if _, err := gate.Call(WithCallID(context.Background(), "call-2"), "notes__write_note", json.RawMessage(`{}`), dispatching(byName["notes__write_note"].Execute)); err != nil {
+			t.Fatal(err)
+		}
+		if !sameStrings(ran.get(), []string{"write_note"}) || !sameBools(port.counts(), []bool{false, false, true}) {
+			t.Fatalf("ran %v counts %v", ran.get(), port.counts())
+		}
+	})
+	t.Run("a counted read that does not admit it refuses at the dispatch, and gives its slot back", func(t *testing.T) {
+		port, ran := newPrincipalPort(), &principalRan{}
+		gate, byName, rows := delegatedGate(t, port, principalTools(ran, nil, nil), 0)
+		port.answerCounted = `{"admission":"refuse","refusal":"out-of-scope","reason":"limit"}`
+		if _, err := gate.Call(context.Background(), "notes__read_note", json.RawMessage(`{}`), dispatching(byName["notes__read_note"].Execute)); err == nil {
+			t.Fatal("ran past its limit")
 		}
 		if len(ran.get()) != 0 || !sameBools(port.counts(), []bool{false, true}) {
 			t.Fatalf("ran %v counts %v", ran.get(), port.counts())
+		}
+		for _, row := range *rows {
+			if row.Source == "notes" && row.Calls != 0 {
+				t.Fatalf("the slot was kept: %+v", row)
+			}
 		}
 	})
 	t.Run("no authority past the delegation on an approval's continuation", func(t *testing.T) {
@@ -301,9 +347,38 @@ func TestPrincipalGateAdmitsAndRefusesBeforeDispatch(t *testing.T) {
 		port.set(`{"admission":"refuse","refusal":"revoked"}`)
 		record := *book.current
 		record.State = "approved"
-		_, ranIt, err := gate.Approved(context.Background(), record, byName["notes__write_note"].Execute)
-		if err != nil || ranIt || len(ran.get()) != 0 || !sameBools(port.counts(), []bool{false, true}) {
+		_, ranIt, err := gate.Approved(context.Background(), record, dispatching(byName["notes__write_note"].Execute))
+		if err != nil || ranIt || len(ran.get()) != 0 || !sameBools(port.counts(), []bool{false, false}) {
 			t.Fatalf("ran %v %v counts %v err %v", ranIt, ran.get(), port.counts(), err)
+		}
+	})
+	t.Run("an approval's continuation refused at its dispatch did not run", func(t *testing.T) {
+		port, ran := newPrincipalPort(), &principalRan{}
+		book := &principalBook{}
+		gate, byName, _ := delegatedGate(t, port, principalTools(ran, map[string]ApprovalPolicy{"write_note": func(ApprovalRequest) string { return "ask" }}, nil), 0)
+		gate.SetApprovals(book)
+		if answer, _, _ := gate.Decide(context.Background(), "notes__write_note", json.RawMessage(`{"text":"x"}`), "call-3", true); answer != "ask" {
+			t.Fatalf("answer %s", answer)
+		}
+		port.answerCounted = `{"admission":"refuse","refusal":"revoked"}`
+		record := *book.current
+		record.State = "approved"
+		result, ranIt, err := gate.Approved(context.Background(), record, dispatching(byName["notes__write_note"].Execute))
+		if err != nil || ranIt || !result.Err() || len(ran.get()) != 0 || !sameBools(port.counts(), []bool{false, false, true}) {
+			t.Fatalf("ran %v %v counts %v err %v", ranIt, ran.get(), port.counts(), err)
+		}
+	})
+	t.Run("a call that is already answered checked does not ask the port", func(t *testing.T) {
+		port, ran := newPrincipalPort(), &principalRan{}
+		gate, _, _ := delegatedGate(t, port, principalTools(ran, nil, nil), 0)
+		gate.mu.Lock()
+		gate.changed["notes"] = true
+		gate.mu.Unlock()
+		if answer, _, _ := gate.Decide(context.Background(), "notes__write_note", json.RawMessage(`{}`), "call-4", true); answer != "checked" {
+			t.Fatalf("answer %s", answer)
+		}
+		if len(port.counts()) != 0 {
+			t.Fatalf("the port was asked: %v", port.counts())
 		}
 	})
 	t.Run("an effect already dispatched finishes when a revocation lands; the next call is refused", func(t *testing.T) {

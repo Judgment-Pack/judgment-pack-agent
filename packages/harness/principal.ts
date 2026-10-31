@@ -37,6 +37,10 @@ export const ADMISSION_MILLISECONDS = 5000
 
 export const EFFECTS = ['pure', 'read', 'read-external', 'propose', 'act'] as const
 export type DelegationEffect = typeof EFFECTS[number]
+/** The source an acting Runtime call is admitted under, as the source record it carries names itself. */
+export const RUNTIME_SOURCE = 'runtime'
+/** The source a host tool with no source names to the issuing host. A scope never matches it; its read is never counted, and asks only whether the chain stands. */
+export const LOCAL_SOURCE = 'local'
 export const SCOPE_REASONS = ['source', 'tool', 'effect', 'limit-unknown', 'limit'] as const
 export type ScopeReason = typeof SCOPE_REASONS[number]
 export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor'
@@ -486,6 +490,15 @@ export async function openRunPrincipal(input: RunPrincipal, parent?: OpenedPrinc
   }
 }
 
+/** Whether a run has a delegation to open: one given to it, or a checkpoint it is restored from that carries one. */
+export const holdsDelegation = (input: {principal?: RunPrincipal; execution?: {principal?: PrincipalRecord}} | undefined): boolean => input?.principal !== undefined || input?.execution?.principal !== undefined
+/** A delegated run's child starts under the run's opened principal, never without it: this holds on every path that reaches a child, whatever opened or did not open before it. */
+export function requireOpenedPrincipal(opened: OpenedPrincipal | undefined, input: Parameters<typeof holdsDelegation>[0]): void {
+  if (opened === undefined && holdsDelegation(input)) throw authoredFailure('stale-state', "The run's delegation is not open, so no child of it starts. Nothing was sent.", 'context')
+}
+/** What a resume under other principals says, in both languages' session and at a durable root. */
+export const PRINCIPAL_CHANGED = 'The run continues under another principal than it began under (principal-changed). Nothing was sent.'
+
 /** The call the package admits: the audience its source answers to (null or undefined for a gateway source with no mapping), its source, tool and effect. */
 export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined}
 
@@ -549,6 +562,37 @@ async function askPort(principal: OpenedPrincipal, read: AdmissionRead, signal?:
  * own, and the package's own before the port's step 11 or 12. Returns the refusal, or undefined
  * where the call is admitted. A call aborted while it waits throws the abort.
  */
+/**
+ * Whether the chain stands, for a call a scope cannot name: a host tool with no source, whose reach is local by its
+ * declaration (an `act` or `read-external` tool must have a source). Steps 8 to 10 and 12 apply and scope does not:
+ * validity at the host's time, then the port's answer, read afresh, under `source: local` with counting unset.
+ */
+export async function admitStanding(principal: OpenedPrincipal, tool: string, effect: string | undefined, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
+  const at = hostTime(principal.clock)
+  if (at === undefined) return {name: 'admission-unknown'}
+  const links = principal.chain.links
+  if (links.some(link => at < link.issuedAt)) return {name: 'not-yet-valid'}
+  if (links.some(link => at >= link.expiresAt)) return {name: 'expired'}
+  if (effect === undefined || !(EFFECTS as readonly string[]).includes(effect)) return {name: 'out-of-scope', reason: 'effect'}
+  const read: AdmissionRead = {readVersion: '1', host: links[0]!.host, audience: {kind: 'agent-host', name: principal.audience}, chain: [...principal.chain.digests], call: {source: LOCAL_SOURCE, tool, effect: effect as DelegationEffect, count: false}, at: formatTime(at)}
+  let answer: PrincipalRefusal | undefined | 'unknown'
+  try { answer = readAnswer(await askPort(principal, read, signal)) } catch (error) {
+    if (signal?.aborted) throw error
+    answer = 'unknown'
+  }
+  return answer === 'unknown' ? {name: 'admission-unknown'} : answer
+}
+
+/** An acting Runtime call's admission: its source record under the run's agent-host audience, effect `act`. The host dispatches it, so the final admission counts. */
+export const admitRuntimeCall = (principal: OpenedPrincipal, tool: string, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> =>
+  admitCall(principal, {audience: {kind: 'agent-host', name: principal.audience}, source: RUNTIME_SOURCE, tool, effect: 'act'}, count, signal)
+
+/** Whether a resume runs under other principals than it began under: another subject, root actor or issuing host, or a delegation only one side has. A re-issued or narrowed chain of the same three is not. */
+export function principalsChanged(saved: PrincipalRecord | undefined, current: PrincipalRecord | undefined): boolean {
+  if (saved === undefined || current === undefined) return saved !== current
+  return canon(saved.subject) !== canon(current.subject) || saved.rootActor !== current.rootActor || saved.actor.host !== current.actor.host
+}
+
 export async function admitCall(principal: OpenedPrincipal, call: PrincipalCall, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
   const at = hostTime(principal.clock)
   if (at === undefined) return {name: 'admission-unknown'}

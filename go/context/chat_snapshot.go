@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// chatSnapshotVersion is the version a snapshot is written at. Version 2 has version 1's shape and
+// says its cache rows were keyed only from arguments their parsed form says exactly (#271). A version 1
+// row may hold the answer to other arguments than its key names, and being a key and an entry it cannot
+// be told apart, so version 1 still loads and restores without its cache rows (RestoreChatContext).
+const chatSnapshotVersion = 2
+
 type ContextSnapshotInvalid struct{}
 
 func (*ContextSnapshotInvalid) Error() string {
@@ -164,12 +170,12 @@ func ReadChatContextSnapshot(raw []byte) (*ChatContextSnapshot, error) {
 	if err != nil {
 		return nil, &ContextSnapshotInvalid{}
 	}
-	if snapshotCount(v.Get("version"), 2) {
+	if snapshotCount(v.Get("version"), chatSnapshotVersion+1) {
 		return nil, &UnsupportedContextSnapshotVersion{}
 	}
 	invalid := func() (*ChatContextSnapshot, error) { return nil, &ContextSnapshotInvalid{} }
 	required := []string{"version", "scope", "turns", "disposed", "size", "entries", "ages", "results", "cache", "gone", "visibility", "evictions", "evicted", "threads", "tasks", "reusable", "open"}
-	if !snapshotObject(v, required) || v.Get("version").Num() != 1 || !v.Get("scope").IsString() || !snapshotCount(v.Get("turns"), 0) || v.Get("disposed").kind != KindBool || !snapshotCount(v.Get("size"), 0) {
+	if !snapshotObject(v, required) || !snapshotCount(v.Get("version"), 1) || !v.Get("scope").IsString() || !snapshotCount(v.Get("turns"), 0) || v.Get("disposed").kind != KindBool || !snapshotCount(v.Get("size"), 0) {
 		return invalid()
 	}
 	for _, key := range required[5:] {
@@ -350,7 +356,7 @@ func (c *ChatContext) snapshotClosing(turn *ChatTurn) ([]byte, error) {
 	return c.snapshotLocked()
 }
 func (c *ChatContext) snapshotLocked() ([]byte, error) {
-	out := ChatContextSnapshot{Version: 1, Scope: c.scope, Turns: c.turns, Disposed: c.disposed, Size: c.size, Entries: []SnapshotEntry{}, Ages: []SnapshotAge{}, Results: []SnapshotResult{}, Cache: []SnapshotCache{}, Gone: snapshotListStrings(c.gone), Visibility: [][]string{}, Evictions: []SnapshotEviction{}, Evicted: []int{}, Threads: []SnapshotThread{}, Tasks: []SnapshotTask{}, Reusable: []SnapshotReuse{}, Open: []SnapshotTurn{}}
+	out := ChatContextSnapshot{Version: chatSnapshotVersion, Scope: c.scope, Turns: c.turns, Disposed: c.disposed, Size: c.size, Entries: []SnapshotEntry{}, Ages: []SnapshotAge{}, Results: []SnapshotResult{}, Cache: []SnapshotCache{}, Gone: snapshotListStrings(c.gone), Visibility: [][]string{}, Evictions: []SnapshotEviction{}, Evicted: []int{}, Threads: []SnapshotThread{}, Tasks: []SnapshotTask{}, Reusable: []SnapshotReuse{}, Open: []SnapshotTurn{}}
 	for _, e := range c.entries.values() {
 		row := SnapshotEntry{ID: e.ID, Kind: e.Kind, Label: e.Label, ValueJSON: e.Value.Text(), Bytes: e.Bytes, Digest: e.Digest}
 		if e.Revision != "" || e.revisionPresent {
@@ -456,7 +462,9 @@ func (c *ChatContext) snapshotLocked() ([]byte, error) {
 	return raw, nil
 }
 
-// RestoreChatContext publishes no partially restored state and never opens/increments a turn.
+// RestoreChatContext publishes no partially restored state and never opens/increments a turn. A
+// version 1 snapshot's entries and index are restored and its cache rows are not (chatSnapshotVersion):
+// a read they would have answered runs again, which costs one call and never a wrong answer.
 func RestoreChatContext(raw []byte) (*ChatContext, error) {
 	saved, err := ReadChatContextSnapshot(raw)
 	if err != nil {
@@ -485,8 +493,10 @@ func RestoreChatContext(raw []byte) (*ChatContext, error) {
 		c.results = append(c.results, r)
 		c.byCall[row.Tool+"\n"+row.Arguments] = r
 	}
-	for _, row := range saved.Cache {
-		c.cache[row.Key] = row.Entry
+	if saved.Version >= chatSnapshotVersion {
+		for _, row := range saved.Cache {
+			c.cache[row.Key] = row.Entry
+		}
 	}
 	c.gone = snapshotListStrings(saved.Gone)
 	for _, id := range c.gone {

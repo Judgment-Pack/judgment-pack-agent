@@ -1,0 +1,580 @@
+{
+  "description": "Which raw arguments a read may be cached under (#271), written by hand. Go keys both read caches from what its reader makes of the arguments and runs the tool with the bytes the model wrote, so arguments that reader does not say exactly would share a key while running differently: [1] and [2] both read as {}, 1e400 and 2e400 both as null, 9007199254740993 and 9007199254740992 as one float64. Two names encoding/json folds together are refused in both languages, at any depth: a Go tool decoding into a struct reads the last one, so their order is part of what it runs. Such a read gets no key and is kept in neither cache. In cases, text is one call's argument text exactly; go is what ReadCacheKeyOf gives for those bytes, typescript what readCacheKey gives for what JSON.parse reads from them (a text JSON.parse refuses never reaches it, and reads as no key). Each outcome is the canonical JSON of the key and its SHA-256, or key none. The two differ only where JavaScript has already read the number or the name and runs the tool with what it read, so what it keys is what runs. items are the key objects the ordinary rows make. context/readKeys.test.ts and go/context/read_arguments_test.go hold the readers to every case, and tests/test_contract.py derives each outcome from its text.",
+  "schema": "tool-result.json#/$defs/readCacheKey",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/context/chat.ts (readCacheKey, exactArguments)",
+      "packages/harness/execution/controller.ts (wrapRead)"
+    ]
+  },
+  "tool": "lookup",
+  "cases": [
+    {
+      "label": "an ordinary integer",
+      "text": "{\"id\":7}",
+      "go": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      }
+    },
+    {
+      "label": "an empty object",
+      "text": "{}",
+      "go": {
+        "canonical": "{\"arguments\":{},\"tool\":\"lookup\"}",
+        "sha256": "e00dfcf110bf54bb99503c3f6c345d98497ca6f664ea86d88ad35c185b2bb7d4"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{},\"tool\":\"lookup\"}",
+        "sha256": "e00dfcf110bf54bb99503c3f6c345d98497ca6f664ea86d88ad35c185b2bb7d4"
+      }
+    },
+    {
+      "label": "no arguments at all, which is the empty object",
+      "text": "",
+      "go": {
+        "canonical": "{\"arguments\":{},\"tool\":\"lookup\"}",
+        "sha256": "e00dfcf110bf54bb99503c3f6c345d98497ca6f664ea86d88ad35c185b2bb7d4"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{},\"tool\":\"lookup\"}",
+        "sha256": "e00dfcf110bf54bb99503c3f6c345d98497ca6f664ea86d88ad35c185b2bb7d4"
+      }
+    },
+    {
+      "label": "whitespace and member order, which the key form leaves out",
+      "text": " { \"b\" : 2 , \"a\" : 1 } ",
+      "go": {
+        "canonical": "{\"arguments\":{\"a\":1,\"b\":2},\"tool\":\"lookup\"}",
+        "sha256": "9a4a52e30b470f9c6f226e53b45d5b6e0cdbaf6b4a3f24be4fb034e764898bd9"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"a\":1,\"b\":2},\"tool\":\"lookup\"}",
+        "sha256": "9a4a52e30b470f9c6f226e53b45d5b6e0cdbaf6b4a3f24be4fb034e764898bd9"
+      }
+    },
+    {
+      "label": "a string's escapes, which a JSON reader cannot tell apart",
+      "text": "{\"q\":\"\\u0041\"}",
+      "go": {
+        "canonical": "{\"arguments\":{\"q\":\"A\"},\"tool\":\"lookup\"}",
+        "sha256": "6959e7176023892e1e6eb471fa3f68cff1f9602d9a821ab8def2a154bdf235fd"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"q\":\"A\"},\"tool\":\"lookup\"}",
+        "sha256": "6959e7176023892e1e6eb471fa3f68cff1f9602d9a821ab8def2a154bdf235fd"
+      }
+    },
+    {
+      "label": "nested values of every kind",
+      "text": "{\"a\":{\"b\":[1,\"x\",null,true]}}",
+      "go": {
+        "canonical": "{\"arguments\":{\"a\":{\"b\":[1,\"x\",null,true]}},\"tool\":\"lookup\"}",
+        "sha256": "005a5d927a0d39872b36bc21083b2f6092862d253abbe3e3094ad6484e49f1a3"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"a\":{\"b\":[1,\"x\",null,true]}},\"tool\":\"lookup\"}",
+        "sha256": "005a5d927a0d39872b36bc21083b2f6092862d253abbe3e3094ad6484e49f1a3"
+      }
+    },
+    {
+      "label": "numbers written as JSON.stringify writes them: a fraction and both exponents",
+      "text": "{\"e\":1e+21,\"f\":1.5,\"g\":1e-7}",
+      "go": {
+        "canonical": "{\"arguments\":{\"e\":1e+21,\"f\":1.5,\"g\":1e-7},\"tool\":\"lookup\"}",
+        "sha256": "d94ed3b55aa9a9413ca9062c2956883f2dfaa9586a7671e982b4de8c2d60664f"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"e\":1e+21,\"f\":1.5,\"g\":1e-7},\"tool\":\"lookup\"}",
+        "sha256": "d94ed3b55aa9a9413ca9062c2956883f2dfaa9586a7671e982b4de8c2d60664f"
+      }
+    },
+    {
+      "label": "an integer past 2^53 that a float64 holds exactly",
+      "text": "{\"id\":9007199254740992}",
+      "go": {
+        "canonical": "{\"arguments\":{\"id\":9007199254740992},\"tool\":\"lookup\"}",
+        "sha256": "6196cee8ae81677cb5bf43d50f4af501c5d161c0cc713b36781e2f218db94beb"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":9007199254740992},\"tool\":\"lookup\"}",
+        "sha256": "6196cee8ae81677cb5bf43d50f4af501c5d161c0cc713b36781e2f218db94beb"
+      }
+    },
+    {
+      "label": "an array: Go read it as {} and ran it as written",
+      "text": "[1]",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "another array, which shared that key",
+      "text": "[2]",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "a number at the top level",
+      "text": "7",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "a string at the top level",
+      "text": "\"x\"",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "null at the top level",
+      "text": "null",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "out of range: both read it as null",
+      "text": "{\"q\":1e400}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "another number out of range, which shared that key",
+      "text": "{\"q\":2e400}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "out of range the other way",
+      "text": "{\"q\":-1e400}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "out of range and nested",
+      "text": "{\"a\":{\"b\":[1e400]}}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "negative zero: both write it as 0",
+      "text": "{\"q\":-0}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "not JSON: Go read it as {} and ran it as written",
+      "text": "{bad",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "data after the object: Go read it as {} and ran it as written",
+      "text": "{\"q\":1} {\"q\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "an integer a float64 does not hold: Go runs it as written; JavaScript reads it as ...992 and runs that",
+      "text": "{\"id\":9007199254740993}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":9007199254740992},\"tool\":\"lookup\"}",
+        "sha256": "6196cee8ae81677cb5bf43d50f4af501c5d161c0cc713b36781e2f218db94beb"
+      }
+    },
+    {
+      "label": "a repeated member name: Go runs it as written; JavaScript keeps the last and runs that",
+      "text": "{\"a\":1,\"a\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"a\":2},\"tool\":\"lookup\"}",
+        "sha256": "150afacb95a5a3e2c8e12647673e5f25a0fb6214dd45a3a45b2df5e550a9dab2"
+      }
+    },
+    {
+      "label": "another spelling of 1: Go runs it as written; JavaScript reads 1 and runs that",
+      "text": "{\"q\":1.0}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"q\":1},\"tool\":\"lookup\"}",
+        "sha256": "5aacf44cb1e0a5e6add8ed72c9f02c5079ff6c37d3ee0333609174372329a9a6"
+      }
+    },
+    {
+      "label": "an exponent JSON.stringify does not write: Go runs it as written; JavaScript reads 100 and runs that",
+      "text": "{\"q\":1e2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"q\":100},\"tool\":\"lookup\"}",
+        "sha256": "98eb463d8bc850bbde51db46dca7dd499fc4494622c4e6db1230b47b8e20806c"
+      }
+    },
+    {
+      "label": "underflow: Go runs it as written; JavaScript reads 0 and runs that",
+      "text": "{\"q\":1e-400}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"q\":0},\"tool\":\"lookup\"}",
+        "sha256": "d532bd6bc608604fa3f33eaddecb8476b72e42d1e924086b9139bde98455b08a"
+      }
+    },
+    {
+      "label": "data after the object that is not a JSON value",
+      "text": "{\"q\":1} ]",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "a repeated member name written with an escape: names compare as read, not as written",
+      "text": "{\"a\":1,\"\\u0061\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"a\":2},\"tool\":\"lookup\"}",
+        "sha256": "150afacb95a5a3e2c8e12647673e5f25a0fb6214dd45a3a45b2df5e550a9dab2"
+      }
+    },
+    {
+      "label": "an upper-case exponent, which JSON.stringify does not write",
+      "text": "{\"q\":1E+21}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"q\":1e+21},\"tool\":\"lookup\"}",
+        "sha256": "42be87c8af33abea6a841f2d8b3543789a8523f4b8887d70d8528eb9bc1695c9"
+      }
+    },
+    {
+      "label": "led by a newline, which is whitespace",
+      "text": "\n{\"id\":7}",
+      "go": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      }
+    },
+    {
+      "label": "led by a tab, which is whitespace",
+      "text": "\t{\"id\":7}",
+      "go": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      }
+    },
+    {
+      "label": "led by a carriage return, a newline and a space, which are whitespace",
+      "text": "\r\n {\"id\":7}",
+      "go": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"id\":7},\"tool\":\"lookup\"}",
+        "sha256": "4b91b23032ebdadc1a119d389d61ee669b57fe145c61fda24c30157ce5f8e003"
+      }
+    },
+    {
+      "label": "two names encoding/json folds together: a struct field reads the last, so order is the arguments",
+      "text": "{\"ID\":1,\"id\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "the same two names the other way round, which would share that key",
+      "text": "{\"id\":2,\"ID\":1}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "folded names in a nested object",
+      "text": "{\"o\":{\"ID\":1,\"id\":2}}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "folded names in an object in an array",
+      "text": "{\"a\":[{\"B\":1,\"b\":2}]}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "KELVIN SIGN folds with k",
+      "text": "{\"K\":1,\"k\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "KELVIN SIGN written with an escape folds with k: names compare as read",
+      "text": "{\"\\u212a\":1,\"k\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "LATIN SMALL LETTER LONG S folds with s",
+      "text": "{\"ſ\":1,\"s\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "final sigma folds with sigma",
+      "text": "{\"ς\":1,\"σ\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "MICRO SIGN folds with Greek mu",
+      "text": "{\"µ\":1,\"μ\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "capital sharp s folds with sharp s",
+      "text": "{\"ẞ\":1,\"ß\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "a Deseret pair, outside the basic plane",
+      "text": "{\"𐐀\":1,\"𐐨\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "a Cherokee pair, whose fold is the capital",
+      "text": "{\"Ꭰ\":1,\"ꭰ\":2}",
+      "go": {
+        "key": "none"
+      },
+      "typescript": {
+        "key": "none"
+      }
+    },
+    {
+      "label": "dotless i does not fold with i",
+      "text": "{\"ı\":1,\"i\":2}",
+      "go": {
+        "canonical": "{\"arguments\":{\"i\":2,\"ı\":1},\"tool\":\"lookup\"}",
+        "sha256": "5596d14aad39c2175205d837aa9120e3a607d68d54f4141b2a0a6b4955bdb3f5"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"i\":2,\"ı\":1},\"tool\":\"lookup\"}",
+        "sha256": "5596d14aad39c2175205d837aa9120e3a607d68d54f4141b2a0a6b4955bdb3f5"
+      }
+    },
+    {
+      "label": "capital I with a dot does not fold with i",
+      "text": "{\"İ\":1,\"i\":2}",
+      "go": {
+        "canonical": "{\"arguments\":{\"i\":2,\"İ\":1},\"tool\":\"lookup\"}",
+        "sha256": "d8a2dc6eac3b23bb4e140ca4f8c97c2091d91ce2bbde22567b86e8f02fef4bc9"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"i\":2,\"İ\":1},\"tool\":\"lookup\"}",
+        "sha256": "d8a2dc6eac3b23bb4e140ca4f8c97c2091d91ce2bbde22567b86e8f02fef4bc9"
+      }
+    },
+    {
+      "label": "capital I with a dot does not fold with its lower case of two code points",
+      "text": "{\"İ\":1,\"i̇\":2}",
+      "go": {
+        "canonical": "{\"arguments\":{\"i̇\":2,\"İ\":1},\"tool\":\"lookup\"}",
+        "sha256": "1b1f5ff8c5f1817320c519b9f3bef287130289795e4fe93b4049a48358dbc7b1"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"i̇\":2,\"İ\":1},\"tool\":\"lookup\"}",
+        "sha256": "1b1f5ff8c5f1817320c519b9f3bef287130289795e4fe93b4049a48358dbc7b1"
+      }
+    },
+    {
+      "label": "sharp s does not fold with ss: this folding is one to one",
+      "text": "{\"ß\":1,\"ss\":2}",
+      "go": {
+        "canonical": "{\"arguments\":{\"ss\":2,\"ß\":1},\"tool\":\"lookup\"}",
+        "sha256": "da3a92c4eabb8192316f5f4e5778603afe973d3a01110fa28cd07c14b6dbefc3"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"ss\":2,\"ß\":1},\"tool\":\"lookup\"}",
+        "sha256": "da3a92c4eabb8192316f5f4e5778603afe973d3a01110fa28cd07c14b6dbefc3"
+      }
+    },
+    {
+      "label": "different names keep their key",
+      "text": "{\"ID\":1,\"name\":2}",
+      "go": {
+        "canonical": "{\"arguments\":{\"ID\":1,\"name\":2},\"tool\":\"lookup\"}",
+        "sha256": "4984d2c3fd31a88878ed46fa46a5b4a6316623512235cfe2673c3e51a1f943c4"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"ID\":1,\"name\":2},\"tool\":\"lookup\"}",
+        "sha256": "4984d2c3fd31a88878ed46fa46a5b4a6316623512235cfe2673c3e51a1f943c4"
+      }
+    }
+  ],
+  "items": [
+    {
+      "tool": "lookup",
+      "arguments": {
+        "id": 7
+      }
+    },
+    {
+      "tool": "lookup",
+      "arguments": {}
+    },
+    {
+      "tool": "lookup",
+      "arguments": {
+        "b": 2,
+        "a": 1
+      }
+    },
+    {
+      "tool": "lookup",
+      "arguments": {
+        "q": "A"
+      }
+    },
+    {
+      "tool": "lookup",
+      "arguments": {
+        "a": {
+          "b": [
+            1,
+            "x",
+            null,
+            true
+          ]
+        }
+      }
+    },
+    {
+      "tool": "lookup",
+      "arguments": {
+        "id": 9007199254740992
+      }
+    }
+  ]
+}

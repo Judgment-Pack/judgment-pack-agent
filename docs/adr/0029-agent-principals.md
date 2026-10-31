@@ -45,6 +45,28 @@ the gateway counts its own dispatches; a `gateway` source with no mapping is ref
 Any other source is this host's own, under its agent-host audience and its source id, and its
 dispatch is counted. The effect is the owner's ADR-0027 declaration, never a model argument.
 
+**The count is made at the dispatch.** RFC 0030 §2's rule: counting happens after the action-key
+lookup, an answer from retained evidence counts nothing, and of the admissions made for one call only
+the final one counts. So the gate admits every call with counting unset, which refuses a read the
+caches could answer after a revocation too, and the admission that counts is the last await before
+the host's execute, below the read caches and the durable writer's lookup. A dispatched call makes at
+least two reads, and a served one makes one, uncounted. A counted read that does not admit the call
+refuses it there, and nothing is dispatched.
+
+**An acting Runtime call is admitted like any other act.** A Runtime tool the Runtime serves with
+effect `act` is read under the agent-host audience as source `runtime`, the name its source record
+carries, effect `act`: refused outside the scope, past expiry and after revocation. It is checked with
+counting unset before it is asked and before an approved call prepares, and counted immediately before
+the physical call. A refused approved call answers with its refusal, as an approved call of a source
+does, and the run continues.
+
+**A host tool with no source is held to a delegation that stands.** A scope names sources, so it does
+not match such a tool, whose reach is local by its declaration (`act` and `read-external` need a
+source). Validity at the host's time and the port's answer still apply, under a read of `source: local`
+that is never counted. A question or a delegation (`interaction`) is the package's own interaction with
+the person or its children, not the host's dispatch; a delegation is held at the child's start and by
+the child's calls.
+
 **Approval carries no authority past the delegation.** Before an act call's approval is asked,
 the call is checked with counting unset; one the delegation does not admit is never put to the
 person. An approved call is admitted again, counted, immediately before it runs. A revocation
@@ -69,9 +91,18 @@ by digest), so neither can carry a principal, and readers that predate these ver
 them by ADR-0024 before reading the body.
 
 **A resume keeps its principals.** A delegated checkpoint resumes only with a delegation of the
-same subject and root actor; a chain re-issued or narrowed for them replaces the record. Another
-subject or root actor, a delegated run resumed without its delegation, and an undelegated run
-resumed with one are refused (`principal-changed`).
+same subject, root actor and issuing host; a chain re-issued or narrowed for them replaces the record.
+Another of the three, a delegated run resumed without its delegation, and an undelegated run resumed
+with one are refused with failure code `stale-state`, naming `principal-changed`. In both languages
+this holds on a durable store too: TypeScript's durable root makes the comparison before anything of
+the run is bound, as its opening of the chain is before the store is touched.
+
+**A run resumed at its handoff opens its parent first.** A restored batch runs its children before the
+next provider invocation, so a delegated run, or one restored from a delegated checkpoint, opens its
+parent context first, with or without task steps: the resume check runs, and the children start under
+the opened principal. On every path a child's start refuses when its run holds a delegation it has not
+opened, so a child never runs with no admission (`RequireOpenedPrincipal`). In TypeScript this hold's
+call site is unreachable once the parent opens; its helper is pinned, and Go pins the call too.
 
 **A delegated child gets the narrowed link the issuing host signs, never its parent's reach.**
 Under a delegation a child starts only with its own chain. The coordinator asks the host's child port
@@ -123,8 +154,18 @@ restart.
 - **The mapping is the declaration's.** A gateway source's audience and source name are on the
   host's `ToolSource` declaration, not on the ADR-0006 source record, so undelegated source records
   are unchanged.
-- **The Runtime's own tools** are not admitted against the scope: a scope names sources, and the
-  Runtime's tools have none. Acting Runtime metadata keeps its own approval path.
+- **The read-only Runtime tools** are not admitted against the scope. A tool is admitted when the
+  Runtime serves it with effect `act`. The others on the ceiling are `get_schema`, `list_examples`,
+  `get_example`, `validate` and `experimental_test_cases`: they read the Runtime's own published schemas
+  and examples, or check the arguments they are given, reach no source of the subject's and change
+  nothing, and they carry no source record a scope could name.
+- **A host tool with no source is not matched against the scope**, though validity and the port's
+  answer always apply (above). The read's `source: local` is the harness's: a port that applies scope
+  itself must not refuse it. The package's own tools (retained context, the plan, the budget request,
+  memory and draft proposals, skills) reach no source and are not admitted; a child's are the same.
+- **A mapping is a gateway source's.** `gatewayScope` is refused at declaration on any other kind,
+  since the host dispatches those itself and must count them, and when it names another authority than
+  the receipts the source pins.
 - **The record adds `rootActor`** beside the RFC's members: the checkpoint needs it to hold a resume
   to RFC §7 rule 2's subject and root actor, which the chain's digests do not name.
 - **Expiry or revocation while a run holds its lease refuses the call** and the run continues with
