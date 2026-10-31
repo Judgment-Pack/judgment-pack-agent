@@ -50,21 +50,29 @@ func TestDialectGeneratedInventoryNativeTuples(t *testing.T) {
 		return value, value["candidate"].(map[string]any)["conversionContract"].(map[string]any)["spec"].(map[string]any)
 	}
 	keys := []string{"version", "revision", "schemaSha256", "corpusSha256"}
-	for mask := 0; mask < 16; mask++ {
-		value, spec := witness()
-		for i, key := range keys {
-			spec[key] = current[key]
-			if mask&(1<<i) != 0 {
-				spec[key] = historical[key]
+	// #269: the RC2 tuple shares the final's digests, so only its version and revision can mix.
+	var rc2 struct{ Spec map[string]any }
+	if raw, err := os.ReadFile("../../contract/testdata/dialect-authoring/superseded-rc2-identity.json"); err != nil || json.Unmarshal(raw, &rc2) != nil {
+		t.Fatal("RC2 fixture", err)
+	}
+	for _, other := range []map[string]any{historical, rc2.Spec} {
+		for mask := 0; mask < 16; mask++ {
+			value, spec := witness()
+			for i, key := range keys {
+				spec[key] = current[key]
+				if mask&(1<<i) != 0 {
+					spec[key] = other[key]
+				}
 			}
-		}
-		err := native(value)
-		if mask == 0 || mask == 15 {
-			if err != nil {
-				t.Fatalf("native acceptance of exact tuple %d: %v", mask, err)
+			err := native(value)
+			sameDigests := other["schemaSha256"] == current["schemaSha256"] && other["corpusSha256"] == current["corpusSha256"]
+			if mask == 0 || mask == 15 || sameDigests && (mask&3 == 0 || mask&3 == 3) {
+				if err != nil {
+					t.Fatalf("native acceptance of exact tuple %v %d: %v", other["version"], mask, err)
+				}
+			} else if !errors.Is(err, ErrInvalidRecord) {
+				t.Fatalf("native refusal of hybrid tuple %v %d: %v", other["version"], mask, err)
 			}
-		} else if !errors.Is(err, ErrInvalidRecord) {
-			t.Fatalf("native refusal of hybrid tuple %d: %v", mask, err)
 		}
 	}
 	for _, key := range keys {

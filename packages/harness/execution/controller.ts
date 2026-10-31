@@ -7,7 +7,7 @@ import type {ContextToolPolicy} from '../context/toolPolicy'
 import {authoredFailure,toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
 import {answer,contextDigest,type ContextLedger} from '../context/ledger'
-import {readCacheKey,canonicalJSON as importCanonicalPlan} from '../context/chat'
+import {readCacheKey,scalarValue,canonicalJSON as importCanonicalPlan} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
@@ -338,15 +338,17 @@ export class ExecutionController {
   return async(args:Record<string,unknown>)=>{
    if((name==='read_window'||name==='read_context')&&typeof args.id==='string'&&args.id.startsWith('draft:'))return execute(args)
    const chat=kept?this.ledger.chat:undefined
-   const chatKey=chat&&immutable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
+   // #246: arguments with a lone UTF-16 surrogate are neither served from nor kept in either cache; Go reads them as U+FFFD.
+   const cacheable=immutable&&scalarValue(args)
+   const chatKey=chat&&cacheable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
    // The cache serves only a name the run's session offers: an unoffered name goes on to the inner offer check and the gate, and a served entry never joins a child's visible set.
    if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey);if(held)return held}
    const key=name+':'+JSON.stringify(args)
-   if(chatKey===undefined&&immutable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
+   if(chatKey===undefined&&cacheable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
    const result=await execute(args)
    await admission?.admit(result)
    if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)
-   if(chatKey===undefined&&immutable&&!result.isError)this.cache.set(key,structuredClone(result))
+   if(chatKey===undefined&&cacheable&&!result.isError)this.cache.set(key,structuredClone(result))
    return result
   }
  }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Dialect draft checkpoint, acknowledgment and final lineage",
-  "description": "Portable host retention only. Byte ceilings, exact content/digest/receipt chains, stage order and authority limits are additionally enforced by the tool factory. A draft permits inspection and editing, never saving or execution. Version-2 checkpoints (#243) carry the complete original inventory by digest as researchIndex (null means unavailable), a bounded top index of per-revision field index digests (#252), and never researchDeclarations; version-1 checkpoints written by v0.11.0 keep their inline researchDeclarations, never carry researchIndex, remain inspectable and grant no new contract support.",
+  "description": "Portable host retention only. Byte ceilings, exact content/digest/receipt chains, stage order and authority limits are additionally enforced by the tool factory. A draft permits inspection and editing, never saving or execution. Version-2 checkpoints (#243) carry the complete original inventory by digest as researchIndex (null means unavailable), a bounded top index of per-revision field index digests (#252), and never researchDeclarations; version-1 checkpoints written by v0.11.0 keep their inline researchDeclarations, never carry researchIndex, remain inspectable and grant no new contract support. New factories retain the final Spec 0.3.0 conversionContract tuple (#269); a checkpoint carrying the Spec 0.3.0-rc.2 tuple (v0.11.0 and v0.12.0) or the Draft RFC0029 tuple remains inspectable and grants no new contract support.",
   "oneOf": [
     {
       "$ref": "#/$defs/checkpoint"
@@ -646,6 +646,30 @@
                 },
                 "corpusSha256": {
                   "const": "sha256:e2ac53f56cd5ab779e032d2847b49fa04438ffb9df57d456f75f2ba058dc12d2"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "revision",
+                "schemaSha256",
+                "corpusSha256"
+              ],
+              "properties": {
+                "version": {
+                  "const": "0.3.0"
+                },
+                "revision": {
+                  "const": "27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc"
+                },
+                "schemaSha256": {
+                  "const": "sha256:0cb49f238c78391cb163a65474cc9af962df2bb1024a55c5310c2b784b2f0557"
+                },
+                "corpusSha256": {
+                  "const": "sha256:17b16ff7a9b74fe4cc81eb6f6129a6aabdd9834621d9e756aa2d4c1a3f245863"
                 }
               }
             }

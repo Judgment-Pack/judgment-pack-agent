@@ -12468,7 +12468,9 @@ func (v DialectAuthoringRead) MarshalJSON() ([]byte, error) {
 // unavailable), a bounded top index of per-revision field index digests (#252), and never
 // researchDeclarations; version-1 checkpoints written by v0.11.0 keep their inline
 // researchDeclarations, never carry researchIndex, remain inspectable and grant no new contract
-// support.
+// support. New factories retain the final Spec 0.3.0 conversionContract tuple (#269); a checkpoint
+// carrying the Spec 0.3.0-rc.2 tuple (v0.11.0 and v0.12.0) or the Draft RFC0029 tuple remains
+// inspectable and grants no new contract support.
 //
 // A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
 type DialectDraft struct {
@@ -13066,6 +13068,8 @@ type DialectDraftConversionContractSpec struct {
 	Option1 *DialectDraftConversionContractSpecOption1
 	// Option2 is set where version is "Draft RFC0029".
 	Option2 *DialectDraftConversionContractSpecOption2
+	// Option3 is set where version is "0.3.0".
+	Option3 *DialectDraftConversionContractSpecOption3
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -13084,6 +13088,9 @@ func (v *DialectDraftConversionContractSpec) UnmarshalJSON(data []byte) error {
 		case "Draft RFC0029":
 			v.Option2 = new(DialectDraftConversionContractSpecOption2)
 			return json.Unmarshal(data, v.Option2)
+		case "0.3.0":
+			v.Option3 = new(DialectDraftConversionContractSpecOption3)
+			return json.Unmarshal(data, v.Option3)
 		}
 		return errorf("DialectDraftConversionContractSpec: no member has version %q", tag)
 	}
@@ -13098,6 +13105,9 @@ func (v DialectDraftConversionContractSpec) MarshalJSON() ([]byte, error) {
 	}
 	if v.Option2 != nil {
 		set = append(set, v.Option2)
+	}
+	if v.Option3 != nil {
+		set = append(set, v.Option3)
 	}
 	if len(set) != 1 {
 		return nil, errorf("DialectDraftConversionContractSpec: %d members are set; a union holds exactly one", len(set))
@@ -13160,6 +13170,35 @@ func (v *DialectDraftConversionContractSpecOption2) UnmarshalJSON(data []byte) e
 // MarshalJSON encodes a DialectDraftConversionContractSpecOption2 object.
 func (v DialectDraftConversionContractSpecOption2) MarshalJSON() ([]byte, error) {
 	type plain DialectDraftConversionContractSpecOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From dialect-draft.json#/$defs/conversionContract/properties/spec/oneOf/2.
+type DialectDraftConversionContractSpecOption3 struct {
+	Version      string `json:"version"`
+	Revision     string `json:"revision"`
+	SchemaSha256 string `json:"schemaSha256"`
+	CorpusSha256 string `json:"corpusSha256"`
+}
+
+var dialectDraftConversionContractSpecOption3Members = []string{"version", "revision", "schemaSha256", "corpusSha256"}
+
+// UnmarshalJSON decodes a DialectDraftConversionContractSpecOption3 object and refuses a member the closed schema does not name.
+func (v *DialectDraftConversionContractSpecOption3) UnmarshalJSON(data []byte) error {
+	type plain DialectDraftConversionContractSpecOption3
+	var p plain
+	extra, err := decodeObject(data, &p, dialectDraftConversionContractSpecOption3Members, true)
+	if err != nil {
+		return errorf("DialectDraftConversionContractSpecOption3: %w", err)
+	}
+	*v = DialectDraftConversionContractSpecOption3(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a DialectDraftConversionContractSpecOption3 object.
+func (v DialectDraftConversionContractSpecOption3) MarshalJSON() ([]byte, error) {
+	type plain DialectDraftConversionContractSpecOption3
 	return encodeObject(plain(v), nil)
 }
 
@@ -24592,7 +24631,11 @@ func (v ToolResultReadArguments) MarshalJSON() ([]byte, error) {
 // ledger's own tools (read_context, read_window, search, list_context) and the plan tools are
 // never kept across runs: their answers are windows of what the chat holds, or working state.
 // Without a chat-scoped context the read cache is the run's own, keyed by the tool's name and its
-// arguments as JSON.stringify writes them, and ends with the run.
+// arguments as JSON.stringify writes them, and ends with the run. Every string a key holds is a
+// sequence of Unicode scalar values (#246): a read whose tool, arguments or Runtime identity or
+// version would put a lone UTF-16 surrogate in its key gets no key and is kept in neither cache,
+// and a run whose context.runtime holds one is refused before anything is sent; a lone surrogate
+// is never replaced with U+FFFD.
 type ToolResultReadCacheKey struct {
 	Tool      string                         `json:"tool"`
 	Arguments map[string]json.RawMessage     `json:"arguments"`
@@ -24622,7 +24665,7 @@ func (v ToolResultReadCacheKey) MarshalJSON() ([]byte, error) {
 
 // From tool-result.json#/$defs/readCacheKey/properties/runtime. What the host knows the Runtime by
 // (the run's context.runtime): an identity, such as its pinned digest or the name its initialize
-// answer gave, and its version.
+// answer gave, and its version, each with no lone UTF-16 surrogate (#246).
 type ToolResultReadCacheKeyRuntime struct {
 	Identity string `json:"identity"`
 	Version  string `json:"version"`

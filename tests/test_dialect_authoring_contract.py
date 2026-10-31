@@ -54,14 +54,20 @@ class DialectAuthoringContract(unittest.TestCase):
         validator = jsonschema.Draft202012Validator(schema)
         present = [row for row in rows if row.get('candidate', {}).get('conversionContract')]
         historical = json.loads((ROOT / 'contract/testdata/dialect-authoring/superseded-private-draft-identity.json').read_text())
+        rc2 = json.loads((ROOT / 'contract/testdata/dialect-authoring/superseded-rc2-identity.json').read_text())
         self.assertEqual(len(present), 11)
         self.assertEqual(sum(row['candidate']['conversionContract'] == historical for row in present), 8)
-        self.assertEqual(sum(row['candidate']['conversionContract'] == current for row in present), 3)
+        self.assertEqual(sum(row['candidate']['conversionContract'] == current for row in present), 2)
+        # #269: the RC2 tuple v0.11.0 and v0.12.0 wrote is kept once, as history.
+        self.assertEqual(sum(row['candidate']['conversionContract'] == rc2 for row in present), 1)
+        self.assertEqual(current['spec']['version'], '0.3.0')
+        self.assertEqual(current['spec']['revision'], '27cb29bf13e4a2d58d69fe19c7ebfeb762b014fc')
         for row in present:
-            self.assertIn(row['candidate']['conversionContract'], [current, historical])
+            self.assertIn(row['candidate']['conversionContract'], [current, rc2, historical])
             validator.validate(row)
+        base = next(row for row in present if row['candidate']['conversionContract'] == current)
         for choices in itertools.product([False, True], repeat=3):
-            row = copy.deepcopy(present[-1])
+            row = copy.deepcopy(base)
             for stale, member in zip(choices, ['revision', 'schemaSha256', 'corpusSha256']):
                 if stale:
                     row['candidate']['conversionContract']['spec'][member] = superseded['spec'][member]
@@ -69,10 +75,17 @@ class DialectAuthoringContract(unittest.TestCase):
 
         # Historical inspection support never permits mixing identities across versions.
         for choices in itertools.product([False, True], repeat=4):
-            row = copy.deepcopy(present[-1])
+            row = copy.deepcopy(base)
             for stale, member in zip(choices, ['version', 'revision', 'schemaSha256', 'corpusSha256']):
                 if stale:
                     row['candidate']['conversionContract']['spec'][member] = historical['spec'][member]
+            self.assertEqual(validator.is_valid(row), all(choices) or not any(choices), choices)
+        # The RC2 and final tuples share their digests; their version and revision never mix (#269).
+        for choices in itertools.product([False, True], repeat=2):
+            row = copy.deepcopy(base)
+            for stale, member in zip(choices, ['version', 'revision']):
+                if stale:
+                    row['candidate']['conversionContract']['spec'][member] = rc2['spec'][member]
             self.assertEqual(validator.is_valid(row), all(choices) or not any(choices), choices)
 
     def test_version_two_carries_the_inventory_index_and_version_one_still_reads(self):

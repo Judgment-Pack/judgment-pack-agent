@@ -1264,14 +1264,18 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		if kept != nil {
 			chat = c.ledger.Chat()
 		}
+		// #246: arguments with a lone UTF-16 surrogate escape (or bytes that are not UTF-8) are neither
+		// served from nor kept in either cache: ParseJSON reads them as U+FFFD, so two different
+		// arguments would share one key.
+		cacheable := immutable && cacheableArguments(raw)
 		chatKey, hasChatKey := "", false
-		if chat != nil && immutable {
+		if chat != nil && cacheable {
 			runtimeBound := kept.Runtime || (policy != nil && policy.Runtime)
 			var runtime *RuntimeIdentity
 			if c.session.Context != nil {
 				runtime = c.session.Context.Runtime
 			}
-			chatKey, hasChatKey = ReadCacheKeyOf(name, args, runtimeBound, runtime)
+			chatKey, hasChatKey = ReadCacheKeyOf(name, raw, runtimeBound, runtime)
 		}
 		// The cache serves only a name the run's session offers: an unoffered name goes on to the
 		// inner offer check and the gate, and a served entry never joins a child's visible set.
@@ -1281,7 +1285,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 			}
 		}
 		key := name + ":" + args.Text()
-		if !hasChatKey && immutable {
+		if !hasChatKey && cacheable {
 			if held, ok := c.cache[key]; ok {
 				return held.Clone(), nil
 			}
@@ -1302,7 +1306,7 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 				return result, err
 			}
 		}
-		if !hasChatKey && immutable && !result.Err() {
+		if !hasChatKey && cacheable && !result.Err() {
 			c.cache[key] = result.Clone()
 		}
 		return result, nil

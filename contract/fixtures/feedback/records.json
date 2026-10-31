@@ -376,6 +376,115 @@
         "actor": "reviewer",
         "recordedAt": "2026-10-25T01:02:03.000Z"
       }
+    },
+    {
+      "name": "checkpoint4-delegated",
+      "checkpoint": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 4,
+        "requestKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "operations": [],
+        "context": {
+          "scope": "fixture",
+          "entries": []
+        },
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "report": {
+        "id": "r",
+        "phase": "work",
+        "status": "complete",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "Finished",
+        "version": 3,
+        "checkpointVersion": 4,
+        "feedback": [
+          {
+            "sourceDigest": "sha256:d3058227cab9b03d50263a3b8054b4c79ed45ce5dd68dfd0cef6c5e6f9992fd5",
+            "record": {
+              "version": 1,
+              "id": "rating",
+              "runId": "r",
+              "sequence": 1,
+              "previous": null,
+              "target": {
+                "kind": "run"
+              },
+              "rating": "good",
+              "actor": "reviewer",
+              "recordedAt": "2026-10-25T01:02:03.000Z"
+            }
+          }
+        ],
+        "principal": {
+          "actor": {
+            "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+            "host": "desk",
+            "software": {
+              "package": "@judgment-pack/harness",
+              "version": "0.13.0"
+            }
+          },
+          "subject": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "delegation": {
+            "id": "33333333333333333333333333333333",
+            "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          },
+          "chain": [
+            "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+          ]
+        }
+      },
+      "feedback": {
+        "version": 1,
+        "id": "rating",
+        "runId": "r",
+        "sequence": 1,
+        "previous": null,
+        "target": {
+          "kind": "run"
+        },
+        "rating": "good",
+        "actor": "reviewer",
+        "recordedAt": "2026-10-25T01:02:03.000Z"
+      }
     }
   ],
   "invalidReports": [

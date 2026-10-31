@@ -243,6 +243,14 @@ func TestDialectCompatibilityRetentionVectors(t *testing.T) {
 	if err = json.Unmarshal(privateRaw, &privateDraft); err != nil {
 		t.Fatal(err)
 	}
+	rc2Raw, err := os.ReadFile("../../contract/testdata/dialect-authoring/superseded-rc2-identity.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rc2 DialectConversionContract
+	if err = json.Unmarshal(rc2Raw, &rc2); err != nil {
+		t.Fatal(err)
+	}
 	stages, operations, failures := map[string]bool{}, map[string]bool{}, map[string]bool{}
 	for _, raw := range rows.Items {
 		var tag map[string]json.RawMessage
@@ -262,7 +270,7 @@ func TestDialectCompatibilityRetentionVectors(t *testing.T) {
 		}
 		if c, ok := target.(*DialectDraftCheckpoint); ok {
 			stages[c.Stage] = true
-			if c.Candidate.ConversionContract.Contract != "" && c.Candidate.ConversionContract != DialectRetainedColumnDraft() && c.Candidate.ConversionContract != privateDraft {
+			if c.Candidate.ConversionContract.Contract != "" && c.Candidate.ConversionContract != DialectRetainedColumnDraft() && c.Candidate.ConversionContract != privateDraft && c.Candidate.ConversionContract != rc2 {
 				t.Fatal("unsupported retention vector tuple")
 			}
 			if len(c.AttemptID) != 32 || c.Candidate.Columns[0].Samples[0].ValueJSON != "false" {

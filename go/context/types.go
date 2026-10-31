@@ -293,6 +293,12 @@ type Document struct {
 
 // RuntimeIdentity is what the host knows the Runtime by: an identity (its pinned digest, or the
 // name its initialize answer gave) and its version (RuntimeIdentity in context/chat.ts).
+//
+// Both are valid UTF-8 (#246). A run whose Input.Runtime is not is refused with
+// RuntimeIdentityRefused before anything is sent. A host that reads the Runtime's answer with
+// encoding/json gets U+FFFD for a lone surrogate escape without being told; read it with a reader
+// that refuses lone surrogate escapes instead, so the version the host names is the one the
+// Runtime gave.
 type RuntimeIdentity struct {
 	Identity string `json:"identity"`
 	Version  string `json:"version"`
