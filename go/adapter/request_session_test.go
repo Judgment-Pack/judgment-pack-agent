@@ -222,10 +222,11 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 	}
 	admittedFields := map[string][]fieldAdmission{}
 	fieldConversions := map[string]map[string][]string{
-		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
+		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget", "Principal"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
 		"context/turn_route_owner.go":   {"*SessionContext.initializeTurnRoute": {"ChildDefinition", "Agent", "Tools", "HostTools", "Route", "RouteFacts"}},
 		"adapter/physical_model.go":     {"BindPhysicalModel": {"physicalModel", "Model"}, "BindPolicyPhysicalModel": {"physicalModel", "Model"}},
 		"context/controller.go":         {"NewExecutionController": {"TaskSteps"}},
+		"context/run_principal.go":      {"HoldsDelegation": {"Principal"}},
 		"context/plan_validation.go":    {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
 		"context/plan_preparation.go":   {"PreparePlanDecision": {"PlanResolver", "RunStore"}, "validateOriginalPlan": {"PlanResolver"}},
 		"adapter/context_enrollment.go": {"EnrollContext": {"EnrollContext"}},
