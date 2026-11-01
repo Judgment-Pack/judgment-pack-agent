@@ -201,10 +201,16 @@
       "events": ["push", "workflow_dispatch"],
       "skipped_jobs": ["rows of the files this pull request changes, and a sample"],
       "jobs": {
-        "full-1": {"name": "every row (shard 1 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
-        "full-2": {"name": "every row (shard 2 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
-        "full-3": {"name": "every row (shard 3 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
-        "full-4": {"name": "every row (shard 4 of 4)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []}
+        "full-1": {"name": "every row (shard 1 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-2": {"name": "every row (shard 2 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-3": {"name": "every row (shard 3 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-4": {"name": "every row (shard 4 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-5": {"name": "every row (shard 5 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-6": {"name": "every row (shard 6 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-7": {"name": "every row (shard 7 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-8": {"name": "every row (shard 8 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-9": {"name": "every row (shard 9 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
+        "full-10": {"name": "every row (shard 10 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []}
       }
     }
   }
