@@ -4,14 +4,14 @@ import {storageId} from '../storage/common'
 import {canonicalJSON} from '../context/chat'
 import {historyJSONBytes,historyBytesDigest,validHistoryRef,type HistoryObjectRef} from './codec'
 import {ReplayUnavailable} from './captureCollector'
-export interface CorpusCheckpointView {version:1;kind:'corpus-checkpoint-view';source:HistoryObjectRef;sourceVersion:1|2|3;derived:HistoryObjectRef;representation:'exact'|'derived';document:unknown}
+export interface CorpusCheckpointView {version:1;kind:'corpus-checkpoint-view';source:HistoryObjectRef;sourceVersion:1|2|3|4;derived:HistoryObjectRef;representation:'exact'|'derived';document:unknown}
 /** Internal projection after complete capture closure validation. This never issues native progress. */
 export function corpusCheckpointView(source:HistoryObjectRef,document:unknown):CorpusCheckpointView {
  try{
  if(!validHistoryRef(source))throw new ReplayUnavailable()
  checkRecord('checkpoint',document)
- const cp=document as {version:1|2|3;id:string}
- if(!storageId(cp.id)||![1,2,3].includes(cp.version))throw new ReplayUnavailable()
+ const cp=document as {version:1|2|3|4;id:string}
+ if(!storageId(cp.id)||![1,2,3,4].includes(cp.version))throw new ReplayUnavailable()
  const bytes=historyJSONBytes(document),derived={digest:historyBytesDigest(bytes),bytes:bytes.length},exact=source.digest===derived.digest&&source.bytes===derived.bytes
  if(!validHistoryRef(derived)||exact&&!readExecution(document))throw new ReplayUnavailable()
  return {version:1,kind:'corpus-checkpoint-view',source:{...source},sourceVersion:cp.version,derived,representation:exact?'exact':'derived',document:structuredClone(document)}

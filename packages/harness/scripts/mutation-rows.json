@@ -5855,7 +5855,7 @@
   {
    "name": "record versions stamp checkpoints before their digest",
    "file": "records.ts",
-   "find": "version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?((value as {principal?:unknown}).principal!==undefined?4:((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
    "replace": "version:1",
    "tests": [
     "recordReader.test.ts",
@@ -7429,7 +7429,7 @@
 },
 {
   "name": "native Plan pause R1 schema-coordinator",
-  "file": "contract/record-shapes.json",
+  "file": "contract/record-shapes-v012.json",
   "find": "\"taskCoordinator\":{\"$ref\":\"#/$defs/taskCoordinatorBinding\"}",
   "replace": "\"taskCoordinator_REMOVED\":{\"$ref\":\"#/$defs/taskCoordinatorBinding\"}",
   "tests": [
@@ -7441,7 +7441,7 @@
 },
 {
   "name": "native Plan pause R1 schema-native-pause",
-  "file": "contract/record-shapes.json",
+  "file": "contract/record-shapes-v012.json",
   "find": "\"planPause\":{\"$ref\":\"#/$defs/nativePlanPause\"}",
   "replace": "\"planPause_REMOVED\":{\"$ref\":\"#/$defs/nativePlanPause\"}",
   "tests": [
@@ -7453,7 +7453,7 @@
 },
 {
   "name": "native Plan pause R1 schema-native-decision",
-  "file": "contract/record-shapes.json",
+  "file": "contract/record-shapes-v012.json",
   "find": "\"nativeInvocation\":{\"$ref\":\"#/$defs/nativePlanInvocation\"}",
   "replace": "\"nativeInvocation_REMOVED\":{\"$ref\":\"#/$defs/nativePlanInvocation\"}",
   "tests": [
@@ -7465,7 +7465,7 @@
 },
 {
   "name": "native Plan pause R1 schema-native-event",
-  "file": "contract/record-shapes.json",
+  "file": "contract/record-shapes-v012.json",
   "find": "\"nativeInvocation\":{\"$ref\":\"checkpoint.json#/$defs/nativePlanInvocation\"}",
   "replace": "\"nativeInvocation_REMOVED\":{\"$ref\":\"checkpoint.json#/$defs/nativePlanInvocation\"}",
   "tests": [
@@ -10581,6 +10581,506 @@
    "status": "caught",
    "origin": "agent#226",
    "note": "Go twin (by hand): the same mutant as reauth M1b, the one ctx.Err after the check; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$."
+  },
+  {
+   "name": "principal P1 a child that widens its parent is admitted",
+   "file": "principal.ts",
+   "find": "    if (why !== undefined) return refuse('widened', `link ${k} ${why}`)",
+   "replace": "    void why",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the PrincipalWidening refusal in VerifyPrincipalChain's step 7; caught at ^TestPrincipalGatewayStatementVectors$ and ^TestPrincipalAgentHostChains$."
+  },
+  {
+   "name": "principal P2 a signature is not verified",
+   "file": "principal.ts",
+   "find": "    if (!await signatureVerifies(keys.get(link.host)!.get(link.keyId)!, link.signature, signingInput(link))) return refuse('signature-mismatch', `link ${i}'s signature does not verify`)",
+   "replace": "    void link",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip principalVerifies in VerifyPrincipalChain's step 5; caught at ^TestPrincipalGatewayStatementVectors$."
+  },
+  {
+   "name": "principal P3 a small-order key is pinned",
+   "file": "principal.ts",
+   "find": "  if (SMALL_ORDER.has(key)) return 'key-small-order'",
+   "replace": "  if (SMALL_ORDER.has(key) && false) return 'key-small-order'",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the small-order check in PrincipalKeyProblem; caught at ^TestPrincipalKeyRule$."
+  },
+  {
+   "name": "principal P4 a tool the scope does not name is admitted",
+   "file": "principal.ts",
+   "find": "    if (!call.tool || !e.tools.includes(call.tool)) return 'tool'",
+   "replace": "    if (!call.tool) return 'tool'",
+   "tests": [
+    "principal.test.ts",
+    "principalGate.test.ts",
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the tools membership in PrincipalScopeReason; caught at ^TestPrincipalAdmissionVectors$ and ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$."
+  },
+  {
+   "name": "principal P5 an effect the scope does not admit is admitted",
+   "file": "principal.ts",
+   "find": "    if (call.effect === undefined || !e.effects.includes(call.effect)) return 'effect'",
+   "replace": "    if (call.effect === undefined) return 'effect'",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the effects membership in PrincipalScopeReason; caught at ^TestPrincipalAdmissionVectors$."
+  },
+  {
+   "name": "principal P6 an expired chain is admitted",
+   "file": "principal.ts",
+   "find": "  if (links.some(link => at >= link.expiresAt)) return {name: 'expired'}\n  const own = scopeReason",
+   "replace": "  const own = scopeReason",
+   "tests": [
+    "principal.test.ts",
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): compare !at.Before(ExpiresAt) as At.After in AdmitPrincipalCall (equal time admitted); caught at ^TestPrincipalAdmissionVectors$/expired_at_the_instant_equal_to_expiresAt."
+  },
+  {
+   "name": "principal P7 the port's revocation is ignored",
+   "file": "principal.ts",
+   "find": "  if (answer !== undefined && BEFORE_SCOPE.includes(answer.name)) return answer\n  if (ownRefusal) return ownRefusal\n  return answer",
+   "replace": "  return ownRefusal",
+   "tests": [
+    "principal.test.ts",
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): return own alone at the end of AdmitPrincipalCall; caught at ^TestPrincipalAdmissionVectors$ and ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/after_revocation,_at_once."
+  },
+  {
+   "name": "principal P8 an unreadable admission admits",
+   "file": "principal.ts",
+   "find": "  if (answer === 'unknown') return {name: 'admission-unknown'}",
+   "replace": "  if (answer === 'unknown') return ownRefusal",
+   "tests": [
+    "principal.test.ts",
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): return own where principalAnswer is not ok in AdmitPrincipalCall; caught at ^TestPrincipalAdmissionVectors$ and ^TestPrincipalRecordVectors$."
+  },
+  {
+   "name": "principal P9 the leaf's software is not held to the run's",
+   "file": "principal.ts",
+   "find": "  if (canon(leaf.software) !== canon(runSoftware)) throw new DelegationRefused({name: 'software-mismatch'}, \"the leaf's software is not the software the host states the run runs\")",
+   "replace": "  void runSoftware",
+   "tests": [
+    "principal.test.ts",
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the leaf software comparison in OpenPrincipal; caught at ^TestPrincipalAgentHostChains$ and ^TestPrincipalSessionRecordsAndResume$/a_leaf_whose_software_is_not_the_run's_refuses_to_start."
+  },
+  {
+   "name": "principal P10 a call is dispatched without its admission",
+   "file": "toolSources.ts",
+   "find": "    if (this.principal !== undefined) {\n      let refusal: PrincipalRefusal | undefined\n      try { refusal = await this.delegated(entry, false, signal)",
+   "replace": "    if (false as boolean) {\n      let refusal: PrincipalRefusal | undefined\n      try { refusal = await this.delegated(entry, false, signal)",
+   "tests": [
+    "principalGate.test.ts",
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip the admission before the proposal branch in SourceGate.Call; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$ and ^TestPrincipalSessionRecordsAndResume$."
+  },
+  {
+   "name": "principal P11 an approved call runs without being admitted again",
+   "file": "toolSources.ts",
+   "find": "    const refusal = await this.delegated(entry, false, signal).catch((error: unknown) => { giveBack(); throw error })",
+   "replace": "    const refusal = undefined as PrincipalRefusal | undefined",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip the delegated admission in SourceGate.Approved; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/no_authority_past_the_delegation_on_an_approval's_continuation."
+  },
+  {
+   "name": "principal P12 a refused call is put to the person",
+   "file": "toolSources.ts",
+   "find": "    } else if (this.principal !== undefined && this.book?.current()?.state !== 'asked' && await this.delegated(entry, false) !== undefined) {",
+   "replace": "    } else if (false as boolean) {",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the delegationRefused case in SourceGate.Decide; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/never_puts_a_call_the_delegation_refuses_to_the_person."
+  },
+  {
+   "name": "principal P13 a call not dispatched here is counted",
+   "file": "toolSources.ts",
+   "find": "      try { refusal = await this.delegated(entry, false, signal) } catch (error) {",
+   "replace": "      try { refusal = await this.delegated(entry, true, signal) } catch (error) {",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): count every admission in SourceGate.Call; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/an_act_call_revoked_before_its_approval_counts_nothing."
+  },
+  {
+   "name": "principal P14 a gateway source's call is counted by the package",
+   "file": "toolSources.ts",
+   "find": "count && audience?.kind === 'agent-host'",
+   "replace": "count",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop count = false for a mapped gateway source in SourceGate.delegated; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/a_gateway_source_against_its_gateway's_entry_without_counting;_one_with_no_mapping_refused."
+  },
+  {
+   "name": "principal P15 an unmapped gateway source is read as this host's",
+   "file": "toolSources.ts",
+   "find": ": entry.record.kind === 'gateway' ? undefined : { kind: 'agent-host' as const, name: principal.audience }",
+   "replace": ": { kind: 'agent-host' as const, name: principal.audience }",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the gateway case in SourceGate.delegated; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/a_gateway_source_against_its_gateway's_entry_without_counting;_one_with_no_mapping_refused."
+  },
+  {
+   "name": "principal P16 a delegated child's gate escapes its parent's delegation",
+   "file": "toolSources.ts",
+   "find": "  get principal(): OpenedPrincipal | undefined { return this.ownPrincipal ?? this.parent?.principal }",
+   "replace": "  get principal(): OpenedPrincipal | undefined { return this.ownPrincipal }",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): return g.principal alone in SourceGate.Principal; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$/a_delegated_child's_gate_admits_under_its_parent's_principal."
+  },
+  {
+   "name": "principal P17 a delegated run's tool events lose their principal",
+   "file": "context/managed.ts",
+   "find": " return context.principal!==undefined&&(event.type==='tool_call'||event.type==='tool_result')?{...event,principal:structuredClone(context.principal.record)}:event",
+   "replace": " return event",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): return event unchanged in withPrincipal; caught at ^TestPrincipalSessionRecordsAndResume$/a_delegated_run's_tool_events,_refusal_and_checkpoint_4_carry_its_principal."
+  },
+  {
+   "name": "principal P18 a resume under another principal continues",
+   "file": "context/session.ts",
+   "find": "if(restoring&&principalsChanged(saved,principal?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')",
+   "replace": "void [principalsChanged,restoring,saved,PRINCIPAL_CHANGED]",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the principal-changed refusal in ContextualSessionWithEnrollment; caught at ^TestPrincipalSessionRecordsAndResume$/a_resume_continues_only_under_the_principals_it_began_under."
+  },
+  {
+   "name": "principal P19 checkpoint 4 without its principal is read",
+   "file": "execution/state.ts",
+   "find": " if((value.version===4)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "replace": " if(value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the version 4 coupling in ReadExecution; caught at ^TestPrincipalSessionRecordsAndResume$/a_delegated_run's_tool_events,_refusal_and_checkpoint_4_carry_its_principal."
+  },
+  {
+   "name": "principal P20 checkpoint 3 and event 2 read the current schemas",
+   "file": "recordReader.ts",
+   "find": "kind==='checkpoint'&&version===3||kind==='event'&&version===2?shapes.published012:shapes.published",
+   "replace": "kind==='checkpoint'&&version===3||kind==='event'&&version===2?shapes.current:shapes.published",
+   "tests": [
+    "recordReader.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): select current for checkpoint 3 and event 2 in checkRecord; caught at ^TestRecordVersionVectors$ (the delegated rows)."
+  },
+  {
+   "name": "principal P21 a report 3 without its principal is read",
+   "file": "runReportReader.ts",
+   "find": "  if(v3&&object(held)&&(held.checkpointVersion!==4||!validPrincipalRecord(held.principal)))return invalid()",
+   "replace": "  void v3",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the version 3 check in validReportSemantics; caught at ^TestPrincipalRecordVectors$ (a report whose chain does not end with its leaf)."
+  },
+  {
+   "name": "principal P40 a raw delegation read is admitted past a durable root's admission",
+   "file": "policySession.test.ts",
+   "find": "if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return",
+   "replace": "if(relative==='storage/writer.ts'&&name==='principal')return",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): Go's guard holds the same raw read by field, in fieldConversions (adapter/request_session_test.go), and Principal is admitted there function by function; removing an admission is caught at ^TestRawReasoningReadsStayInTheAdmissionConversion$."
+  },
+  {
+   "name": "principal P41 a durable root's admission reads other raw members",
+   "file": "policySession.test.ts",
+   "find": "if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return",
+   "replace": "if(relative==='storage/writer.ts'&&fn==='durableSession')return",
+   "tests": [
+    "policySession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): Go's guard holds the same raw read by field, in fieldConversions (adapter/request_session_test.go), and Principal is admitted there function by function; removing an admission is caught at ^TestRawReasoningReadsStayInTheAdmissionConversion$."
+  },
+  {
+   "name": "principal P42 an acting Runtime call reaches its physical call with no final admission",
+   "file": "context/runtimeActions.ts",
+   "find": ",()=>delegated(name,true,signal))",
+   "replace": ")",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): pass no beforeDispatch to runtimeactions.Execute; caught at ^TestRuntimeActionUnderADelegation$."
+  },
+  {
+   "name": "principal P43 an acting Runtime call is asked with no admission",
+   "file": "context/runtimeActions.ts",
+   "find": "   await delegated(name,false,session.signal)\n",
+   "replace": "",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the runtimeDelegated check in PrepareRuntimeCall; caught at ^TestRuntimeActionUnderADelegation$."
+  },
+  {
+   "name": "principal P44 an approved Runtime call prepares with no admission",
+   "file": "context/runtimeActions.ts",
+   "find": "   await delegated(record.name,false,signal)\n",
+   "replace": "",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the runtimeDelegated check in resumeAdmittedRuntimeCall; caught at ^TestRuntimeActionUnderADelegation$."
+  },
+  {
+   "name": "principal P45 an acting Runtime call is admitted under another source",
+   "file": "principal.ts",
+   "find": "source: RUNTIME_SOURCE, tool, effect: 'act'}",
+   "replace": "source: 'notes', tool, effect: 'act'}",
+   "tests": [
+    "principalPaths.test.ts",
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): name another Source in AdmitPrincipalRuntimeCall; caught at ^TestRuntimeActionUnderADelegation$."
+  },
+  {
+   "name": "principal P46 a host tool with no source runs past a revocation",
+   "file": "context/session.ts",
+   "find": "await session.context?.authorize?.(signal);await stands(tool,signal);const run=",
+   "replace": "await session.context?.authorize?.(signal);void stands;const run=",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip refuseUnlessStanding in the session's tool wrapper; caught at ^TestPrincipalHostToolWithNoSource$."
+  },
+  {
+   "name": "principal P47 a standing check passes an expired chain",
+   "file": "principal.ts",
+   "find": "  if (links.some(link => at >= link.expiresAt)) return {name: 'expired'}\n  if (effect === undefined",
+   "replace": "  if (effect === undefined",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the expiry loop in AdmitPrincipalStanding; caught at ^TestPrincipalStandingVectors$."
+  },
+  {
+   "name": "principal P48 a question is held to the delegation as a host's dispatch",
+   "file": "context/session.ts",
+   "find": "session.hostTools.filter(tool=>tool.source===undefined&&tool.interaction===undefined)",
+   "replace": "session.hostTools.filter(tool=>tool.source===undefined)",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop Interaction from the sourceless set; caught at ^TestPrincipalHostToolWithNoSource$."
+  },
+  {
+   "name": "principal P49 a mapping is read on a source no gateway serves",
+   "file": "toolSources.ts",
+   "find": "  if (source.gatewayScope !== undefined && source.kind !== 'gateway') return 'its gatewayScope is for a source a gateway serves, and it is not one'\n",
+   "replace": "",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the kind case in declarationProblem; caught at ^TestPrincipalGatewayMappingIsHeldAtDeclaration$; the form case the same way."
+  },
+  {
+   "name": "principal P50 a mapping names another gateway than the receipts pin",
+   "file": "toolSources.ts",
+   "find": "  if (source.gatewayScope !== undefined && source.gatewayReceipt !== undefined && (source.gatewayScope as {authority: unknown}).authority !== (source.gatewayReceipt as {authority?: unknown} | null)?.authority) return 'its gatewayScope names another authority than the receipts it pins'\n",
+   "replace": "",
+   "tests": [
+    "gatewayReceipt.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the authority case in declarationProblem; caught at ^TestPrincipalGatewayMappingIsHeldAtDeclaration$."
+  },
+  {
+   "name": "principal P51 a durable resume under other principals is not named",
+   "file": "storage/writer.ts",
+   "find": " if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')\n",
+   "replace": " void [principalsChanged,delegation,PRINCIPAL_CHANGED,authoredFailure]\n",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): the session's check, which Go's durable resume reaches bound: PrincipalsChanged in ContextualSessionWithEnrollment; caught at ^TestPrincipalSessionRecordsAndResume$."
+  },
+  {
+   "name": "principal P52 a resume under another issuing host continues",
+   "file": "principal.ts",
+   "find": " || saved.actor.host !== current.actor.host",
+   "replace": "",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop the host in PrincipalsChanged; caught at ^TestPrincipalSessionRecordsAndResume$."
+  },
+  {
+   "name": "principal P54 a dispatch makes no counted admission",
+   "file": "context/session.ts",
+   "find": "signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(",
+   "replace": "signal.throwIfAborted();void dispatchAdmission;return tool.execute(",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): skip dispatchAdmissionOf in ExecuteDurableHost; caught at ^TestPrincipalReadServedWithoutADispatchCountsNothing$."
+  },
+  {
+   "name": "principal P55 the final admission is not counted",
+   "file": "toolSources.ts",
+   "find": "      const refusal = await this.delegated(entry, true, bounded)\n",
+   "replace": "      const refusal = await this.delegated(entry, false, bounded)\n",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): count false in holdDispatch; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$."
+  },
+  {
+   "name": "principal P56 an approved call dispatches with no final admission",
+   "file": "toolSources.ts",
+   "find": "        this.holdDispatch(bounded, entry, record.name, record.callId, () => { refusedAtDispatch = true; giveBack() })\n",
+   "replace": "",
+   "tests": [
+    "principalGate.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop holdDispatch in SourceGate.Approved; caught at ^TestPrincipalGateAdmitsAndRefusesBeforeDispatch$."
+  },
+  {
+   "name": "principal P57 a resumed handoff runs its children with its parent unopened",
+   "file": "delegation.ts",
+   "find": "if((persistence&&session.context?.taskSteps===true||holdsDelegation(session.context))&&handoff&&",
+   "replace": "if(persistence&&session.context?.taskSteps===true&&handoff&&",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): drop HoldsDelegation from the opening in the agent coordinator; caught at ^TestDelegatedRunResumedAtItsHandoff$."
+  },
+  {
+   "name": "principal P58 a child starts with its run's delegation unopened",
+   "file": "principal.ts",
+   "find": "  if (opened === undefined && holdsDelegation(input)) throw authoredFailure(",
+   "replace": "  if (false as boolean) throw authoredFailure(",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): the same in RequireOpenedPrincipal, caught at ^TestPrincipalChildNeedsItsRunsOpenedPrincipal$; and its call in runChild removed, caught at ^TestChildStartsOnlyUnderAnOpenedDelegation$."
+  },
+  {
+   "name": "principal P60 a refused call's result while another waits loses its principal",
+   "file": "context/managed.ts",
+   "find": "const result=withPrincipal(context.sources!.decorate({type:'tool_result',...(event.callId===undefined?{}:{callId:event.callId}),name:event.name,isError:true,text:refused.content[0].text,structured:refused.structuredContent}),context)",
+   "replace": "const result=context.sources!.decorate({type:'tool_result',...(event.callId===undefined?{}:{callId:event.callId}),name:event.name,isError:true,text:refused.content[0].text,structured:refused.structuredContent})",
+   "tests": [
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): no withPrincipal on the pending result in the boundary; caught at ^TestPrincipalApprovalPendingResultCarriesThePrincipal$."
+  },
+  {
+   "name": "principal P72 a call its effect host refuses for credentials is counted",
+   "file": "context/session.ts",
+   "find": "  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,",
+   "replace": "  await dispatchAdmission(signal)?.();return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,",
+   "tests": [
+    "principalReauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#260",
+   "note": "Go twin (by hand): make the counted admission before invokeDurable in ExecuteDurableHost; caught at ^TestReauthorizationUnderADelegation$."
   },
   {
    "name": "lease host kit K1 the kit fails the authority once in a row",

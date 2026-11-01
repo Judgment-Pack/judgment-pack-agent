@@ -82,7 +82,7 @@ export function claimRuntimeAttempt(attempt:RuntimeAttempt):void {
  held.claimed=true
 }
 /** Rechecks the complete connector immediately before one physical call. No caller chooses args. */
-export async function executeRuntimeAttempt(attempt:RuntimeAttempt,admission:()=>RuntimeAdmission,signal:AbortSignal,authorize:()=>Promise<void>):Promise<McpToolResult> {
+export async function executeRuntimeAttempt(attempt:RuntimeAttempt,admission:()=>RuntimeAdmission,signal:AbortSignal,authorize:()=>Promise<void>,beforeDispatch?:()=>Promise<void>):Promise<McpToolResult> {
  const held=attempts.get(attempt)
  if(!held||!held.claimed||held.used||held.scope!==canonicalJSON(runtimeJSON({...admission(),task:admission().task??null})))throw fail()
  await authorize();signal.throwIfAborted()
@@ -92,6 +92,7 @@ export async function executeRuntimeAttempt(attempt:RuntimeAttempt,admission:()=
  const listed=runtimeJSON(await c.list(signal))
  if(canonicalJSON(owner)!==canonicalJSON(held.runtime.owner)||canonicalJSON(projection(listed))!==held.offer||canonicalJSON(c.prepare(held.name,runtimeJSON(held.args)))!==canonicalJSON(held.args))throw fail()
  await authorize();signal.throwIfAborted()
+ await beforeDispatch?.();signal.throwIfAborted()
  if(held.used||!c.open()||held.scope!==canonicalJSON(runtimeJSON({...admission(),task:admission().task??null})))throw fail()
  // Synchronous one-use consumption. No mutable caller value is read below this point.
  held.used=true

@@ -24,6 +24,7 @@ import {normalize,wireFor,dialectFor,TIER_MEMBERS,RESPONSE_TOKENS} from '../thin
 import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type PolicyMembers,type ProviderRecord,type CrossProvider,type FailoverClass} from '../policy'
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure,normalizeFailure} from '../failures'
+import {PRINCIPAL_CHANGED,admitStanding,openRunPrincipal,principalsChanged,refusalDetail,type OpenedPrincipal,type PrincipalRefusal,type RunPrincipal} from '../principal'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
 import {CriticSwitch,readCriticSettings,REQUEST_REVIEW,REQUEST_REVIEW_DESCRIPTION,REQUEST_REVIEW_SCHEMA,REVIEW_TAKEN,type CriticDecision,type CriticTier} from '../criticSwitch'
 import {GateViolation} from '../toolGate'
@@ -42,7 +43,7 @@ import {contextPolicy,inputBytes,utf8Bytes,prefix,ContextBudgetError,type Contex
 import {INDEX_SHARE,RUNTIME_IDENTITY_REFUSED,partBytes,scalarText,type ChatScope,type ChatTurn,type RuntimeIdentity} from './chat'
 import {readHostParts,systemText,type HostParts} from '../prompt'
 import {memoryLifecycle,runModels,type AITarget,type AssistantEngine,type RunIdentity,type RunModels} from '../host'
-import {declareSources,offerSources,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
+import {declareSources,offerSources,dispatchAdmission,receiptAdmission,SourceGate,LOAD_TOOL,type Declared,type ReceiptAdmission} from '../toolSources'
 import {declareSubagents,catalogueSubagents,subagentOffer,subagentRecord,type Subagent} from '../subagents'
 import {catalogueSkills,declareSkills,SkillGate,LOAD_SKILL,UNLOAD_SKILL,type DeclaredSkills,type SkillNotice} from '../skills'
 import {selectAskingWell,requireAskingWell} from '../askingWell'
@@ -79,7 +80,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {/** ADR-0029: the delegation a delegated run acts under, supplied by the issuing host; absent, the run is undelegated and its records unchanged. */principal?:RunPrincipal;/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -254,6 +255,8 @@ export class SessionContext {
  hostParts:HostParts={}
  /** ADR-0006: the boundary's hold on the run's tools with a source, where it declares any. */
  sources?:SourceGate
+ /** ADR-0029: the delegated run's principal (its own, or a delegated child's parent's), whose record its tool events and checkpoint carry. */
+ principal?:OpenedPrincipal
  /** ADR-0006: the tools with a source passed the schema budget and are offered as a catalogue, with load_tool. */
  catalogue=false
  /** ADR-0009: the boundary's hold on the run's skills, where it declares any. */
@@ -293,7 +296,8 @@ export class SessionContext {
     :this.narrowed!==null?'The critic and the reformat run admit no act call; this call was not run and nothing was changed':''
   }
   const rows=this.execution.state.sources!,identities=this.execution.state.sourceIdentities!
-  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason)=>this.refuse(name,detail,reason),()=>rows,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event),identities,()=>this.execution.mutate({sources:rows,sourceIdentities:identities}))
+  this.sources=new SourceGate(declared.entries,declared.sources,this.policy,this.marker,(name,detail,reason,refusal)=>this.refuse(name,detail,reason,refusal),()=>rows,this.capabilities?.toolSchemas,parent,book,event=>this.notices.push(event),identities,()=>this.execution.mutate({sources:rows,sourceIdentities:identities}))
+  this.sources.usePrincipal(this.principal)
   this.catalogue=catalogue
   for(const held of declared.withheld)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail})
   this.execution.loadedSchemas=()=>this.sources?.loadedSection()??''
@@ -502,8 +506,9 @@ this.storedBinding=session.context?.[durableOwner];this.storedChat=session.conte
   * A refusal the boundary makes itself: the guardrail event, put on the stream
   * before the call's result, and the failure the model reads.
   */
- refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'identity changed'|'approval downgraded'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'|'failover refused'):GateViolation{
-  this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason})})
+ refuse(name:string,detail:string,reason?:'approval refused'|'approval pending'|'approval stale'|'identity changed'|'approval downgraded'|'skill withheld'|'skill budget'|'review refused'|'subagent refused'|'subagent withheld'|'memory refused'|'edit refused'|'failover refused'|'delegation refused',refusal?:PrincipalRefusal):GateViolation{
+  // ADR-0029: a delegation refusal names its refusal and the run's actor and subject, never a credential.
+  this.notices.push({type:'guardrail',tool:name,action:'refused',detail,...(reason===undefined?{}:{reason}),...(reason==='delegation refused'&&refusal!==undefined?{refusal:{...refusal},...(this.principal?{principal:structuredClone(this.principal.record)}:{})}:{})})
   return new GateViolation(name,detail)
  }
  /**
@@ -884,6 +889,11 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  if(runtime)session={...session,context:{...session.context,runtime:{identity:runtime.identity,version:runtime.version}}}
  session={...session,...(session.route?{route:structuredClone(session.route)}:{}),...(session.routeFacts?{routeFacts:structuredClone(session.routeFacts)}:{})}
  session=await durableSession(session)
+ // ADR-0029: the delegation the issuing host supplied, verified before anything is offered or asked; a
+ // delegated child acts under its parent's principal.
+ let principal:OpenedPrincipal|undefined
+ if(session.context?.principal!==undefined)principal=await openRunPrincipal(session.context.principal)
+ else principal=session.context?.link?.sources?.()?.principal
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  for(const original of session.hostTools){const copy=declared.hostTools.find(tool=>tool.name===original.name&&tool.execute===original.execute);if(copy)copyTaskDelegationTool(original,copy)}
@@ -901,12 +911,19 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   session={...session,subagents:admittedSubagents.subagents.map(({digest:_,...s})=>s)}
  }
  const context=new SessionContext(session,engine)
+ context.principal=principal
  const author=context.connection('author')!
  session={...session,...author} as T
  // A chat's turn is open from here: a run that cannot start closes it again.
  try{
  // ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
  await context.execution.initialize()
+ // ADR-0029: a delegated run's checkpoint carries its principal (version 4). A resume continues only under
+ // the same subject and root actor: a re-issued or narrowed chain replaces the record; another principal, a
+ // run that was not delegated, or one that is no longer, is refused (principal-changed).
+ const saved=context.execution.state.principal,restoring=session.context?.execution!==undefined
+ if(restoring&&principalsChanged(saved,principal?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
+ if(principal)context.execution.mutate({principal:structuredClone(principal.record)})
  const persistence=session.context?.[durableOwner]
  const legacyID=legacyCheckpointIdentity(session.context?.checkpoint)
  if(legacyID)context.execution.mutate({id:legacyID})
@@ -994,6 +1011,13 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  }catch(error){context.close();throw error}
  // The session's own tools that read (agent#8): what a chat-scoped context keeps across its runs.
  const own=new Set(session.hostTools.filter(tool=>readingTool(tool)).map(tool=>tool.name))
+ // ADR-0029: a host's tool with no source is not matched against the scope, which names sources, and is still refused under a delegation that no longer stands. A question or a delegation is the package's own interaction, not the host's dispatch.
+ const sourceless=new Set(session.hostTools.filter(tool=>tool.source===undefined&&tool.interaction===undefined).map(tool=>tool.name))
+ const stands=async(tool:HostTool,signal:AbortSignal)=>{
+  if(!context.principal||!sourceless.has(tool.name))return
+  const refusal=await admitStanding(context.principal,tool.name,tool.taxonomy?.effect,signal)
+  if(refusal)throw context.refuse(tool.name,refusalDetail(tool.name,refusal),'delegation refused',refusal)
+ }
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call
  // of a tool with a source is held by the source gate before the host's execute (SourceGate.call).
  // ADR-0009: load_skill and unload_skill beside them where any skill is catalogued, in every phase but a child's (which is handed no skills).
@@ -1001,7 +1025,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string,admission?:ReceiptAdmission)=>{
   const binding=session.context?.[durableOwner]
   const source=declared.entries.get(tool.name)?.record
-  const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
+  const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
   return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined)
@@ -1031,7 +1055,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   else{await session.context?.checkpoint?.(state);context.memoryNotice(event)}
  }
  await context.execution.publishPlanDecision()
- const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>{const admission=receiptAdmission(bounded);return context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId,admission),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined,admission)(given)};return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
+ const hostTools=[...session.hostTools,...(session.context?.objective||session.childDefinition||session.context?.phase==='plan'||session.context?.artifactProposals===false?[]:context.drafts.tools()),...(session.context?.objective||session.childDefinition?[]:[rememberTool(()=>context.execution.state,context.policy,detail=>context.refuse(REMEMBER,detail,'memory refused'),event=>context.memoryNotice(event),patch=>context.execution.mutate(patch))]),...context.ledger.tools(),...(context.catalogue?[context.sources!.loadTool()]:[]),...(context.skills?.offered?[context.skills.loadTool(),context.skills.unloadTool()]:[]),...(context.review.offered?[context.reviewTool()]:[]),...(session.allowConversation?[context.execution.tool(),context.execution.completionTool(),context.execution.budgetTool()]:[])].map(tool=>copyTaskDelegationTool(tool,{...tool,annotations:taxonomyAnnotations(tool.taxonomy!.effect),execute:async(args:Record<string,unknown>,signal:AbortSignal,callId?:string)=>{context.admit(tool.name,'host',args);if(!isEdit(tool.name))args=context.output.value(args,outputWhere(tool.name));await session.context?.authorize?.(signal);await stands(tool,signal);const run=(given:Record<string,unknown>,bounded:AbortSignal)=>{const admission=receiptAdmission(bounded);return context.execution.wrapRead(tool.name,a=>executeHost(tool,a,bounded,callId,admission),tool.contextPolicy,tool.effect==='read'||!tool.effect&&tool.delegation==='read',own.has(tool.name)?{runtime:false}:undefined,admission)(given)};return context.sources?context.sources.call(tool,args,signal,run,callId):run(args,signal)}}))
  const routePolicy=routingPolicyFromMembers(context.resolvedPolicy)
  if(routePolicy&&!session.childDefinition&&!session.context?.objective)context.turnRoute=new TurnRouteOwner(context,session,routePolicy,hostTools)
  // ADR-0008: the act call the person approved runs through the host's own execute, as every call of it would.
