@@ -139,7 +139,7 @@ summary block, and anything you stopped on or chose not to do.
   new place is mapped in `jpdev.json`; when unsure, map it broader.
 - `scripts/parity.sh` needs the Desk checkout at the commit it pins (`desk_pin`); set `JPDEV_DESK`
   to it. After an intended change to a moved file, put the digest the failure prints in that file's row.
-- The full mutation table runs on every push to `main` and the release takes its four shards'
+- The full mutation table runs on every push to `main` and the release takes all its shards'
   evidence at the tagged commit (`docs/releasing.md`, `docs/ci-evidence.md`).
 - `scripts/dev/check.sh`, `handover_check.sh`, `changed_checks.py` and `release_evidence.py` are the
   devkit's, vendored unchanged at the release their line 2 names, with

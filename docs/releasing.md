@@ -122,7 +122,7 @@ Every job works on the commit the run was started for, by its digest, not on the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Verifies trusted exact-source CI evidence.** The devkit's
    [release evidence gate](ci-evidence.md) (v0.14.0, vendored as `scripts/dev/release_evidence.py`)
-   requires complete successful `contract` and `check` jobs and the four full mutation shards of
+   requires complete successful `contract` and `check` jobs and every full mutation shard of
    trusted main runs at the exact release commit, on runners that reported the image the release
    runner reports, with the inputs the commit holds. Checks main took from its merged pull
    request's run are admitted again. The `Package` job proceeds only on the gate's `reuse`
@@ -162,7 +162,7 @@ fails: release a new version.
 ### The mutation table and exact-source CI evidence
 
 The full mutation table still runs on every main push, weekly and by dispatch; pull requests run a
-sample. The release takes the four full shards of a push or dispatch run on main at the commit,
+sample. The release takes every full shard of a push or dispatch run on main at the commit,
 with `contract` and `check`, through the [release evidence gate](ci-evidence.md). It selects the
 newest applicable attempt on main whatever its result; a newer failed, cancelled or running attempt
 (a weekly scheduled run included) refuses, and nothing searches back for an older green one. A

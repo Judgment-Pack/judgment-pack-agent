@@ -45,6 +45,9 @@ MANIFEST_SHA = '333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da
 
 CONFIG_PATH = ROOT / '.github/ci-evidence.json'
 CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
+# The full mutation table's shards (#281): the workflow's matrix and the configuration's jobs. The gate
+# reads the jobs from the configuration, so the number is this repository's, not the kit's.
+SHARDS = 10
 # The check job's checks that run on every branch push, and why none of them is reusable from a
 # pull request's run (docs/ci-evidence.md). Every other check of the job is listed as reusable.
 FRESH_ON_MAIN = {
@@ -208,11 +211,12 @@ class Configuration(unittest.TestCase):
         self.assertTrue(jobs['check']['setup'])
         self.assertEqual(jobs['check']['optional_skips'], ['dependency-audit-live'])
         mutation = config()['workflows']['mutation']
-        self.assertEqual(sorted(mutation['jobs']), ['full-1', 'full-2', 'full-3', 'full-4'])
-        for key, spec in mutation['jobs'].items():
+        self.assertEqual(list(mutation['jobs']), ['full-%d' % shard for shard in range(1, SHARDS + 1)])
+        for shard, (key, spec) in enumerate(mutation['jobs'].items(), 1):
             with self.subTest(job=key):
                 self.assertEqual(spec['checks'], [])
-                self.assertEqual(spec['name'], 'every row (shard %s of 4)' % key[-1])
+                self.assertEqual(spec['job_id'], 'full')
+                self.assertEqual(spec['name'], 'every row (shard %d of %d)' % (shard, SHARDS))
         self.assertEqual(mutation['skipped_jobs'], ['rows of the files this pull request changes, and a sample'])
         self.assertNotIn('pull_request_reuse', mutation)
 
@@ -295,7 +299,7 @@ class Workflows(unittest.TestCase):
                     self.assertIn(capture, job)
                     self.assertIn(name, job)
         mutation = read('.github/workflows/mutation.yml')
-        self.assertIn('        shard: [1, 2, 3, 4]\n', mutation)
+        self.assertIn('        shard: [%s]\n' % ', '.join(str(shard) for shard in range(1, SHARDS + 1)), mutation)
 
     def test_main_evidence_is_recorded_on_push_or_dispatch_and_never_on_a_schedule(self):
         mutation = read('.github/workflows/mutation.yml')
@@ -308,14 +312,51 @@ class Workflows(unittest.TestCase):
         self.assertNotIn('mutation-check.mjs --check', mutation)
         self.assertIn('mutation-rows', config()['workflows']['ci']['jobs']['check']['checks'])
 
-    def test_the_four_full_legs_partition_the_table(self):
-        """Each leg runs its own quarter: four legs, shard N of 4, and every key of the configuration."""
+    def test_the_full_legs_partition_the_table(self):
+        """Each leg runs its own shard: the matrix, shard N of the same number, and every key of the
+        configuration, under the job limit the table has to fit."""
         full = job_block(read('.github/workflows/mutation.yml'), 'full')
-        self.assertIn('    strategy:\n      fail-fast: false\n      matrix:\n        shard: [1, 2, 3, 4]\n', full)
-        self.assertIn('    name: every row (shard ${{ matrix.shard }} of 4)\n', full)
+        shards = ', '.join(str(shard) for shard in range(1, SHARDS + 1))
+        self.assertIn('    strategy:\n      fail-fast: false\n      matrix:\n        shard: [%s]\n' % shards, full)
+        self.assertIn('    name: every row (shard ${{ matrix.shard }} of %d)\n' % SHARDS, full)
         self.assertIn('          SHARD: ${{ matrix.shard }}\n', full)
-        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/4"'])
-        self.assertEqual(sorted(config()['workflows']['mutation']['jobs']), ['full-%d' % n for n in (1, 2, 3, 4)])
+        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/%d"' % SHARDS])
+        self.assertEqual(list(config()['workflows']['mutation']['jobs']), ['full-%d' % n for n in range(1, SHARDS + 1)])
+        self.assertIn('    timeout-minutes: 120\n', full)
+
+    def mutation_rows(self, *options):
+        """The names of the rows the runner chooses with these options, without running any."""
+        done = subprocess.run([shutil.which('node'), 'packages/harness/scripts/mutation-check.mjs', '--names', *options],
+                              cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done.stdout.splitlines()
+
+    def test_every_row_is_in_exactly_one_shard_of_the_full_table(self):
+        """The release's evidence is the shards: together they are the table, each row once."""
+        every = self.mutation_rows()
+        self.assertEqual(every, [row['name'] for row in json.loads(read('packages/harness/scripts/mutation-rows.json'))['rows']])
+        shards = [self.mutation_rows('--shard', '%d/%d' % (shard, SHARDS)) for shard in range(1, SHARDS + 1)]
+        self.assertTrue(all(shards))
+        self.assertEqual(sorted(name for shard in shards for name in shard), sorted(every))
+
+    def test_a_pull_request_runs_the_rows_it_always_ran(self):
+        """Its sample is the same two commands, and a selection with no shard keeps the table's order:
+        the seed names the same rows whatever the shards do."""
+        sample = job_block(read('.github/workflows/mutation.yml'), 'sample')
+        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', sample),
+                         ['mutation-check.mjs --changed "$BASE" --sample 15 --seed "$SEED"',
+                          'mutation-check.mjs --sample 5 --seed "$SEED"'])
+        self.assertNotIn('--shard', sample)
+        every = self.mutation_rows()
+        chosen = self.mutation_rows('--sample', '5', '--seed', '277')
+        self.assertEqual(len(chosen), 5)
+        self.assertEqual(chosen, [name for name in every if name in chosen])
+        self.assertEqual(self.mutation_rows('--shard', '1/1'), every)
+
+    def test_a_shard_warns_before_its_limit(self):
+        step = step_block(job_block(read('.github/workflows/mutation.yml'), 'full'), 'The rows of this shard')
+        self.assertIn('if [ "$SECONDS" -gt 5400 ]; then echo "::warning::', step)
 
     def test_the_check_job_plans_before_its_checks_and_records_the_plan(self):
         job = job_block(read('.github/workflows/ci.yml'), 'check')
@@ -636,7 +677,7 @@ class AgentGate(AgentWorld):
         self.assertEqual(identity['statement'], 'a reported hosted-runner image identity, not a pinned VM image')
         self.assertEqual(sorted(identity['groups']), ['linux-x64/base', 'linux-x64/check', 'linux-x64/mutation'])
         self.assertEqual(identity['groups']['linux-x64/mutation']['jobs'],
-                         ['mutation/full-1', 'mutation/full-2', 'mutation/full-3', 'mutation/full-4'])
+                         ['mutation/full-%d' % shard for shard in range(1, SHARDS + 1)])
         self.assertEqual(self.record['workflows']['ci']['jobs']['check']['reused'], None)
 
     def test_a_rolled_image_refuses_and_is_never_revalidated(self):
@@ -664,7 +705,7 @@ class AgentGate(AgentWorld):
 
     def test_a_shard_missing_or_the_pull_request_sample_run_on_main_refuses(self):
         listing = self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']
-        listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'every row (shard 3 of 4)']
+        listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'every row (shard 3 of %d)' % SHARDS]
         listing['total_count'] = len(listing['jobs'])
         self.assertEqual(self.decide(), 'job-coverage')
         self.data = self.world()
