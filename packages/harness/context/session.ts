@@ -25,6 +25,7 @@ import {resolvePolicy,PolicyRefusal,failoverRefusal,type PolicyConnection,type P
 import {runtimeToolContextPolicy} from './toolPolicy'
 import {failureError,AIFailureError,authoredFailure,normalizeFailure} from '../failures'
 import {PRINCIPAL_CHANGED,admitStanding,openRunPrincipal,principalsChanged,refusalDetail,type OpenedPrincipal,type PrincipalRefusal,type RunPrincipal} from '../principal'
+import {holdLeasePrincipal} from '../storage/lease'
 import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type CriticCase} from '../refutation'
 import {CriticSwitch,readCriticSettings,REQUEST_REVIEW,REQUEST_REVIEW_DESCRIPTION,REQUEST_REVIEW_SCHEMA,REVIEW_TAKEN,type CriticDecision,type CriticTier} from '../criticSwitch'
 import {GateViolation} from '../toolGate'
@@ -82,7 +83,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  */
 export interface ContextInput {/** ADR-0029: the delegation a delegated run acts under, supplied by the issuing host; absent, the run is undelegated and its records unchanged. */principal?:RunPrincipal;/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
-export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined}
+export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined;/** ADR-0029: the delegating run's principal, which a child's own is narrowed from. */principal?():OpenedPrincipal|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
 const encoded=(value:unknown)=>JSON.stringify(value)
 // Only this module can create a delegated role projection. It survives the
@@ -888,12 +889,16 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  // The Runtime as admitted: a change the host makes to its own object later never reaches a key.
  if(runtime)session={...session,context:{...session.context,runtime:{identity:runtime.identity,version:runtime.version}}}
  session={...session,...(session.route?{route:structuredClone(session.route)}:{}),...(session.routeFacts?{routeFacts:structuredClone(session.routeFacts)}:{})}
- session=await durableSession(session)
  // ADR-0029: the delegation the issuing host supplied, verified before anything is offered or asked; a
- // delegated child acts under its parent's principal.
+ // delegated child's is narrowed from its parent's, by exactly one link.
  let principal:OpenedPrincipal|undefined
- if(session.context?.principal!==undefined)principal=await openRunPrincipal(session.context.principal)
- else principal=session.context?.link?.sources?.()?.principal
+ const parentPrincipal=session.context?.link?.principal?.()??session.context?.link?.sources?.()?.principal
+ if(session.context?.principal!==undefined){
+  principal=await openRunPrincipal(session.context.principal,parentPrincipal)
+ }else principal=parentPrincipal
+ session=await durableSession(session)
+ const durableStore=session.context?.[durableOwner]?.writer.store
+ if(durableStore)holdLeasePrincipal(durableStore,principal?.record)
  // ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
  const declared=await declareSources(session.hostTools,session.tools.map(t=>t.name))
  for(const original of session.hostTools){const copy=declared.hostTools.find(tool=>tool.name===original.name&&tool.execute===original.execute);if(copy)copyTaskDelegationTool(original,copy)}

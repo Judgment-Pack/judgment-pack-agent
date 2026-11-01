@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
 // StorageConformanceFailure names the violated port property without exposing record content.
@@ -391,6 +393,120 @@ func CheckRunStoreLeaseConformance(ctx context.Context, create func(now func() t
 	}
 	if won != 1 || held != 1 {
 		return fail("lease.acquire.atomic")
+	}
+	return leasePrincipalConformance(ctx, create)
+}
+
+// leasePrincipalConformance is ADR-0029's part of the kit, for a store that declares LeasePrincipals: its
+// first lease binds a run's principals, a takeover is a new epoch of the same principals, and every
+// fence presented must name them.
+func leasePrincipalConformance(ctx context.Context, create func(now func() time.Time) LeaseRunStore) error {
+	fail := func(property string) error { return &StorageConformanceFailure{Property: property} }
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := create(func() time.Time { return at })
+	if keeps, ok := store.(LeasePrincipalStore); !ok || !keeps.LeasePrincipals() {
+		return nil
+	}
+	const run = "lease-delegated"
+	refuses := func(err error, reason string) bool {
+		var refused *LeaseRefused
+		return errors.As(err, &refused) && refused.Reason == reason
+	}
+	principal := PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+	otherActor, otherSubject, otherKind := principal, principal, principal
+	otherActor.RootActor = strings.Repeat("b2", 16)
+	otherSubject.Sub.Subject = "other"
+	otherKind.Sub.Kind = "service"
+	opened, err := store.Commit(ctx, RunCommit{RunID: run, CommitID: "delegated-open", Checkpoint: []byte(`{"commit":"delegated-open"}`)})
+	if err != nil {
+		return fail("lease.open")
+	}
+	acquire := func(owner string, binding *PrincipalBinding) (RunLease, error) {
+		return store.AcquireLease(ctx, LeaseAcquire{Resource: run, Owner: owner, ExpectedRevision: opened.Revision, DurationMs: 1000, Principal: binding})
+	}
+	first, err := acquire("worker-a", &principal)
+	if err != nil || first.Version != 2 || !SamePrincipalBinding(first.Principal, &principal) {
+		return fail("lease.principal.version")
+	}
+	a := FenceOf(first)
+	if a.Version != 2 || !SamePrincipalBinding(a.Principal, &principal) {
+		return fail("lease.principal.fence")
+	}
+	if err := store.CheckFence(ctx, a); err != nil {
+		return fail("lease.principal.check")
+	}
+	for name, other := range map[string]*PrincipalBinding{"actor": &otherActor, "subject": &otherSubject, "kind": &otherKind} {
+		forged := a
+		forged.Principal = other
+		if !refuses(store.CheckFence(ctx, forged), "principal-changed") {
+			return fail("lease.principal.check." + name)
+		}
+		if _, err := store.CommitFenced(ctx, RunCommit{RunID: run, ExpectedRevision: opened.Revision, CommitID: "forged-" + name, Checkpoint: []byte(`{"commit":"forged"}`)}, forged); !refuses(err, "principal-changed") {
+			return fail("lease.principal.commit." + name)
+		}
+	}
+	none := a
+	none.Version, none.Principal = LeaseRecordVersion, nil
+	// #253's ports, the commits a history store takes, hold the principals too.
+	if history, ok := store.(LeaseHistoryRunStore); ok && history.HistoryVersion() == 1 {
+		for name, other := range map[string]*PrincipalBinding{"actor": &otherActor, "subject": &otherSubject, "kind": &otherKind, "none": nil} {
+			forged := a
+			forged.Principal = other
+			if other == nil {
+				forged = none
+			}
+			if _, err := history.CommitHistoryFenced(ctx, RunHistoryCommit{Run: RunCommit{RunID: run, ExpectedRevision: opened.Revision, CommitID: "forged-history-" + name, Checkpoint: []byte(`{"commit":"forged-history"}`)}, Observations: []HistoryObjectRef{}}, forged); !refuses(err, "principal-changed") {
+				return fail("lease.principal.history." + name)
+			}
+			if _, err := history.CommitContextSnapshotFenced(ctx, ContextSnapshotUpdate{ChatID: "lease-delegated-chat", Manifest: HistoryObjectRef{Digest: "sha256:" + strings.Repeat("a", 64), Bytes: 2}}, "forged-snapshot-"+name, forged); !refuses(err, "principal-changed") {
+				return fail("lease.principal.snapshot." + name)
+			}
+		}
+	}
+	if !refuses(store.CheckFence(ctx, none), "principal-changed") {
+		return fail("lease.principal.fence-none")
+	}
+	if _, err := store.RenewLease(ctx, none, 1000); !refuses(err, "principal-changed") {
+		return fail("lease.principal.renew-none")
+	}
+	if _, err := store.ReleaseLease(ctx, none); !refuses(err, "principal-changed") {
+		return fail("lease.principal.release-none")
+	}
+	if head, err := store.Load(ctx, run); err != nil || head == nil || head.Revision != opened.Revision {
+		return fail("lease.principal.unapplied")
+	}
+	at = at.Add(time.Second)
+	if _, err := acquire("worker-b", &otherActor); !refuses(err, "principal-changed") {
+		return fail("lease.principal.takeover.actor")
+	}
+	if _, err := acquire("worker-b", &otherSubject); !refuses(err, "principal-changed") {
+		return fail("lease.principal.takeover.subject")
+	}
+	if _, err := acquire("worker-b", nil); !refuses(err, "principal-changed") {
+		return fail("lease.principal.takeover.none")
+	}
+	second, err := acquire("worker-b", &principal)
+	if err != nil || second.Version != 2 || second.Epoch != "2" || second.Owner != "worker-b" || !SamePrincipalBinding(second.Principal, &principal) {
+		return fail("lease.principal.takeover.same")
+	}
+	if _, err := store.ReleaseLease(ctx, FenceOf(second)); err != nil {
+		return fail("lease.principal.release")
+	}
+	if _, err := acquire("worker-c", &otherActor); !refuses(err, "principal-changed") {
+		return fail("lease.principal.released-keeps")
+	}
+	// A version 1 lease cannot host a delegated run.
+	plain, err := store.Commit(ctx, RunCommit{RunID: "lease-plain", CommitID: "plain-open", Checkpoint: []byte(`{"commit":"plain-open"}`)})
+	if err != nil {
+		return fail("lease.open")
+	}
+	v1, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "lease-plain", Owner: "worker-a", ExpectedRevision: plain.Revision, DurationMs: 1000})
+	if err != nil || v1.Version != 1 || v1.Principal != nil {
+		return fail("lease.principal.none-version")
+	}
+	at = at.Add(time.Second)
+	if _, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "lease-plain", Owner: "worker-b", ExpectedRevision: plain.Revision, DurationMs: 1000, Principal: &principal}); !refuses(err, "principal-changed") {
+		return fail("lease.principal.plain-takeover")
 	}
 	return nil
 }

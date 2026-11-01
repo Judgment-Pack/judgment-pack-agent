@@ -392,6 +392,15 @@ new.
 
 The LOW findings of both reviews ride.
 
+### Amendment (#260): a delegated run's lease, wait and resume
+
+[ADR-0029](0029-agent-principals.md) binds decision 1's lease and decision 5's revalidation to a
+delegated run's principals. A lease and fence of a delegated run are `run-lease.json` version 2 with
+`principal`, an acquisition or fence under other principals refuses `principal-changed`, and a store
+kind declares that it keeps them. A wait's pins hold the binding, its claim lease holds it, and the
+resume's evidence must name it: evidence of none is `evidence-missing`, another is `principal-changed`,
+and no admission clears it. Undelegated runs write version 1 and the earlier pins unchanged.
+
 ## 6. Attention and reporting
 
 Each committed park emits one `needs_attention` event with its wait identity,

@@ -309,8 +309,21 @@ transition atomic under the same serialization as its commits:
 current when the row has this epoch (`stale-epoch` otherwise, including a forged greater epoch),
 this owner (`other-owner`), is not released (`released`) and is unexpired by the store's clock
 (`expired`); a missing row is `no-lease`, a fence for another resource is `resource-mismatch`.
-These named reasons, with `held`, `revision-changed`, `epoch-exhausted`, `invalid` and the effect
-host's `already-admitted`, are the complete refusal record `{version:1, reason}`.
+These named reasons, with `held`, `revision-changed`, `epoch-exhausted`, `invalid`, the effect
+host's `already-admitted` and `principal-changed`, are the complete refusal record `{version:1, reason}`.
+
+**A delegated run's lease (ADR-0029, #260).** A lease and its fence are version 2 when they hold a
+delegated run's principals: `principal`, `{sub, rootActor, host}`. `acquireLease` takes `principal`;
+a store kind compares it with the row's, before the epoch moves, at every acquisition, released and
+expired rows included, and refuses any difference, a version 1 row or a request with none as
+`principal-changed`. `checkFence` refuses a fence whose `principal` differs from the row's. The store
+kind keeps the member in its row and returns it unchanged, and declares that with the property
+`readonly leasePrincipals = true` (Go, the method `LeasePrincipals() bool`): `fencedRunStore` refuses a
+version 2 fence on a store that does not, and the conformance kit's `lease.principal.*` rows prove it,
+over `commitFenced`, `commitHistoryFenced` and `commitContextSnapshotFenced`. The kit fails a store whose
+member is anything but `true`, such as a method. A fence's `principal` must also be the delegated
+run's own: the session refuses any other, either way, before it commits anything. The effect
+idempotency key does not change: it names neither the principals nor the epoch.
 
 **Every checkpoint commit.** A lease run store also implements `commitFenced(commit, fence)` and,
 when it has the history capability, `commitHistoryFenced(commit, fence)` and

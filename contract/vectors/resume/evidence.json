@@ -107,12 +107,37 @@
           "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
         }
       ]
+    },
+    {
+      "version": 1,
+      "resource": "run-delegated",
+      "wait": "wait-2",
+      "model": {
+        "provider": "openai",
+        "model": "model-a",
+        "status": "available"
+      },
+      "policy": {
+        "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+      },
+      "sources": [],
+      "artifacts": [],
+      "principal": {
+        "sub": {
+          "kind": "person",
+          "issuer": "https://login.example.com/",
+          "subject": "approver@example.com"
+        },
+        "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "host": "desk"
+      }
     }
   ],
   "digests": [
     "sha256:f0eb774f8da9c61db6d8504f1e9cb3a7e5bf94fcc677f1de420c75011add9be4",
     "sha256:9a0bf5d6769e05e391d62c9cd212a619f1deb4b08763b00b4b45c7df5645d865",
-    "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c"
+    "sha256:5f77d433d16edebc4cb15515bfefd95bf05c49a94d980db5a27c39ef863c4d9c",
+    "sha256:1d9a7a4767ed88ef75df1e1ce840f88b94a68921948702b56e1b53d2461c8346"
   ],
   "refused": [
     {
@@ -409,6 +434,34 @@
           }
         ],
         "enrolled": true
+      }
+    },
+    {
+      "problem": "the current principal carries no token",
+      "evidence": {
+        "version": 1,
+        "resource": "run-delegated",
+        "wait": "wait-2",
+        "model": {
+          "provider": "openai",
+          "model": "model-a",
+          "status": "available"
+        },
+        "policy": {
+          "digest": "sha256:f139cb682548fcb39a5c04e08d5c443ea3392e4245933fbe584a45deafcce1b8"
+        },
+        "sources": [],
+        "artifacts": [],
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk",
+          "token": "never"
+        }
       }
     }
   ],

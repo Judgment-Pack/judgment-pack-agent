@@ -3,6 +3,7 @@ package delegate
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -252,7 +253,7 @@ func (l parentLink) Attach(sc *runcontext.SessionContext) {
 
 // parentSources is the source gate of the parent run's context, once it is attached; nil before, or
 // where the parent declares no tool with a source.
-// parentPrincipal is the delegating run's opened principal, or nil (ADR-0029).
+// parentPrincipal is the delegating run's principal, or nil (ADR-0029).
 func (c *coordinator) parentPrincipal() *runcontext.OpenedPrincipal {
 	c.shared.mu.Lock()
 	defer c.shared.mu.Unlock()
@@ -260,6 +261,52 @@ func (c *coordinator) parentPrincipal() *runcontext.OpenedPrincipal {
 		return nil
 	}
 	return c.shared.parent.Principal
+}
+
+// narrowedChild is a delegated child's principal, issued once per task by the issuing host, or the
+// named refusal of a child it cannot have (ADR-0029). A run with no delegation has neither.
+func (c *coordinator) narrowedChild(ctx context.Context, task *contract.DelegatedTask, profile string, hosts []runcontext.HostTool) (*runcontext.RunPrincipal, *runcontext.PrincipalRefusal, error) {
+	parent := c.parentPrincipal()
+	if parent == nil {
+		return nil, nil, nil
+	}
+	c.childMu.Lock()
+	held, ok := c.childLinks[task.ID]
+	c.childMu.Unlock()
+	if ok {
+		return held.input, nil, nil
+	}
+	tools := []runcontext.PrincipalChildTool{}
+	for _, tool := range hosts {
+		if tool.Source != nil {
+			tools = append(tools, runcontext.PrincipalChildTool{Source: tool.Source.ID, Tool: tool.Name})
+		}
+	}
+	input, err := runcontext.NarrowChild(ctx, parent, task.ID, profile, tools)
+	var opened *runcontext.OpenedPrincipal
+	if err == nil {
+		opened, err = runcontext.OpenChildPrincipal(parent, input)
+	}
+	var refused *runcontext.DelegationRefused
+	if errors.As(err, &refused) {
+		return nil, &refused.Refusal, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	c.childMu.Lock()
+	if c.childLinks == nil {
+		c.childLinks = map[string]childPrincipalLink{}
+	}
+	c.childLinks[task.ID] = childPrincipalLink{input: input, record: opened.Record}
+	c.childMu.Unlock()
+	return input, nil, nil
+}
+
+// childPrincipalLink is one delegated child's narrowed principal (ADR-0029).
+type childPrincipalLink struct {
+	input  *runcontext.RunPrincipal
+	record runcontext.PrincipalRecord
 }
 
 func (c *coordinator) parentSources() *runcontext.SourceGate {
@@ -301,6 +348,8 @@ type coordinator struct {
 	taskActionMu sync.Mutex
 	taskMu       sync.Mutex
 	childMu      sync.Mutex
+	// childLinks is each delegated child's narrowed principal, issued once per task (ADR-0029).
+	childLinks   map[string]childPrincipalLink
 	batchMu      sync.Mutex
 	batches      int
 	extraBatch   bool
@@ -376,6 +425,14 @@ func (c *coordinator) publish(task *contract.DelegatedTask) {
 	snapshot.Steps = append([]contract.DelegatedTaskStepsItem{}, task.Steps...)
 	c.taskMu.Unlock()
 	event := contract.RunEvent{DelegatedTask: &contract.RunEventDelegatedTask{Type: "delegated_task", Task: snapshot, Subagent: task.Subagent, Provider: c.taskProvider(task.Profile)}}
+	// ADR-0029: a delegated child's record names its narrowed chain.
+	c.childMu.Lock()
+	link, linked := c.childLinks[task.ID]
+	c.childMu.Unlock()
+	if linked {
+		event.DelegatedTask.Principal = link.record.Contract()
+		event = contract.StampEvent(event)
+	}
 	if c.run.Context != nil && c.run.Context.Persistence != nil && c.run.Context.Persistence.Writer.TaskStepsEnabled() {
 		binding := c.run.Context.Persistence
 		output, err := binding.Writer.CommitTaskResult(c.storageContext, *binding, event)

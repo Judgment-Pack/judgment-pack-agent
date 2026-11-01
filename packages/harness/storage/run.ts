@@ -61,6 +61,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  readonly historyVersion=1 as const
  readonly leaseVersion=1 as const
  readonly leaseLifetime:LeaseLifetime='process'
+ readonly leasePrincipals=true as const
  readonly waitVersion=1 as const
  readonly waitLifetime:WaitLifetime='process'
  private readonly leases:LeaseTable

@@ -374,7 +374,7 @@ type AssistantEventBody =
   | { type: 'retry'; attempt: number }
   | { type: 'response_recovery' }
   | { type: 'delegation_requested'; callId?:string; subagent?: import('./subagents').SubagentRecord; request: import('./delegationContract').DelegationRequest }
-  | { type: 'delegated_task'; subagent?: import('./subagents').SubagentRecord; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask }
+  | { type: 'delegated_task'; subagent?: import('./subagents').SubagentRecord; provider?: import('./policy').ProviderRecord; task: import('./delegationContract').DelegatedTask; principal?: import('./principal').PrincipalRecord }
   | { type: 'user_question'; id: string; question: import('./questions').UserQuestion }
   | { type: 'reasoning'; text: string; done: boolean }
   /**

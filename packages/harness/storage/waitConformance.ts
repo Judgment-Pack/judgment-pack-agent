@@ -1,4 +1,5 @@
 import {canonicalJSON} from '../context/chat'
+import type {PrincipalBinding,PrincipalReference} from '../principal'
 import {StorageConformanceFailure} from './conformance'
 import {LeaseRefused,effectIdempotencyKey,fenceOf,type EffectOperation,type LeaseFence,type ReauthDisposition} from './lease'
 import {ResumeRefused,approvalBinding,pinsDigest,type ResumePins} from './resume'
@@ -22,7 +23,10 @@ const APPROVAL={callId:'call-1',name:'tracker__create_issue',tool:'create_issue'
 const checkpointWith=(approval:Record<string,unknown>)=>bytes(canonicalJSON({kit:'wait-conformance',approval}))
 const PINS:ResumePins={model:{provider:'openai',model:'kit'},policy:'sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a',sources:[{source:'tracker',descriptorDigest:APPROVAL.source.toolListDigest}],artifacts:[]}
 /** One key per wait (#265 M1). */
-const KEYS={a:'kit.wait-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1',b:'kit.wait-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2',c:'kit.wait-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4'} as const
+const KEYS={a:'kit.wait-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1',b:'kit.wait-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2',c:'kit.wait-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4',d:'kit.wait-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8'} as const
+/** ADR-0029: a delegated run's principals, and another subject's and root actor's. */
+const SUB:PrincipalReference={kind:'person',issuer:'https://kit.example/',subject:'kit-subject'},BINDING:PrincipalBinding={sub:SUB,rootActor:'b1'.repeat(16),host:'kit-host'}
+const OTHER_ACTOR={...BINDING,rootActor:'b2'.repeat(16)},OTHER_SUBJECT={...BINDING,sub:{...SUB,subject:'other'}}
 
 const check=(property:string,value:unknown)=>{if(!value)throw new StorageConformanceFailure(property)}
 const named=(error:unknown)=>error instanceof WaitRefused||error instanceof LeaseRefused||error instanceof ResumeRefused||error instanceof ReauthorizationRefused?error.reason:undefined
@@ -157,6 +161,34 @@ async function waitProperties(create:WaitStoreFactory):Promise<void>{
  await refuses('wait.restart.closed',()=>store.acquireLease({resource:'wait-c',owner:'worker-b',expectedRevision:c.revision,durationMs:HOUR}),'closed')
  check('wait.restart.earliest',(await store.limitRun({version:1,resource:'wait-c',run:iso(T0+9*HOUR)})).run===iso(T0+5*HOUR+10*MINUTE))
  await refuses('wait.restart.key',()=>store.wakeWait(decision('wait-b',KEYS.a,'decision-x')),'unauthenticated')
+
+ // ADR-0029: a store that declares it keeps a delegated run's principals with the wait and the lease, across a restart:
+ // the wait's pins hold them, its claim is a lease of the same principals, and a later takeover keeps them.
+ if(store.leasePrincipals===true){
+  const P=await store.commit({runId:'wait-p',expectedRevision:null,commitId:'wait-p-open',checkpoint:asked,events:[]})
+  const held=await store.acquireLease({resource:'wait-p',owner:'worker-a',expectedRevision:P.revision,durationMs:HOUR,principal:BINDING})
+  check('wait.principal.lease',held.version===2&&canonicalJSON(held.principal)===canonicalJSON(BINDING))
+  const pins={...PINS,principal:BINDING}
+  await store.parkWait(parkOf('wait-p',P.revision,KEYS.d,4*HOUR,{pins}),fenceOf(held))
+  check('wait.principal.pinned',canonicalJSON((await store.readWait('wait-p','wait-1'))?.pins.principal)===canonicalJSON(BINDING))
+  await restart('wait.restart.principal')
+  check('wait.restart.principal',canonicalJSON((await store.readWait('wait-p','wait-1'))?.pins.principal)===canonicalJSON(BINDING))
+  await store.wakeWait(decision('wait-p',KEYS.d))
+  const claimP=(owner:string,principal?:PrincipalBinding):WaitClaim=>{const base=claim('wait-p','decision-1',owner,P.revision);return {...base,lease:{...base.lease,...(principal?{principal}:{})},revalidation:{...base.revalidation,pins:pinsDigest(pins)}}}
+  await refuses('wait.principal.claim-actor',()=>store.resumeWait(claimP('worker-b',OTHER_ACTOR)),'principal-changed')
+  await refuses('wait.principal.claim-subject',()=>store.resumeWait(claimP('worker-b',OTHER_SUBJECT)),'principal-changed')
+  await refuses('wait.principal.claim-none',()=>store.resumeWait(claimP('worker-b')),'principal-changed')
+  check('wait.principal.claim-unchanged',(await store.readWait('wait-p','wait-1'))?.state==='woken')
+  const resumed=await store.resumeWait(claimP('worker-b',BINDING))
+  check('wait.principal.claim',resumed.wait.state==='resumed'&&resumed.lease.version===2&&canonicalJSON(resumed.lease.principal)===canonicalJSON(BINDING)&&resumed.lease.epoch==='2')
+  const fenced=fenceOf(resumed.lease)
+  await refuses('wait.principal.fence',()=>store.checkFence({...fenced,principal:OTHER_ACTOR}),'principal-changed')
+  const done=await commitWith('wait-p',P.revision,'wait-p-done',{...APPROVAL,state:'executed'},fenced)
+  await store.releaseLease(fenced)
+  await restart('wait.restart.principal-lease')
+  await refuses('wait.restart.principal-takeover',()=>store.acquireLease({resource:'wait-p',owner:'worker-c',expectedRevision:done.revision,durationMs:HOUR,principal:OTHER_ACTOR}),'principal-changed')
+  check('wait.restart.principal-kept',(await store.acquireLease({resource:'wait-p',owner:'worker-c',expectedRevision:done.revision,durationMs:HOUR,principal:BINDING})).epoch==='3')
+ }
 }
 
 /* #226: the re-authorization properties. The run's head holds the never-admitted dispatch as the writer records it; the
@@ -312,7 +344,8 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  * (required; the parked principal; permissions after the refresh that cover the operation; taken after the park and not
  * after the store's time), the run's unsettled approval binding and expiry the store attaches (the claim's lease bounded
  * by it, refused from it, and limitRun keeping it), the timeout and the deadline wake of a reauthorization wait (each
- * terminal), and each across restarts. Throws StorageConformanceFailure naming the first property broken. */
+ * terminal), and each across restarts; with leasePrincipals (ADR-0029), the principals a delegated run's wait pins, its
+ * claim and a later takeover keep. Throws StorageConformanceFailure naming the first property broken. */
 export async function runStoreWaitConformance(create:WaitStoreFactory):Promise<void>{
  try{await waitProperties(create);await reauthProperties(create)}catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('wait.operation')}
 }

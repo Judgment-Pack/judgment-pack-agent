@@ -586,8 +586,15 @@
           "$ref": "subagent.json#/$defs/record"
         },
         "version": {
-          "const": 1,
-          "description": "Event wire format version. Absent only on historical records; current writers emit 1."
+          "enum": [
+            1,
+            3
+          ],
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1, and 3 where the event carries a delegated run's principal (ADR-0029)."
+        },
+        "principal": {
+          "description": "ADR-0029: the delegated child's principal: its narrowed chain, root first, and the child's actor.",
+          "$ref": "run-principal.json"
         }
       },
       "additionalProperties": false
