@@ -6,18 +6,21 @@ import {describe,it,expect,vi} from 'vitest'
 import chains from '../../contract/vectors/principal/chains.json'
 import type {AssistantEvent,EngineSession,HostTool} from './engine'
 import {vercel} from './engines/vercel'
+import {withDelegation} from './delegation'
 import {answerWith} from './testing/scenarioDriver'
 import {toolListDigest} from './toolSources'
 import {sha256} from './records'
 import {MemoryRunStore,type RunStore} from './storage/run'
 import {ReferenceEffectHost,fenceOf,reauthorizationOf,unattendedRunStore,type CredentialRefusal,type LeaseFence,type LeaseLifetime} from './storage/lease'
 import {parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime,type WakeEvidence} from './storage/wait'
-import type {AdmissionAnswer,AdmissionRead,RunPrincipal} from './principal'
+import type {AdmissionAnswer,AdmissionRead,ChildLinkRequest,PrincipalBinding,RunPrincipal} from './principal'
 import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js'
 import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js'
 import {openAssistantConnection} from './session'
 import type {RuntimeExecutionOwner} from './runtimeActions'
 
+/** The principals a delegated run's lease, fence and wait hold: the same for the root and for the chain that names source runtime. */
+const BINDING={sub:chains.items[0]![0]!.sub,rootActor:chains.items[0]![0]!.act.agent,host:chains.items[0]![0]!.host} as PrincipalBinding
 const T='2026-10-30T01:00:00.000Z',T0=Date.parse(T),MINUTE=60_000,HOUR=60*MINUTE,LATE='2026-10-30T08:00:00.000Z'
 const iso=(ms:number)=>new Date(ms).toISOString()
 const KEY='wk.delegated.reauth.Q7z2Xm9LpV4cR8tNb3Yh6Df1G'
@@ -45,19 +48,23 @@ async function refused(reads:AdmissionRead[]){
  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),state:{refusal:CredentialRefusal|undefined}={refusal:REFUSED}
  const host=new ReferenceEffectHost(store,{credentials:async()=>state.refusal})
  const execute=vi.fn(async()=>({content:[{type:'text' as const,text:'written'}]}))
- const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+ const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR,principal:BINDING})
  const view=unattendedRunStore({store,fence:fenceOf(lease),effectHost:host})
  const events=await drive(view,[await writeTool(execute)],principal(reads),provider([CALL,{say:'Could not.'}]).call)
  return {clock,store,state,host,execute,view,fence:fenceOf(lease),events}
 }
-async function claimed(reads:AdmissionRead[]){
+async function parked(reads:AdmissionRead[]){
  const held=await refused(reads),{clock,store,fence,view}=held
  const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
  clock.at=T0+3*MINUTE
  await wakeRun(store,wake)
  const {model,...rest}=wait.pins
  const current={version:1 as const,resource:'run-r',wait:'wait-r',...rest,model:{...model,status:'available' as const},policy:{digest:wait.pins.policy}}
- const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current,reauthorization:action})
+ return {...held,wait,current,input:{store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,reauthorization:action}}
+}
+async function claimed(reads:AdmissionRead[]){
+ const held=await parked(reads),{store,current,input}=held
+ const resumed=await resumeParked({...input,current})
  held.state.refusal=undefined
  return {...held,resumed,continued:await reauthorizedRunStore({store,effectHost:held.host,resumed})}
 }
@@ -140,7 +147,7 @@ describe('an acting Runtime call refused for its credentials, under a delegation
   const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),state:{refusal:CredentialRefusal|undefined}={refusal:REFUSED}
   const host=new ReferenceEffectHost(store,{credentials:async()=>state.refusal})
   try{
-   const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+   const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR,principal:BINDING})
    const view=unattendedRunStore({store,fence:fenceOf(lease),effectHost:host})
    const events=await run(held,view,given(reads),false)
    expect(held.calls).toEqual([])
@@ -159,5 +166,112 @@ describe('an acting Runtime call refused for its credentials, under a delegation
    expect(reads.filter(r=>r.call.count).length).toBe(1)
    expect(reads.at(-1)!.call).toEqual({source:'runtime',tool:'experimental_evaluate',effect:'act',count:true})
   }finally{await held.close()}
+ })
+})
+
+describe("a re-authorization wait's resume under a delegation",()=>{
+ const resumeRefusal=(reason:string)=>expect.objectContaining({name:'ResumeRefused',reason})
+ it('the wait pins the principals, and its proof keeps the version 2 fence it was parked under',async()=>{
+  const {wait}=await parked([])
+  expect(wait.pins.principal).toEqual(BINDING)
+  expect(wait.reauthorization!.fence).toMatchObject({version:2,principal:BINDING})
+ })
+ it('evidence of other principals is principal-changed, of none is evidence-missing, and neither claims anything, whatever the refresh says',async()=>{
+  const {store,current,input}=await parked([])
+  await expect(resumeParked({...input,current:{...current,principal:{...BINDING,rootActor:'d1'.repeat(16)}}})).rejects.toEqual(resumeRefusal('principal-changed'))
+  const {principal:_,...none}=current
+  await expect(resumeParked({...input,current:none})).rejects.toEqual(resumeRefusal('evidence-missing'))
+  expect(await store.readLease('run-r')).toMatchObject({state:'released',epoch:'1'})
+  expect((await store.readWait('run-r','wait-r'))!.state).toBe('woken')
+ })
+ it("a changed credential identity stays #226's identity-changed: the delegation's principals are the same",async()=>{
+  const {current,input}=await parked([])
+  await expect(resumeParked({...input,current,reauthorization:{...action,action:'replacement'}})).rejects.toEqual(resumeRefusal('identity-changed'))
+ })
+ it("the delegation's refusal comes first, when both changed",async()=>{
+  const {current,input}=await parked([])
+  await expect(resumeParked({...input,current:{...current,principal:{...BINDING,rootActor:'d1'.repeat(16)}},reauthorization:{...action,action:'replacement'}})).rejects.toEqual(resumeRefusal('principal-changed'))
+ })
+ it("the claim's lease and fence keep the principals, and the re-send's view accepts them",async()=>{
+  const {resumed,continued,execute}=await claimed([])
+  expect(resumed.lease).toMatchObject({version:2,epoch:'2',principal:BINDING})
+  expect(resumed.fence).toMatchObject({version:2,principal:BINDING})
+  const reads:AdmissionRead[]=[]
+  await drive(continued,[await writeTool(execute)],principal(reads),provider([CALL,{say:'Written.'}]).call,true)
+  expect(execute).toHaveBeenCalledOnce()
+ })
+ for(const [label,given] of [['another subject',{chain:4}],['no delegation at all',undefined]] as const)it(`a continuation under ${label} sends nothing, though the claim was held: principal-changed`,async()=>{
+  const reads:AdmissionRead[]=[]
+  const {continued,execute}=await claimed(reads)
+  const session={prompt:'Write the note.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[await writeTool(execute)],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{...(given?{principal:{...principal(reads),chain:JSON.stringify(chains.items[given.chain])}}:{}),currentRequest:{message:'Write the note.',input:'note'},runStore:{store:continued,id:'run-r',resume:true}},model:{family:'openai-compatible',model:'fixture',call:provider([CALL]).call}} as unknown as EngineSession
+  const events:AssistantEvent[]=[];for await(const event of vercel.start(session))events.push(event)
+  expect(execute).not.toHaveBeenCalled()
+  expect(JSON.stringify(events.filter(e=>e.type==='error'))).toContain('principal-changed')
+ })
+})
+
+describe('a child under a run that parked for re-authorization',()=>{
+ async function tools(wrote:()=>void):Promise<HostTool[]>{
+  return [await writeTool((async()=>{wrote();return {content:[{type:'text',text:'written'}]}}) as HostTool['execute'])]
+ }
+ const CHILD_CHAIN=JSON.stringify(chains.items[1])
+ const session=(store:RunStore,hostTools:HostTool[],given:RunPrincipal,turns:Parameters<typeof answerWith>[0][],resume=false)=>({prompt:'Write the note.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',context:{principal:given,currentRequest:{message:'Write the note.',input:'note'},runStore:{store,id:'run-r',...(resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call:provider(turns).call}}) as unknown as EngineSession
+ const collect=async(given:EngineSession)=>{const out:AssistantEvent[]=[];for await(const event of withDelegation(vercel).start(given))out.push(event);return out}
+ const DELEGATE={call:{tool:'delegate_tasks',arguments:{tasks:[{title:'Check',profile:'review',objective:'Check the note.'}]}}}
+ async function stoppedRun(reads:AdmissionRead[],asked:ChildLinkRequest[],ran:string[]){
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),state:{refusal:CredentialRefusal|undefined}={refusal:REFUSED}
+  const host=new ReferenceEffectHost(store,{credentials:async()=>state.refusal})
+  const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR,principal:BINDING})
+  const view=unattendedRunStore({store,fence:fenceOf(lease),effectHost:host})
+  const list=await tools(()=>ran.push('write_note'))
+  const delegated=(extra:Partial<RunPrincipal>={}):RunPrincipal=>({...principal(reads),child:request=>{asked.push(request);return {chain:CHILD_CHAIN}},...extra})
+  await collect(session(view,list,delegated(),[CALL,{say:'Could not.'}]))
+  return {clock,store,state,host,list,view,fence:fenceOf(lease),delegated}
+ }
+ async function resume(held:Awaited<ReturnType<typeof stoppedRun>>){
+  const {clock,store,state,host,view,fence}=held
+  const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
+  clock.at=T0+3*MINUTE
+  await wakeRun(store,wake)
+  const {model,...rest}=wait.pins
+  const current={version:1 as const,resource:'run-r',wait:'wait-r',...rest,model:{...model,status:'available' as const},policy:{digest:wait.pins.policy}}
+  const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current,reauthorization:action})
+  state.refusal=undefined
+  return reauthorizedRunStore({store,effectHost:host,resumed})
+ }
+ it('no child starts while it is parked: the run cannot be leased, and its proof is what stopped it',async()=>{
+  const reads:AdmissionRead[]=[],asked:ChildLinkRequest[]=[],ran:string[]=[]
+  const held=await stoppedRun(reads,asked,ran)
+  const {wait}=await parkRun(parkInput(held.store,held.fence,reauthorizationOf(held.view)!))
+  await expect(held.store.acquireLease({resource:'run-r',owner:'worker-x',expectedRevision:wait.checkpoint.revision,durationMs:HOUR,principal:BINDING})).rejects.toEqual(expect.objectContaining({name:'WaitRefused',reason:'wait-pending'}))
+  expect(ran).toEqual([])
+  expect(asked).toEqual([])
+ })
+ it("after the re-authorization a child runs under its own link, on the claim's view, and the parent's re-send is the grant's alone",async()=>{
+  const reads:AdmissionRead[]=[],asked:ChildLinkRequest[]=[],ran:string[]=[]
+  const held=await stoppedRun(reads,asked,ran)
+  const before=reads.length
+  const continued=await resume(held)
+  const events=await collect(session(continued,held.list,held.delegated(),[DELEGATE,{say:'One finding.'},CALL,{say:'Written.'}],true))
+  expect(events.filter(e=>e.type==='error')).toEqual([])
+  expect(asked.length).toBe(1)
+  expect(ran).toEqual(['write_note'])
+  const last=[...events].reverse().find(e=>e.type==='delegated_task') as Extract<AssistantEvent,{type:'delegated_task'}>&{principal?:{chain:string[]}}
+  expect(last.task.state).toBe('complete')
+  expect(last.principal?.chain).toEqual([chains.digests.root,chains.digests.child])
+  // A child's own calls are held by its chain (principalChild.test.ts). Its standing read counts nothing, and the one physical dispatch here, the grant's re-send, is counted once.
+  expect(reads.slice(before).filter(r=>r.call.source==='local').map(r=>[r.call.tool,r.call.count])).toEqual([['delegate_tasks',false]])
+  expect(reads.slice(before).filter(r=>r.call.count).map(r=>[r.call.tool,r.chain.length])).toEqual([['write_note',1]])
+ })
+ it('a delegation revoked meanwhile starts no child, by name, and the re-send is refused with it',async()=>{
+  const reads:AdmissionRead[]=[],asked:ChildLinkRequest[]=[],ran:string[]=[]
+  const held=await stoppedRun(reads,asked,ran)
+  const continued=await resume(held)
+  const events=await collect(session(continued,held.list,held.delegated({admission:read=>{reads.push(read);return REVOKED}}),[DELEGATE,CALL,{say:'Could not.'}],true))
+  expect(ran).toEqual([])
+  expect(asked).toEqual([])
+  expect(delegationRefusals(events)).toContain('revoked')
+  const last=[...events].reverse().find(e=>e.type==='delegated_task') as Extract<AssistantEvent,{type:'delegated_task'}>
+  expect(last.task).toMatchObject({state:'failed',problem:expect.stringContaining('revoked')})
  })
 })
