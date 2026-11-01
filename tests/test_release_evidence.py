@@ -1,4 +1,4 @@
-"""The agent's adoption of the devkit release evidence gate, v0.13.0 (agent #239, #240).
+"""The agent's adoption of the devkit release evidence gate, v0.14.0 (agent #239, #240).
 
 The gate itself is the kit's, vendored unchanged as scripts/dev/release_evidence.py; the kit's own
 suite tests its contract. These tests hold the agent's side of it: the vendored copies, the
@@ -27,18 +27,18 @@ _spec = importlib.util.spec_from_file_location('release_evidence', ROOT / 'scrip
 g = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(g)
 
-KIT = 'v0.13.0'
+KIT = 'v0.14.0'
 # Each vendored file: the kit file it copies (line 2 names both) and the SHA-256 of the copy as the
-# kit's v0.13.0 tag (commit 939b0377e57e1d09964e3b4d5dc4c45ad70c7854) ships it under scripts/dev/.
+# kit's v0.14.0 tag (commit 9f555498a9e4c35d426ca1ce45352abf3363cbb3) ships it under scripts/dev/.
 VENDORED = {
     'scripts/dev/release_evidence.py': ('lib/release_evidence.py',
-                                        'a7a058d764b5bc6197fa4d10f60ffa8b0b61b71eb304c23c8dbe69ade6053c7f'),
+                                        '2d1b4303d29044ad70ca6b0ed448c08937cbeaa3753a87b1e03973c204ddcbb1'),
     'scripts/dev/check.sh': ('templates/check.sh',
-                             '89258c05d2631bb5f8272cb9f69fc13dea4386af46280849dd42aee95d06b64a'),
+                             'c203aa5253162068421831a679f063ce07110024e681341bf035dc739f14b410'),
     'scripts/dev/handover_check.sh': ('lib/handover_check.sh',
-                                      'e9f1390ffeed5e7fa8b04dc811cadba293373477a51359f4b461a4f6625a0aaa'),
+                                      '1a2b7e21c8acccd18da7779d1da62e775ac87853248ad51aea369daf8c7d13e4'),
     'scripts/dev/changed_checks.py': ('lib/changed_checks.py',
-                                      'b7dab6bf3b142f3d79fcfe755477007301a328efb131385c1e8366d7f7d18b56'),
+                                      '253f2be03751c609c44a2d29091ef5a9272b5c658012b6362089f56958e3fa22'),
 }
 MANIFEST = '.github/runner-identity.json'
 MANIFEST_SHA = '333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da'
@@ -699,7 +699,7 @@ class ReuseWorld(AgentWorld):
         workflow = self.config['workflows']['ci']
         names = workflow['pull_request_reuse']['environment']
         pull = {'number': 7, 'state': 'closed', 'created_at': '2026-10-30T08:00:00Z',
-                'merged_at': '2026-10-30T08:55:00Z', 'merge_commit_sha': self.sha,
+                'merged_at': '2026-10-30T08:55:00Z',
                 'head': {'sha': HEAD, 'ref': 'feature', 'repo': {'id': REPO_ID}},
                 'base': {'ref': 'main', 'repo': {'id': REPO_ID}}}
         run = {'id': 50, 'run_attempt': 1, 'event': 'pull_request', 'head_branch': 'feature', 'head_sha': HEAD,
@@ -720,7 +720,7 @@ class ReuseWorld(AgentWorld):
             'pulls?head=Judgment-Pack:feature&state=all&per_page=100&page=1': [pull],
             'pulls?head=Judgment-Pack:feature&state=all&per_page=100&page=2': [],
             'issues/7/timeline?per_page=100&page=1': [{'event': 'committed'}, {'event': 'reviewed'},
-                                                      {'event': 'merged'}],
+                                                      {'event': 'merged', 'commit_id': self.sha}],
             'issues/7/timeline?per_page=100&page=2': [],
             'actions/workflows/9/runs?head_sha=%s&per_page=100&page=1' % HEAD: {'total_count': 1, 'workflow_runs': [run]},
             'actions/runs/50': run,
