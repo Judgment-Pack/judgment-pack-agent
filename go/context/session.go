@@ -177,7 +177,10 @@ type SessionContext struct {
 	HostParts HostParts
 	// Sources is the boundary's hold on the run's tools with a source (ADR-0006), where it declares
 	// any; Catalogue says the schema budget made a source a catalogue and load_tool is offered.
-	Sources   *SourceGate
+	Sources *SourceGate
+	// Principal is the delegated run's principal (ADR-0029): its own, or a delegated child's
+	// parent's; its record is on the run's tool events and checkpoint.
+	Principal *OpenedPrincipal
 	Catalogue bool
 	// Skills is the boundary's hold on the run's skills (ADR-0009), where it declares any; the
 	// SkillCatalogue is what the system text carries of them after the tools described in text, or "".
@@ -1240,6 +1243,7 @@ func (c *SessionContext) OpenSources(declared *Declared, catalogue bool, toolSch
 	// ADR-0008: the run's approval, in the execution state; no act call is admitted in a delegated
 	// child, in Plan mode, while the critic reads or in the reformat run.
 	c.Sources.SetApprovals(approvalBook{c: c, child: parent != nil})
+	c.Sources.UsePrincipal(c.Principal)
 	c.Catalogue = catalogue
 	c.Execution.LoadedSchemas = c.Sources.LoadedSection
 	c.Execution.SourceIdentities = c.Sources.IdentityRows
@@ -1399,6 +1403,24 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 	if admissionErr != nil {
 		return nil, admissionErr
 	}
+	// ADR-0029: the delegation the issuing host supplied, verified before anything is offered or
+	// asked; a delegated child acts under its parent's principal.
+	var principal *OpenedPrincipal
+	if session.Context != nil && session.Context.Principal != nil {
+		opened, err := OpenPrincipal(session.Context.Principal)
+		var refused *DelegationRefused
+		switch {
+		case errors.As(err, &refused):
+			return nil, failure.Authored("configuration", "The run's delegation is refused ("+refused.Refusal.Name+"). Nothing was sent.", "context")
+		case err != nil:
+			return nil, failure.Authored("configuration", "The run's principal is invalid. Nothing was sent.", "context")
+		}
+		principal = opened
+	} else if session.Context != nil {
+		if linked, ok := session.Context.Link.(SourceLinked); ok {
+			principal = linked.ParentSources().Principal()
+		}
+	}
 	// ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
 	served := make([]string, 0, len(session.Tools))
 	for _, tool := range session.Tools {
@@ -1453,11 +1475,30 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 	if err != nil {
 		return nil, err
 	}
+	held.Principal = principal
 	// A chat's turn is open from here: a run that cannot start closes it again.
 	opened := func() error {
 		// ADR-0009: the skills, read and admitted before any request; their sources report beside the tools'.
 		if err := held.Execution.Initialize(ctx); err != nil {
 			return err
+		}
+		// ADR-0029: a delegated run's checkpoint carries its principal (version 4). A resume continues
+		// only under the same subject and root actor: a re-issued or narrowed chain replaces the
+		// record; another principal, a run that was not delegated, or one that is no longer, is
+		// refused (principal-changed).
+		saved := held.Execution.State().Principal
+		restoring := session.Context != nil && session.Context.Execution != nil
+		var current *PrincipalRecord
+		if principal != nil {
+			current = &principal.Record
+		}
+		if restoring && PrincipalsChanged(saved, current) {
+			return failure.Authored("stale-state", "The run continues under another principal than it began under (principal-changed). Nothing was sent.", "context")
+		}
+		if principal != nil {
+			if err := held.Execution.MutateCheckpoint(CheckpointPatch{"Principal": principal.Record.Contract()}); err != nil {
+				return err
+			}
 		}
 		if session.Context != nil && session.Context.checkpointProfile {
 			if err := held.Execution.MutateCheckpoint(CheckpointPatch{"ID": session.Context.checkpointRunID}); err != nil {
@@ -1744,6 +1785,15 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			own[session.HostTools[at].Name] = true
 		}
 	}
+	// ADR-0029: a host's tool with no source is not matched against the scope, which names sources, and
+	// is still refused under a delegation that no longer stands. A question or a delegation is the
+	// package's own interaction, not the host's dispatch.
+	sourceless := map[string]bool{}
+	for at := range session.HostTools {
+		if tool := &session.HostTools[at]; tool.Source == nil && tool.Interaction == "" {
+			sourceless[tool.Name] = true
+		}
+	}
 	tools := append([]HostTool{}, session.HostTools...)
 	if held.MemoryAdmitted() && held.ContextPhase() != "plan" {
 		tools = append(tools, held.Drafts.Tools()...)
@@ -1915,6 +1965,11 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			}
 			if err := authorize(ctx); err != nil {
 				return ToolResult{}, err
+			}
+			if held.Principal != nil && sourceless[name] {
+				if err := held.refuseUnlessStanding(ctx, declared); err != nil {
+					return ToolResult{}, err
+				}
 			}
 			// ADR-0006: each call of a tool with a source is held by the source gate before the host's.
 			if held.Sources != nil {

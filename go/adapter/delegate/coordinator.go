@@ -252,6 +252,16 @@ func (l parentLink) Attach(sc *runcontext.SessionContext) {
 
 // parentSources is the source gate of the parent run's context, once it is attached; nil before, or
 // where the parent declares no tool with a source.
+// parentPrincipal is the delegating run's opened principal, or nil (ADR-0029).
+func (c *coordinator) parentPrincipal() *runcontext.OpenedPrincipal {
+	c.shared.mu.Lock()
+	defer c.shared.mu.Unlock()
+	if c.shared.parent == nil {
+		return nil
+	}
+	return c.shared.parent.Principal
+}
+
 func (c *coordinator) parentSources() *runcontext.SourceGate {
 	c.shared.mu.Lock()
 	defer c.shared.mu.Unlock()

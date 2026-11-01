@@ -72,6 +72,9 @@ type hostRun struct {
 	asks   atomic.Int32
 }
 
+// hostDelegation is the delegation runHostTool's runs act under, where a test sets one (ADR-0029).
+var hostDelegation *runcontext.RunPrincipal
+
 // runHostTool runs the tool: the model or the agent makes each of calls, then ends.
 func runHostTool(t *testing.T, store runcontext.RunStore, id, engine string, resume bool, decision *contract.CheckpointApprovalDecision, tool runcontext.HostTool, calls []string) *hostRun {
 	t.Helper()
@@ -88,6 +91,7 @@ func runHostTool(t *testing.T, store runcontext.RunStore, id, engine string, res
 		}
 		return g.EnrollContext(offer.ID, offer.HostTools)
 	}}
+	run.Context.Principal = hostDelegation
 	var implementation adapter.Adapter
 	if engine == "native" {
 		implementation = native.New()

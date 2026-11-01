@@ -1,4 +1,7 @@
-import shapes from './contract/record-shapes.json'
+import current from './contract/record-shapes.json'
+import published012 from './contract/record-shapes-v012.json'
+/** ADR-0029: the frozen v0.12 inventory of checkpoint 3 and event 2 is packaged beside the current one. */
+const shapes={...current,published012}
 import type {AssistantEvent} from './engine'
 import type {PolicyLayer} from './policy'
 
@@ -7,7 +10,7 @@ type Graph=Record<string,Shape>
 export type RecordKind='checkpoint'|'event'|'policy'
 export const RECORD_VERSIONS={checkpoint:2,event:1,policy:1} as const
 /** Read maxima are separate from feature-free writer defaults. */
-const READ_VERSIONS={checkpoint:3,event:2,policy:2} as const
+const READ_VERSIONS={checkpoint:4,event:3,policy:2} as const
 const files={checkpoint:'checkpoint.json',event:'run-event.json',policy:'policy.json'} as const
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 export class UnsupportedRecordVersion extends Error {
@@ -56,7 +59,8 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
  if(kind==='checkpoint'&&new TextEncoder().encode(JSON.stringify(value)).length>4*1024*1024)return invalid()
  const version=versionOf(kind,value)
  if(recordDepth>4)return invalid()
- const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:kind==='checkpoint'&&version===3||kind==='event'&&version===2||kind==='policy'&&version===2?shapes.current:shapes.published) as unknown as Graph
+ // ADR-0029: checkpoint 4 and event 3 read the current schemas; checkpoint 3 and event 2 the inventory frozen at v0.12.0.
+ const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:kind==='checkpoint'&&version===4||kind==='event'&&version===3||kind==='policy'&&version===2?shapes.current:kind==='checkpoint'&&version===3||kind==='event'&&version===2?shapes.published012:shapes.published) as unknown as Graph
  let work=0
  function walk(file:string,s:Shape,v:unknown,path:string,depth:number):void{
   if(++work>200000||depth>64)return invalid()
@@ -92,14 +96,17 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
   else if(value.plan!==undefined||!['name','tool','source','args'].every(k=>Object.hasOwn(value,k)))invalid()
  }
 
- if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!(version===2?shapes.current:shapes.published)['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
+ if(kind==='event'&&(!object(value)||typeof value.type!=='string'||!(version===3?shapes.current:version===2?shapes.published012:shapes.published)['run-event.json'].properties.type.enum.includes(value.type as never)))invalid()
 }
 /** Decode supported wire records without upgrading their bytes, version or metadata. */
 export function readRunEvent(value:unknown):AssistantEvent{checkRecord('event',value);return structuredClone(value) as AssistantEvent}
 export function checkRecordVersion(kind:RecordKind,value:unknown):void{versionOf(kind,value)}
 export function readPolicyLayer(value:unknown):PolicyLayer{checkRecord('policy',value);return structuredClone(value) as PolicyLayer}
 /** Internal unversioned event bodies become current records at the delivery boundary. */
-export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2}{return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
+export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2|3}{
+ // ADR-0029: an event that carries a delegated run's principal, or its checkpoint 4, is event 3.
+ if(event.version===3||'principal'in event&&event.principal!==undefined||(event.type==='execution_checkpoint'||event.type==='budget_paused')&&event.checkpoint.version===4)return {...event,version:3}
+ return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
 export function versionEvents(events:AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
  return {[Symbol.asyncIterator](){
   const source=events[Symbol.asyncIterator]()

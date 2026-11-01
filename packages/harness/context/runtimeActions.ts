@@ -7,6 +7,8 @@ import {prepareRuntimeAttempt,claimRuntimeAttempt,executeRuntimeAttempt,runtimeP
 import type {ApprovalRecord} from '../execution/state'
 import {sha256} from '../records'
 import type {RuntimeAdmission} from '../storage/runtimeActionOwner'
+import {admitRuntimeCall,refusalDetail} from '../principal'
+import {toolFailureResult} from '../failures'
 export interface RuntimeCall {
  readonly args:Record<string,unknown>
  readonly requested?:Extract<AssistantEvent,{type:'approval_requested'}>
@@ -19,6 +21,16 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
   if(context.storageRole!=='author'||session.context?.phase==='plan'||session.context?.objective||session.childDefinition)throw context.refuse(name,'This phase admits no Runtime action. Nothing was sent.','approval refused')
   if(!acting(name))throw context.refuseUnoffered(name,args)
  }
+ // ADR-0029: an acting Runtime call is admitted as any act is: refused outside the scope, past expiry and after revocation, before it is asked and again before it runs, and counted only immediately before the physical call.
+ const refusals=new WeakSet<object>()
+ const delegated=async(name:string,count:boolean,signal:AbortSignal)=>{
+  if(!context.principal)return
+  const refusal=await admitRuntimeCall(context.principal,name,count,signal)
+  if(!refusal)return
+  const error=context.refuse(name,refusalDetail(name,refusal),'delegation refused',refusal)
+  refusals.add(error)
+  throw error
+ }
  const execute=async(attempt:RuntimeAttempt,callId:string,signal:AbortSignal)=>{
   claimRuntimeAttempt(attempt)
   const {name,args,source,runtime}=attempt.request
@@ -29,7 +41,7 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
   const invoke=()=>binding.writer.invoke(scopeFor(binding,context.storageRole),'runtime','sha256:'+sha256(canonicalJSON({source,runtime})),name,request,false,async raw=>{
    if(raw!==request)throw context.refuse(name,'The prepared Runtime action changed. Nothing was sent.','approval stale')
    check(name,args)
-   return executeRuntimeAttempt(attempt,admission,signal,async()=>{check(name,args);await session.context?.authorize?.(signal)})
+   return executeRuntimeAttempt(attempt,admission,signal,async()=>{check(name,args);await session.context?.authorize?.(signal)},()=>delegated(name,true,signal))
   },hostSucceeded,()=>[],signal)
   context.claimTestCall(name)
   const call=()=>context.execution.wrapRead(name,invoke,{},false,{runtime:true,offered:true})(runtimeJSON(args))
@@ -43,6 +55,7 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
    check(name,args)
    const binding=session.context?.[durableOwner]
    if(!binding)throw context.refuse(name,'Runtime actions require the original durable run store. Nothing was sent.','approval refused')
+   await delegated(name,false,session.signal)
    const clean=context.output.value(args,'tool argument',true)
    await session.context?.authorize?.(session.signal);session.signal.throwIfAborted()
    const attempt=await prepareRuntimeAttempt(session.callTool,name,clean,admission(),session.signal)
@@ -63,8 +76,15 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
  if(context.execution.approvalStep==='execute'&&record?.source.kind==='runtime')context.runApproved=async signal=>{
   if(!record.runtime)throw context.refuse(record.name,'The saved Runtime action has no current execution binding. Nothing was sent.','approval stale')
   check(record.name,record.args)
-  const attempt=await prepareRuntimeAttempt(session.callTool,record.name,record.args,admission(),signal,record.runtime)
-  if(canonicalJSON(attempt.request.source)!==canonicalJSON(record.source)||canonicalJSON(attempt.request.args)!==canonicalJSON(record.args))throw context.refuse(record.name,'The saved Runtime action changed. Nothing was sent.','approval stale')
-  return {result:await execute(attempt,record.callId,signal),ran:true}
+  // As an approved call of a source: a refusal is the call's result, and the run continues with it.
+  try{
+   await delegated(record.name,false,signal)
+   const attempt=await prepareRuntimeAttempt(session.callTool,record.name,record.args,admission(),signal,record.runtime)
+   if(canonicalJSON(attempt.request.source)!==canonicalJSON(record.source)||canonicalJSON(attempt.request.args)!==canonicalJSON(record.args))throw context.refuse(record.name,'The saved Runtime action changed. Nothing was sent.','approval stale')
+   return {result:await execute(attempt,record.callId,signal),ran:true}
+  }catch(error){
+   if(error instanceof Error&&refusals.has(error))return {result:toolFailureResult(error),ran:false}
+   throw error
+  }
  }
 }

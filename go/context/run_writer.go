@@ -948,7 +948,7 @@ func (w *RunWriter) CommitRoute(ctx context.Context, binding RunBinding, state c
 	if event.RouteWidened != nil {
 		route = &event.RouteWidened.Route
 	}
-	if binding.Writer != w || state.ID != binding.Scope.Execution || state.Version != 3 || state.TurnRoute == nil || route == nil || usageCanonical(route) != usageCanonical(state.TurnRoute) {
+	if binding.Writer != w || state.ID != binding.Scope.Execution || state.Version < 3 || state.TurnRoute == nil || route == nil || usageCanonical(route) != usageCanonical(state.TurnRoute) {
 		return contract.RunEvent{}, &ContinuationIdentityChanged{}
 	}
 	if len(w.planDelivery) >= 400 {
@@ -1864,6 +1864,11 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
 			if err := c.session.Context.Authorize(ctx); err != nil {
+				return ToolResult{}, err
+			}
+		}
+		if admit := dispatchAdmissionOf(ctx); admit != nil {
+			if err := admit(ctx); err != nil {
 				return ToolResult{}, err
 			}
 		}

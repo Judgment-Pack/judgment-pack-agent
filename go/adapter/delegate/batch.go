@@ -297,6 +297,9 @@ func (l childLink) Attach(sc *runcontext.SessionContext) {
 
 // runChild is one run of a child on the adapter, into run.
 func (c *coordinator) runChild(ctx context.Context, p *planned, profile turn.TaskProfile, task *contract.DelegatedTask, objective, prompt string, limit int, offered bool, m *meter, run *childRun) error {
+	if err := runcontext.RequireOpenedPrincipal(c.parentPrincipal(), c.run.Context); err != nil {
+		return err
+	}
 	var mu sync.Mutex
 	emit := func(event contract.RunEvent) {
 		mu.Lock()

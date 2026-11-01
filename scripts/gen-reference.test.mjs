@@ -100,7 +100,7 @@ test('current record and feature guidance preserves published defaults and autho
   const result = run('--out', out)
   assert.equal(result.status, 0, result.stderr)
   const records = readFileSync(join(out, 'records.md'), 'utf8')
-  for (const row of ['| checkpoint | `2` | `3` |', '| event | `1` | `2` |', '| policy | `1` | `2` |']) assert.ok(records.includes(row), row)
+  for (const row of ['| checkpoint | `2` | `4` |', '| event | `1` | `3` |', '| policy | `1` | `2` |']) assert.ok(records.includes(row), row)
   assert.match(records, /Report 2/)
   assert.match(records, /Report 1 remains frozen/)
   assert.match(records, /preserving the source checkpointVersion/)

@@ -15,6 +15,7 @@ import { MAX_TURNS, isCancelled, reportBlocks, textOf, withAbort, eventIterator,
 import { eventChannel } from './engines/vercel/channel'
 import { RETRY_BACKOFF_MS, RETRY_WAIT_LIMIT_MS, waitFor } from './engines/vercel/retry'
 import { AGENT_DELEGATION_INSTRUCTIONS, DELEGATION_INSTRUCTIONS, DELEGATION_SPENT, DELEGATE_TOOL, MAX_AGENT_RUNS, MAX_BATCHES, MAX_TOOLS, REPORT_BOUNDS, TASK_PROFILES, TOKEN_MEMBERS, delegationTool, profileBudget, readDelegationRequest, readProfiles, readReport, reportInstructions, type DelegatedTask, type DelegatedTaskRequest, type DelegationRequest, type OpenQuestion, type ResultCursor, type TaskBudget, type TaskProfile, type TaskReport } from './delegationContract'
+import {holdsDelegation,requireOpenedPrincipal} from './principal'
 import { TEST_TOOL } from './toolGate'
 import { contextPolicy, encodedPrefix, utf8Bytes } from './context/policy'
 import { criticForcedOff, criticMode } from './criticSwitch'
@@ -685,6 +686,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
     }
     /** One run of a child's engine, into `run`: its messages, its prose so far, and what it asked of the parent. */
     const runChild = async (planned: Planned, profile: TaskProfile, task: DelegatedTask, objective: string, prompt: string, childSignal: AbortSignal, requestLimit: number, offered: boolean, meter: ChildMeter, run: ChildRun) => {
+      requireOpenedPrincipal(shared.context?.principal,session.context)
       const named=planned.subagent?await Promise.all(session.hostTools.map(async tool=>({tool,name:tool.source?await wireName(tool.source.id,tool.name):tool.name}))):[]
       const {tools,hostTools}=planned.subagent?{tools:[],hostTools:offered?named.filter(t=>planned.subagent!.tools.includes(t.name)).map(t=>t.tool):[]}:childOffer(profile,session,offered)
       const runtime = new Set(tools.map(t=>t.name))
@@ -1002,7 +1004,8 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       let execution=session.context?.execution
       // A restored batch precedes the next provider invocation. Reopen the existing parent
       // controller first so child claims still charge the original root and step together.
-      if(persistence&&session.context?.taskSteps===true&&handoff&&(handoff.state==='released'||handoff.state==='children')){
+      // ADR-0029: a delegated run's parent is opened first whatever else holds: its resume check runs, and its children start under its opened principal.
+      if((persistence&&session.context?.taskSteps===true||holdsDelegation(session.context))&&handoff&&(handoff.state==='released'||handoff.state==='children')){
         const opened=await contextualSession(bind({...session,context:{...session.context,chat,link:parentLink},hostTools:[...session.hostTools,delegate,...(taskDelegate?[taskDelegate]:[])]}),engine.id)
         restoredParent=opened.context
       }
