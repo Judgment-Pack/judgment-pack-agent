@@ -12,7 +12,7 @@ import {checkRecord,InvalidRecord,UnknownRecordMember} from './recordReader'
 function nativeDraft(value:unknown){
  const properties=shapes.current['checkpoint.json'].properties as Record<string,unknown>
  properties.dialectDraftProbe={$ref:'dialect-draft.json'}
- try{checkRecord('checkpoint',{...checkpoints.items[1],version:3,dialectDraftProbe:value})}
+ try{checkRecord('checkpoint',{...checkpoints.items[1],version:4,dialectDraftProbe:value})}
  finally{delete properties.dialectDraftProbe}
 }
 const witness=()=>structuredClone(drafts.items.at(-1)!) as unknown as {candidate:{conversionContract:{spec:Record<string,unknown>}}}

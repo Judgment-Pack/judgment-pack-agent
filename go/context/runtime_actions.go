@@ -3,6 +3,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/runtimeactions"
@@ -76,6 +77,54 @@ func (c *SessionContext) runtimeRefuse(name, detail string) error {
 	c.notices = append(c.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Reason: &reason, Detail: detail}})
 	return failure.Authored("permission", detail, "tool")
 }
+
+// delegationRefused is a call the run's delegation does not admit (ADR-0029): its guardrail names the
+// refusal and the run's actor and subject, and the model is told nothing was run.
+func (c *SessionContext) delegationRefused(name string, refusal PrincipalRefusal) error {
+	detail := PrincipalRefusalDetail(name, refusal)
+	reason := "delegation refused"
+	c.notices = append(c.notices, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: name, Action: "refused", Detail: detail, Reason: &reason, Refusal: refusal.Contract(), Principal: c.Principal.Record.Contract()}})
+	return failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail})
+}
+
+// refuseUnlessStanding holds a host tool with no source to a delegation that still stands (ADR-0029).
+func (c *SessionContext) refuseUnlessStanding(ctx context.Context, tool HostTool) error {
+	effect := ""
+	if tool.Taxonomy != nil {
+		effect = tool.Taxonomy.Effect
+	}
+	refusal, err := c.Principal.AdmitPrincipalStanding(ctx, tool.Name, effect)
+	if err != nil {
+		return err
+	}
+	if refusal != nil {
+		return c.delegationRefused(tool.Name, *refusal)
+	}
+	return nil
+}
+
+// runtimeDelegated admits an acting Runtime call as any act is (ADR-0029): refused outside the scope,
+// past expiry and after revocation, before it is asked and again before it runs, and counted only
+// immediately before the physical call.
+func (c *SessionContext) runtimeDelegated(ctx context.Context, name string, count bool) error {
+	if c.Principal == nil {
+		return nil
+	}
+	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, count)
+	if err != nil {
+		return err
+	}
+	if refusal != nil {
+		return &runtimeDelegationRefused{c.delegationRefused(name, *refusal)}
+	}
+	return nil
+}
+
+// runtimeDelegationRefused marks a refusal an approved call answers with, as a call of a source does.
+type runtimeDelegationRefused struct{ error }
+
+func (e *runtimeDelegationRefused) Unwrap() error { return e.error }
+
 func (c *SessionContext) PrepareRuntimeCall(ctx context.Context, name string, args json.RawMessage, callID string) (*RuntimeCall, error) {
 	if !c.RuntimeNeedsApproval(name) {
 		return nil, nil
@@ -93,6 +142,9 @@ func (c *SessionContext) PrepareRuntimeCall(ctx context.Context, name string, ar
 	}
 	if callID == "" {
 		callID = DataMarker()
+	}
+	if err := c.runtimeDelegated(ctx, name, false); err != nil {
+		return nil, err
 	}
 	clean, err := c.Output.JSON(args, "tool argument", true)
 	if err != nil {
@@ -172,7 +224,7 @@ func (r *RuntimeCall) Execute(ctx context.Context) (ToolResult, error) {
 					return err
 				}
 				return c.Authorize(ctx)
-			})
+			}, func() error { return c.runtimeDelegated(ctx, request.Name, true) })
 			if err != nil {
 				return ToolResult{}, err
 			}
@@ -197,6 +249,20 @@ func (c *SessionContext) resumeRuntimeCall(ctx context.Context, record contract.
 		return ToolResult{}, c.runtimeRefuse(record.Name, "The saved Runtime action has no current execution binding. Nothing was sent.")
 	}
 	if err := c.runtimeCheck(record.Name); err != nil {
+		return ToolResult{}, err
+	}
+	// As an approved call of a source: a refusal is the call's result, and the run continues with it.
+	result, err := c.resumeAdmittedRuntimeCall(ctx, record)
+	var refused *runtimeDelegationRefused
+	if errors.As(err, &refused) {
+		text, structured := failure.ToolFailure(refused.error)
+		value, _ := ParseJSON(structured)
+		return ResultOf([]Content{TextContent(text)}, value).WithIsError(true), nil
+	}
+	return result, err
+}
+func (c *SessionContext) resumeAdmittedRuntimeCall(ctx context.Context, record contract.CheckpointApproval) (ToolResult, error) {
+	if err := c.runtimeDelegated(ctx, record.Name, false); err != nil {
 		return ToolResult{}, err
 	}
 	args, _ := json.Marshal(record.Args)

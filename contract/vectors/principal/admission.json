@@ -1,0 +1,1468 @@
+{
+ "description": "Handwritten admissions (RFC 0030 §2, When admission happens; ADR-0029): one call of a delegated run immediately before dispatch, over the chains of chains.json, at the host's time now, with the host admission port answering answer (\"throw\" for a port that fails). expect is admit or the refusal; read is the index in items of the exact admission read the port is handed, or null where none is made. A refusal of steps 8 to 10 the port answers is reported before the package's own scope refusal, and that before the port's step 11 or 12; the calls count is asked only where the package's own checks held and the call is to be counted.",
+ "schema": "run-principal.json#/$defs/admissionRead",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (admitCall)",
+   "packages/harness/principal.test.ts"
+  ]
+ },
+ "items": [
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read-external",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "propose",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "wiki",
+    "tool": "search",
+    "effect": "pure",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "calendar",
+    "tool": "list",
+    "effect": "read",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "wiki",
+    "tool": "search",
+    "effect": "read",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "gateway",
+    "name": "gateway:test"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read-external",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "gateway",
+    "name": "gateway:staging"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read-external",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T07:59:59.999Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
+    "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
+    "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+   ],
+   "call": {
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "local",
+    "tool": "local_lookup",
+    "effect": "read",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "call": {
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act",
+    "count": false
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  },
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "audience": {
+    "kind": "agent-host",
+    "name": "desk"
+   },
+   "chain": [
+    "sha256:98494a48967b27e4c7311b10540b12457ea4dedec02b623c412b78e0dde23215"
+   ],
+   "call": {
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act",
+    "count": true
+   },
+   "at": "2026-10-30T01:00:00.000Z"
+  }
+ ],
+ "cases": [
+  {
+   "name": "a read within the scope, counted at its dispatch",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 0
+  },
+  {
+   "name": "an act within the scope",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 1
+  },
+  {
+   "name": "a check before an approval pause is not counted",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act"
+   },
+   "count": false,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 2
+  },
+  {
+   "name": "a tool the scope does not name",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "tool"
+   },
+   "read": 3
+  },
+  {
+   "name": "an effect the scope does not admit",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read-external"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "effect"
+   },
+   "read": 4
+  },
+  {
+   "name": "a proposal the scope does not admit",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "propose"
+   },
+   "count": false,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "effect"
+   },
+   "read": 5
+  },
+  {
+   "name": "a pure effect the scope does not admit, judged before the unknown limit",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "wiki",
+    "tool": "search",
+    "effect": "pure"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "effect"
+   },
+   "read": 6
+  },
+  {
+   "name": "a source the scope does not name",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "calendar",
+    "tool": "list",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "source"
+   },
+   "read": 7
+  },
+  {
+   "name": "a source-declared limit the package does not know",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "wiki",
+    "tool": "search",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "limit-unknown"
+   },
+   "read": 8
+  },
+  {
+   "name": "the calls limit, which the issuing host counts and answers",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "out-of-scope",
+    "reason": "limit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "limit"
+   },
+   "read": 9
+  },
+  {
+   "name": "a gateway source with no mapping on its declaration",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": null,
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read-external"
+   },
+   "count": false,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "source"
+   },
+   "read": null
+  },
+  {
+   "name": "a gateway source, checked without counting",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read-external"
+   },
+   "count": false,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 10
+  },
+  {
+   "name": "a gateway source under another authority",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:staging"
+    },
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read-external"
+   },
+   "count": false,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "source"
+   },
+   "read": 11
+  },
+  {
+   "name": "expired at the instant equal to expiresAt",
+   "chain": "root",
+   "now": "2026-10-30T08:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "expired"
+   },
+   "read": null
+  },
+  {
+   "name": "valid one millisecond before expiresAt",
+   "chain": "root",
+   "now": "2026-10-30T07:59:59.999Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 12
+  },
+  {
+   "name": "not yet valid one millisecond before issuedAt",
+   "chain": "root",
+   "now": "2026-10-29T23:59:59.999Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "not-yet-valid"
+   },
+   "read": null
+  },
+  {
+   "name": "a host time that cannot be read",
+   "chain": "root",
+   "now": null,
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": null
+  },
+  {
+   "name": "revoked: the issuing host answers revoked",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "revoked"
+   },
+   "expect": {
+    "name": "revoked"
+   },
+   "read": 13
+  },
+  {
+   "name": "revoked is reported before the package's own scope refusal",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "revoked"
+   },
+   "expect": {
+    "name": "revoked"
+   },
+   "read": 14
+  },
+  {
+   "name": "an actor no longer registered",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "agent-unregistered"
+   },
+   "expect": {
+    "name": "agent-unregistered"
+   },
+   "read": 15
+  },
+  {
+   "name": "a link the issuing host never recorded",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "not-issued"
+   },
+   "expect": {
+    "name": "not-issued"
+   },
+   "read": 16
+  },
+  {
+   "name": "the actor's software no longer the registered one",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "software-mismatch"
+   },
+   "expect": {
+    "name": "software-mismatch"
+   },
+   "read": 17
+  },
+  {
+   "name": "expired by the issuing host's clock",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "expired"
+   },
+   "expect": {
+    "name": "expired"
+   },
+   "read": 18
+  },
+  {
+   "name": "the package's own scope refusal is reported before the subject's standing",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "delete_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "subject-unauthorized"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "tool"
+   },
+   "read": 19
+  },
+  {
+   "name": "a subject that has lost the access since issuance",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "subject-unauthorized"
+   },
+   "expect": {
+    "name": "subject-unauthorized"
+   },
+   "read": 20
+  },
+  {
+   "name": "a person identity that is not the subject",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "subject-mismatch"
+   },
+   "expect": {
+    "name": "subject-mismatch"
+   },
+   "read": 21
+  },
+  {
+   "name": "an answer with a member beside the admission",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit",
+    "note": "ok"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 22
+  },
+  {
+   "name": "an answer naming a refusal the port does not give",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "credential-mismatch"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 23
+  },
+  {
+   "name": "an out-of-scope answer without its reason",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "refuse",
+    "refusal": "out-of-scope"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 24
+  },
+  {
+   "name": "a port that fails",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": "throw",
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 25
+  },
+  {
+   "name": "the child's narrower scope refuses a tool its parent admits",
+   "chain": "child",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "write_note",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "tool"
+   },
+   "read": 26
+  },
+  {
+   "name": "the child admits what it was narrowed to, every link named",
+   "chain": "child",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 27
+  },
+  {
+   "name": "the child expires with its own link before its parent",
+   "chain": "child",
+   "now": "2026-10-30T04:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "notes",
+    "tool": "read_note",
+    "effect": "read"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "expired"
+   },
+   "read": null
+  },
+  {
+   "name": "an acting Runtime call outside the scope, which names no source runtime",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "source"
+   },
+   "read": 29
+  },
+  {
+   "name": "an acting Runtime call a chain names, counted at its dispatch",
+   "chain": "runtimeRoot",
+   "now": "2026-10-30T01:00:00.000Z",
+   "call": {
+    "audience": {
+     "kind": "agent-host",
+     "name": "desk"
+    },
+    "source": "runtime",
+    "tool": "experimental_evaluate",
+    "effect": "act"
+   },
+   "count": true,
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 30
+  }
+ ],
+ "standing": [
+  {
+   "name": "a tool with no source under a chain that stands",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": "admit",
+   "read": 28
+  },
+  {
+   "name": "a tool with no source at the instant the chain expires",
+   "chain": "root",
+   "now": "2026-10-30T08:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "expired"
+   },
+   "read": null
+  },
+  {
+   "name": "a tool with no source before the chain is valid",
+   "chain": "root",
+   "now": "2026-10-29T23:59:59.999Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "not-yet-valid"
+   },
+   "read": null
+  },
+  {
+   "name": "a tool with no source after a revocation",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "refuse",
+    "refusal": "revoked"
+   },
+   "expect": {
+    "name": "revoked"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the subject no longer stands",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "refuse",
+    "refusal": "subject-unauthorized"
+   },
+   "expect": {
+    "name": "subject-unauthorized"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the port fails",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": "throw",
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source when the port answers another form",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "read",
+   "answer": {
+    "admission": "maybe"
+   },
+   "expect": {
+    "name": "admission-unknown"
+   },
+   "read": 28
+  },
+  {
+   "name": "a tool with no source and no effect it can name",
+   "chain": "root",
+   "now": "2026-10-30T01:00:00.000Z",
+   "tool": "local_lookup",
+   "effect": "unknown",
+   "answer": {
+    "admission": "admit"
+   },
+   "expect": {
+    "name": "out-of-scope",
+    "reason": "effect"
+   },
+   "read": null
+  }
+ ]
+}

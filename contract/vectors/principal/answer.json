@@ -1,0 +1,65 @@
+{
+ "description": "The host admission port's three answer forms (ADR-0029; the reference gateway's admission read answer, SPEC.md §11.5), which the package holds exactly; anything else is admission-unknown (admission.json's cases).",
+ "schema": "run-principal.json#/$defs/admissionAnswer",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (admitCall)"
+  ]
+ },
+ "items": [
+  {
+   "admission": "admit"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "revoked"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "expired"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "agent-unregistered"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "software-mismatch"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "not-issued"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "subject-mismatch"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "subject-unauthorized"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "out-of-scope",
+   "reason": "limit"
+  }
+ ],
+ "refused": [
+  {
+   "admission": "admit",
+   "note": "ok"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "out-of-scope"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "credential-mismatch"
+  }
+ ]
+}

@@ -115,6 +115,8 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
     'planning/policy.ts':['planningSession'],
     'testing/afterPolicy.ts':['afterPolicy.start']
    }
+   // ADR-0029: a durable root opens its delegation, refused by name, before its store is touched. That one read is admitted there, and nothing else of the raw input is.
+   if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return
    const allowed=admission[relative]?.includes(fn)&&(!['effort','thinking','criticReasoning'].includes(name)||relative==='context/session.ts'&&['resolveSessionPolicy','requestSession'].includes(fn))
    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
   }
@@ -188,6 +190,27 @@ export function probe(raw:AgentAssistantSession,assistant:AssistantSession,key:'
    expect(rawReasoningReads(directory,[path],snapshot).sort()).toEqual([
     'probe.ts:5:effort','probe.ts:6:effort','probe.ts:7:thinking',
     'probe.ts:8:criticReasoning','probe.ts:8:effort','probe.ts:9:effort','probe.ts:10:thinking','probe.ts:17:effort'
+   ].sort())
+  }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
+ })
+ it("admits a raw delegation read only in a durable root's admission, and no other raw member beside it",()=>{
+  const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'raw-delegation-')),path=join(directory,'storage','writer.ts'),other=join(directory,'probe.ts')
+  mkdirSync(join(directory,'storage'))
+  const source=(name:string)=>`import type {ContextInput} from ${JSON.stringify(join(harness,'context','session'))}
+export function ${name}(input:ContextInput){
+ void input.principal
+ void input.configuration
+}
+`
+  writeFileSync(path,source('durableSession')+source('another').split('\n').slice(1).join('\n'))
+  writeFileSync(other,source('durableSession'))
+  writeFileSync(join(directory,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,skipLibCheck:true,target:'ES2022',module:'ESNext',moduleResolution:'bundler'},files:['storage/writer.ts','probe.ts']}))
+  const api=new API({cwd:directory}),snapshot=api.updateSnapshot({openProjects:[join(directory,'tsconfig.json')]})
+  try{
+   expect(snapshot.getProjects()[0]!.program.getSemanticDiagnostics(path)).toEqual([])
+   expect(rawReasoningReads(directory,[path,other],snapshot).sort()).toEqual([
+    'storage/writer.ts:4:configuration','storage/writer.ts:7:principal','storage/writer.ts:8:configuration',
+    'probe.ts:3:principal','probe.ts:4:configuration'
    ].sort())
   }finally{snapshot.dispose();api.close();rmSync(directory,{recursive:true,force:true})}
  })

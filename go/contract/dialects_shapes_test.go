@@ -35,7 +35,7 @@ func TestDialectGeneratedInventoryNativeTuples(t *testing.T) {
 	properties["dialectDraftProbe"] = map[string]any{"$ref": "dialect-draft.json"}
 	defer delete(properties, "dialectDraftProbe")
 	native := func(draft any) error {
-		checkpoint := map[string]any{"version": 3, "id": "compatibility", "requestKey": "0000000000000000000000000000000000000000000000000000000000000000", "phase": "work", "status": "running", "unit": "model-requests", "used": 0, "limit": 20, "grants": []any{}, "plan": []any{}, "explanation": "", "operations": []any{}, "context": map[string]any{"scope": "compatibility", "entries": []any{}}, "dialectDraftProbe": draft}
+		checkpoint := map[string]any{"version": 4, "id": "compatibility", "requestKey": "0000000000000000000000000000000000000000000000000000000000000000", "phase": "work", "status": "running", "unit": "model-requests", "used": 0, "limit": 20, "grants": []any{}, "plan": []any{}, "explanation": "", "operations": []any{}, "context": map[string]any{"scope": "compatibility", "entries": []any{}}, "dialectDraftProbe": draft}
 		raw, err := json.Marshal(checkpoint)
 		if err != nil {
 			t.Fatal(err)

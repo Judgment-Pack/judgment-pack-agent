@@ -11,7 +11,7 @@ const MaxRunReportEvents = 400
 
 // Each intended source is copied whole, in recorded array order.
 var runReportSources = []string{"id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState"}
-var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers", "usageBudget", "turnRoute", "repeatTools"}
+var runReportExcluded = []string{"schema", "digest", "retainUntil", "records", "requestKey", "operations", "context", "testCalls", "durable", "handoff", "approval", "outputGuard", "memories", "draft", "policy", "crossProvider", "compaction", "steers", "usageBudget", "turnRoute", "repeatTools", "principal"}
 
 type RunReportInputInvalid struct{}
 
@@ -54,7 +54,7 @@ func runReportValue(checkpoint contract.Checkpoint) (*Value, error) {
 }
 
 func projectRepeatTools(value *Value) (*Value, error) {
-	if value.Get("version").Num() != 3 || !value.Has("repeatTools") {
+	if value.Get("version").Num() < 3 || !value.Has("repeatTools") {
 		return nil, nil
 	}
 	policy := value.Get("policy")
@@ -86,8 +86,13 @@ func ProjectRunReport(checkpoint contract.Checkpoint) (*Value, error) {
 		return nil, err
 	}
 	out := ObjectOf("version", Number(1), "checkpointVersion", value.Get("version").Clone())
-	if checkpoint.Version == 3 {
+	if checkpoint.Version >= 3 {
 		out.Set("version", Number(2))
+		// ADR-0029: checkpoint 4 (a delegated run's) is reported as version 3, with its principal.
+		if checkpoint.Version == 4 {
+			out.Set("version", Number(3))
+			out.Set("principal", value.Get("principal").Clone())
+		}
 		if route := value.Get("turnRoute"); route != nil {
 			out.Set("route", route.Clone())
 		}
