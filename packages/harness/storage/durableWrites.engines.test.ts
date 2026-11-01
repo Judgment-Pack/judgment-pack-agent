@@ -10,6 +10,7 @@ import { MemoryRunStore } from './run'
 import { deepagents } from '../engines/deepagents'
 import { vercel } from '../engines/vercel'
 import { ofType, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
+import { toolListDigest } from '../toolSources'
 import type { HostTool } from '../engine'
 
 /** One streamed turn whose call carries exactly the argument text given. */
@@ -31,6 +32,44 @@ async function run(engine: typeof vercel, calls: readonly string[], read = false
   })
   return { executed, answers: ofType(record.events, 'tool_result').map((event) => event.text), errors: ofType(record.events, 'error') }
 }
+
+/** One run of an act tool whose policy holds the call for the person, and what was asked and run. */
+async function heldForApproval(engine: typeof vercel, text: string) {
+  const executed: unknown[] = []
+  const declared = { name: 'change_record', description: 'Change one record', inputSchema: { type: 'object' }, taxonomy: { operation: 'act', effect: 'act' } as const }
+  const tool = {
+    ...declared, effectClass: 'act', approve: () => 'ask',
+    source: { kind: 'custom', id: 'tracker', trust: 'person', version: '1', toolListDigest: await toolListDigest([declared] as never), identity: { kind: 'connection', label: 'tracker' } },
+    execute: async (args: unknown) => { executed.push(args); return { content: [{ type: 'text' as const, text: 'ran' }] } }
+  } as unknown as HostTool
+  const record = await vercelTurn({
+    engine,
+    hostTools: [tool],
+    answer: (request: EndpointRequest) => streamed(request.number === 1 ? callFrame('call_1', 'tracker__change_record', text) : sseTurn({ text: 'Done.' })),
+    session: { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, runStore: { store: new MemoryRunStore(), id: 'held' } } }
+  })
+  return { executed, asked: ofType(record.events, 'approval_requested'), answers: ofType(record.events, 'tool_result').map((event) => event.text) }
+}
+
+describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('a call held for approval, through %s (#275)', (_name, engine) => {
+  // JSON.parse has read these already, so what the person would approve is not what the model wrote. Nobody is asked.
+  it.each([
+    ['a number out of range', '{"q":1e400}'],
+    ['past 2^53', '{"id":9007199254740993}'],
+    ['a lone surrogate', '{"q":"\\ud800"}']
+  ])('refuses before anyone is asked: %s', async (_label, text) => {
+    const out = await heldForApproval(engine, text)
+    expect(out.asked).toEqual([])
+    expect(out.executed).toEqual([])
+    expect(out.answers[0]).toContain('DurableRequestUnrecordable')
+  })
+
+  it('still asks for what it holds exactly', async () => {
+    const out = await heldForApproval(engine, '{"id":7}')
+    expect(out.asked).toHaveLength(1)
+    expect(out.executed).toEqual([])
+  })
+})
 
 describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('host writes under a run store, through %s (#275)', (_name, engine) => {
   it('refuses a write JSON.parse has rounded, rather than perform it on another id', async () => {

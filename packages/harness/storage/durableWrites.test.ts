@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { DurableRequestConflict, DurableRequestUnrecordable, HostOutcomeUnknown, RunWriter, compareDurableRequests, exactlyHeld, type DurableBinding } from './writer'
 import { MemoryRunStore } from './run'
+import { validDurable } from './durable'
 import { RECORD_DEFAULTS, sha256 } from '../records'
 import { canonicalJSON, exactArgumentsText } from '../context/chat'
 import { readHistoryRequestJSON } from '../history/codec'
@@ -18,6 +19,7 @@ import type { ExecutionCheckpoint } from '../execution/state'
 
 const vector = JSON.parse(readFileSync('../../contract/vectors/storage/durable-repeats.json', 'utf8')) as {
   cases: { label: string; recorded: string; request: string; decision: 'same' | 'different' | 'conflict' }[]
+  goCases: { label: string; recorded: string; request: string; decision: 'same' | 'different' | 'conflict' }[]
   recordable: { text: string; recordable: boolean }[]
   resume: Record<string, { call: string; outcome: string; answer?: string }[]>
   items: { kind: string; scope: unknown; source: string; tool: string; fingerprint: string; request: string; requestDigest: string }[]
@@ -38,7 +40,7 @@ async function setup(store: MemoryRunStore, id: string, resume = false) {
   const writer = new RunWriter(store, id, resume ? await store.load(id) : undefined), binding: DurableBinding = { writer, root: true, scope: { execution: id, role: 'author' } }
   writer.bind(() => writer.checkpoint ?? checkpoint(id), RECORD_DEFAULTS, () => undefined)
   const ran: string[] = []
-  const write = (text: string, read = false) => writer.invoke(binding, 'host', 'source', 'write', text, read, async (raw) => { ran.push(raw); return { content: [{ type: 'text', text: 'ran ' + raw }] } })
+  const write = (text: string, read = false, kind: 'host' | 'runtime' = 'host') => writer.invoke(binding, kind, 'source', 'write', text, read, async (raw) => { ran.push(raw); return { content: [{ type: 'text', text: 'ran ' + raw }] } })
   return { writer, binding, ran, write }
 }
 type Answer = { content: { text: string }[] }
@@ -77,20 +79,36 @@ describe('the decision over two requests that read alike (#275)', () => {
   })
 
   it.each(vector.recordable)('$text: recordable $recordable', async ({ text, recordable: held }) => {
-    for (const [read, store] of [[false, new MemoryRunStore()], [true, new MemoryRunStore()], [false, plainStore()], [true, plainStore()]] as const) {
+    for (const kind of ['host', 'runtime'] as const) for (const [read, store] of [[false, new MemoryRunStore()], [true, new MemoryRunStore()], [false, plainStore()], [true, plainStore()]] as const) {
       const { ran, write, writer } = await setup(store, 'recordable')
       if (held) {
-        await write(text, read)
+        await write(text, read, kind)
         expect(ran).toEqual([text])
       } else {
-        await expect(write(text, read)).rejects.toBeInstanceOf(DurableRequestUnrecordable)
+        await expect(write(text, read, kind)).rejects.toBeInstanceOf(DurableRequestUnrecordable)
         expect(ran).toEqual([])
         expect(writer.checkpoint?.durable?.dispatches ?? []).toEqual([])
         // The writer goes on: the next call runs and is recorded.
-        await write('{"next":1}', read)
+        await write('{"next":1}', read, kind)
         expect(ran).toEqual(['{"next":1}'])
       }
     }
+  })
+
+  // JSON.parse keeps a lone surrogate, so these never share a fingerprint here; the text twin holds Go's rule all the same.
+  it.each(vector.goCases.filter((row) => row.decision !== 'same'))('$label: not one write, though Go reads them alike', ({ recorded, request }) => {
+    expect(compareDurableRequests(recorded, request)).not.toBe('same')
+    expect(canonicalJSON(JSON.parse(recorded)), 'JSON.parse keeps them apart').not.toBe(canonicalJSON(JSON.parse(request)))
+  })
+
+  it('reads a book closed: a row with another fingerprint does not read', () => {
+    const book = (JSON.parse(published['v0.12.0']!) as { durable: { dispatches: { kind: string; fingerprint: string }[] } }).durable
+    expect(validDurable(book)).toBe(true)
+    const row = book.dispatches.find((held) => held.kind === 'host')!, honest = row.fingerprint
+    row.fingerprint = 'sha256:' + 'a'.repeat(64)
+    expect(validDurable(book)).toBe(false)
+    row.fingerprint = honest
+    expect(validDurable(book)).toBe(true)
   })
 
   it('reads the exactness of text as Go does: every row of the read-argument vector', () => {

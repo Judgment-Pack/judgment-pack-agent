@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -29,6 +30,77 @@ import (
 // failures the run itself ended with.
 func durableRun(t *testing.T, engine string, write bool, calls []string) (executed, answered, failures []string) {
 	t.Helper()
+	return durableRunOn(t, engine, write, true, calls)
+}
+
+// durableWires is every way a model's call reaches the Go boundary: the native adapter, whose host hands on
+// what the agent wrote; the API adapter on each family's stream and whole answer; and the text path, on an
+// endpoint that takes no native tool calls.
+var durableWires = []string{"native", "api", "api/openai-compatible/whole", "api/anthropic/sse", "api/anthropic/whole", "api/gemini/sse", "api/gemini/whole", "api/text"}
+
+// wireReply is one answer of the wire named: a call with exactly the argument text given, or, with none, the
+// final answer. Anthropic's stream splits the text in two, as a provider does.
+func wireReply(wire, id, name, arguments string) *http.Response {
+	sse := func(body string) *http.Response {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}
+	}
+	whole := func(body string) *http.Response {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
+	}
+	quoted := func(text string) string {
+		raw, _ := json.Marshal(text)
+		return string(raw)
+	}
+	switch wire {
+	case "api/openai-compatible/whole":
+		if arguments == "" {
+			return whole(`{"id":"c","object":"chat.completion","model":"fixture","choices":[{"index":0,"message":{"role":"assistant","content":"Done."},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+		}
+		return whole(`{"id":"c","object":"chat.completion","model":"fixture","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"` + id + `","type":"function","function":{"name":"` + name + `","arguments":` + quoted(arguments) + `}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	case "api/anthropic/whole":
+		if arguments == "" {
+			return whole(`{"id":"a","type":"message","role":"assistant","model":"fixture","content":[{"type":"text","text":"Done."}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+		}
+		return whole(`{"id":"a","type":"message","role":"assistant","model":"fixture","content":[{"type":"tool_use","id":"` + id + `","name":"` + name + `","input":` + arguments + `}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":1}}`)
+	case "api/anthropic/sse":
+		event := func(name, data string) string { return "event: " + name + "\ndata: " + data + "\n\n" }
+		head := event("message_start", `{"type":"message_start","message":{"id":"a","usage":{"input_tokens":1,"output_tokens":0}}}`)
+		tail := func(reason string) string {
+			return event("message_delta", `{"type":"message_delta","delta":{"stop_reason":"`+reason+`"},"usage":{"output_tokens":1}}`) + event("message_stop", `{"type":"message_stop"}`)
+		}
+		if arguments == "" {
+			return sse(head + event("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`) + event("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}`) + event("content_block_stop", `{"type":"content_block_stop","index":0}`) + tail("end_turn"))
+		}
+		half := len(arguments) / 2
+		delta := func(text string) string {
+			return event("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":`+quoted(text)+`}}`)
+		}
+		return sse(head + event("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"`+id+`","name":"`+name+`","input":{}}}`) + delta(arguments[:half]) + delta(arguments[half:]) + event("content_block_stop", `{"type":"content_block_stop","index":0}`) + tail("tool_use"))
+	case "api/gemini/whole", "api/gemini/sse":
+		body := `{"candidates":[{"content":{"role":"model","parts":[{"text":"Done."}]},"finishReason":"STOP"}]}`
+		if arguments != "" {
+			body = `{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"` + id + `","name":"` + name + `","args":` + arguments + `}}]},"finishReason":"STOP"}]}`
+		}
+		if wire == "api/gemini/sse" {
+			return sse("data: " + body + "\n\n")
+		}
+		return whole(body)
+	case "api/text":
+		if arguments == "" {
+			return quarantineFinal()
+		}
+		fence := "```json\n{\"tool\":\"" + name + "\",\"arguments\":" + arguments + "}\n```"
+		return sse(`data: {"id":"fixture","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":` + quoted(fence) + `},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n")
+	}
+	if arguments == "" {
+		return quarantineFinal()
+	}
+	return readKeyCall(id, name, arguments)
+}
+
+// durableRunOn is durableRun on the wire named, with a run store or without one.
+func durableRunOn(t *testing.T, engine string, write, stored bool, calls []string) (executed, answered, failures []string) {
+	t.Helper()
 	tool := runcontext.HostTool{
 		Name: "change_record", Description: "change_record: change one record", Effect: "workflow",
 		InputSchema: json.RawMessage(`{"type":"object"}`),
@@ -45,8 +117,17 @@ func durableRun(t *testing.T, engine string, write bool, calls []string) (execut
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})
 	store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
-	input := &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Change it.", Input: "Change it."}, Connection: "provider", ConnectionRevisions: map[string]string{"provider": "one"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "durable-writes"}}
-	r := &adapter.Run{Prompt: "Change it.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), HostTools: []runcontext.HostTool{tool}, Context: input,
+	input := &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Change it.", Input: "Change it."}}
+	if stored {
+		input.Connection, input.ConnectionRevisions, input.RunStore = "provider", map[string]string{"provider": "one"}, &runcontext.DurableRunInput{Store: store, ID: "durable-writes"}
+	}
+	family := "openai-compatible"
+	for _, name := range []string{"anthropic", "gemini"} {
+		if strings.Contains(engine, name) {
+			family = name
+		}
+	}
+	r := &adapter.Run{Prompt: "Change it.", Wire: family, ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), HostTools: []runcontext.HostTool{tool}, Context: input,
 		Emit: func(e contract.RunEvent) {
 			if e.ToolResult != nil {
 				answered = append(answered, e.ToolResult.Text)
@@ -85,9 +166,13 @@ func durableRun(t *testing.T, engine string, write bool, calls []string) (execut
 		r.Model = func(_ context.Context, _ string, _ relay.Request) (*http.Response, error) {
 			requests++
 			if requests > len(calls) {
-				return quarantineFinal(), nil
+				return wireReply(engine, "", "", ""), nil
 			}
-			return readKeyCall(fmt.Sprintf("call-%d", requests), tool.Name, calls[requests-1]), nil
+			return wireReply(engine, fmt.Sprintf("call-%d", requests), tool.Name, calls[requests-1]), nil
+		}
+		if engine == "api/text" {
+			off := false
+			r.Capabilities = &contract.CapabilityEndpointCapabilities{NativeToolCalls: &off}
 		}
 	}
 	if err := implementation.Run(context.Background(), r); err != nil {
@@ -160,7 +245,7 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		// Each row is looked at: the record that is this write is found past one that only reads alike.
 		{"the first of two neighbours again", []string{big, near, big, near}, []string{big, near}, []string{ran(big), ran(near), ran(big), ran(near)}},
 	} {
-		for _, engine := range []string{"native", "api"} {
+		for _, engine := range durableWires {
 			t.Run(engine+"/"+row.name, func(t *testing.T) {
 				executed, answered, failures := durableRun(t, engine, true, row.calls)
 				checkDurableRun(t, executed, answered, failures, row.ran, row.answers)
@@ -173,12 +258,38 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 // to end the run here too; now the model reads the refusal and the run goes on.
 func TestADurableReadIsRefusedOnlyWhereItCannotBeRecorded(t *testing.T) {
 	ran := func(call string) string { return "ran " + call }
-	for _, engine := range []string{"native", "api"} {
+	for _, engine := range durableWires {
 		t.Run(engine, func(t *testing.T) {
 			calls := []string{`{"q":1.0}`, `{"q":1}`, `{"id":9007199254740993}`, `{"id":9007199254740992}`, `{"q":1e400}`, `{"a":1,"a":2}`, `{"id":7}`}
 			executed, answered, failures := durableRun(t, engine, false, calls)
 			checkDurableRun(t, executed, answered, failures, []string{calls[0], calls[1], calls[2], calls[3], calls[6]},
 				[]string{ran(calls[0]), ran(calls[1]), ran(calls[2]), ran(calls[3]), unrecordable, unrecordable, ran(calls[6])})
 		})
+	}
+}
+
+// The model's text reaches the tool on every wire, read or write, with a run store or without one. The readers
+// used to rewrite Anthropic's and Gemini's arguments from float64s, so the tool ran 9007199254740992 for
+// 9007199254740993, null for 1e400, and 0 for 1e-400, which is the consumer's nested limit reaching its
+// decoder as a value it accepts.
+func TestEveryWireHandsTheToolTheModelsText(t *testing.T) {
+	for _, engine := range durableWires {
+		for _, write := range []bool{true, false} {
+			for _, stored := range []bool{true, false} {
+				t.Run(fmt.Sprintf("%s/write=%v/stored=%v", engine, write, stored), func(t *testing.T) {
+					calls := []string{`{"id":9007199254740993}`, `{"limits":{"searches":1e-400}}`, `{"q":1.0}`, `{"q":"a\u00e9"}`, `{"b":2,"a":1}`, `{ "c" : 3 }`}
+					if !stored {
+						calls = append(calls, `{"q":1e400}`, `{"a":1,"a":2}`)
+					}
+					executed, answered, failures := durableRunOn(t, engine, write, stored, calls)
+					if len(failures) != 0 || len(answered) != len(calls) {
+						t.Fatalf("answered %q, failures %q", answered, failures)
+					}
+					if fmt.Sprint(executed) != fmt.Sprint(calls) {
+						t.Fatalf("the tool ran %q, the model wrote %q", executed, calls)
+					}
+				})
+			}
+		}
 	}
 }

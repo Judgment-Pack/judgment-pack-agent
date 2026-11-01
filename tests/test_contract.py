@@ -787,6 +787,40 @@ class VectorTests(unittest.TestCase):
         self.assertTrue(any(not scalar(item["tool"]) for item in vector["items"]))
         self.assertTrue(any(not all(scalar(name) for name in item["arguments"]) for item in vector["items"]))
 
+    def test_the_published_approvals_hold_only_the_parsed_form(self):
+        # #275: what v0.12.0 kept of a call held for approval is its parsed form, and the model's text is gone.
+        # Each checkpoint reads again here, and what an approved call may run with follows from args alone.
+        doc = load(CONTRACT / "testdata" / "durable-writes" / "published-approvals.json")
+        self.assertEqual(set(doc["checkpoints"]), set(doc["calls"]))
+
+        def says(held):
+            # Nothing the parsed form may have changed: an integer a float64 holds, and no null, zero or U+FFFD.
+            if held is None:
+                return False
+            if isinstance(held, bool):
+                return True
+            if isinstance(held, (int, float)):
+                return held != 0 and held == int(held) and abs(held) <= 2 ** 53 - 1
+            if isinstance(held, str):
+                return chr(0xFFFD) not in held
+            if isinstance(held, list):
+                return all(says(item) for item in held)
+            return all(says(name) and says(item) for name, item in held.items())
+        ran = {"ordinary", "ordinary, native", "a spelling a row recorded"}
+        for name, text in doc["checkpoints"].items():
+            with self.subTest(checkpoint=name):
+                checkpoint = json.loads(text)
+                self.assertEqual(checkpoint["version"], 2)
+                approval = checkpoint["approval"]
+                self.assertEqual(approval["state"], "asked")
+                self.assertNotIn("request", approval)
+                self.assertEqual(says(approval["args"]), name in ran)
+                # What the model wrote is not in the record, and the parsed form is another number or the same.
+                held = json.loads(doc["calls"][name]["held"], parse_float=str, parse_int=str)
+                rows = [row for row in checkpoint.get("durable", {}).get("dispatches", []) if row["kind"] == "host"]
+                self.assertEqual([row["request"] for row in rows], doc["calls"][name]["allowed"])
+                self.assertTrue(held)
+
     def test_the_read_argument_outcomes_follow_from_each_text(self):
         # #271: a third reading of each case, from its text alone. Go gets no key unless the text is one
         # object with no repeated name and every number written as JSON.stringify writes its value;
@@ -962,12 +996,35 @@ class VectorTests(unittest.TestCase):
                     raise ValueError(names)
                 return dict(pairs)
             try:
-                return isinstance(json.loads(text, parse_int=number, parse_float=number, object_pairs_hook=members), dict)
+                held = json.loads(text, parse_int=number, parse_float=number, object_pairs_hook=members)
+                return isinstance(held, dict) and not holds_lone(held)
             except ValueError:
                 return False
 
+        def lone(point):
+            return 0xD800 <= ord(point) <= 0xDFFF
+
+        def holds_lone(held):
+            if isinstance(held, str):
+                return any(lone(point) for point in held)
+            if isinstance(held, list):
+                return any(holds_lone(item) for item in held)
+            if isinstance(held, dict):
+                return any(holds_lone(name) or holds_lone(item) for name, item in held.items())
+            return False
+
+        def as_go_reads(held):
+            # ParseJSON reads a lone surrogate as a replacement character.
+            if isinstance(held, str):
+                return "".join(chr(0xFFFD) if lone(point) else point for point in held)
+            if isinstance(held, list):
+                return [as_go_reads(item) for item in held]
+            if isinstance(held, dict):
+                return {as_go_reads(name): as_go_reads(item) for name, item in held.items()}
+            return held
+
         def values(text):
-            return json.loads(text, parse_int=decimal.Decimal, parse_float=decimal.Decimal)
+            return as_go_reads(json.loads(text, parse_int=decimal.Decimal, parse_float=decimal.Decimal))
 
         def reading(text):
             # As ParseJSON reads it and JSON.stringify writes it: floats, the last of a repeated name.
@@ -986,7 +1043,8 @@ class VectorTests(unittest.TestCase):
             return write(values(text))
 
         kinds = set()
-        for case in vector["cases"]:
+        self.assertTrue(vector["goCases"])
+        for case in vector["cases"] + vector["goCases"]:
             with self.subTest(case=case["label"]):
                 recorded, request = case["recorded"], case["request"]
                 self.assertEqual(reading(recorded), reading(request))
@@ -1027,6 +1085,7 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(row["requestDigest"], "sha256:" + sha256(row["request"]))
         # The escape rows hold a real backslash.
         self.assertTrue(any(chr(0x5c) + "u0061" in case["recorded"] for case in vector["cases"]))
+        self.assertTrue(any(chr(0x5c) + "ud800" in case["request"] for case in vector["goCases"]))
 
         # Each published checkpoint: every row's digest and fingerprint again, and the resume's premises.
         published = load(CONTRACT / "testdata" / "durable-writes" / "published-checkpoints.json")["checkpoints"]

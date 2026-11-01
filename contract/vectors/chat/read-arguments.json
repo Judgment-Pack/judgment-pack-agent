@@ -531,6 +531,18 @@
         "canonical": "{\"arguments\":{\"ID\":1,\"name\":2},\"tool\":\"lookup\"}",
         "sha256": "4984d2c3fd31a88878ed46fa46a5b4a6316623512235cfe2673c3e51a1f943c4"
       }
+    },
+    {
+      "label": "an object in an array",
+      "text": "{\"a\":[{\"b\":1}]}",
+      "go": {
+        "canonical": "{\"arguments\":{\"a\":[{\"b\":1}]},\"tool\":\"lookup\"}",
+        "sha256": "6869a048cd0c6cefdea3d1c32b9a8b28b6099fe0e2c4b980f939132425b09871"
+      },
+      "typescript": {
+        "canonical": "{\"arguments\":{\"a\":[{\"b\":1}]},\"tool\":\"lookup\"}",
+        "sha256": "6869a048cd0c6cefdea3d1c32b9a8b28b6099fe0e2c4b980f939132425b09871"
+      }
     }
   ],
   "items": [

@@ -9,6 +9,8 @@ import {MemoryRunStore,type RunStore} from './run'
 import {AIFailureError,failure} from '../failures'
 import {ReauthorizationRequired,ReferenceEffectHost,certifyEffectHost,effectAdmission,fenceOf,fencedRunStore,reauthorizationOf,reauthorizationRequired,unattendedRunStore,type CredentialRefusal,type EffectAdmission,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
 import {ResumeRefused} from './resume'
+import {DurableRequestConflict,DurableRequestUnrecordable,HostOutcomeUnknown,RunWriter,hostSucceeded,type DurableBinding} from './writer'
+import {RECORD_DEFAULTS} from '../records'
 import {REAUTH_REFUSAL_REASONS,ReauthorizationRefused,readReauthAction,readReauthDisposition,readReauthRefusal,readReauthorized,reauthActionDigest,reauthDispositionDigest,reauthorize} from './reauth'
 import {exportWaits,holdsNeverAdmitted,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,waitReport,type WaitClaim,type WaitLifetime,type WakeEvidence} from './wait'
 import dispositionVector from '../../../contract/vectors/reauth/disposition.json'
@@ -614,5 +616,53 @@ describe('#226 M9: host-authored text stays out of the records',()=>{
   for(const actor of [`Bearer ${TOKEN} ${PRINCIPAL}`,PRINCIPAL,'a'.repeat(65)])await expect(resumeParked({...input,reauthorization:action({actor})})).rejects.toEqual(reauthRefusal('invalid'))
   expect(JSON.stringify(await exportWaits(r.store,'run-r')).includes(TOKEN)).toBe(false)
   expect((await r.store.readWait('run-r','wait-r'))!.state).toBe('woken')
+ })
+})
+
+describe('#275: a re-send over a row a Go writer wrote: the grant is for the bytes that were refused',()=>{
+ const scope={execution:'run-r',role:'author'}
+ const checkpointOf=(id:string)=>({version:2,id,requestKey:'a'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:0,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'fixture',entries:[]}}) as never
+ const writerOn=async(store:RunStore,resume:boolean)=>{
+  const writer=new RunWriter(store,'run-r',resume?await store.load('run-r'):undefined),binding:DurableBinding={writer,root:true,scope}
+  writer.bind(()=>writer.checkpoint??checkpointOf('run-r'),RECORD_DEFAULTS,()=>undefined)
+  const ran:string[]=[]
+  return {ran,write:(text:string,recordable=true)=>writer.invoke(binding,'host','tracker','create_issue',text,false,async raw=>{ran.push(raw);return {content:[{type:'text',text:'ran '+raw}]}},hostSucceeded,()=>[],undefined,undefined,undefined,undefined,undefined,recordable)}
+ }
+ const refusedAs=async(text:string)=>{
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),{state,host}=credentialHost(store)
+  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:host})
+  await (await writerOn(view,false)).write(text).catch(()=>undefined)
+  await parkRun(parkInput(store,fenceOf(a),reauthorizationOf(view)!))
+  clock.at=T0+3*MINUTE;await wakeRun(store,wake)
+  const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current:await unchanged(store,'run-r','wait-r'),reauthorization:action()})
+  state.refusal=undefined
+  return {store,continued:await reauthorizedRunStore({store,effectHost:host,resumed})}
+ }
+ const answered=(out:unknown)=>(out as {content:{text:string}[]}).content[0]!.text
+ const MAX='{"id":9007199254740992}',PAST='{"id":9007199254740993}'
+ // Each is what this writer would hand over for the model's call: a rounded number is not recordable, whatever else it is.
+ it.each([
+  ['a number JSON.parse rounded, beside the row of what the model wrote',PAST,MAX,false,DurableRequestUnrecordable],
+  ['another spelling of the row\'s value',  '{"q":1.0}','{"q":1}',true,DurableRequestConflict],
+  ['negative zero',  '{"q":-0}','{"q":0}',true,DurableRequestConflict],
+  ['the row\'s own bytes, from a number JSON.parse rounded',MAX,MAX,false,HostOutcomeUnknown],
+  ['the row\'s values, in another order and whitespace',' { "b" : 2 , "a" : 1 } ','{"a":1,"b":2}',true,HostOutcomeUnknown],
+ ] as const)('%s: nothing is sent, the row keeps its failure, and the grant stands',async(_label,row,sent,recordable,refusal)=>{
+  const {store,continued}=await refusedAs(row),{ran,write}=await writerOn(continued,true)
+  await expect(write(sent,recordable)).rejects.toBeInstanceOf(refusal)
+  expect(ran).toEqual([])
+  expect(await hostRows(store)).toEqual([expect.objectContaining({state:'unknown',failure:expect.objectContaining({outcome:'not-started'})})])
+  expect(answered(await write(row))).toBe('ran '+row)
+  expect(ran).toEqual([row])
+  expect((await hostRows(store)).map(held=>held.state)).toEqual(['result'])
+ })
+ it('different numbers are another write: its own row and identity, and the grant stands',async()=>{
+  const {store,continued}=await refusedAs('{"q":1e-400}'),{ran,write}=await writerOn(continued,true)
+  expect(answered(await write('{"q":0}'))).toBe('ran {"q":0}')
+  expect((await hostRows(store)).map(held=>held.state)).toEqual(['unknown','result'])
+  expect(answered(await write('{"q":1e-400}'))).toBe('ran {"q":1e-400}')
+  expect(ran).toEqual(['{"q":0}','{"q":1e-400}'])
+  expect((await hostRows(store)).map(held=>held.state)).toEqual(['result','result'])
  })
 })

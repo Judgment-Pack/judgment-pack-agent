@@ -137,6 +137,7 @@ type hostRow struct {
 	ID      string         `json:"id"`
 	Kind    string         `json:"kind"`
 	State   string         `json:"state"`
+	Request string         `json:"request"`
 	Failure map[string]any `json:"failure"`
 }
 
@@ -549,20 +550,26 @@ func TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent(t *testing.T)
 }
 
 // The grant is for the request that was refused, byte for byte: the effect host admits that request's digest,
-// and the tool runs the bytes the call wrote. Arguments that only read alike (#271, #275) share the row's
-// fingerprint, and sending them would run another request under the refused one's identity. They send nothing,
-// the row keeps its typed failure, and the grant stays for the request itself.
+// and the tool runs the bytes the call wrote. So other bytes never run under the refused identity. A re-send that
+// is not those bytes gets what any call gets from the row (#275): an exact variant is this write, and is answered
+// HostOutcomeUnknown; the same values written differently are refused with DurableRequestConflict; different
+// numbers are another write, which runs under an identity of its own. Each way the refused row keeps its typed
+// failure and the grant stays, and the request itself then runs once, on its own row.
 func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
-	cases := map[string][2]string{
-		"past what a float64 holds": {`{"id":9007199254740992}`, `{"id":9007199254740993}`},
-		"another spelling":          {`{"id":1}`, `{"id":1.0}`},
-		"a repeated name":           {`{"id":2}`, `{"id":1,"id":2}`},
-		"whitespace":                {`{"id":1}`, `{ "id": 1 }`},
+	cases := map[string]struct {
+		refused, sent string
+		answer        string
+	}{
+		"past what a float64 holds": {`{"id":9007199254740992}`, `{"id":9007199254740993}`, ""},
+		"another spelling":          {`{"id":1}`, `{"id":1.0}`, "DurableRequestConflict"},
+		"a repeated name":           {`{"id":2}`, `{"id":1,"id":2}`, "DurableRequestConflict"},
+		"whitespace":                {`{"id":1}`, `{ "id": 1 }`, "HostOutcomeUnknown"},
+		"member order":              {`{"a":1,"b":2}`, `{"b":2,"a":1}`, "HostOutcomeUnknown"},
 	}
 	for _, engine := range hostEngines {
 		for name, held := range cases {
 			t.Run(engine+"/"+name, func(t *testing.T) {
-				s := hostRefusedWith(t, engine, held[0], nil, nil)
+				s := hostRefusedWith(t, engine, held.refused, nil, nil)
 				ran := []string{}
 				inner := s.tool.Execute
 				s.tool.Execute = func(ctx context.Context, raw json.RawMessage) (runcontext.ToolResult, error) {
@@ -571,17 +578,36 @@ func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
 				}
 				resumed := s.claimed(t)
 				view := s.viewOf(t, resumed, s.host)
-				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held[1]})
-				if len(ran) != 0 {
-					t.Fatalf("other bytes ran under the refused request's identity: %q", ran)
-				}
+				out := runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held.sent})
 				rows := hostRows(t, s.store, "run-r")
-				if len(rows) != 1 || rows[0].State != "unknown" || rows[0].Failure["outcome"] != "not-started" {
+				if held.answer != "" {
+					if len(ran) != 0 {
+						t.Fatalf("other bytes ran: %q", ran)
+					}
+					if len(rows) != 1 {
+						t.Fatalf("the rows: %+v", rows)
+					}
+					answered := false
+					for _, event := range out.events {
+						if event.ToolResult != nil && strings.Contains(event.ToolResult.Text, held.answer) {
+							answered = true
+						}
+					}
+					if !answered {
+						t.Fatalf("not answered %s: %+v", held.answer, out.events)
+					}
+				} else if len(ran) != 1 || ran[0] != held.sent || len(rows) != 2 || rows[1].Request != held.sent || rows[1].State != "result" {
+					t.Fatalf("another write runs on its own row: ran %q, rows %+v", ran, rows)
+				}
+				if rows[0].Request != held.refused || rows[0].State != "unknown" || rows[0].Failure["outcome"] != "not-started" {
 					t.Fatalf("the refused row: %+v", rows)
 				}
-				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held[0]})
-				if len(ran) != 1 || ran[0] != held[0] {
+				_ = runHostTool(t, view, "run-r", engine, true, nil, s.tool, []string{held.refused})
+				if len(ran) == 0 || ran[len(ran)-1] != held.refused {
 					t.Fatalf("the refused request itself: %q", ran)
+				}
+				if rows := hostRows(t, s.store, "run-r"); rows[0].State != "result" {
+					t.Fatalf("the refused row after its grant: %+v", rows)
 				}
 			})
 		}

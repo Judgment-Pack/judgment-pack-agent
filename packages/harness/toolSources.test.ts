@@ -1266,6 +1266,38 @@ describe('Gateway descriptor snapshot source pins (agent#168)', () => {
     expect(ran).toBe(0)
     expect(resumed.notices).toHaveLength(1)
   })
+  it('runs an approved call by what a Go writer kept of it, and refuses what it cannot hold as the person saw it (#275)', async () => {
+    const seen: unknown[] = []
+    const { book } = bookOf()
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const }))
+    const { gate, notices } = await gateFor(tools, {}, false, book)
+    const entry = gate.entries.get('ado__update_work_item')!
+    const run = async (args: unknown) => { seen.push(args); return { content: [] } }
+    const record = (args: Record<string, unknown>, request?: string): ApprovalRecord => ({ callId: 'held', name: 'ado__update_work_item', tool: entry.record.tool!, source: entry.record, args, state: 'approved', ...(request === undefined ? {} : { request }) })
+    expect((await gate.approved(record({ id: 7, state: 'Done' }, ' { "state" : "Done" , "id" : 7 } '), signal(), run)).ran).toBe(true)
+    expect(seen).toEqual([{ id: 7, state: 'Done' }])
+    for (const [args, request] of [
+      [{ id: 9007199254740992 }, '{"id":9007199254740993}'],
+      [{ id: 9007199254740992 }, '{"id":9007199254740992}'],
+      [{ id: 1 }, '{"id":1.0}'],
+      [{ q: null }, '{"q":1e400}'],
+      [{ a: 2 }, '{"a":1,"a":2}'],
+      [{ id: 7 }, '{"id":8}'],
+      [{ id: 7 }, '{bad']
+    ] as const) {
+      seen.length = 0
+      const answer = await gate.approved(record(args, request), signal(), run)
+      expect(answer.ran, request).toBe(false)
+      expect(seen).toEqual([])
+      expect(notices.at(-1)).toMatchObject({ reason: 'approval stale' })
+    }
+  })
+  it('reads a kept request closed: a string, only beside its parsed form, never on a Runtime call (#275)', () => {
+    const record = { callId: 'held', name: 'ado__update_work_item', tool: 'update_work_item', source: { kind: 'mcp', id: 'ado', trust: 'public' }, args: {}, state: 'asked' }
+    expect(validApproval(record)).toBe(true)
+    expect(validApproval({ ...record, request: ' {} ' })).toBe(true)
+    for (const request of ['', 5, null, {}]) expect(validApproval({ ...record, request })).toBe(false)
+  })
   it('keeps decision failures sticky across source tools and approved calls for changed, malformed and errored observations', async () => {
     for (const kind of ['changed', 'malformed', 'error']) {
       let broken = true, ran = 0

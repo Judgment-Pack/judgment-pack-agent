@@ -36,6 +36,7 @@ type durableResumeCall struct {
 
 type durableRepeatVector struct {
 	Cases      []durableRepeatCase `json:"cases"`
+	GoCases    []durableRepeatCase `json:"goCases"`
 	Recordable []struct {
 		Text       string `json:"text"`
 		Recordable bool   `json:"recordable"`
@@ -84,7 +85,10 @@ func runs(ran *[]string) func([]byte) (ToolResult, error) {
 func TestTheDurableRepeatVector(t *testing.T) {
 	ctx := context.Background()
 	vector := readDurableRepeats(t)
-	for _, item := range vector.Cases {
+	if len(vector.GoCases) == 0 {
+		t.Fatal("the vector has no Go cases")
+	}
+	for _, item := range append(append([]durableRepeatCase{}, vector.Cases...), vector.GoCases...) {
 		t.Run(item.Label, func(t *testing.T) {
 			left, err := durableFingerprint("host", durableScope, "source", "write", []byte(item.Recorded))
 			if err != nil {
@@ -154,25 +158,27 @@ func TestTheDurableRecordableVector(t *testing.T) {
 	}{{"history store", func() RunStore { return NewMemoryRunStore(MemoryRunStoreOptions{}) }}, {"plain store", func() RunStore { return plainRunStore{NewMemoryRunStore(MemoryRunStoreOptions{})} }}} {
 		for _, read := range []bool{false, true} {
 			for _, item := range vector.Recordable {
-				t.Run(fmt.Sprintf("%s/read=%v/%s", store.name, read, item.Text), func(t *testing.T) {
-					binding := durableWriter(t, store.make(), "recordable", false)
-					ran := []string{}
-					_, err := InvokeDurable(ctx, binding, "host", "source", "write", []byte(item.Text), read, runs(&ran), nil, nil)
-					if item.Recordable {
-						if err != nil || len(ran) != 1 {
+				for _, kind := range []string{"host", "runtime"} {
+					t.Run(fmt.Sprintf("%s/%s/read=%v/%s", store.name, kind, read, item.Text), func(t *testing.T) {
+						binding := durableWriter(t, store.make(), "recordable", false)
+						ran := []string{}
+						_, err := InvokeDurable(ctx, binding, kind, "source", "write", []byte(item.Text), read, runs(&ran), nil, nil)
+						if item.Recordable {
+							if err != nil || len(ran) != 1 {
+								t.Fatalf("ran %q, %v", ran, err)
+							}
+							return
+						}
+						var refused *DurableRequestUnrecordable
+						if !errors.As(err, &refused) || len(ran) != 0 || len(binding.Writer.book.Dispatches) != 0 {
 							t.Fatalf("ran %q, %v", ran, err)
 						}
-						return
-					}
-					var refused *DurableRequestUnrecordable
-					if !errors.As(err, &refused) || len(ran) != 0 || len(binding.Writer.book.Dispatches) != 0 {
-						t.Fatalf("ran %q, %v", ran, err)
-					}
-					// The writer goes on: the next call runs and is recorded.
-					if _, err := InvokeDurable(ctx, binding, "host", "source", "write", []byte(`{"next":1}`), read, runs(&ran), nil, nil); err != nil || len(ran) != 1 {
-						t.Fatalf("ran %q, %v", ran, err)
-					}
-				})
+						// The writer goes on: the next call runs and is recorded.
+						if _, err := InvokeDurable(ctx, binding, kind, "source", "write", []byte(`{"next":1}`), read, runs(&ran), nil, nil); err != nil || len(ran) != 1 {
+							t.Fatalf("ran %q, %v", ran, err)
+						}
+					})
+				}
 			}
 		}
 	}
@@ -344,5 +350,70 @@ func TestTwoWritesThatReadAlikeKeepTheirOwnRows(t *testing.T) {
 	rows := book.Get("dispatches").Items()
 	if len(rows) != 2 || rows[0].Get("fingerprint").Str() != rows[1].Get("fingerprint").Str() || rows[0].Get("request").Str() != calls[0] || rows[1].Get("request").Str() != calls[1] || rows[0].Get("requestDigest").Str() == rows[1].Get("requestDigest").Str() {
 		t.Fatalf("the rows are %s", book.Get("dispatches").Text())
+	}
+}
+
+// Bytes that are not UTF-8 decode as a replacement character, so two of them read alike, and neither says
+// what the other was.
+func TestRawBytesThatAreNotUTF8AreExactOnNeitherSide(t *testing.T) {
+	left, right := []byte("{\"q\":\"\xff\"}"), []byte("{\"q\":\"\xfe\"}")
+	if got := compareDurableRequests(left, right); got != durableConflict {
+		t.Fatalf("decided %v", got)
+	}
+	if got := compareDurableRequests(left, left); got != durableSame {
+		t.Fatalf("the same bytes decided %v", got)
+	}
+}
+
+// A book is read closed: a row's fingerprint is what its request says, whichever bytes the row holds, so
+// a row cannot be made to answer another write by writing another fingerprint on it.
+func TestABookWithAForgedFingerprintDoesNotRead(t *testing.T) {
+	var checkpoint struct {
+		Durable map[string]any `json:"durable"`
+	}
+	if err := json.Unmarshal([]byte(readPublishedCheckpoints(t)["v0.12.0"]), &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	read := func() bool {
+		raw, err := json.Marshal(checkpoint.Durable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ValidDurable(MustParseJSON(string(raw)))
+	}
+	if !read() {
+		t.Fatal("the published book does not read")
+	}
+	rows := checkpoint.Durable["dispatches"].([]any)
+	var row map[string]any
+	for _, held := range rows {
+		if held.(map[string]any)["kind"] == "host" {
+			row = held.(map[string]any)
+		}
+	}
+	honest := row["fingerprint"]
+	row["fingerprint"] = "sha256:" + strings.Repeat("a", 64)
+	if read() {
+		t.Fatal("a row with another fingerprint reads")
+	}
+	row["fingerprint"] = honest
+	if !read() {
+		t.Fatal("the honest row does not read")
+	}
+}
+
+// The binding of a call held for approval covers the text the person was shown, in both languages
+// (storage/resume.test.ts). A call that keeps no text binds as it always has.
+func TestAnApprovalBindingCoversTheKeptText(t *testing.T) {
+	text := `{"id":9007199254740993}`
+	approval := contract.CheckpointApproval{CallID: "held", Name: "tracker__create_issue", Tool: "create_issue", Source: contract.ToolOfferSourceRecord{Kind: "custom", ID: "tracker", Trust: "person"}, Args: map[string]json.RawMessage{"id": json.RawMessage(`9007199254740992`)}, State: "asked", Request: &text}
+	const want = "sha256:54a95b12cb74b5e1d6634512ec56ca79018b17db2ea2c6551ed165f440d19ce2"
+	binding, err := ApprovalBindingOf(approval)
+	if err != nil || binding.CallDigest != want {
+		t.Fatalf("%+v, %v", binding, err)
+	}
+	approval.Request = nil
+	if binding, err = ApprovalBindingOf(approval); err != nil || binding.CallDigest == want {
+		t.Fatalf("%+v, %v", binding, err)
 	}
 }

@@ -1890,9 +1890,10 @@ type CheckpointApproval struct {
 	Result    *ToolResultMCPToolResult          `json:"result,omitzero"`
 	Marker    *string                           `json:"marker,omitzero"`
 	Runtime   *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
+	Request   *string                           `json:"request,omitzero"`
 }
 
-var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker", "runtime"}
+var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker", "runtime", "request"}
 
 // UnmarshalJSON decodes a CheckpointApproval object and refuses a member the closed schema does not name.
 func (v *CheckpointApproval) UnmarshalJSON(data []byte) error {

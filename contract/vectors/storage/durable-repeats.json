@@ -1,5 +1,5 @@
 {
-  "description": "What a write that reads alike a recorded one is to that record (#275), written by hand. The dispatch fingerprint is published, persisted and re-derived when a book is read, and it digests the request as ParseJSON reads it, so two different writes can share one: a float64 holds 9007199254740993 and 9007199254740992 as one number. The published fingerprint does not change; the decision is made from the exact text every row records. cases: same is answered from the record and not run; different runs and makes its own record; conflict is refused with DurableRequestConflict, neither run nor answered. Each pair has one fingerprint. recordable: whether the durable record can hold a call's text as written; one it cannot is refused with DurableRequestUnrecordable before anything is claimed, unless a row a published release wrote answers it first. resume: each call, in order, on a run resumed from contract/testdata/durable-writes/published-checkpoints.json, and what it gets: its record, a run, a refusal, or HostOutcomeUnknown. items are dispatch rows as they are written. compareDurableRequests in go/context/run_writer.go and packages/harness/storage/writer.ts read every case, and tests/test_contract.py derives each decision from its text.",
+  "description": "What a write that reads alike a recorded one is to that record (#275), written by hand. The dispatch fingerprint is published, persisted and re-derived when a book is read, and it digests the request as ParseJSON reads it, so two different writes can share one: a float64 holds 9007199254740993 and 9007199254740992 as one number. The published fingerprint does not change; the decision is made from the exact text every row records. cases: same is answered from the record and not run; different runs and makes its own record; conflict is refused with DurableRequestConflict, neither run nor answered. Each pair has one fingerprint. recordable: whether the durable record can hold a call's text as written; one it cannot is refused with DurableRequestUnrecordable before anything is claimed, unless a row a published release wrote answers it first. goCases are the same, in Go only: ParseJSON reads a lone surrogate and a replacement character as one string, where JSON.parse keeps them apart, so in TypeScript these never share a fingerprint. A lone surrogate is exact on neither side. resume: each call, in order, on a run resumed from contract/testdata/durable-writes/published-checkpoints.json, and what it gets: its record, a run, a refusal, or HostOutcomeUnknown. items are dispatch rows as they are written. compareDurableRequests in go/context/run_writer.go and packages/harness/storage/writer.ts read every case, and tests/test_contract.py derives each decision from its text.",
   "schema": "checkpoint.json#/$defs/durableDispatch",
   "source": {
     "harness": {
@@ -203,6 +203,56 @@
       "recorded": "[1]",
       "request": " [1] ",
       "decision": "conflict"
+    },
+    {
+      "label": "the sign of an underflow",
+      "recorded": "{\"q\":-1e-400}",
+      "request": "{\"q\":1e-400}",
+      "decision": "different"
+    },
+    {
+      "label": "exact on one side only, a repeated name on the other",
+      "recorded": "{\"a\":{\"y\":2}}",
+      "request": "{\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+      "decision": "conflict"
+    }
+  ],
+  "goCases": [
+    {
+      "label": "a literal replacement character and a lone surrogate",
+      "recorded": "{\"q\":\"�\"}",
+      "request": "{\"q\":\"\\ud800\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "and the other way round, a lone surrogate",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"�\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "two lone surrogates",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"\\ud801\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "in a member name",
+      "recorded": "{\"�\":1}",
+      "request": "{\"\\ud800\":1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "inside a longer string",
+      "recorded": "{\"q\":\"x�y\"}",
+      "request": "{\"q\":\"x\\ud83dy\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "the same bytes, a lone surrogate a published row recorded",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"\\ud800\"}",
+      "decision": "same"
     }
   ],
   "recordable": [
