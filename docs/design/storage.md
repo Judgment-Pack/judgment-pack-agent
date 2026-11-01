@@ -355,20 +355,30 @@ systems.
 
 **Certifying an effect host.** `effectHostConformance(authority => host)` (Go
 `CheckEffectHostConformance`) hands the factory a lease authority the kit controls. The host must
-refuse, without performing, while that authority is unavailable (unavailable ownership evidence
-closes dispatch); admit a current fence once; and refuse, without performing, an identity it
-admitted before (also under a takeover's fence), another owner, a stale or forged epoch, a fence
-for another run than the operation's, a key that is not its operation's, an expired lease and a
-released one. `certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) calls the factory
-once, over an authority that answers from the kit until the checks pass and from `authority` for
-good after, and admits that exact instance. TypeScript reads its `dispatch` once, runs the kit
+refuse, without performing, every time that authority is unavailable (unavailable ownership evidence
+closes dispatch); admit a current fence once, also once the authority is back; and refuse, without
+performing, an identity it admitted before (also under a takeover's fence), another owner, a stale
+or forged epoch, a fence for another run than the operation's, a key that is not its operation's, an
+expired lease and a released one. The kit fails the authority at three points, before the first
+dispatch, right after a success, and between dispatches right after refusals, and at each of them
+ten times in a row: five retries of one operation and five new operations. A host must never degrade
+to performing, however long the authority is down: no retry budget, circuit breaker or last good
+answer opens dispatch. Those counts cannot prove that, and a host that detects the kit or changes
+later is beyond any behavioral kit.
+
+`certifyEffectHost(create, authority)` (Go `CertifyEffectHost`) calls the factory once, over an
+authority that answers from the kit until the checks pass and from `authority` for good after, and
+admits that exact instance. TypeScript reads its `dispatch` once, runs the kit
 through exactly that function and admits only that function, through a frozen wrapper that also
 refuses once the instance's `dispatch` is not it; Go returns a `*CertifiedEffectHost` whose
 identity, not its value, is the evidence. A `ReferenceEffectHost` is evidence when the package made
 it: in TypeScript its `dispatch` is sealed on the instance and its authority and admitted
 identities are private fields; in Go only the pointer `NewReferenceEffectHost` returned qualifies,
-not a copy of it. A subclass, or a type embedding it, is not evidence. Unattended
-admission accepts only these, and only when the authority they enforce against is the run's own
+not a copy of it. In TypeScript the class is final: constructing a subclass refuses
+`effect-host-unfenced`, because its `dispatch` and `effectFencing` are sealed on the instance and an
+override would never run. A host with behavior of its own delegates to a reference host and is
+certified. In Go a type embedding it is not evidence. Unattended admission accepts only these, and
+only when the authority they enforce against is the run's own
 store: a host over a no-op authority, over another store, or certified over another store is
 refused. A declared `effectFencing: 'enforced'` is never evidence. Nothing keeps an admitted host
 alive: there is no registry of hosts.
