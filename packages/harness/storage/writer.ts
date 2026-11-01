@@ -21,8 +21,8 @@ import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,isNeverAdmittedFailure,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {readingTool} from '../framing'
-import {canonicalJSON,exactArgumentsText} from '../context/chat'
-import {AIFailureError,failure,normalizeFailure} from '../failures'
+import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
+import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
@@ -49,11 +49,11 @@ export class HostOutcomeUnknown extends AIFailureError {constructor(){super({...
 export class DurableRequestConflict extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:'DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. Repeat that write exactly for its result; a different write needs different values.'});this.name='DurableRequestConflict'}}
 /**
  * A call whose arguments the durable record cannot hold as written (#275): a repeated member name, a
- * number that cannot be held exactly or a lone surrogate. Refused before anything is claimed, and the
+ * number out of range or past what JavaScript holds exactly, or a lone surrogate. Refused before anything is claimed, and the
  * run goes on. JSON.parse has already rounded a host write's integer past 2^53 and read 1e400 as
  * Infinity, so the write those arguments would run is not the one the model wrote (`exactlyHeld`).
  */
-export class DurableRequestUnrecordable extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:'DurableRequestUnrecordable: this call\'s arguments cannot be recorded as written: they hold a repeated member name, a number that cannot be held exactly or a lone surrogate. Nothing was run. Write them again without it.'});this.name='DurableRequestUnrecordable'}}
+export class DurableRequestUnrecordable extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:DURABLE_REQUEST_UNRECORDABLE});this.name='DurableRequestUnrecordable'}}
 export class ContinuationIdentityChanged extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:'ContinuationIdentityChanged: the admitted continuation identity differs.'});this.name='ContinuationIdentityChanged'}}
 /**
  * What a request with a recorded row's fingerprint is to that row (#275), from the exact text. The
@@ -71,11 +71,7 @@ export function compareDurableRequests(recorded:string,request:string):'same'|'d
  if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'
  try{return canonicalRepeatArgs(recorded)!==canonicalRepeatArgs(request)?'different':'conflict'}catch{return 'conflict'}
 }
-/** True where JSON.parse's reading of a value can be what the model wrote: no number it rounded past 2^53 or read as Infinity. Which decimals it rounded cannot be seen here. */
-export function exactlyHeld(value:unknown):boolean{
- if(typeof value==='number')return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))
- return value===null||typeof value!=='object'||Object.values(value).every(exactlyHeld)
-}
+export {exactlyHeld}
 const recordableRequest=(request:string)=>{try{readHistoryRequestJSON(request);return true}catch{return false}}
 export const durableOwner=Symbol('Agent durable writer')
 /** Trusted coordinator accounting, before the root dispatch claim is frozen. */

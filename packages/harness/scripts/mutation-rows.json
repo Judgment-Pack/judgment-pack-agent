@@ -10152,7 +10152,7 @@
 },
 {
   "name": "a number JSON.parse read as an infinity counts as held",
-  "file": "storage/writer.ts",
+  "file": "context/chat.ts",
   "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
   "replace": "return !Number.isInteger(value)||Number.isSafeInteger(value)",
   "tests": [
@@ -10164,7 +10164,7 @@
 },
 {
   "name": "an integer JSON.parse rounded counts as held",
-  "file": "storage/writer.ts",
+  "file": "context/chat.ts",
   "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
   "replace": "return Number.isFinite(value)",
   "tests": [
@@ -10176,7 +10176,7 @@
 },
 {
   "name": "arrays and objects are not looked inside for what JSON.parse lost",
-  "file": "storage/writer.ts",
+  "file": "context/chat.ts",
   "find": "return value===null||typeof value!=='object'||Object.values(value).every(exactlyHeld)",
   "replace": "return true",
   "tests": [
@@ -10797,6 +10797,210 @@
    "status": "caught",
    "origin": "agent#226",
    "note": "Go twin (by hand): the same mutant as reauth M1b, the one ctx.Err after the check; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$."
+  },
+  {
+   "name": "a lone surrogate in text counts as exact",
+   "file": "context/chat.ts",
+   "find": "===number)&&exactArguments(value)&&scalarValue(value)",
+   "replace": "===number)&&exactArguments(value)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): validReportUnicode dropped from compareDurableRequests, both sides and each side alone; caught at ^TestTheDurableRepeatVector$, ^TestRawBytesThatAreNotUTF8AreExactOnNeitherSide$."
+  },
+  {
+   "name": "the text twin does not count names inside an array",
+   "file": "context/chat.ts",
+   "find": "Array.isArray(held)?held.reduce((sum:number,item)=>sum+members(item),0):",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go's reader walks its tokens. A false refusal only: an object in an array stops being exact."
+  },
+  {
+   "name": "a re-send takes its row by fingerprint, not by the comparison",
+   "file": "storage/writer.ts",
+   "find": "reused=rows[decisions.indexOf('same')]",
+   "replace": "reused=rows[0]",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the switch on compareDurableRequests dropped from invokeDurable; caught at ^TestReauthorizationTheGrantIsForTheBytesThatWereRefused$."
+  },
+  {
+   "name": "a re-send of an exact variant takes the grant",
+   "file": "storage/writer.ts",
+   "find": "&&recordable&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "replace": "&&recordable&&takeReauthorizedDispatch",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): durableDigest(request) == row.RequestDigest dropped from invokeDurable; caught at ^TestReauthorizationTheGrantIsForTheBytesThatWereRefused$ (whitespace, member order)."
+  },
+  {
+   "name": "a re-send of a number JSON.parse rounded takes the grant",
+   "file": "storage/writer.ts",
+   "find": "&&recordable&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "replace": "&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go runs the bytes the model wrote."
+  },
+  {
+   "name": "a durable Runtime call is not held to what the record can hold",
+   "file": "storage/writer.ts",
+   "find": "if((kind==='host'||kind==='runtime')&&(!recordable||!recordableRequest(request)))",
+   "replace": "if(kind==='host'&&(!recordable||!recordableRequest(request)))",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): kind == \"runtime\" dropped from the readHistoryRequestJSON check in invokeDurable; caught at ^TestTheDurableRecordableVector$."
+  },
+  {
+   "name": "a book's fingerprint is not compared with its request",
+   "file": "storage/durable.ts",
+   "find": "&&d.fingerprint===`sha256:${sha256(canonicalJSON({kind:d.kind,scope:d.scope,source:d.source,tool:d.tool,request:JSON.parse(d.request)}))}`",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the fingerprint comparison dropped from ValidDurable; caught at ^TestABookWithAForgedFingerprintDoesNotRead$."
+  },
+  {
+   "name": "a call held for approval is not checked at all",
+   "file": "toolSources.ts",
+   "find": "if (answer === 'ask' && !heldForApproval(args)) {",
+   "replace": "if (false) {",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the readHistoryRequestJSON check dropped from SourceGate.Decide; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a call held for approval may hold what JSON.parse rounded",
+   "file": "toolSources.ts",
+   "find": "  if (!exactlyHeld(args)) return false\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go keeps the model's text."
+  },
+  {
+   "name": "a call held for approval may hold what the record cannot",
+   "file": "toolSources.ts",
+   "find": "  try { readHistoryRequestJSON(canonicalJSON(args)); return true } catch { return false }\n",
+   "replace": "  return true\n",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): as above."
+  },
+  {
+   "name": "an approved call ignores the text a Go writer kept",
+   "file": "toolSources.ts",
+   "find": "  if (record.request === undefined) return record.args\n",
+   "replace": "  return record.args\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approvedArguments runs args whatever the record keeps; caught at ^TestApprovedArgumentsAreWhatThePersonWasShown$, ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "an approved text need not be what JSON.parse says exactly",
+   "file": "toolSources.ts",
+   "find": "return exactArgumentsText(record.request) && exactlyHeld(kept) && canonicalJSON(kept)",
+   "replace": "return exactlyHeld(kept) && canonicalJSON(kept)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go runs the text itself."
+  },
+  {
+   "name": "an approved text may hold what JSON.parse rounded",
+   "file": "toolSources.ts",
+   "find": "return exactArgumentsText(record.request) && exactlyHeld(kept) && canonicalJSON(kept)",
+   "replace": "return exactArgumentsText(record.request) && canonicalJSON(kept)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; the same."
+  },
+  {
+   "name": "an approved text need not read back to its args",
+   "file": "toolSources.ts",
+   "find": " && canonicalJSON(kept) === canonicalJSON(record.args) ? kept",
+   "replace": " ? kept",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the CanonicalJSON comparison dropped from approvedArguments; caught at ^TestApprovedArgumentsAreWhatThePersonWasShown$."
+  },
+  {
+   "name": "a kept approval text is not read closed",
+   "file": "execution/state.ts",
+   "find": "(v.request===undefined||typeof v.request==='string'&&v.request.length>0&&object(v.source)&&v.source.kind!=='runtime')&&",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the request clause dropped from ValidApproval; caught at ^TestAKeptApprovalTextIsReadClosed$."
+  },
+  {
+   "name": "an approval's binding does not cover the kept text",
+   "file": "storage/resume.ts",
+   "find": "...(approval.request===undefined?{}:{request:approval.request}),",
+   "replace": "",
+   "tests": [
+    "storage/resume.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the request member dropped from ApprovalBindingOf; caught at ^TestAnApprovalBindingCoversTheKeptText$."
+  },
+  {
+   "name": "the store's guard does not read a kept approval text",
+   "file": "records.ts",
+   "find": ",'approval.request',",
+   "replace": ",",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approval.request dropped from recordTextPaths; caught at ^TestARecordGuardReadsAKeptApprovalText$."
   }
  ]
 }

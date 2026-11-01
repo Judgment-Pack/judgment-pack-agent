@@ -49,7 +49,7 @@ export function recordsPolicy(members:Record<string,{value?:unknown}>):RecordsPo
 const RECORD_TEXT_PATHS=[
  'durable.dispatches.*.repeatResultJson','durable.dispatches.*.request','durable.dispatches.*.result','durable.children.*.checkpoint','handoff.continuation',
  'text','explanation','reason','plan.*.step','plan.*.detail',
- 'operations.*.name','operations.*.args','approval.name','approval.tool','approval.args',
+ 'operations.*.name','operations.*.args','approval.name','approval.tool','approval.args','approval.request',
  'memories.proposed.*.text','compaction.summaries.*.summary',
  'context.entries.*.value.@assistant.content.@text.text',
  'context.entries.*.value.@assistant.content.@call.toolName','context.entries.*.value.@assistant.content.@call.input',

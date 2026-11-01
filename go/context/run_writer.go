@@ -172,13 +172,13 @@ func (e *DurableRequestConflict) Unwrap() error {
 }
 
 // DurableRequestUnrecordable refuses a call whose arguments the durable record cannot hold as written
-// (#275): a repeated member name, a number out of range or a lone surrogate. Refused before anything is
-// claimed, and the run goes on. Retained history refuses the same bytes (readHistoryRequestJSON), which
+// (#275): a repeated member name, a number out of range, a lone surrogate or bytes that are not UTF-8.
+// Refused before anything is claimed, and the run goes on. Retained history refuses the same bytes (readHistoryRequestJSON), which
 // reached the writer after the claim and ended the run with a storage failure.
 type DurableRequestUnrecordable struct{}
 
 func (*DurableRequestUnrecordable) Error() string {
-	return "DurableRequestUnrecordable: this call's arguments cannot be recorded as written: they hold a repeated member name, a number that cannot be held exactly or a lone surrogate. Nothing was run. Write them again without it."
+	return "DurableRequestUnrecordable: this call's arguments cannot be recorded as written: they hold a repeated member name, a number out of range, a lone surrogate or bytes that are not UTF-8. Nothing was run. Write them again without it."
 }
 func (e *DurableRequestUnrecordable) Unwrap() error {
 	return storageNamedFailure("invalid-tool-input", "tool", "not-started", e.Error())
@@ -1152,8 +1152,9 @@ const (
 
 // compareDurableRequests decides, from the exact bytes, what a request with a recorded row's fingerprint
 // is to that row (#275). The same bytes are the same write. Two requests their parsed form says exactly
-// (exactArguments) are too: they differ only in whitespace, a string's escapes or the order of names that
-// do not fold together, which the fingerprint has always left out, so a resumed run's repeat of a write
+// (exactArguments, with no lone surrogate and no bytes that are not UTF-8, which ParseJSON reads as a
+// replacement character) are too: they differ only in whitespace, a string's escapes or the order of names
+// that do not fold together, which the fingerprint has always left out, so a resumed run's repeat of a write
 // is never performed twice. Otherwise, exact numbers that differ make a different write: this is what
 // lets a legitimate integer past 2^53 run beside its neighbour. What remains is the same values written
 // differently: another spelling of a number, a repeated name, two names that fold together. A reader may
@@ -1162,7 +1163,7 @@ const (
 // It reads only the row's request, which every published release has recorded byte for byte, so a row
 // from before this rule is judged by it and needs no migration.
 func compareDurableRequests(recorded, request []byte) durableRepeat {
-	if bytes.Equal(recorded, request) || exactArguments(recorded) && exactArguments(request) {
+	if bytes.Equal(recorded, request) || validReportUnicode(recorded) && validReportUnicode(request) && exactArguments(recorded) && exactArguments(request) {
 		return durableSame
 	}
 	left, leftErr := canonicalRepeatArgs(recorded)

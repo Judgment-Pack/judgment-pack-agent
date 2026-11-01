@@ -77,9 +77,10 @@ func TextPart(text string) Part { return Part{Text: text} }
 // ImagePartOf is one image part.
 func ImagePartOf(image ImagePart) Part { return Part{Image: &image} }
 
-// ToolCall is one tool call, with its arguments as the model wrote them. The TypeScript keeps a
-// parsed object and, where the arguments were not one, the text under UNPARSED; this keeps the
-// text, and Args and Unparsed read it exactly as argumentsOf does.
+// ToolCall is one tool call, with its arguments as the model wrote them, on every family: OpenAI's
+// argument string, and the text of Anthropic's input and Gemini's args (Value.ArgumentText). The
+// TypeScript keeps a parsed object and, where the arguments were not one, the text under UNPARSED;
+// this keeps the text, and Args and Unparsed read it exactly as argumentsOf does.
 type ToolCall struct {
 	ID   string
 	Name string

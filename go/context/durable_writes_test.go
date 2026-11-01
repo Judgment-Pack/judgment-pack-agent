@@ -417,3 +417,113 @@ func TestAnApprovalBindingCoversTheKeptText(t *testing.T) {
 		t.Fatalf("%+v, %v", binding, err)
 	}
 }
+
+// A kept approval text is a member a published reader does not know (ADR-0024): version 3 only, and a
+// string that is never empty, and never on a Runtime call, which its binding holds.
+func TestAKeptApprovalTextIsReadClosed(t *testing.T) {
+	read := func(version int, request string, kind string) error {
+		var checkpoint map[string]any
+		if err := json.Unmarshal([]byte(readPublishedCheckpoints(t)["v0.12.0"]), &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		checkpoint["version"] = version
+		approval := map[string]any{"callId": "held", "name": "tracker__write", "tool": "write", "source": map[string]any{"kind": kind, "id": "tracker", "trust": "person"}, "args": map[string]any{"id": 9007199254740992}, "state": "asked"}
+		if request != "absent" {
+			approval["request"] = request
+		}
+		checkpoint["approval"] = approval
+		raw, err := json.Marshal(checkpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = ReadExecution(MustParseJSON(string(raw)))
+		return err
+	}
+	text := `{"id":9007199254740993}`
+	if err := read(3, text, "custom"); err != nil {
+		t.Fatalf("version 3 with a text: %v", err)
+	}
+	if err := read(2, "absent", "custom"); err != nil {
+		t.Fatalf("version 2 with none: %v", err)
+	}
+	if read(2, text, "custom") == nil || read(3, "", "custom") == nil || read(3, text, "runtime") == nil {
+		t.Fatal("a kept text reads where it should not")
+	}
+}
+
+// What a call held for approval keeps, and what the approved call then runs with: a kept text byte for
+// byte, once it reads back to args, and otherwise args, only where they cannot have changed the call.
+func TestApprovedArgumentsAreWhatThePersonWasShown(t *testing.T) {
+	approved := func(args string, request *string) (string, bool) {
+		var held map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(args), &held); err != nil {
+			t.Fatal(err)
+		}
+		text, ok := approvedArguments(contract.CheckpointApproval{Args: held, Request: request})
+		return string(text), ok
+	}
+	replacement := string(rune(0xfffd))
+	for _, args := range []string{`{}`, `{"id":7}`, `{"id":-7}`, `{"id":9007199254740991}`, `{"id":-9007199254740991}`, `{"q":"a"}`, `{"q":true}`, `{"q":false}`, `{"a":[1,{"b":"c"}]}`} {
+		if got, ok := approved(args, nil); !ok || got != args {
+			t.Errorf("%s with no text runs %q, %v", args, got, ok)
+		}
+		if approvalRequestOf([]byte(args)) != nil {
+			t.Errorf("%s keeps a text it does not need", args)
+		}
+	}
+	for _, args := range []string{`{"id":9007199254740992}`, `{"id":-9007199254740992}`, `{"q":0}`, `{"q":0.5}`, `{"q":null}`, `{"q":"` + replacement + `"}`, `{"` + replacement + `":1}`, `{"a":[0]}`, `{"a":{"b":null}}`, `{"ID":1,"id":2}`} {
+		if got, ok := approved(args, nil); ok {
+			t.Errorf("%s with no text runs %q", args, got)
+		}
+		if kept := approvalRequestOf([]byte(args)); kept == nil || *kept != args {
+			t.Errorf("%s does not keep its text: %v", args, kept)
+		}
+	}
+	// What args would write back as other bytes keeps its text.
+	for _, text := range []string{` {"id":7} `, `{ "id" : 7 }`, `{"b":2,"a":1}`, `{"id":7.0}`, `{"id":9007199254740993}`, `{"q":"` + string(rune(0x5c)) + `u0041"}`} {
+		if kept := approvalRequestOf([]byte(text)); kept == nil || *kept != text {
+			t.Errorf("%s does not keep its text: %v", text, kept)
+		}
+	}
+	for _, row := range []struct{ args, text string }{{`{"id":7}`, `{ "id" : 7 }`}, {`{"id":9007199254740992}`, `{"id":9007199254740993}`}, {`{"q":1}`, `{"q":1.0}`}, {`{"q":0}`, `{"q":1e-400}`}, {`{"a":1,"b":2}`, `{"b":2,"a":1}`}} {
+		text := row.text
+		if got, ok := approved(row.args, &text); !ok || got != text {
+			t.Errorf("%s beside %s runs %q, %v", row.text, row.args, got, ok)
+		}
+	}
+	for _, row := range []struct{ args, text string }{{`{"id":7}`, `{"id":8}`}, {`{"id":7}`, `{bad`}, {`{"id":7}`, `{"id":7,"more":1}`}} {
+		text := row.text
+		if got, ok := approved(row.args, &text); ok {
+			t.Errorf("%s beside %s runs %q", row.text, row.args, got)
+		}
+	}
+}
+
+// A kept text is model-derived, like args, so the store's guard reads it.
+func TestARecordGuardReadsAKeptApprovalText(t *testing.T) {
+	text := `{ "p" : "` + recordTestHomePath + `" }`
+	raw, err := json.Marshal(map[string]any{"approval": map[string]any{"args": map[string]any{"p": recordTestHomePath}, "request": text}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := MustParseJSON(string(raw))
+	if err = guardRecord(out, recordTestGuard{}, &RecordMarker{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.Text(), recordTestHomePath) {
+		t.Fatalf("the guard left %s", out.Text())
+	}
+}
+
+// Asked again from a checkpoint, where args are the parsed form, the person is shown the text that runs.
+func TestAnApprovalAskedAgainShowsTheKeptText(t *testing.T) {
+	text := `{"id":9007199254740993}`
+	approval := contract.CheckpointApproval{CallID: "held", Name: "tracker__write", Tool: "write", Args: map[string]json.RawMessage{"id": json.RawMessage(`9007199254740992`)}, State: "asked", Request: &text}
+	if got := string(ApprovalRequested(approval).ApprovalRequested.Args["id"]); got != "9007199254740993" {
+		t.Fatalf("the person was shown %s", got)
+	}
+	approval.Request = nil
+	if got := string(ApprovalRequested(approval).ApprovalRequested.Args["id"]); got != "9007199254740992" {
+		t.Fatalf("with no text the person was shown %s", got)
+	}
+}

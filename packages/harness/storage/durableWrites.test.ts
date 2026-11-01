@@ -15,7 +15,8 @@ import { validDurable } from './durable'
 import { RECORD_DEFAULTS, sha256 } from '../records'
 import { canonicalJSON, exactArgumentsText } from '../context/chat'
 import { readHistoryRequestJSON } from '../history/codec'
-import type { ExecutionCheckpoint } from '../execution/state'
+import { readExecution, type ExecutionCheckpoint } from '../execution/state'
+import { UnknownRecordMember } from '../recordReader'
 
 const vector = JSON.parse(readFileSync('../../contract/vectors/storage/durable-repeats.json', 'utf8')) as {
   cases: { label: string; recorded: string; request: string; decision: 'same' | 'different' | 'conflict' }[]
@@ -99,6 +100,17 @@ describe('the decision over two requests that read alike (#275)', () => {
   it.each(vector.goCases.filter((row) => row.decision !== 'same'))('$label: not one write, though Go reads them alike', ({ recorded, request }) => {
     expect(compareDurableRequests(recorded, request)).not.toBe('same')
     expect(canonicalJSON(JSON.parse(recorded)), 'JSON.parse keeps them apart').not.toBe(canonicalJSON(JSON.parse(request)))
+  })
+
+  it('reads a kept approval text only at version 3, as Go does', () => {
+    const approval = { callId: 'held', name: 'tracker__write', tool: 'write', source: { kind: 'custom', id: 'tracker', trust: 'person' }, args: { id: 9007199254740992 }, state: 'asked', request: '{"id":9007199254740993}' }
+    const saved = JSON.parse(published['v0.12.0']!) as object
+    const read = (version: number, member: object) => readExecution({ ...saved, version, ...member })
+    expect(read(3, {}), 'the fixture reads').toBeDefined()
+    expect(read(3, { approval })).toBeDefined()
+    expect(() => read(2, { approval })).toThrow(UnknownRecordMember)
+    const { request: _request, ...none } = approval
+    expect(read(2, { approval: none })).toBeDefined()
   })
 
   it('reads a book closed: a row with another fingerprint does not read', () => {

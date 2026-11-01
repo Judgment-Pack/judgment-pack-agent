@@ -122,7 +122,8 @@ export function exactArguments(args:unknown):boolean{
 
 /**
  * `exactArguments` for arguments still in their text (`exactArguments` in go/context/chat.go): one JSON
- * object, no member name repeated, every number written as JSON.stringify writes it.
+ * object, no member name repeated, every number written as JSON.stringify writes it, and no lone surrogate,
+ * which Go reads as a replacement character.
  */
 export function exactArgumentsText(text:string):boolean{
  let value:unknown
@@ -130,7 +131,13 @@ export function exactArgumentsText(text:string):boolean{
  let names=0
  const rest=text.replace(/"(?:[^"\\]|\\.)*"(\s*:)?/g,(_,colon:string|undefined)=>{if(colon)names++;return '""'})
  const members=(held:unknown):number=>Array.isArray(held)?held.reduce((sum:number,item)=>sum+members(item),0):held!==null&&typeof held==='object'?Object.values(held).reduce((sum:number,item)=>sum+1+members(item),0):0
- return members(value)===names&&(rest.match(/-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g)??[]).every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)
+ return members(value)===names&&(rest.match(/-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g)??[]).every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)&&scalarValue(value)
+}
+
+/** True where JSON.parse's reading of a value can be what the model wrote: no number it rounded past 2^53 or read as Infinity. Which decimals it rounded cannot be seen here. */
+export function exactlyHeld(value:unknown):boolean{
+ if(typeof value==='number')return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))
+ return value===null||typeof value!=='object'||Object.values(value).every(exactlyHeld)
 }
 
 /**

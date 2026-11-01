@@ -38,6 +38,10 @@ func durableRun(t *testing.T, engine string, write bool, calls []string) (execut
 // endpoint that takes no native tool calls.
 var durableWires = []string{"native", "api", "api/openai-compatible/whole", "api/anthropic/sse", "api/anthropic/whole", "api/gemini/sse", "api/gemini/whole", "api/text"}
 
+// durableTableWires run the whole table of pairs: the decision is the writer's, so past the bytes each family's
+// reader hands on (TestEveryWireHandsTheToolTheModelsText) one way of each family holds it.
+var durableTableWires = []string{"native", "api", "api/anthropic/sse", "api/gemini/whole", "api/text"}
+
 // wireReply is one answer of the wire named: a call with exactly the argument text given, or, with none, the
 // final answer. Anthropic's stream splits the text in two, as a provider does.
 func wireReply(wire, id, name, arguments string) *http.Response {
@@ -225,6 +229,7 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		{"an integer past 2^53, then its neighbour", []string{big, near}, []string{big, near}, []string{ran(big), ran(near)}},
 		{"an integer past 2^53, its neighbour first", []string{near, big}, []string{near, big}, []string{ran(near), ran(big)}},
 		{"an underflow, then zero", []string{`{"q":1e-400}`, `{"q":0}`}, []string{`{"q":1e-400}`, `{"q":0}`}, []string{ran(`{"q":1e-400}`), ran(`{"q":0}`)}},
+		{"a consumer's nested limit: zero, then an underflow its decoder must see", []string{`{"limits":{"searches":0}}`, `{"limits":{"searches":1e-400}}`}, []string{`{"limits":{"searches":0}}`, `{"limits":{"searches":1e-400}}`}, []string{ran(`{"limits":{"searches":0}}`), ran(`{"limits":{"searches":1e-400}}`)}},
 		// The same value written differently: it may be that write and may not be. Neither run nor answered.
 		{"1.0 then 1", []string{`{"q":1.0}`, `{"q":1}`}, []string{`{"q":1.0}`}, []string{ran(`{"q":1.0}`), conflictRefusal}},
 		{"1 then 1.0", []string{`{"q":1}`, `{"q":1.0}`}, []string{`{"q":1}`}, []string{ran(`{"q":1}`), conflictRefusal}},
@@ -245,7 +250,7 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		// Each row is looked at: the record that is this write is found past one that only reads alike.
 		{"the first of two neighbours again", []string{big, near, big, near}, []string{big, near}, []string{ran(big), ran(near), ran(big), ran(near)}},
 	} {
-		for _, engine := range durableWires {
+		for _, engine := range durableTableWires {
 			t.Run(engine+"/"+row.name, func(t *testing.T) {
 				executed, answered, failures := durableRun(t, engine, true, row.calls)
 				checkDurableRun(t, executed, answered, failures, row.ran, row.answers)
@@ -258,7 +263,7 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 // to end the run here too; now the model reads the refusal and the run goes on.
 func TestADurableReadIsRefusedOnlyWhereItCannotBeRecorded(t *testing.T) {
 	ran := func(call string) string { return "ran " + call }
-	for _, engine := range durableWires {
+	for _, engine := range durableTableWires {
 		t.Run(engine, func(t *testing.T) {
 			calls := []string{`{"q":1.0}`, `{"q":1}`, `{"id":9007199254740993}`, `{"id":9007199254740992}`, `{"q":1e400}`, `{"a":1,"a":2}`, `{"id":7}`}
 			executed, answered, failures := durableRun(t, engine, false, calls)
@@ -277,7 +282,7 @@ func TestEveryWireHandsTheToolTheModelsText(t *testing.T) {
 		for _, write := range []bool{true, false} {
 			for _, stored := range []bool{true, false} {
 				t.Run(fmt.Sprintf("%s/write=%v/stored=%v", engine, write, stored), func(t *testing.T) {
-					calls := []string{`{"id":9007199254740993}`, `{"limits":{"searches":1e-400}}`, `{"q":1.0}`, `{"q":"a\u00e9"}`, `{"b":2,"a":1}`, `{ "c" : 3 }`}
+					calls := []string{`{"id":9007199254740993}`, `{"limits":{"searches":1e-400}}`, `{"q":1.0}`, `{"q":"a` + string(rune(0x5c)) + `u00e9"}`, `{"b":2,"a":1}`, `{ "c" : 3 }`}
 					if !stored {
 						calls = append(calls, `{"q":1e400}`, `{"a":1,"a":2}`)
 					}

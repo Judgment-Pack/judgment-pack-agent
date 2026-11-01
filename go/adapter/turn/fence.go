@@ -337,7 +337,7 @@ func unknownsOf(v *jvalue) []string {
 
 // TextToolCall is TextToolCall: one tool call made in text, for an endpoint whose capability
 // record says it takes no native tool calls (agent#4): {"tool": name, "arguments": {…}} in one
-// fenced JSON block. Arguments is the arguments object's JSON text, in the model's member order.
+// fenced JSON block. Arguments is the arguments object's JSON text, byte for byte as the model wrote it.
 type TextToolCall struct {
 	Tool      string
 	Arguments json.RawMessage
@@ -381,7 +381,7 @@ func ExtractToolCall(text string) (call *TextToolCall, problem string) {
 	if !arguments.isObject() {
 		return nil, "arguments is the call’s arguments, as a JSON object"
 	}
-	return &TextToolCall{Tool: tool.s, Arguments: raw(arguments)}, ""
+	return &TextToolCall{Tool: tool.s, Arguments: written(arguments)}, ""
 }
 
 // TextToolResultHeader is textToolResultHeader: the head of the message that carries a text tool

@@ -806,7 +806,7 @@ class VectorTests(unittest.TestCase):
             if isinstance(held, list):
                 return all(says(item) for item in held)
             return all(says(name) and says(item) for name, item in held.items())
-        ran = {"ordinary", "ordinary, native", "a spelling a row recorded"}
+        said = {"ordinary", "ordinary, native", "a spelling a row recorded"}
         for name, text in doc["checkpoints"].items():
             with self.subTest(checkpoint=name):
                 checkpoint = json.loads(text)
@@ -814,12 +814,10 @@ class VectorTests(unittest.TestCase):
                 approval = checkpoint["approval"]
                 self.assertEqual(approval["state"], "asked")
                 self.assertNotIn("request", approval)
-                self.assertEqual(says(approval["args"]), name in ran)
-                # What the model wrote is not in the record, and the parsed form is another number or the same.
-                held = json.loads(doc["calls"][name]["held"], parse_float=str, parse_int=str)
+                self.assertEqual(says(approval["args"]), name in said)
+                # The rows are what ran before the pause, and the text the call held is in no member of the record.
                 rows = [row for row in checkpoint.get("durable", {}).get("dispatches", []) if row["kind"] == "host"]
                 self.assertEqual([row["request"] for row in rows], doc["calls"][name]["allowed"])
-                self.assertTrue(held)
 
     def test_the_read_argument_outcomes_follow_from_each_text(self):
         # #271: a third reading of each case, from its text alone. Go gets no key unless the text is one

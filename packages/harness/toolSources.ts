@@ -47,11 +47,12 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
  */
 import type { SourceIdentityState } from './execution/state'
 import { REQUEST_REVIEW } from './criticSwitch'
-import { canonicalJSON } from './context/chat'
+import { canonicalJSON, exactArgumentsText, exactlyHeld } from './context/chat'
+import { readHistoryRequestJSON } from './history/codec'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
 import { PROPOSE_PACK_TOOL, shownSchema, toolTimeout, withDeadline } from './engines/contract'
-import { AIFailureError, authoredFailure, toolFailureResult, toolInputFailure } from './failures'
+import { AIFailureError, DURABLE_REQUEST_UNRECORDABLE, authoredFailure, toolFailureResult, toolInputFailure } from './failures'
 import { dataMarker, frameBlock, frameData } from './framing'
 import { argumentProblem } from './sourceArguments'
 import { ASSISTANT_TOOLS } from './host'
@@ -668,6 +669,22 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
   return { catalogue: kept > 0, hostTools: offered, withheld: [...schemaNotes, ...withheld] }
 }
 
+/** Whether a call read here can be held for the person: what JSON.parse read is what the model wrote, as far as can be seen, and the record can hold it. */
+function heldForApproval(args: unknown): boolean {
+  if (!exactlyHeld(args)) return false
+  try { readHistoryRequestJSON(canonicalJSON(args)); return true } catch { return false }
+}
+/**
+ * What an approved call runs with here (#275). A record Go wrote may keep the model's text beside its parsed
+ * form. This language runs what JSON.parse read, so that text must be what that reading says exactly and must
+ * read back to the record's args; otherwise nothing is run, as a different number would be.
+ */
+function approvedArguments(record: ApprovalRecord): Record<string, unknown> | undefined {
+  if (record.request === undefined) return record.args
+  let kept: unknown
+  try { kept = JSON.parse(record.request) } catch { return undefined }
+  return exactArgumentsText(record.request) && exactlyHeld(kept) && canonicalJSON(kept) === canonicalJSON(record.args) ? kept as Record<string, unknown> : undefined
+}
 export type { SourceFigures } from './execution/state'
 import type { ApprovalRecord, SourceFigures } from './execution/state'
 
@@ -988,6 +1005,12 @@ export class SourceGate {
       // A run with nowhere to write the pause cannot ask: its call is refused.
       if (answer === 'ask' && this.book === undefined) answer = 'refuse'
       if (answer === 'refuse') detail = `${name} acts on ${id}, and the host's approval policy refused this call; it was not run and nothing was changed`
+      // What was read here cannot be what the model wrote, or the record cannot hold it: the person would approve
+      // one call and another would run, or none would, so nobody is asked (#275).
+      if (answer === 'ask' && !heldForApproval(args)) {
+        answer = 'closed'
+        detail = DURABLE_REQUEST_UNRECORDABLE
+      }
       if (answer === 'ask') {
         this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
         if (firstServiceAct) this.rememberService(id, entry.record.identityDigest)
@@ -1040,11 +1063,13 @@ export class SourceGate {
       return refusedWith(this.refuse(record.name, `${record.name} is no longer offered as it was when the person decided; the call was not run and nothing was changed`, 'approval stale'))
     }
     if (entry.declared.source?.gatewayReceipt !== undefined) return refusedWith(this.refused(entry,this.refuse(record.name,'Gateway acquisition verification cannot execute an approved action; this call was not run'),record.callId))
+    const args = approvedArguments(record)
+    if (args === undefined) return refusedWith(this.refused(entry, this.refuse(record.name, `${record.name}'s approval holds only a form of the call that may not be what the person saw; the call was not run and nothing was changed. Call it again to be asked again.`, 'approval stale'), record.callId))
     const id = entry.record.id
     const row = this.row(id)
     if (this.alteredSources.has(id)) return refusedWith(this.refused(entry, this.refuse(record.name, this.changedDetail(entry), this.alteredIdentities.has(id) ? 'identity changed' : undefined), record.callId))
     if (entry.catalogued) {
-      const problem = argumentProblem(describedSchema(entry.declared.inputSchema, this.bounds.toolDescriptionBytes), record.args)
+      const problem = argumentProblem(describedSchema(entry.declared.inputSchema, this.bounds.toolDescriptionBytes), args)
       if (problem !== undefined) return refusedWith(this.refused(entry, toolInputFailure(`${record.name}'s arguments do not match its schema: ${problem}. This call was not run.`), record.callId))
     }
     if (row.calls + row.proposed >= this.bounds.sourceCallsPerTurn) {
@@ -1070,7 +1095,7 @@ export class SourceGate {
     const limit = Math.min(this.bounds.sourceCallMilliseconds, this.bounds.toolCallMilliseconds)
     const started = Date.now()
     try {
-      const result = await withDeadline((bounded) => run(structuredClone(record.args), bounded), signal, limit, () => toolTimeout(limit))
+      const result = await withDeadline((bounded) => run(structuredClone(args), bounded), signal, limit, () => toolTimeout(limit))
       const { receipt: _receipt, ...shown } = result as McpToolResult & { receipt?: unknown }
       row.bytes += utf8Bytes(JSON.stringify(shown) ?? '');this.publish()
       return { result: shown, ran: true }

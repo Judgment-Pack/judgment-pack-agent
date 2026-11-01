@@ -556,6 +556,7 @@ func TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent(t *testing.T)
 // numbers are another write, which runs under an identity of its own. Each way the refused row keeps its typed
 // failure and the grant stays, and the request itself then runs once, on its own row.
 func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
+	const unknownOutcome = "The tool could not complete this operation." // HostOutcomeUnknown, as the model reads it
 	cases := map[string]struct {
 		refused, sent string
 		answer        string
@@ -563,8 +564,8 @@ func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
 		"past what a float64 holds": {`{"id":9007199254740992}`, `{"id":9007199254740993}`, ""},
 		"another spelling":          {`{"id":1}`, `{"id":1.0}`, "DurableRequestConflict"},
 		"a repeated name":           {`{"id":2}`, `{"id":1,"id":2}`, "DurableRequestConflict"},
-		"whitespace":                {`{"id":1}`, `{ "id": 1 }`, "HostOutcomeUnknown"},
-		"member order":              {`{"a":1,"b":2}`, `{"b":2,"a":1}`, "HostOutcomeUnknown"},
+		"whitespace":                {`{"id":1}`, `{ "id": 1 }`, unknownOutcome},
+		"member order":              {`{"a":1,"b":2}`, `{"b":2,"a":1}`, unknownOutcome},
 	}
 	for _, engine := range hostEngines {
 		for name, held := range cases {
@@ -594,7 +595,13 @@ func TestReauthorizationTheGrantIsForTheBytesThatWereRefused(t *testing.T) {
 						}
 					}
 					if !answered {
-						t.Fatalf("not answered %s: %+v", held.answer, out.events)
+						texts := []string{}
+						for _, event := range out.events {
+							if event.ToolResult != nil {
+								texts = append(texts, event.ToolResult.Text)
+							}
+						}
+						t.Fatalf("not answered %s: %q, %v", held.answer, texts, out.err)
 					}
 				} else if len(ran) != 1 || ran[0] != held.sent || len(rows) != 2 || rows[1].Request != held.sent || rows[1].State != "result" {
 					t.Fatalf("another write runs on its own row: ran %q, rows %+v", ran, rows)

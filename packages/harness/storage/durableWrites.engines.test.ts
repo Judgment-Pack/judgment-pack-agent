@@ -51,6 +51,45 @@ async function heldForApproval(engine: typeof vercel, text: string) {
   return { executed, asked: ofType(record.events, 'approval_requested'), answers: ofType(record.events, 'tool_result').map((event) => event.text) }
 }
 
+/** One Anthropic or Gemini streamed turn whose call carries exactly the argument text given, or the final answer. */
+const familyTurn = (family: 'anthropic' | 'gemini', name: string, text?: string) => {
+  if (family === 'gemini') return `data: {"candidates":[{"content":{"role":"model","parts":[${text === undefined ? '{"text":"Done."}' : `{"functionCall":{"name":${JSON.stringify(name)},"args":${text}}}`}]},"index":0,"finishReason":"STOP"}]}\n\n`
+  const event = (kind: string, body: object) => `event: ${kind}\ndata: ${JSON.stringify({ type: kind, ...body })}\n\n`
+  const block = text === undefined
+    ? event('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }) + event('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'Done.' } })
+    : event('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'call_1', name, input: {} } }) + event('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: text } })
+  return event('message_start', { message: { id: 'm', type: 'message', role: 'assistant', model: 'm', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } }) + block + event('content_block_stop', { index: 0 }) + event('message_delta', { delta: { stop_reason: text === undefined ? 'end_turn' : 'tool_use' }, usage: { output_tokens: 1 } }) + event('message_stop', {})
+}
+
+// JSON.parse serves every wire here, so a host write is held to one rule whichever family wrote it.
+describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('every family, through %s (#275)', (name, engine) => {
+  it.each([['anthropic'], ['gemini']] as const)('%s: refuses what JSON.parse rounded or read as an infinity, and runs the rest', async (family) => {
+    const calls = ['{"id":9007199254740993}', '{"q":1e400}', '{"id":9007199254740991}'], executed: unknown[] = []
+    const tool: HostTool = {
+      name: 'change_record', taxonomy: { operation: 'own-state', effect: 'pure' }, description: 'Change one record', inputSchema: { type: 'object' },
+      execute: async (args) => { executed.push(args); return { content: [{ type: 'text', text: 'ran' }] } }
+    }
+    let number = 0
+    const record = await vercelTurn({
+      engine, hostTools: [tool],
+      answer: () => streamed(sseTurn({ text: 'not this endpoint' })),
+      session: {
+        model: { family, model: 'fixture', call: async () => new Response(familyTurn(family, tool.name, calls[number++]), { status: 200, headers: { 'content-type': 'text/event-stream' } }) } as never,
+        context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, runStore: { store: new MemoryRunStore(), id: 'families' } }
+      }
+    })
+    const answers = ofType(record.events, 'tool_result').map((event) => event.text)
+    // The AI SDK's Gemini provider writes the call's arguments out itself, so 1e400 is already null when the
+    // harness reads it, and nothing here can tell it from a null the model wrote. The guide says so.
+    const written = name === 'vercel' && family === 'gemini'
+    expect(executed).toEqual([...(written ? [{ q: null }] : []), { id: 9007199254740991 }])
+    expect(answers[0]).toContain('DurableRequestUnrecordable')
+    if (written) expect(answers[1]).toBe('ran')
+    else expect(answers[1]).toContain('DurableRequestUnrecordable')
+    expect(answers[2]).toBe('ran')
+  })
+})
+
 describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('a call held for approval, through %s (#275)', (_name, engine) => {
   // JSON.parse has read these already, so what the person would approve is not what the model wrote. Nobody is asked.
   it.each([
