@@ -30,7 +30,10 @@ func ProjectHistoryRunReport(view *RetainedRunHistory) (*Value, error) {
 	if feedback.Len() == 0 {
 		return report, nil
 	}
-	report.Set("version", Number(2))
+	// ADR-0029: a delegated run's report stays version 3.
+	if report.Get("version").Num() != 3 {
+		report.Set("version", Number(2))
+	}
 	report.Set("checkpointVersion", Number(float64(checkpoint.Version)))
 	report.Set("feedback", feedback)
 	return ReadRunReport(report)

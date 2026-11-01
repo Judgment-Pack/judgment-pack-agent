@@ -191,12 +191,12 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    if(event.type==='approval_requested')requested=event.callId
    const pending=event.type==='tool_call'?context.sources?.pending(event):undefined
    if(event.type==='tool_call'&&pending!==undefined){
-    const call=context.sources!.decorate(event)
+    const call=withPrincipal(context.sources!.decorate(event),context)
     context.execution.observe(call)
     yield call
     yield {type:'guardrail',tool:event.name,action:'refused',detail:pending,reason:'approval pending'}
     const refused=toolFailureResult(new GateViolation(event.name,pending))
-    const result=context.sources!.decorate({type:'tool_result',...(event.callId===undefined?{}:{callId:event.callId}),name:event.name,isError:true,text:refused.content[0].text,structured:refused.structuredContent})
+    const result=withPrincipal(context.sources!.decorate({type:'tool_result',...(event.callId===undefined?{}:{callId:event.callId}),name:event.name,isError:true,text:refused.content[0].text,structured:refused.structuredContent}),context)
     context.execution.observe(result)
     yield result
     hold(event)
@@ -217,6 +217,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    }
    // ADR-0006: a tool with a source's call and result carry its source record.
    if(context.sources)event=context.sources.decorate(event)
+   // ADR-0029: a delegated run's call and result carry its principal (event 3).
+   event=withPrincipal(event,context)
    if(event.type==='critique'){try{event=context.execution.recordCritique(event)}catch(error){if(!(error instanceof RecordsRefused))throw error;for(const notice of takeNotices(context)){if(notice.type==='approval_requested')requested=notice.callId;yield notice};continue}}
    if(event.type==='error')failed=true
    context.execution.observe(event)
@@ -268,4 +270,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   yield {type:'usage',usage}
   yield {type:'end'}
  } finally {releaseNotices?.();context?.close()}
+}
+/** ADR-0029: a delegated run's tool_call and tool_result carry its principal; an undelegated run's are unchanged. */
+function withPrincipal<E extends AssistantEvent>(event:E,context:SessionContext):E{
+ return context.principal!==undefined&&(event.type==='tool_call'||event.type==='tool_result')?{...event,principal:structuredClone(context.principal.record)}:event
 }

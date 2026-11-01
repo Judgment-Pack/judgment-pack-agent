@@ -338,7 +338,10 @@ type SteerInput struct {
 // host names it (host.ts's AITarget, a string here). DelegationReuse (agent#17) is false where
 // this response's delegated tasks reuse no earlier result of the chat.
 type Input struct {
-	Capture *LiveCaptureConfig
+	// Principal is the delegation a delegated run acts under, supplied by the issuing host
+	// (ADR-0029); nil, the run is undelegated and its records unchanged.
+	Principal *RunPrincipal
+	Capture   *LiveCaptureConfig
 	// TaskSteps explicitly enables package-owned task scheduling; it grants no authority.
 	TaskSteps         bool
 	TaskStepEnvelope  *TaskStepEnvelope

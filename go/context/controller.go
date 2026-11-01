@@ -50,6 +50,8 @@ func (o *Operation) Value() *Value {
 // (ExecutionCheckpoint in execution/state.ts). Its values are ordered JSON values, so what the
 // checkpoint weighs is what the TypeScript's weighs.
 type Execution struct {
+	// Principal is a delegated run's principal (ADR-0029), present exactly on checkpoint 4.
+	Principal   *contract.RunPrincipal
 	RepeatTools *contract.CheckpointRepeatTools
 	TurnRoute   *contract.TurnRoute
 	UsageBudget *contract.UsageBudget
@@ -302,6 +304,11 @@ func (e *Execution) Value() *Value {
 		held, _ := ParseJSON(raw)
 		out.Set("handoff", held)
 	}
+	if e.Principal != nil {
+		raw, _ := json.Marshal(e.Principal)
+		held, _ := ParseJSON(raw)
+		out.Set("principal", held)
+	}
 	return out
 }
 
@@ -337,7 +344,7 @@ func executionOf(saved *contract.Checkpoint) (*Execution, error) {
 		Phase: saved.Phase, Status: saved.Status, Unit: saved.Unit, Used: int(saved.Used),
 		Limit: int(saved.Limit), Grants: saved.Grants, Plan: value.Get("plan"), PlanState: value.Get("planState"),
 		Explanation: saved.Explanation, Completions: saved.Completions, Context: saved.Context,
-		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, UsageBudget: saved.UsageBudget, RepeatTools: saved.RepeatTools, TurnRoute: saved.TurnRoute, Failover: saved.Failover, ChildUsage: saved.ChildUsage}
+		Reason: saved.Reason, Delegation: value.Get("delegation"), Prompts: saved.Prompts, Sources: saved.Sources, SourceIdentities: saved.SourceIdentities, Approval: saved.Approval, Skills: saved.Skills, Draft: saved.Draft, Memories: saved.Memories, Critic: saved.Critic, CrossProvider: saved.CrossProvider, Compaction: saved.Compaction, OutputGuard: saved.OutputGuard, Policy: saved.Policy, Steers: saved.Steers, Usage: saved.Usage, UsageBudget: saved.UsageBudget, RepeatTools: saved.RepeatTools, TurnRoute: saved.TurnRoute, Failover: saved.Failover, ChildUsage: saved.ChildUsage, Principal: saved.Principal}
 	if saved.RequestCap != nil {
 		cap := int(*saved.RequestCap)
 		out.RequestCap = &cap
@@ -599,7 +606,7 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		}
 		plan, planState := identifyPlan(c.State().Plan, c.State().PlanState)
 		version := contract.CheckpointVersion
-		if c.State().Version == 3 {
+		if c.State().Version >= 3 {
 			version = 3
 		}
 		return c.MutateCheckpoint(CheckpointPatch{"Version": version, "Plan": plan, "PlanState": planState})

@@ -198,13 +198,13 @@ func (b *Boundary) event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 			callID = *call.CallID
 		}
 		if detail := context.Sources.Pending(callID, call.Name); detail != "" {
-			decorated := context.Sources.Decorate(event)
+			decorated := withPrincipal(context.Sources.Decorate(event), context)
 			context.Execution.ObserveToolCall(*decorated.ToolCall)
 			reason := "approval pending"
 			out = append(out, decorated, contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: call.Name, Action: "refused", Detail: detail, Reason: &reason}})
 			text, structured := failure.ToolFailure(failure.NewError(contract.Failure{Version: 1, Code: "permission", Source: "tool", Outcome: "not-started", Detail: &detail}))
 			result := contract.RunEvent{ToolResult: &contract.ToolResult{Type: "tool_result", CallID: call.CallID, Name: call.Name, IsError: true, Text: text, Structured: structured}}
-			result = context.Sources.Decorate(result)
+			result = withPrincipal(context.Sources.Decorate(result), context)
 			context.Execution.ObserveToolResult(*result.ToolResult)
 			if callID != "" {
 				b.held[callID] = true
@@ -248,6 +248,8 @@ func (b *Boundary) event(event contract.RunEvent) ([]contract.RunEvent, bool) {
 	if context.Sources != nil {
 		event = context.Sources.Decorate(event)
 	}
+	// ADR-0029: a delegated run's call and result carry its principal (event 3).
+	event = withPrincipal(event, context)
 	if event.Critique != nil {
 		written, err := WriteCritique(event.Critique, context.Execution.RecordPolicy, context.Execution.recordGuard(), time.Now())
 		if err != nil {
@@ -482,3 +484,22 @@ func (b *Boundary) Failed(cause error) []contract.RunEvent {
 	return output
 }
 func FailedToOpen(cause error) []contract.RunEvent { return currentEvents(failedToOpen(cause)) }
+
+// withPrincipal is ADR-0029's stamp: a delegated run's tool_call and tool_result carry its principal;
+// an undelegated run's are unchanged.
+func withPrincipal(event contract.RunEvent, context *SessionContext) contract.RunEvent {
+	if context.Principal == nil {
+		return event
+	}
+	if call := event.ToolCall; call != nil {
+		copied := *call
+		copied.Principal = context.Principal.Record.Contract()
+		event.ToolCall = &copied
+	}
+	if result := event.ToolResult; result != nil {
+		copied := *result
+		copied.Principal = context.Principal.Record.Contract()
+		event.ToolResult = &copied
+	}
+	return event
+}

@@ -1,0 +1,541 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-principal.json",
+  "title": "Run principal",
+  "description": "The principal a delegated run acts as and for (spec RFC 0030, a Draft; agent #260, ADR-0029): the record member principal that tool_call and tool_result (run event 3), a delegation refusal's guardrail (run event 3), the checkpoint (version 4) and the run report (version 3) carry. actor is the agent principal (the chain leaf's act.agent, its issuing host and its bound software), rootActor the root link's act.agent, subject the chain's sub, delegation the leaf link by id and digest, chain every link's digest, root first. The record carries no credential, no token, no token digest, no statement bytes and no label. The issuing host supplies the chain when it starts the run; the model never chooses or changes it. The definitions also state the delegation statement as the agent reads it (RFC 0030 §2 version 1, the forms the reference gateway's SPEC.md §11.1 reads), the admission read the package hands the host's admission port and its answer, and the named refusals. A run with no delegation configured carries none of this and writes the earlier record versions byte for byte.",
+  "type": "object",
+  "required": [
+    "actor",
+    "rootActor",
+    "subject",
+    "delegation",
+    "chain"
+  ],
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/actor"
+    },
+    "rootActor": {
+      "description": "The root link's act.agent: with the subject, what a resume and a lease takeover must keep (RFC 0030 §7 rule 2). A chain re-issued or narrowed for the same subject and root actor is the same principals.",
+      "$ref": "#/$defs/opaqueIdentifier"
+    },
+    "subject": {
+      "$ref": "#/$defs/principalReference"
+    },
+    "delegation": {
+      "description": "The leaf link: the link the run acts under directly.",
+      "type": "object",
+      "required": [
+        "id",
+        "digest"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/opaqueIdentifier"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "chain": {
+      "description": "Every link's digest, root first, ending with the leaf's: one to five.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/digest"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "opaqueIdentifier": {
+      "description": "Exactly 32 lowercase hexadecimal characters.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "flatToken": {
+      "description": "[A-Za-z0-9._-]{1,128}, never . or .. (the readers refuse those two).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "digest": {
+      "description": "sha256: and the lowercase hexadecimal SHA-256 of canon of the whole statement, signature included.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "time": {
+      "description": "UTC with exactly millisecond precision, of a date that exists (the readers check the date).",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "principalReference": {
+      "description": "A person or a service: the issuer and subject of the identity the issuing host verified for it, and its kind. Two are equal only when all three members are. No token, token digest or display label.",
+      "type": "object",
+      "required": [
+        "kind",
+        "issuer",
+        "subject"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "service"
+          ]
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "software": {
+      "description": "The agent's software identity, exactly one form: the package name and exact version, or the digest of the harness. Host-attested, not proved (RFC 0030 §1 rule 3).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "package",
+            "version"
+          ],
+          "properties": {
+            "package": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "harness"
+          ],
+          "properties": {
+            "harness": {
+              "$ref": "#/$defs/digest"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "actor": {
+      "description": "The agent principal: the leaf's act.agent, the issuing host that registered it, and the leaf's act.software, which is the software the host states the run runs.",
+      "type": "object",
+      "required": [
+        "agent",
+        "host",
+        "software"
+      ],
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/opaqueIdentifier"
+        },
+        "host": {
+          "$ref": "#/$defs/flatToken"
+        },
+        "software": {
+          "$ref": "#/$defs/software"
+        }
+      },
+      "additionalProperties": false
+    },
+    "audience": {
+      "description": "The enforcing host that admits calls under a scope entry: a gateway by the authority label its receipts carry (1 to 256 characters from U+0021 to U+007E), or an agent host by the flat token it declares for its host sources.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "const": "gateway"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[!-~]{1,256}$"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "const": "agent-host"
+            },
+            "name": {
+              "$ref": "#/$defs/flatToken"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "effect": {
+      "description": "ADR-0027's effect classes, in strength order.",
+      "enum": [
+        "pure",
+        "read",
+        "read-external",
+        "propose",
+        "act"
+      ]
+    },
+    "scopeEntry": {
+      "description": "One entry of a scope. The readers also hold tools to strict code-point order, effects to strength order, and limits to calls or x- and a flat token.",
+      "type": "object",
+      "required": [
+        "audience",
+        "source",
+        "tools",
+        "effects",
+        "limits"
+      ],
+      "properties": {
+        "audience": {
+          "$ref": "#/$defs/audience"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "type": "string"
+          }
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "limits": {
+          "type": "object",
+          "maxProperties": 16,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "statement": {
+      "description": "A delegation statement, version 1 (RFC 0030 §2): subject sub authorizes actor act for scope until expiresAt. Signed with Ed25519 under the issuing host's pinned key over \"judgment-pack/delegation/1:\" and canon of the statement without its signature. A top-level member beside those named is signed with the rest and not refused by the structure (a member appended after signing fails the signature); every object inside a link holds exactly its members. The readers hold the rest of RFC 0030's step 3: entries ordered by audience kind, audience name and source with no repeat, a lifetime of at most 24 hours, parent and depth consistent, and canon of the link at most 65536 bytes.",
+      "type": "object",
+      "required": [
+        "delegationVersion",
+        "id",
+        "host",
+        "keyId",
+        "sub",
+        "act",
+        "scope",
+        "mayDelegate",
+        "issuedAt",
+        "expiresAt",
+        "parent",
+        "depth",
+        "signature"
+      ],
+      "properties": {
+        "delegationVersion": {
+          "const": "1"
+        },
+        "id": {
+          "$ref": "#/$defs/opaqueIdentifier"
+        },
+        "host": {
+          "$ref": "#/$defs/flatToken"
+        },
+        "keyId": {
+          "description": "The first 32 characters of the lowercase hexadecimal SHA-256 of the issuing host's 32-byte public key.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "sub": {
+          "$ref": "#/$defs/principalReference"
+        },
+        "act": {
+          "type": "object",
+          "required": [
+            "agent",
+            "software"
+          ],
+          "properties": {
+            "agent": {
+              "$ref": "#/$defs/opaqueIdentifier"
+            },
+            "software": {
+              "$ref": "#/$defs/software"
+            }
+          },
+          "additionalProperties": false
+        },
+        "scope": {
+          "type": "object",
+          "required": [
+            "sources"
+          ],
+          "properties": {
+            "sources": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "$ref": "#/$defs/scopeEntry"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "mayDelegate": {
+          "type": "boolean"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/time"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/time"
+        },
+        "parent": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "id",
+                "digest"
+              ],
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/opaqueIdentifier"
+                },
+                "digest": {
+                  "$ref": "#/$defs/digest"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{128}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "chain": {
+      "description": "A chain: one to five statements, root first, each child narrowed from its parent (RFC 0030 §3).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "$ref": "#/$defs/statement"
+      }
+    },
+    "scopeReason": {
+      "description": "The first reason a call is outside a link's scope, in this order: source, tool, effect, limit-unknown, limit.",
+      "enum": [
+        "source",
+        "tool",
+        "effect",
+        "limit-unknown",
+        "limit"
+      ]
+    },
+    "refusal": {
+      "description": "A named refusal of a delegated run. Verification of the chain (when the run starts, and of a child's chain when it is handed one): malformed, unsupported-version, key-mismatch, signature-mismatch, chain-broken, widened, and software-mismatch where the leaf's software is not the run's. Admission of a call, immediately before dispatch and with counting unset before an approval pause: not-yet-valid and expired at the host's time; the host admission port's agent-unregistered, software-mismatch, not-issued, revoked, subject-mismatch, subject-unauthorized and out-of-scope (limit); the package's own out-of-scope; admission-unknown where the port gave no valid answer in time or the host's time could not be read. A resume or takeover under another subject or root actor: principal-changed. reason is present exactly for out-of-scope.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "malformed",
+            "unsupported-version",
+            "key-mismatch",
+            "signature-mismatch",
+            "chain-broken",
+            "widened",
+            "not-yet-valid",
+            "expired",
+            "agent-unregistered",
+            "software-mismatch",
+            "not-issued",
+            "revoked",
+            "out-of-scope",
+            "subject-mismatch",
+            "subject-unauthorized",
+            "admission-unknown",
+            "principal-changed"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/scopeReason"
+        }
+      },
+      "additionalProperties": false
+    },
+    "admissionCall": {
+      "description": "The call an admission read names: the source as the audience names it, the tool's own name at its source, its owner-declared ADR-0027 effect, and whether this admission counts against the calls limits. count is true only on the admission immediately before a dispatch the package itself is the enforcing host of (a host source) and whose own checks held; a gateway source's call is counted by the gateway. An acting Runtime call names source runtime; a host tool with no source names source local, which no scope matches, and its read asks only whether the chain stands and never counts.",
+      "type": "object",
+      "required": [
+        "source",
+        "tool",
+        "effect",
+        "count"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effect": {
+          "$ref": "#/$defs/effect"
+        },
+        "count": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "admissionRead": {
+      "description": "What the package hands the host's admission port for one call (the body of the reference gateway's admission read, SPEC.md §11.5, with the call's audience): the issuing host, the audience, the chain's digests, the call and the host's time. The port answers from the issuing host's state, read afresh: no package-side cache holds an answer.",
+      "type": "object",
+      "required": [
+        "readVersion",
+        "host",
+        "audience",
+        "chain",
+        "call",
+        "at"
+      ],
+      "properties": {
+        "readVersion": {
+          "const": "1"
+        },
+        "host": {
+          "$ref": "#/$defs/flatToken"
+        },
+        "audience": {
+          "$ref": "#/$defs/audience"
+        },
+        "chain": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "call": {
+          "$ref": "#/$defs/admissionCall"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "admissionAnswer": {
+      "description": "The port's answer, exactly one of three forms. Anything else, a throw or no answer within five seconds refuses the call as admission-unknown.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "admission"
+          ],
+          "properties": {
+            "admission": {
+              "const": "admit"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "admission",
+            "refusal"
+          ],
+          "properties": {
+            "admission": {
+              "const": "refuse"
+            },
+            "refusal": {
+              "enum": [
+                "expired",
+                "agent-unregistered",
+                "software-mismatch",
+                "not-issued",
+                "revoked",
+                "subject-mismatch",
+                "subject-unauthorized"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "admission",
+            "refusal",
+            "reason"
+          ],
+          "properties": {
+            "admission": {
+              "const": "refuse"
+            },
+            "refusal": {
+              "const": "out-of-scope"
+            },
+            "reason": {
+              "$ref": "#/$defs/scopeReason"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

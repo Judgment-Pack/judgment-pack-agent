@@ -27,7 +27,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` |  | const (see schema) |  |
-| `version` | yes | enum `1`, `2`, `3` | Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2. |
+| `version` | yes | enum `1`, `2`, `3`, `4` | Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029). |
 | `digest` |  | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `id` | yes | string (min length 1, max length 100) |  |
@@ -86,6 +86,7 @@ Closed: a member the schema does not name is refused.
 | `usageBudget` |  | `usage-budget.json` |  |
 | `turnRoute` |  | `turn-route.json` |  |
 | `repeatTools` |  | `$defs/repeatTools` |  |
+| `principal` |  | `run-principal.json` | ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential. |
 
 Conditions beyond the members (allOf) are in the schema file.
 

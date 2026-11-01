@@ -30,6 +30,7 @@ func reauthRun(t *testing.T, f *runtimeActionFixture, store runcontext.RunStore,
 	t.Helper()
 	events := []contract.RunEvent{}
 	run := &adapter.Run{Prompt: "Evaluate the unsaved draft.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", Gate: f.gate.Calls(), Tools: f.gate.Offer().Tools, AllowConversation: true, Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Evaluate the unsaved draft.", Input: "draft"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "runtime-action-run", Resume: resume}}, Emit: func(e contract.RunEvent) { events = append(events, e) }}
+	run.Context.Principal = f.principal
 	run.EnrollContext = func(ctx context.Context, offer adapter.ContextOffer) error {
 		return f.gate.EnrollContext(offer.ID, offer.HostTools)
 	}

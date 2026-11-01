@@ -28,6 +28,7 @@ func runtimeActionTool() contract.ToolOfferRuntimeTool {
 }
 
 type runtimeActionFixture struct {
+	principal    *runcontext.RunPrincipal
 	gate         *gate.Gate
 	owner        gate.RuntimeExecutionOwner
 	listed       []contract.ToolOfferRuntimeTool
@@ -100,6 +101,7 @@ func (f *runtimeActionFixture) run(t *testing.T, store runcontext.RunStore, engi
 	if f.link != nil {
 		run.Context.Link = f.link
 	}
+	run.Context.Principal = f.principal
 	run.EnrollContext = func(ctx context.Context, offer adapter.ContextOffer) error {
 		if !ack {
 			return nil
@@ -137,6 +139,9 @@ func (f *runtimeActionFixture) run(t *testing.T, store runcontext.RunStore, engi
 				return enrollmentFinal(), nil
 			}
 			if requests > 1 {
+				if f.principal != nil {
+					return enrollmentFinal(), nil
+				}
 				return nil, errors.New("follow-up dispatched while approval held")
 			}
 			return runtimeActionResponse(), nil

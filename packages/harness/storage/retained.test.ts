@@ -110,7 +110,7 @@ for(const mode of ['digest','unsupported-version','missing-header','scope'])it(`
  const child=original();child.id='child-one'
  const record=writeRecord(CHECKPOINT_SCHEMA,{...child},recordsPolicy({}),undefined,new Date('2026-10-24T00:00:00Z'),'2030-01-01T00:00:00.000Z') as ExecutionCheckpoint
  if(mode==='digest')record.digest='sha256:'+'0'.repeat(64)
- if(mode==='unsupported-version'){(record as {version:number}).version=4;record.digest=recordDigest(record)}
+ if(mode==='unsupported-version'){(record as {version:number}).version=5;record.digest=recordDigest(record)}
  if(mode==='missing-header'){delete record.digest;delete record.schema;delete record.retainUntil}
  const store=new MemoryRunStore(),commit=vi.spyOn(store,'commit'),writer=new RunWriter(store,root.id);writer.bind(()=>root,recordsPolicy({}),()=>undefined)
  await expect(writer.save({writer,scope:{execution:mode==='scope'?'different-child':record.id,role:'author',task:'task-one'},root:false},record)).rejects.toBeInstanceOf(ContinuationNotRecoverable);expect(commit).not.toHaveBeenCalled()

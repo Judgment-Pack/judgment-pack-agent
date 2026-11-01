@@ -134,7 +134,8 @@ func TestCheckpointMembersInterruptResume(t *testing.T) {
 			continue
 		}
 		if name == "version" {
-			if value.Get(name).Num() != 3 || interrupted.Version != 3 || continued.Version != 3 {
+			// ADR-0029: the fixture is a delegated run's checkpoint 4.
+			if value.Get(name).Num() != 4 || interrupted.Version != 4 || continued.Version != 4 {
 				t.Fatal("current checkpoint version changed across interruption/resume")
 			}
 			continue
@@ -192,6 +193,10 @@ func TestCheckpointMembersOmissionVersusDefaults(t *testing.T) {
 				if key != name {
 					without.Set(key, value.Get(key).Clone())
 				}
+			}
+			// ADR-0029: a checkpoint without its principal is an undelegated run's, version 3.
+			if name == "principal" {
+				without.Set("version", Number(3))
 			}
 			if name == "planState" {
 				step := value.Get("plan").Items()[0]

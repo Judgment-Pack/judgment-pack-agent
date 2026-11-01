@@ -35,10 +35,11 @@ func TestPresence(t *testing.T) {
 `),
 	}
 	for target, source := range map[string]string{
-		"support.go":         "../../contract/support.go",
-		"records.go":         "../../contract/records.go",
-		"record_shapes.json": "../../contract/record_shapes.json",
-		"fixture.json":       "../../../contract/vectors/dialect-authoring/retention.json",
+		"support.go":              "../../contract/support.go",
+		"records.go":              "../../contract/records.go",
+		"record_shapes.json":      "../../contract/record_shapes.json",
+		"record_shapes_v012.json": "../../contract/record_shapes_v012.json",
+		"fixture.json":            "../../../contract/vectors/dialect-authoring/retention.json",
 	} {
 		body, err := os.ReadFile(source)
 		if err != nil {

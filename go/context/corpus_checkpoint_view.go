@@ -19,7 +19,7 @@ func newCorpusCheckpointView(source HistoryObjectRef, document *Value) (CorpusCh
 		return fail()
 	}
 	version := int(document.Get("version").Num())
-	if version < 1 || version > 3 {
+	if version < 1 || version > 4 {
 		return fail()
 	}
 	raw := []byte(CanonicalJSON(document))

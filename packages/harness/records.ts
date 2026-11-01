@@ -9,7 +9,7 @@ export const EXPORT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent
 export const RECORD_SCHEMAS=[CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA] as const
 export type RecordSchema=typeof RECORD_SCHEMAS[number]
 export interface RecordsPolicy {retainDays:number;redactOnStore:boolean;exportFormat:'json'}
-export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2|3 : 1;digest:string;retainUntil:string;records?:RecordMarker}
+export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2|3|4 : 1;digest:string;retainUntil:string;records?:RecordMarker}
 export interface RecordGuard {declaredNames?:ReadonlySet<string>;value<T>(input:T,where:'message',record?:boolean,marker?:RecordMarker):T}
 export interface ExportEntry extends RecordMembers {bytes:number}
 export interface ExportManifest {
@@ -88,7 +88,7 @@ function nativePlanRecordFields(value:Record<string,unknown>):boolean {
  return book?.dispatches?.some(row=>row.planPause!==undefined)===true||state?.decisions?.some(row=>row.nativeInvocation!==undefined)===true
 }
 export function writeRecord<S extends RecordSchema,T extends Record<string,unknown>>(schema:S,value:T,policy:RecordsPolicy,guard?:RecordGuard,now=new Date(),keepRetainUntil?:string):T&RecordMembers<S>{
- let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?(((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
+ let record={...structuredClone(value),schema,version:(schema===CHECKPOINT_SCHEMA?((value as {principal?:unknown}).principal!==undefined?4:((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1),retainUntil:keepRetainUntil??retainUntil(policy,now)} as T&Omit<RecordMembers<S>,'digest'>
  const figures:RecordMarker={redactions:{}}
  if(policy.redactOnStore&&guard)guardRecord(record,guard,figures)
  Object.assign(record,{records:figures})
@@ -97,12 +97,12 @@ export function writeRecord<S extends RecordSchema,T extends Record<string,unkno
 export function validRecord(value:unknown):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>
- return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&(record.schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
+ return RECORD_SCHEMAS.includes(record.schema as RecordSchema)&&(record.schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3||record.version===4):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&record.digest===recordDigest(record)&&typeof record.retainUntil==='string'&&record.retainUntil.length<=40&&Number.isFinite(Date.parse(record.retainUntil))
 }
 export function validRecordHeader(value:unknown,schema:RecordSchema):value is Record<string,unknown>&RecordMembers{
  if(!value||typeof value!=='object'||Array.isArray(value))return false
  const record=value as Record<string,unknown>,until=record.retainUntil
- return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
+ return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?(record.version===1||record.version===2||record.version===3||record.version===4):record.version===1)&&typeof record.digest==='string'&&DIGEST.test(record.digest)&&typeof until==='string'&&until.length<=40&&Number.isFinite(Date.parse(until))
 }
 export class RecordsExpired extends Error{
  constructor(){super('records expired')}

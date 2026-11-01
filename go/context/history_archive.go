@@ -1266,15 +1266,21 @@ func ReadRunArchive(raw []byte, expectedDigest string) (result *ImportedRunHisto
 		return nil, &HistoryInputInvalid{}
 	}
 	expectedVersion := 1
-	if checkpoint.Get("version").Num() == 3 || feedbackPosition > 0 {
+	if checkpoint.Get("version").Num() >= 3 || feedbackPosition > 0 {
 		expectedVersion = 2
+	}
+	if checkpoint.Get("version").Num() == 4 {
+		expectedVersion = 3
+	}
+	if want, have := checkpoint.Get("principal"), report.Get("principal"); (want == nil) != (have == nil) || want != nil && CanonicalJSON(want) != CanonicalJSON(have) {
+		return invalid()
 	}
 	if report.Get("version").Num() != float64(expectedVersion) {
 		return invalid()
 	}
 	var route *Value
 	var totals *Value
-	if checkpoint.Get("version").Num() == 3 {
+	if checkpoint.Get("version").Num() >= 3 {
 		route = checkpoint.Get("turnRoute")
 		if source := checkpoint.Get("usageBudget"); source != nil {
 			var journal UsageBudgetJournal

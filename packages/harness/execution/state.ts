@@ -8,6 +8,7 @@ import {validDurable} from '../storage/durable'
 import {validHandoff} from '../storage/handoff'
 import {mutateCheckpoint} from './mutation'
 import {checkRecord} from '../recordReader'
+import {validPrincipalRecord,type PrincipalRecord} from '../principal'
 import {validOutputCounts,type OutputCounts} from '../outputGuard'
 import {validDraft,type DraftCheckpoint} from '../edits'
 import { validMemories, type Memories } from '../memories'
@@ -57,8 +58,10 @@ export interface ExecutionCheckpoint {
  usageBudget?:UsageBudgetJournal;
  turnRoute?:TurnRoute;
  repeatTools?:RepeatTools;
+ /** ADR-0029: the principal a delegated run acts as and for (checkpoint 4 only). */
+ principal?:PrincipalRecord;
  handoff?:import('../storage/handoff').DurableHandoff;
- version:1|2|3;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
+ version:1|2|3|4;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];planState?:PlanState;explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
@@ -200,18 +203,18 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  checkRecord('checkpoint',value)
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
- if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3,4].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
- if(value.repeatTools!==undefined&&(value.version!==3||!validRepeatTools(value.repeatTools)))return fail()
+ if(value.repeatTools!==undefined&&(Number(value.version)<3||!validRepeatTools(value.repeatTools)))return fail()
  if(!validRepeatRecordCustody(value))return fail()
  const nativeBook=value.durable as import('../storage/writer').DurableBook|undefined
- if(nativeBook?.dispatches?.some(row=>row.planPause&&(typeof row.planPause.callId!=='string'||row.planPause.callId.length<1||row.planPause.callId.length>256||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.revision)||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.candidateRevision)||value.version!==3||row.kind!=='agent'||row.state!=='unknown'||!row.read||row.scope.execution!==value.id||row.scope.role!=='author'||row.scope.task!==undefined)))return fail()
- for(const decision of (value.planState as import('./plan').PlanState|undefined)?.decisions??[]){if(!decision.nativeInvocation)continue;const row=nativeBook?.dispatches?.find(row=>row.id===decision.nativeInvocation!.dispatchId);if(value.version!==3||!row?.planPause||row.requestDigest!==decision.nativeInvocation.requestDigest||row.planPause.callId!==decision.callId||row.planPause.revision!==decision.revision||row.planPause.candidateRevision!==decision.candidateRevision)return fail()}
+ if(nativeBook?.dispatches?.some(row=>row.planPause&&(typeof row.planPause.callId!=='string'||row.planPause.callId.length<1||row.planPause.callId.length>256||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.revision)||!/^sha256:[a-f0-9]{64}$/.test(row.planPause.candidateRevision)||Number(value.version)<3||row.kind!=='agent'||row.state!=='unknown'||!row.read||row.scope.execution!==value.id||row.scope.role!=='author'||row.scope.task!==undefined)))return fail()
+ for(const decision of (value.planState as import('./plan').PlanState|undefined)?.decisions??[]){if(!decision.nativeInvocation)continue;const row=nativeBook?.dispatches?.find(row=>row.id===decision.nativeInvocation!.dispatchId);if(Number(value.version)<3||!row?.planPause||row.requestDigest!==decision.nativeInvocation.requestDigest||row.planPause.callId!==decision.callId||row.planPause.revision!==decision.revision||row.planPause.candidateRevision!==decision.candidateRevision)return fail()}
  const schedule=(value.planState as import('./plan').PlanState|undefined)?.taskSchedule
  if(schedule&&(schedule.binding.execution!==value.id||schedule.binding.unit!==value.unit))return fail()
  const coordinator=(value.planState as import('./plan').PlanState|undefined)?.taskCoordinator
- if(coordinator&&(value.version!==3||coordinator.run!==value.id||coordinator.execution!==value.id||value.unit!=='provider-managed'||coordinator.scopeDigest!==`sha256:${sha256(canonicalJSON({execution:value.id,role:'author'}))}`))return fail()
+ if(coordinator&&(Number(value.version)<3||coordinator.run!==value.id||coordinator.execution!==value.id||value.unit!=='provider-managed'||coordinator.scopeDigest!==`sha256:${sha256(canonicalJSON({execution:value.id,role:'author'}))}`))return fail()
  const envelope=(value.planState as import('./plan').PlanState|undefined)?.taskEnvelope
  if(envelope&&(envelope.run!==value.id||envelope.execution!==value.id||value.unit!=='provider-managed'))return fail()
  if(!Number.isInteger(value.used)||Number(value.used)<0||!Number.isInteger(value.limit)||Number(value.limit)<1||Number(value.limit)>MAX_REQUEST_ALLOWANCE||Number(value.used)>Number(value.limit)||!Array.isArray(value.grants)||value.grants.length>8)return fail()
@@ -237,9 +240,11 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.childUsage!==undefined&&(!Array.isArray(value.childUsage)||value.childUsage.length>256||new Set(value.childUsage.map(r=>object(r)?r.id:undefined)).size!==value.childUsage.length||value.childUsage.some(r=>!object(r)||!exact(r,['id','usage'])||!text(r.id,128)||!r.id||!validUsage(r.usage))))return fail()
  if(value.usage!==undefined&&!validUsage(value.usage))return fail()
  if(value.policy!==undefined&&!validPolicy(value.policy))return fail()
- if(value.turnRoute!==undefined&&(value.version!==3||!validTurnRoute(value.turnRoute)))return fail()
- if(value.usageBudget!==undefined&&(value.version!==3||!validUsageJournal(value.usageBudget)))return fail()
+ if(value.turnRoute!==undefined&&(Number(value.version)<3||!validTurnRoute(value.turnRoute)))return fail()
+ if(value.usageBudget!==undefined&&(Number(value.version)<3||!validUsageJournal(value.usageBudget)))return fail()
  if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
+ // ADR-0029: version 4 is a delegated run's, and carries exactly its principal.
+ if((value.version===4)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

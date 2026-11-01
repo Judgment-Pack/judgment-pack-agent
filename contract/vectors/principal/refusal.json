@@ -1,0 +1,99 @@
+{
+ "description": "Every named refusal of a delegated run (ADR-0029): the chain's verification, admission before dispatch, and a resume or takeover under other principals; out-of-scope with each of its reasons, in the order they are judged. refused are forms the readers do not write.",
+ "schema": "run-principal.json#/$defs/refusal",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (PrincipalRefusal, admitCall)",
+   "packages/harness/principalGate.test.ts"
+  ]
+ },
+ "items": [
+  {
+   "name": "malformed"
+  },
+  {
+   "name": "unsupported-version"
+  },
+  {
+   "name": "key-mismatch"
+  },
+  {
+   "name": "signature-mismatch"
+  },
+  {
+   "name": "chain-broken"
+  },
+  {
+   "name": "widened"
+  },
+  {
+   "name": "not-yet-valid"
+  },
+  {
+   "name": "expired"
+  },
+  {
+   "name": "agent-unregistered"
+  },
+  {
+   "name": "software-mismatch"
+  },
+  {
+   "name": "not-issued"
+  },
+  {
+   "name": "revoked"
+  },
+  {
+   "name": "subject-mismatch"
+  },
+  {
+   "name": "subject-unauthorized"
+  },
+  {
+   "name": "admission-unknown"
+  },
+  {
+   "name": "principal-changed"
+  },
+  {
+   "name": "out-of-scope",
+   "reason": "source"
+  },
+  {
+   "name": "out-of-scope",
+   "reason": "tool"
+  },
+  {
+   "name": "out-of-scope",
+   "reason": "effect"
+  },
+  {
+   "name": "out-of-scope",
+   "reason": "limit-unknown"
+  },
+  {
+   "name": "out-of-scope",
+   "reason": "limit"
+  }
+ ],
+ "refused": [
+  {
+   "problem": "a name no step gives",
+   "refusal": {
+    "name": "credential-mismatch"
+   }
+  },
+  {
+   "problem": "a scope reason outside the five",
+   "refusal": {
+    "name": "out-of-scope",
+    "reason": "time"
+   }
+  }
+ ]
+}

@@ -72,7 +72,7 @@ func (c *SessionContext) MarkNativePlanPause(ctx context.Context) error {
 		return err
 	}
 	pause := nativePlanPending(&state)
-	if pause == nil || state.Version != 3 {
+	if pause == nil || state.Version < 3 {
 		return &ContinuationIdentityChanged{}
 	}
 	w := binding.Writer
@@ -212,7 +212,7 @@ func (w *RunWriter) nativePlanDecisionLocked(ctx context.Context, binding RunBin
 	if old == nil {
 		return nil, nil
 	}
-	if !w.rootBinding(binding) || state.Version != 3 {
+	if !w.rootBinding(binding) || state.Version < 3 {
 		return nil, &ContinuationIdentityChanged{}
 	}
 	if err := w.verifyNativePlanJournalLocked(ctx, binding, *old, nil); err != nil {
@@ -358,11 +358,11 @@ func (w *RunWriter) verifyNativePlanJournalLocked(ctx context.Context, binding R
 	if err != nil {
 		return err
 	}
-	if usageCanonical(current) != usageCanonical(w.latest) || current.Version != 3 || current.RetainUntil == nil || RefuseExpired(*current.RetainUntil, time.Now()) != nil {
+	if usageCanonical(current) != usageCanonical(w.latest) || current.Version < 3 || current.RetainUntil == nil || RefuseExpired(*current.RetainUntil, time.Now()) != nil {
 		return invalid()
 	}
 	matches := func(state *contract.Checkpoint, status string, paused bool) bool {
-		if state == nil || state.ID != w.ID || state.Version != 3 || state.RequestKey != current.RequestKey || state.Context.Scope != current.Context.Scope || state.RetainUntil == nil || RefuseExpired(*state.RetainUntil, time.Now()) != nil {
+		if state == nil || state.ID != w.ID || state.Version < 3 || state.RequestKey != current.RequestKey || state.Context.Scope != current.Context.Scope || state.RetainUntil == nil || RefuseExpired(*state.RetainUntil, time.Now()) != nil {
 			return false
 		}
 		book, e := nativePlanBook(state)

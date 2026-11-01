@@ -35,6 +35,12 @@ var runReportV1 = MustParseJSON(string(runReportV1JSON))
 var runReportV2JSON []byte
 var runReportV2 = MustParseJSON(string(runReportV2JSON))
 
+// ADR-0029: report 3, a delegated run's (of its checkpoint 4), with its principal.
+//
+//go:embed run_report_v3.json
+var runReportV3JSON []byte
+var runReportV3 = MustParseJSON(string(runReportV3JSON))
+
 // exactReportNumber checks decimal value before float64 can round an invalid spelling.
 // Every numeric domain in report v1 is an integer.
 func exactReportNumber(token string) (float64, bool) {
@@ -342,6 +348,7 @@ func init() {
 	}
 	visit(runReportV1)
 	visit(runReportV2)
+	visit(runReportV3)
 }
 func reportSchemaMatches(s, v *Value, graphs ...*Value) bool {
 	graph := runReportV1
@@ -541,7 +548,7 @@ func validRepeatReport(v *Value) bool {
 	if r == nil {
 		return true
 	}
-	if v.Get("version").Num() != 2 || v.Get("checkpointVersion").Num() != 3 {
+	if !(v.Get("version").Num() == 2 && v.Get("checkpointVersion").Num() == 3 || v.Get("version").Num() == 3 && v.Get("checkpointVersion").Num() == 4) {
 		return false
 	}
 	p := r.Get("policy")
@@ -566,8 +573,11 @@ func validReportSemantics(v *Value) bool {
 	if !oldSourceTaskFacts(v) || !validRepeatReport(v) {
 		return false
 	}
-	if v.Get("version").Num() == 2 {
-		if v.Get("checkpointVersion").Num() != 3 && (v.Has("usageTotals") || v.Has("route") || !v.Get("feedback").IsArray() || v.Get("feedback").Len() == 0) {
+	if v.Get("version").Num() == 3 && (v.Get("checkpointVersion").Num() != 4 || !validPrincipalValue(v.Get("principal"))) {
+		return false
+	}
+	if v.Get("version").Num() == 2 || v.Get("version").Num() == 3 {
+		if v.Get("checkpointVersion").Num() != 3 && v.Get("checkpointVersion").Num() != 4 && (v.Has("usageTotals") || v.Has("route") || !v.Get("feedback").IsArray() || v.Get("feedback").Len() == 0) {
 			return false
 		}
 		if rows := v.Get("feedback"); rows != nil {
@@ -700,6 +710,9 @@ func validateRunReport(v *Value) (*Value, error) {
 	if v.Get("version").Num() == 2 {
 		graph = runReportV2
 	}
+	if v.Get("version").Num() == 3 {
+		graph = runReportV3
+	}
 	if !reportSchemaMatches(graph.Get("root"), v, graph) || !validReportSemantics(v) {
 		return nil, &RunReportInvalid{}
 	}
@@ -719,7 +732,13 @@ func readRunReportDisplay(value *Value) (*Value, error) {
 	if value.Get("version").Num() == 2 {
 		graph = runReportV2
 	}
+	if value.Get("version").Num() == 3 {
+		graph = runReportV3
+	}
 	if !reportSchemaMatches(graph.Get("root"), value, graph) || !oldSourceTaskFacts(value) || !validRepeatReport(value) {
+		return nil, &RunReportInvalid{}
+	}
+	if value.Get("version").Num() == 3 && (value.Get("checkpointVersion").Num() != 4 || !validPrincipalValue(value.Get("principal"))) {
 		return nil, &RunReportInvalid{}
 	}
 	return value.Clone(), nil

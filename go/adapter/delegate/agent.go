@@ -543,7 +543,9 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			restoredParent.Close()
 		}
 	}()
-	if run.Context != nil && run.Context.TaskSteps && pending != nil && (pending.state == "released" || pending.state == "children") {
+	// ADR-0029: a delegated run's parent is opened first whatever else holds: its resume check runs, and
+	// its children start under its opened principal.
+	if run.Context != nil && (run.Context.TaskSteps || runcontext.HoldsDelegation(run.Context)) && pending != nil && (pending.state == "released" || pending.state == "children") {
 		input := *run.Context
 		input.Chat = c.chat
 		input.Link = agentLink{c: c}

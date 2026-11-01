@@ -302,7 +302,8 @@ describe('checkpoint member omission and interruption/resume',()=>{
   const continued=resumed.snapshot('running')
   for(const key of Object.keys(memberVector.probeOwners)){
    if(memberVector.probeOwners[key]!=='controller'||key==='status')continue
-   if(key==='version'){expect(fixture.version).toBe(3);expect(interrupted.version).toBe(3);expect(continued.version).toBe(3);continue}
+   // ADR-0029: the fixture is a delegated run's checkpoint 4.
+   if(key==='version'){expect(fixture.version).toBe(4);expect(interrupted.version).toBe(4);expect(continued.version).toBe(4);continue}
    expect(canonicalJSON((continued as any)[key]),key).toBe(canonicalJSON((fixture as any)[key]))
   }
   // Interruption and initialization deliberately project status; its running value resumes exactly.
@@ -313,6 +314,8 @@ describe('checkpoint member omission and interruption/resume',()=>{
  it('keeps optional omissions distinct from allowed empty/zero defaults through resume',async()=>{
   for(const key of Object.keys(memberSchema.properties).filter(key=>!memberSchema.required.includes(key)&&memberVector.probeOwners[key]==='controller')){
    const fixture=memberSeed();delete (fixture as any)[key]
+   // ADR-0029: a checkpoint without its principal is an undelegated run's, version 3.
+   if(key==='principal')fixture.version=3
    if(key==='planState'){
     fixture.plan=fixture.plan.map(({id,...step})=>step)
     const original=canonicalJSON(fixture)

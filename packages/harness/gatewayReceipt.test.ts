@@ -150,6 +150,15 @@ function gatewayTool(extra:string|undefined,seen:{executions:number;last?:McpToo
  return {name:'query',taxonomy:{operation:'read',effect:'read-external'},description:'approved',inputSchema:{type:'object'},source:{kind:'mcp',id:'tickets',trust:'connected',toolListDigest:digest(snapshot()),descriptorSnapshot:snapshot(),descriptorApproval:approval(),currentDescriptorSnapshot:()=>snapshot(),gatewayReceipt:trust},
   execute:async(_args,bounded)=>{seen.executions++;const invocation=gatewayExecutionContext(bounded!);if(invocation===undefined)throw Error('no receipt session');const {envelope}=synthetic(true,invocation.receiptSession);if(extra!==undefined)(envelope.salts as Record<string,string>).note=extra;seen.last=outer(envelope);return seen.last}}
 }
+// ADR-0029: a mapping is held to the gateway the source's receipts pin, at its declaration.
+describe('a gateway mapping and the receipts a source pins',()=>{
+ const mapped=(authority:string)=>{const tool=gatewayTool(undefined,{executions:0});return {...tool,source:{...tool.source!,kind:'gateway' as const,gatewayScope:{authority,source:'tickets/live'}}}}
+ it('names the same authority, or the declaration is refused',async()=>{
+  const {trust}=synthetic()
+  await expect(declareSources([mapped(trust.authority)],[])).resolves.toBeDefined()
+  await expect(declareSources([mapped('gateway:another')],[])).rejects.toThrow(/gatewayScope names another authority than the receipts it pins/)
+ })
+})
 const gatewaySession=(chat:ChatContext,store:MemoryRunStore,tool:HostTool):AssistantSession=>({prompt:'Read record 7.',testPrompt:'',tools:[],hostTools:[tool],callTool:async()=>{throw Error('No Runtime tool was offered')},model:{family:'openai-compatible',model:'fixture',call:async()=>{throw Error('unused')}},signal:signal(),allowConversation:true,interactive:true,critic:'off',context:{currentRequest:{message:'Read record 7.',input:'7'},chat,runStore:{store,id:'receipt-quarantine'}}} as AssistantSession)
 const settled=async(work:Promise<McpToolResult>)=>{try{return await work}catch(error){return toolFailureResult(error) as McpToolResult}}
 const shown=(name:string,result:McpToolResult)=>({type:'tool_result',name,isError:result.isError===true,text:(result.content??[]).filter(p=>p.type==='text').map(p=>(p as {text:string}).text).join('\n'),...(result.structuredContent===undefined?{}:{structured:result.structuredContent})})

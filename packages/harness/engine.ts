@@ -337,7 +337,7 @@ export interface AssistantSession {
  * the runner interleaves them. An engine that emitted its own would be
  * reporting on a guard it does not hold.
  */
-export type AssistantEvent = ({version?:1|2} & AssistantEventBody)
+export type AssistantEvent = ({version?:1|2|3} & AssistantEventBody)
 type AssistantEventBody =
   | import('./repeatTools').RepeatDetected
   | ({type:'plan_revised';execution:string}&import('./execution/plan').PlanRevision)
@@ -393,8 +393,8 @@ type AssistantEventBody =
    * `origin` `harness` on a call the harness made itself, not the model: the
    * critic pass's own comparison of a declared case (agent#10 review row 8).
    */
-  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness'; source?: import('./toolSources').SourceRecord }
-  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness'; source?: import('./toolSources').SourceRecord; proposed?: true }
+  | { type: 'tool_call'; callId?: string; name: string; args: unknown; presentation?: { provider: string }; origin?: 'harness'; source?: import('./toolSources').SourceRecord; principal?: import('./principal').PrincipalRecord }
+  | { type: 'tool_result'; callId?: string; name: string; isError: boolean; text: string; structured?: unknown; origin?: 'harness'; source?: import('./toolSources').SourceRecord; proposed?: true; principal?: import('./principal').PrincipalRecord }
   /**
    * `rewrote` and `refused` are the ToolGate's, on the wire. `narrowed` is the
    * desk's own report on the **contract it showed the model**: on a wire whose
@@ -403,7 +403,7 @@ type AssistantEventBody =
    * that fired — nothing was stopped — but it is the same kind of sentence: the
    * desk saying what it did rather than leaving it to be discovered.
    */
-  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'plan update refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' | 'record version unsupported' | 'record member unsupported' }
+  | { type: 'guardrail'; tool: string; action: 'rewrote' | 'refused' | 'narrowed'; detail: string; reason?: 'approval refused' | 'plan update refused' | 'approval pending' | 'approval stale' | 'skill withheld' | 'skill budget' | 'review refused' | 'policy refused' | 'pace warning' | 'subagent withheld' | 'memory refused' | 'edit refused' | 'subagent refused' | 'compaction refused' | 'output refused' | 'records expired' | 'identity changed' | 'approval downgraded' | 'steer refused' | 'failover refused' | 'record refused' | 'record version unsupported' | 'record member unsupported' | 'delegation refused'; refusal?: import('./principal').PrincipalRefusal; principal?: import('./principal').PrincipalRecord }
   | { type: 'thinking_unavailable'; detail: string }
   /**
    * `cases` and `incomplete` where the host declared cases (agent#10): each
