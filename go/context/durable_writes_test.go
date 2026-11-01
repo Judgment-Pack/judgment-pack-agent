@@ -527,3 +527,54 @@ func TestAnApprovalAskedAgainShowsTheKeptText(t *testing.T) {
 		t.Fatalf("with no text the person was shown %s", got)
 	}
 }
+
+// Both languages read contract/vectors/approval/kept-text.json. toolSources.test.ts holds TypeScript's column.
+func TestTheKeptApprovalTextVector(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []contract.CheckpointApproval `json:"items"`
+		Keeps []struct {
+			Text  string `json:"text"`
+			Keeps bool   `json:"keeps"`
+		} `json:"keeps"`
+		Approved []struct {
+			Label   string  `json:"label"`
+			Args    string  `json:"args"`
+			Request *string `json:"request"`
+			Go      string  `json:"go"`
+		} `json:"approved"`
+	}
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	if len(vector.Items) == 0 || len(vector.Keeps) == 0 || len(vector.Approved) == 0 {
+		t.Fatal("the vector is empty")
+	}
+	for _, item := range vector.Items {
+		if item.Request == nil {
+			t.Fatal("an item keeps no text")
+		}
+		if _, ok := approvedArguments(item); !ok {
+			t.Fatalf("%s does not read back to its args", *item.Request)
+		}
+	}
+	for _, row := range vector.Keeps {
+		kept := approvalRequestOf([]byte(row.Text))
+		if (kept != nil) != row.Keeps || kept != nil && *kept != row.Text {
+			t.Errorf("%s keeps %v, want %v", row.Text, kept, row.Keeps)
+		}
+	}
+	for _, row := range vector.Approved {
+		var args map[string]json.RawMessage
+		if err = json.Unmarshal([]byte(row.Args), &args); err != nil {
+			t.Fatal(err)
+		}
+		text, ok := approvedArguments(contract.CheckpointApproval{Args: args, Request: row.Request})
+		if want := row.Go != "refused"; ok != want || want && string(text) != row.Go {
+			t.Errorf("%s: runs %q, %v, want %q", row.Label, text, ok, row.Go)
+		}
+	}
+}

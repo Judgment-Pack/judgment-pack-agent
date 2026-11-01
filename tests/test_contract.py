@@ -819,6 +819,70 @@ class VectorTests(unittest.TestCase):
                 rows = [row for row in checkpoint.get("durable", {}).get("dispatches", []) if row["kind"] == "host"]
                 self.assertEqual([row["request"] for row in rows], doc["calls"][name]["allowed"])
 
+    def test_the_kept_approval_text_follows_from_each_text(self):
+        # #275: a third reading. A text is kept unless it is args' canonical JSON and args cannot have changed it.
+        vector = self.vectors["approval/kept-text.json"]
+
+        def fold(name):
+            return name.casefold()
+
+        def says(held):
+            if held is None:
+                return False
+            if isinstance(held, bool):
+                return True
+            if isinstance(held, (int, float)):
+                return held != 0 and held == int(held) and abs(held) <= 2 ** 53 - 1
+            if isinstance(held, str):
+                return chr(0xFFFD) not in held
+            if isinstance(held, list):
+                return all(says(item) for item in held)
+            return all(says(name) and says(item) for name, item in held.items())
+
+        def no_folds(pairs):
+            names = [fold(name) for name, _ in pairs]
+            if len(names) != len(set(names)):
+                raise ValueError(names)
+            return dict(pairs)
+
+        def said(text):
+            # What the parsed form says exactly, whatever it was read from.
+            try:
+                return says(json.loads(text, object_pairs_hook=no_folds))
+            except ValueError:
+                return False
+
+        def canonical(text):
+            def write(held):
+                if isinstance(held, dict):
+                    return "{" + ",".join(json.dumps(name, ensure_ascii=False) + ":" + write(held[name]) for name in sorted(held)) + "}"
+                if isinstance(held, list):
+                    return "[" + ",".join(write(item) for item in held) + "]"
+                if isinstance(held, float) and held.is_integer():
+                    return str(int(held))
+                return json.dumps(held, ensure_ascii=False)
+            return write(json.loads(text))
+
+        kinds = set()
+        for row in vector["keeps"]:
+            with self.subTest(text=row["text"]):
+                self.assertEqual(row["keeps"], not (said(row["text"]) and canonical(row["text"]) == row["text"]))
+                kinds.add(row["keeps"])
+        self.assertEqual(kinds, {True, False})
+        for row in vector["approved"]:
+            with self.subTest(row=row["label"]):
+                if "request" not in row:
+                    self.assertEqual(row["go"], row["args"] if said(row["args"]) else "refused")
+                else:
+                    reads_back = False
+                    try:
+                        reads_back = json.loads(row["request"], parse_int=float, parse_float=float) == json.loads(row["args"], parse_int=float, parse_float=float)
+                    except ValueError:
+                        pass
+                    self.assertEqual(row["go"], row["request"] if reads_back else "refused")
+        for item in vector["items"]:
+            self.assertEqual(json.loads(item["request"], parse_int=float, parse_float=float), json.loads(json.dumps(item["args"]), parse_int=float, parse_float=float))
+
     def test_the_read_argument_outcomes_follow_from_each_text(self):
         # #271: a third reading of each case, from its text alone. Go gets no key unless the text is one
         # object with no repeated name and every number written as JSON.stringify writes its value;

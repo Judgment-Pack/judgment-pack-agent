@@ -8,6 +8,7 @@ import {sha256} from './records'
  * receipt and the report. The certified scenario 7 runs the same on every engine.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import keptTextVector from '../../contract/vectors/approval/kept-text.json'
 import descriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot-current.json'
 import historicalDescriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot.json'
 import {readDescriptorSnapshot} from './descriptorSnapshot'
@@ -1035,6 +1036,19 @@ describe('the approval pause (ADR-0008)', () => {
       expect(answer.ran, request).toBe(false)
       expect(seen).toEqual([])
       expect(notices.at(-1)).toMatchObject({ reason: 'approval stale' })
+    }
+  })
+  it('takes each row of the kept-text vector as the vector says (#275)', async () => {
+    const vector = keptTextVector as unknown as { items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[] }
+    for (const item of vector.items) expect(validApproval(item)).toBe(true)
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const }))
+    for (const row of vector.approved) {
+      const { gate } = await gateFor(tools, {}, false, bookOf().book)
+      const entry = gate.entries.get('ado__update_work_item')!
+      const seen: unknown[] = []
+      const answer = await gate.approved({ callId: 'held', name: 'ado__update_work_item', tool: entry.record.tool!, source: entry.record, args: JSON.parse(row.args) as Record<string, unknown>, state: 'approved', ...(row.request === undefined ? {} : { request: row.request }) }, signal(), async (args) => { seen.push(args); return { content: [] } })
+      expect(answer.ran, row.label).toBe(row.typescript !== 'refused')
+      expect(seen, row.label).toEqual(row.typescript === 'refused' ? [] : [row.typescript])
     }
   })
   it('reads a kept request closed: a string, only beside its parsed form, never on a Runtime call (#275)', () => {
