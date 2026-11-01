@@ -40,7 +40,7 @@ func TestApprovalParallelFixtureBindsEitherOriginalOwner(t *testing.T) {
 func TestRecordFixtureReadsOnlyTheVersionRegistry(t *testing.T) {
 	// Both roots contain unrelated string enums. Version selection must retain the
 	// integer registry without interpreting those payload enums as versions.
-	for file, want := range map[string]int64{"checkpoint.json": 3, "run-event.json": 2} {
+	for file, want := range map[string]int64{"checkpoint.json": 4, "run-event.json": 3} {
 		got, err := recordFixtureMaxVersion(file)
 		if err != nil || got != want {
 			t.Fatalf("%s version registry: got %d, error %v; want %d", file, got, err, want)

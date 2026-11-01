@@ -77,6 +77,8 @@ EXPECTED_SCHEMAS = {
     "run-lease.json",
     "run-wait.json",
     "run-resume.json",
+    "run-principal.json",
+    "run-report-v3.json",
     "run-reauth.json",
 }
 
@@ -1232,6 +1234,65 @@ class VectorTests(unittest.TestCase):
         admission = rows["lease/admission.json"]
         self.assertEqual(admission["canonical"], canonical(admission["items"][0]["operation"]))
         self.assertEqual(admission["items"][0]["idempotencyKey"], "sha256:" + sha256(admission["canonical"]))
+
+    def test_every_run_principal_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #260 (ADR-0029): every member of run-principal.json (root and definitions) and every enum
+        # value is carried by a handwritten principal vector, every refused record the schema can
+        # state fails it, and every chain digest is the one an independent canonical JSON gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("principal/")}
+        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json"})
+        schema = self.schemas["run-principal.json"]
+
+        def invalid(changed):
+            return any(problems(validator(changed, row["schema"]), row["items"]) for row in rows.values())
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-principal.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            self.assertTrue(invalid(changed), path)
+        for path in (["$defs", "effect"], ["$defs", "scopeReason"], ["$defs", "refusal", "properties", "name"], ["$defs", "principalReference", "properties", "kind"]):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-principal.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                self.assertTrue(invalid(changed), (path, value))
+        for name, member in (("principal/record.json", "record"), ("principal/refusal.json", "refusal"), ("principal/report.json", "report")):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                if refused["problem"] in ("a chain that does not end with the leaf", "a report whose chain does not end with its leaf"):
+                    continue  # a relation only the readers see
+                with self.subTest(vector=name, problem=refused["problem"]):
+                    self.assertNotEqual(problems(check, [refused[member]]), [])
+        check = validator(self.schemas, rows["principal/answer.json"]["schema"])
+        for refused in rows["principal/answer.json"]["refused"]:
+            self.assertNotEqual(problems(check, [refused]), [])
+        chains = rows["principal/chains.json"]
+        root, child = chains["items"][1]
+
+        def digest(statement):
+            return "sha256:" + hashlib.sha256(json.dumps(statement, separators=(",", ":"), ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+
+        reissued, other_actor, other_subject = chains["items"][2][0], chains["items"][3][0], chains["items"][4][0]
+        self.assertEqual(chains["digests"], {"root": digest(root), "child": digest(child), "reissued": digest(reissued), "otherActor": digest(other_actor), "otherSubject": digest(other_subject),
+                                             "runtimeRoot": digest(chains["items"][5][0]), "relay": digest(chains["items"][6][1]), "relayLeaf": digest(chains["items"][7][2]),
+                                             "otherActorChild": digest(chains["items"][8][1]), "otherSubjectChild": digest(chains["items"][9][1])})
+        self.assertEqual(child["parent"], {"id": root["id"], "digest": digest(root)})
+        reads = rows["principal/admission.json"]
+        self.assertTrue(all(case["read"] is None or 0 <= case["read"] < len(reads["items"]) for case in reads["cases"]))
+        self.assertEqual(sorted({case["read"] for case in reads["cases"] + reads["standing"] if case["read"] is not None}), list(range(len(reads["items"]))))
 
     def test_every_run_wait_member_and_value_is_carried_and_every_refused_record_fails(self):
         # #224 and #228: every member of run-wait.json (root and definitions) and every enum value is

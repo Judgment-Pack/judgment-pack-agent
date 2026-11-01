@@ -16,6 +16,10 @@ Plan and planState use the existing checkpoint types whole, including stable ste
 
 These checkpoint members are intentionally excluded: `schema`, `digest`, `retainUntil`, `records`, `requestKey`, `operations`, `context`, `testCalls`, `durable`, `handoff`, `approval`, `outputGuard`, `memories`, `draft`, `policy`, `crossProvider`, `compaction`, `steers`. They carry checkpoint envelope metadata, internal operation/request/context payloads, recovery or admission state, or unrelated retained state. The report does not embed a checkpoint or expose raw event payloads. Source-inventory tests partition every checkpoint property into carried, excluded, or the separately renamed checkpoint version; a newly introduced property requires an explicit decision.
 
+## A delegated run's report (ADR-0029)
+
+A delegated run's terminal checkpoint is version 4 and carries its `principal`. It is reported as `version: 3` with `checkpointVersion: 4`: report 2's members and the checkpoint's `principal` copied whole (the actor, the subject, the leaf link and the chain's digests; never a credential), read against `run-report-v3.json`. A run with no delegation is reported as before, version 1 or 2, byte for byte. A reader that predates version 3 refuses it.
+
 ## Supplied event pages
 
 `buildRunReport` / `BuildRunReport` adds corroboration using the actual RunHead, RunEventPage and stored-envelope contracts. The caller reads one host-bound root resource from the beginning (`null` in TypeScript, empty cursor in Go), then requests each successive page using the returned cursor. The API performs no store I/O.

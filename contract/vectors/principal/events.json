@@ -1,0 +1,148 @@
+{
+ "description": "Handwritten event 3 records of a delegated run (ADR-0029): a host source's call and its result carrying the run's principal, and the refusal of a call the chain does not admit, carrying its named refusal and the principal. A run with no delegation writes none of these members and keeps event 1.",
+ "schema": "run-event.json",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/context/managed.ts (withPrincipal)",
+   "packages/harness/context/session.ts (refuse)",
+   "packages/harness/principalSession.test.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 3,
+   "type": "tool_call",
+   "callId": "c1",
+   "name": "notes__read_note",
+   "args": {},
+   "principal": {
+    "actor": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "version": 3,
+   "type": "tool_result",
+   "callId": "c1",
+   "name": "notes__read_note",
+   "isError": false,
+   "text": "done",
+   "principal": {
+    "actor": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "version": 3,
+   "type": "guardrail",
+   "tool": "notes__delete_note",
+   "action": "refused",
+   "detail": "notes__delete_note was not run: the delegation this run acts under does not admit it (out-of-scope (tool)). Nothing was changed. Do not retry it; say what could not be done.",
+   "reason": "delegation refused",
+   "refusal": {
+    "name": "out-of-scope",
+    "reason": "tool"
+   },
+   "principal": {
+    "actor": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "33333333333333333333333333333333",
+     "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "version": 3,
+   "type": "guardrail",
+   "tool": "notes__read_note",
+   "action": "refused",
+   "detail": "notes__read_note was not run: the delegation this run acts under does not admit it (revoked). Nothing was changed. Do not retry it; say what could not be done.",
+   "reason": "delegation refused",
+   "refusal": {
+    "name": "revoked"
+   },
+   "principal": {
+    "actor": {
+     "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "44444444444444444444444444444444",
+     "digest": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
+     "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  }
+ ]
+}

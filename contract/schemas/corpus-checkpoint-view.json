@@ -28,7 +28,8 @@
       "enum": [
         1,
         2,
-        3
+        3,
+        4
       ]
     },
     "derived": {
@@ -10358,6 +10359,20 @@
               "properties": {
                 "version": {
                   "const": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "checkpoint.json"
+            },
+            {
+              "properties": {
+                "version": {
+                  "const": 4
                 }
               }
             }

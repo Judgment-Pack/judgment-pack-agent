@@ -325,7 +325,7 @@ func Claim(a *Attempt) error {
 	a.entered = true
 	return nil
 }
-func Execute(ctx context.Context, a *Attempt, admission func() json.RawMessage, authorize func() error) (json.RawMessage, error) {
+func Execute(ctx context.Context, a *Attempt, admission func() json.RawMessage, authorize, beforeDispatch func() error) (json.RawMessage, error) {
 	if a == nil || a.connector == nil {
 		return nil, ErrStale
 	}
@@ -374,6 +374,14 @@ func Execute(ctx context.Context, a *Attempt, admission func() json.RawMessage, 
 	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
+	}
+	if beforeDispatch != nil {
+		if err = beforeDispatch(); err != nil {
+			return nil, err
+		}
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
 	}
 	finalScope, scopeErr := Canonical(admission())
 	a.mu.Lock()
