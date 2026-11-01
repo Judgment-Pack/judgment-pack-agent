@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.13.0), schema 2: docs/ci-evidence.md.",
+    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.14.0), schema 2: docs/ci-evidence.md.",
     "Every job records the image identity its standard GitHub-hosted runner reports (identity), a reported identity and",
     "not a pinned VM image. Every profile compares with the release runner: a rolled image refuses (runtime-identity)",
     "and takes the fresh route; there is no revalidation here, because the check job does work outside the check list",

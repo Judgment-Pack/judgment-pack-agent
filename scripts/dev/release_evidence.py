@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# from judgment-pack-devkit v0.13.0 (lib/release_evidence.py)
+# from judgment-pack-devkit v0.14.0 (lib/release_evidence.py)
 """release_evidence.py capture|verify|reuse: reuse the CI evidence main produced at the release commit.
 
 capture  Runs in a CI job on the trusted branch, after the job's checks. Writes evidence.json for
@@ -1042,16 +1042,35 @@ def pull_request_of(api, config, source):
     need(commit['sha'] == sha and commit['parents'], 'reuse-pull-request', 'commit %s' % sha)
     pulls = api.get('commits/%s/pulls?per_page=100' % sha)
     need(isinstance(pulls, list) and len(pulls) < 100, 'reuse-pull-request', 'the pull request listing')
-    merged = [pull for pull in pulls if pull['merge_commit_sha'] == sha and pull['merged_at']]
+    # The pinned API does not expose merge_commit_sha on pull request objects. The
+    # server's timeline is the surviving merge-to-commit binding, not PR-authored evidence.
+    merged = []
+    try:
+        for pull in pulls:
+            if not pull['merged_at']:
+                continue
+            need(positive(pull['number']), 'reuse-pull-request', 'invalid pull request number')
+            events = listing(api, 'issues/%d/timeline' % pull['number'])
+            merges = [event for event in events if event.get('event') == 'merged']
+            need(len(merges) == 1 and isinstance(merges[0].get('commit_id'), str) and
+                 SHA.fullmatch(merges[0]['commit_id']), 'reuse-pull-request',
+                 'pull request %d has no unique readable merged event' % pull['number'])
+            if merges[0]['commit_id'] == sha:
+                merged.append((pull, events))
+    except (Refusal,) + MALFORMED as error:
+        if isinstance(error, Refusal) and error.code == 'reuse-pull-request':
+            raise
+        raise Refusal('reuse-pull-request', 'the merged pull request timeline could not be read: %s' % (
+            error.code if isinstance(error, Refusal) else type(error).__name__)) from error
     need(len(merged) == 1, 'reuse-pull-request', '%d pull requests were merged as %s' % (len(merged), sha))
-    pull = merged[0]
+    pull, events = merged[0]
     need(pull['state'] == 'closed' and pull['base']['ref'] == config['branch'] and
          pull['base']['repo']['id'] == source['repository_id'] and positive(pull['number']) and
          SHA.fullmatch(pull['head']['sha']), 'reuse-pull-request',
          'pull request %s is not merged into %s here' % (pull.get('number'), config['branch']))
     need((pull['head']['repo'] or {}).get('id') == source['repository_id'], 'reuse-pull-request',
          'pull request %s comes from another repository' % pull['number'])
-    bind_head_branch(api, config, source, pull)
+    bind_head_branch(api, config, source, pull, events)
     return pull, commit
 
 
@@ -1074,7 +1093,7 @@ def listing(api, suffix):
 BASE_EVENT = re.compile(r'base_change|base_ref')
 
 
-def bind_head_branch(api, config, source, pull):
+def bind_head_branch(api, config, source, pull, events):
     """Records that survive the merge and that the pull request's code cannot write, binding its
     head branch to it alone: the head branch has had exactly one pull request ever, the merged one,
     from this repository (a run of another one executes another base's workflow at the same head),
@@ -1083,7 +1102,6 @@ def bind_head_branch(api, config, source, pull):
     try:
         pulls = listing(api, 'pulls?head=%s:%s&state=all' % (owner, quote(pull['head']['ref'], safe='')))
         listed = [(other['number'], (other['head']['repo'] or {}).get('id')) for other in pulls]
-        events = listing(api, 'issues/%d/timeline' % pull['number'])
         names = [event.get('event') for event in events]
         need(all(isinstance(name, str) or name is None for name in names), 'unavailable-or-malformed')
         changed = sorted({name for name in names if name and BASE_EVENT.search(name)})
