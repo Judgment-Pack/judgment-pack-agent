@@ -97,6 +97,21 @@ with one are refused with failure code `stale-state`, naming `principal-changed`
 this holds on a durable store too: TypeScript's durable root makes the comparison before anything of
 the run is bound, as its opening of the chain is before the store is touched.
 
+**A re-authorization wait does not stand in for the delegation.** A credential refusal is the effect
+host's, not a delegation refusal: it records no `delegation refused`, and because the host refuses at its
+admission boundary, before anything is performed, the admission that counts (inside what it performs) is
+never made. So a refused attempt counts nothing, and its re-send, once the credentials are refreshed, is
+admitted again like any call and counted once at its physical dispatch: RFC 0030 §2's "a freed attempt
+counts once per dispatch". A delegation that was revoked or expired meanwhile refuses the re-send by name,
+whatever the refresh said. A re-authorization wait of a delegated run pins the principals like any
+other wait, and its proof keeps the version 2 fence it was parked under: evidence of other principals is
+`principal-changed`, before the action is read, so a replaced credential under the same principals stays
+#226's `identity-changed`. The claim's lease and fence hold them, and a continuation under others sends
+nothing, though the claim was held. While the run is parked it cannot be leased, so no child starts; after
+the resume a child starts from a delegation that stands, under its own link, and the grant stays the
+parent's alone. A child cannot itself be refused for its credentials: it admits reads, which do not reach
+the effect host.
+
 **A run resumed at its handoff opens its parent first.** A restored batch runs its children before the
 next provider invocation, so a delegated run, or one restored from a delegated checkpoint, opens its
 parent context first, with or without task steps: the resume check runs, and the children start under
@@ -171,7 +186,8 @@ restart.
 - **The record adds `rootActor`** beside the RFC's members: the checkpoint needs it to hold a resume
   to RFC §7 rule 2's subject and root actor, which the chain's digests do not name.
 - **Expiry or revocation while a run holds its lease refuses the call** and the run continues with
-  the refusal; the re-authorization park naming the delegation (ADR-0025 decision 4) is not built.
+  the refusal. ADR-0025 decision 4's re-authorization wait (#226) is for a connection's credentials: a
+  delegation's expiry or revocation never parks a run.
 - **The lease's binding adds the issuing `host`** beside RFC §7 rule 2's subject and root actor: it is
   the form of the gateway's reservation scope, and two hosts' root actors are different principals.
 - **The issuing host signs the child's link, not the harness.** The harness holds no signing key, so

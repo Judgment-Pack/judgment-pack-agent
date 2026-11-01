@@ -419,7 +419,7 @@ func ReadWaitCondition(raw json.RawMessage) (WaitCondition, error) {
 	return condition, nil
 }
 func readWaitPending(raw json.RawMessage, reason string, redacted bool) (contract.RunWaitPending, error) {
-	probe, err := waitShape(raw, []string{"kind"}, []string{"callId", "name", "tool", "unit", "used", "limit", "event", "questionDigest", "question"})
+	probe, err := waitShape(raw, []string{"kind"}, []string{"callId", "name", "tool", "unit", "used", "limit", "event", "questionDigest", "question", "operation", "source", "connection", "cause"})
 	if err != nil {
 		return contract.RunWaitPending{}, err
 	}
@@ -460,6 +460,28 @@ func readWaitPending(raw json.RawMessage, reason string, redacted bool) (contrac
 			return contract.RunWaitPending{}, err
 		}
 		return contract.RunWaitPending{Budget: &budget}, nil
+	case "reauthorization":
+		// #226: the never-admitted operation of a trusted disposition, and its connection.
+		m, err := waitShape(raw, []string{"kind", "operation", "source", "tool", "connection", "cause"}, nil)
+		if err != nil {
+			return contract.RunWaitPending{}, err
+		}
+		pending := contract.RunWaitPendingReauthorization{Kind: "reauthorization"}
+		for _, field := range []struct {
+			name string
+			to   *string
+		}{{"operation", &pending.Operation}, {"source", &pending.Source}, {"tool", &pending.Tool}} {
+			if *field.to, err = m.id(field.name); err != nil {
+				return contract.RunWaitPending{}, err
+			}
+		}
+		if pending.Connection, err = m.str("connection"); err != nil || !ValidConnectionReference(pending.Connection) {
+			return contract.RunWaitPending{}, waitInvalid()
+		}
+		if pending.Cause, err = m.enum("cause", "expired", "revoked"); err != nil {
+			return contract.RunWaitPending{}, err
+		}
+		return contract.RunWaitPending{Reauthorization: &pending}, nil
 	}
 	m, err := waitShape(raw, []string{"kind", "event", "questionDigest"}, []string{"question"})
 	if err != nil {
@@ -591,22 +613,26 @@ func readWaitResolution(raw json.RawMessage, question *contract.Question, redact
 }
 
 var waitParkRequired = []string{"version", "resource", "wait", "reason", "pending", "condition", "continuation", "checkpoint", "pins", "wakeKeyDigest", "release"}
-var waitParkOptional = []string{"timeoutAt", "limits", "approval", "chat", "retainUntil"}
+var waitParkOptional = []string{"timeoutAt", "limits", "approval", "chat", "retainUntil", "reauthorization"}
+var waitReasons = []string{"approval", "budget", "question", "reauthorization"}
 
-func readWaitParkMembers(m waitMembers, redacted bool) (RunWait, error) {
+// readWaitParkMembers reads a park's members; stored, a wait as the store keeps it, which may carry the
+// approval binding the store attached to a reauthorization wait (a park never does).
+func readWaitParkMembers(m waitMembers, redacted, stored bool) (RunWait, error) {
 	if err := m.version(); err != nil {
 		return RunWait{}, err
 	}
 	wait := RunWait{Version: WaitRecordVersion}
 	var err error
-	if wait.Reason, err = m.enum("reason", "approval", "budget", "question"); err != nil {
+	if wait.Reason, err = m.enum("reason", waitReasons...); err != nil {
 		return RunWait{}, err
 	}
 	if wait.Condition, err = ReadWaitCondition(m["condition"]); err != nil {
 		return RunWait{}, err
 	}
-	// A question waits for its answer event; a wake time would end it with no answer.
-	if wait.Reason == "question" && (wait.Condition.Event == nil || wait.Condition.WakeAt != nil) {
+	// A question waits for its answer event, and a reauthorization for the host's or the person's action;
+	// a wake time would end either with neither.
+	if (wait.Reason == "question" || wait.Reason == "reauthorization") && (wait.Condition.Event == nil || wait.Condition.WakeAt != nil) {
 		return RunWait{}, waitInvalid()
 	}
 	if wait.Resource, err = m.id("resource"); err != nil {
@@ -682,14 +708,38 @@ func readWaitParkMembers(m waitMembers, redacted bool) (RunWait, error) {
 		}
 		wait.Approval = &binding
 	}
+	if m.has("reauthorization") {
+		disposition, err := ReadReauthDisposition(m["reauthorization"])
+		if err != nil {
+			return RunWait{}, waitInvalid()
+		}
+		wait.Reauthorization = &disposition
+	}
 	// #225: an approval wait is bound to its pending call and pinned source, and expires; no other wait
 	// carries either.
 	ttl := wait.Limits != nil && wait.Limits.ApprovalTtlMs != nil
+	pinned := func() bool {
+		return slices.ContainsFunc(wait.Pins.Sources, func(s SourcePin) bool { return s.Source == wait.Approval.Source })
+	}
 	if wait.Reason == "approval" {
-		if wait.Approval == nil || wait.Approval.CallID != wait.Pending.Approval.CallID || !ttl || !slices.ContainsFunc(wait.Pins.Sources, func(s SourcePin) bool { return s.Source == wait.Approval.Source }) {
+		if wait.Approval == nil || wait.Approval.CallID != wait.Pending.Approval.CallID || !ttl || !pinned() {
+			return RunWait{}, waitInvalid()
+		}
+	} else if wait.Reason == "reauthorization" {
+		// #226: the trusted disposition is this run's, and its operation, connection and cause are the
+		// pending ones. An unsettled approval's binding is the store's to attach, and its source is pinned;
+		// no TTL is the park's.
+		pending, held := wait.Pending.Reauthorization, wait.Reauthorization
+		if held == nil || held.Resource != wait.Resource || held.Operation.Operation != pending.Operation || held.Operation.Source != pending.Source || held.Operation.Tool != pending.Tool || held.Connection != pending.Connection || held.Cause != pending.Cause {
+			return RunWait{}, waitInvalid()
+		}
+		if ttl || wait.Approval != nil && (!stored || !pinned()) {
 			return RunWait{}, waitInvalid()
 		}
 	} else if wait.Approval != nil || ttl {
+		return RunWait{}, waitInvalid()
+	}
+	if wait.Reason != "reauthorization" && wait.Reauthorization != nil {
 		return RunWait{}, waitInvalid()
 	}
 	return wait, nil
@@ -698,7 +748,7 @@ func readWaitParkMembers(m waitMembers, redacted bool) (RunWait, error) {
 // readWaitPark reads the store's input: a park before the store stamps who parked it, when, and its
 // attention.
 func readWaitPark(park RunWait) (RunWait, error) {
-	if park.Parked != (contract.RunWaitActor{}) || park.Attention != "" || park.State != "" || park.Deadline != nil || park.Disposition != nil || park.Expired != nil || park.Resolution != nil || park.Resumed != nil || park.Revalidation != nil || park.Reconciled != nil || park.Redacted != nil {
+	if park.Parked != (contract.RunWaitActor{}) || park.Attention != "" || park.State != "" || park.Deadline != nil || park.Disposition != nil || park.Expired != nil || park.Resolution != nil || park.Resumed != nil || park.Revalidation != nil || park.Reconciled != nil || park.Redacted != nil || park.Reauthorized != nil {
 		return RunWait{}, waitInvalid()
 	}
 	if park.Release == nil {
@@ -726,12 +776,12 @@ func readWaitPark(park RunWait) (RunWait, error) {
 	if err != nil {
 		return RunWait{}, err
 	}
-	return readWaitParkMembers(m, false)
+	return readWaitParkMembers(m, false, false)
 }
 
 // ReadRunWait reads a version 1 wait record and holds every rule the schema cannot state.
 func ReadRunWait(raw []byte) (RunWait, error) {
-	m, err := waitShape(raw, append(slices.Clone(waitParkRequired), "parked", "attention", "state"), append(slices.Clone(waitParkOptional), "deadline", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "redacted"))
+	m, err := waitShape(raw, append(slices.Clone(waitParkRequired), "parked", "attention", "state"), append(slices.Clone(waitParkOptional), "deadline", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "redacted", "reauthorized"))
 	if err != nil {
 		return RunWait{}, err
 	}
@@ -745,7 +795,7 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 			return RunWait{}, waitInvalid()
 		}
 	}
-	wait, err := readWaitParkMembers(m, redacted)
+	wait, err := readWaitParkMembers(m, redacted, true)
 	if err != nil {
 		return RunWait{}, err
 	}
@@ -758,14 +808,17 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 	if wait.State, err = m.enum("state", "parked", "woken", "timed-out", "resumed", "expired"); err != nil {
 		return RunWait{}, err
 	}
-	// #225: the stamped deadline follows the park's limits and time; any limit always stamps one.
+	// #225: the stamped deadline follows the park's limits and time; any limit always stamps one. #226: a
+	// reauthorization wait carries the run's unsettled approval binding exactly when its deadline names
+	// that approval's expiry.
+	bound := wait.Reason == "reauthorization" && wait.Approval != nil
 	if m.has("deadline") {
-		deadline, err := readWaitDeadline(m["deadline"], wait.Limits, wait.Parked.At)
+		deadline, err := readWaitDeadlineBound(m["deadline"], wait.Limits, wait.Parked.At, bound)
 		if err != nil {
 			return RunWait{}, asWait(err)
 		}
 		wait.Deadline = &deadline
-	} else if wait.Limits != nil {
+	} else if wait.Limits != nil || bound {
 		return RunWait{}, waitInvalid()
 	}
 	if wait.State == "parked" {
@@ -877,6 +930,21 @@ func ReadRunWait(raw []byte) (RunWait, error) {
 			return RunWait{}, err
 		}
 	}
+	// #226: a resumed reauthorization wait records the refresh it was claimed after: the parked principal,
+	// permissions that cover what the operation requires, taken after the park and no later than the claim.
+	if m.has("reauthorized") {
+		if wait.Reason != "reauthorization" || wait.Resumed == nil {
+			return RunWait{}, waitInvalid()
+		}
+		reauthorized, err := ReadReauthorized(m["reauthorized"])
+		disposition := wait.Reauthorization
+		if err != nil || reauthorized.Principal != disposition.Principal || !permitted(disposition.Requires, reauthorized.Permissions) || waitTimeMillis(reauthorized.At) < waitTimeMillis(wait.Parked.At) || waitTimeMillis(reauthorized.At) > waitTimeMillis(wait.Resumed.At) {
+			return RunWait{}, waitInvalid()
+		}
+		wait.Reauthorized = &reauthorized
+	} else if wait.Reason == "reauthorization" && wait.Resumed != nil {
+		return RunWait{}, waitInvalid()
+	}
 	if redacted {
 		yes := true
 		wait.Redacted = &yes
@@ -941,7 +1009,7 @@ func checkWakeEvidence(evidence WakeEvidence) (WakeEvidence, error) {
 	return ReadWakeEvidence(raw)
 }
 
-var waitNeeds = map[string]string{"approval": "approval-decision", "budget": "budget-grant", "question": "question-answer"}
+var waitNeeds = map[string]string{"approval": "approval-decision", "budget": "budget-grant", "question": "question-answer", "reauthorization": "reauthorization"}
 
 // ReadAttentionEvent reads a version 1 needs_attention event.
 func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
@@ -963,9 +1031,9 @@ func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
 		func() (err error) { event.ID, err = m.digest("id"); return },
 		func() (err error) { event.Resource, err = m.id("resource"); return },
 		func() (err error) { event.Wait, err = m.id("wait"); return },
-		func() (err error) { event.Reason, err = m.enum("reason", "approval", "budget", "question"); return },
+		func() (err error) { event.Reason, err = m.enum("reason", waitReasons...); return },
 		func() (err error) {
-			event.Needs, err = m.enum("needs", "approval-decision", "budget-grant", "question-answer")
+			event.Needs, err = m.enum("needs", "approval-decision", "budget-grant", "question-answer", "reauthorization")
 			return
 		},
 		func() (err error) { event.Condition, err = ReadWaitCondition(m["condition"]); return },
@@ -1082,7 +1150,7 @@ func readWaitEntry(raw json.RawMessage) (WaitReportEntry, error) {
 	if entry.Wait, err = m.id("wait"); err != nil {
 		return entry, err
 	}
-	if entry.Reason, err = m.enum("reason", "approval", "budget", "question"); err != nil {
+	if entry.Reason, err = m.enum("reason", waitReasons...); err != nil {
 		return entry, err
 	}
 	if entry.At, err = m.time("at"); err != nil {
@@ -1285,6 +1353,9 @@ func AttentionFor(wait RunWait) AttentionEvent {
 	case wait.Pending.Question != nil:
 		subject := wait.Pending.Question.Event
 		event.Subject = &subject
+	case wait.Pending.Reauthorization != nil:
+		subject := wait.Pending.Reauthorization.Connection
+		event.Subject = &subject
 	}
 	if wait.TimeoutAt != nil {
 		at := *wait.TimeoutAt
@@ -1338,6 +1409,9 @@ type WaitClaim struct {
 	Lease        LeaseAcquire
 	Reconciled   []WaitRelease
 	Revalidation Revalidation
+	// Reauthorized (#226): a reauthorization wait's claim carries the refresh it continues after; no other
+	// claim does.
+	Reauthorized *Reauthorized
 }
 
 // WaitStore is the wait port a store kind implements beside its lease port. Every transition is atomic
@@ -1359,13 +1433,20 @@ type WaitStore interface {
 	// after the park), refuse a WakeKeyDigest any other wait of the store holds (key-reused), commit the
 	// wait and its one needs_attention event, and release the lease. A repeat of the same park under the
 	// same fence returns it; anything else under its wait id is conflict. A refused park changes nothing
-	// and leaves the lease held.
+	// and leaves the lease held. #226: a reauthorization park also refuses a disposition minted under
+	// another fence (stale) and a head that does not hold its operation as the never-admitted dispatch
+	// (unbound, as HoldsNeverAdmitted decides), and, when the run's approved call is unsettled, the store
+	// attaches that approval's binding to the wait and stamps its expiry as the deadline's approval time,
+	// from its own record and never from the park. It records the attention event needing reauthorization
+	// and naming the connection, and keeps the disposition and the attached approval across its restarts.
+	// The attached approval is no part of a repeated park's comparison.
 	ParkWait(context.Context, RunWait, LeaseFence) (RunWait, AttentionEvent, error)
 	// WakeWait: the first valid wake wins, decided against the named wait only; a duplicate returns the
 	// retained disposition; anything else changes nothing, and a resumed wait is never woken again. At or
 	// after the wait's deadline or the run's only a deadline wake is accepted, and it ends the wait
 	// terminally (expired). A resumed approval wait whose approved call has not settled is ended by a
-	// deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown.
+	// deadline wake at the approval's expiry (#266 N1): expired, its outcome unknown. #226: a reauthorization
+	// wait's timeout or deadline wake is terminal, as an approval wait's is: its run is closed for good.
 	WakeWait(context.Context, WakeEvidence) (WakeDisposition, error)
 	// ResumeWait is one transaction: check the acknowledged wake, the deadline, the head and the release
 	// reconciliation, then lease the run (the only lease a held run is granted) and claim the
@@ -1375,10 +1456,16 @@ type WaitStore interface {
 	// takeover's or a re-acquired one) is granted, renewed or held past the approval's expiry, and every
 	// checkpoint the run commits, fenced or not, must carry exactly the reviewed call (approval-changed
 	// otherwise); the commit that records the call executed, refused or answered settles it in the same
-	// transaction. ResumeParked checks what this returns.
+	// transaction. ResumeParked checks what this returns. #226: a reauthorization wait's claim carries the
+	// refresh and no other claim does. It refuses a claim with none (decision-required), for another
+	// principal than the disposition's (identity-changed), taken before the park or after the store's time
+	// (stale), or whose permissions do not cover what the operation requires (permission-insufficient),
+	// changing nothing, and it records the refresh (Reauthorized) and keeps it across its restarts. The
+	// lease ends no later than the attached approval's expiry too.
 	ResumeWait(context.Context, WaitClaim) (RunWait, RunLease, error)
 	// LimitRun sets the run's deadline; the earliest one the store holds wins, a held lease is shortened
-	// to it, and every wait of the run not yet resumed or ended is stamped again with it (#266 M1).
+	// to it, and every wait of the run not yet resumed or ended is stamped again with it (#266 M1). #226:
+	// stamping a reauthorization wait again keeps its attached approval's time.
 	LimitRun(context.Context, RunLimit) (RunLimit, error)
 	ReadWait(ctx context.Context, resource, wait string) (*RunWait, error)
 	// ExportWaits is the run's waits in park order, with their attention events and deliveries: the
@@ -1577,7 +1664,12 @@ func (t *WaitTable) Limit(input RunLimit) (RunLimit, error) {
 		}
 		parked := waitTimeMillis(row.Parked.At)
 		ceiling := max(next, parked+1)
-		deadline, err := StampDeadline(row.Limits, parked, &ceiling)
+		var approvalAt *int64
+		if row.Reason == "reauthorization" && row.Deadline != nil && row.Deadline.Approval != nil {
+			at := waitTimeMillis(*row.Deadline.Approval)
+			approvalAt = &at
+		}
+		deadline, err := stampDeadlineWithin(row.Limits, parked, &ceiling, approvalAt)
 		if err != nil {
 			return RunLimit{}, asWait(err)
 		}
@@ -1602,7 +1694,11 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	if existing := t.find(park.Resource, park.Wait); existing != nil {
 		// A repeated park acknowledges the committed one: read, never parked twice.
 		prior := cloneRunWait(*existing)
-		prior.Parked, prior.Attention, prior.State, prior.Deadline, prior.Disposition, prior.Expired, prior.Resolution, prior.Resumed, prior.Revalidation, prior.Reconciled, prior.Redacted = contract.RunWaitActor{}, "", "", nil, nil, nil, nil, nil, nil, nil, nil
+		prior.Parked, prior.Attention, prior.State, prior.Deadline, prior.Disposition, prior.Expired, prior.Resolution, prior.Resumed, prior.Revalidation, prior.Reconciled, prior.Redacted, prior.Reauthorized = contract.RunWaitActor{}, "", "", nil, nil, nil, nil, nil, nil, nil, nil, nil
+		// #226: the approval binding the store attached to a reauthorization wait is not the park's.
+		if prior.Reason == "reauthorization" {
+			prior.Approval = nil
+		}
 		a, _ := canonicalRaw(prior)
 		b, _ := canonicalRaw(park)
 		if !bytes.Equal(a, b) || existing.Parked.Owner != fence.Owner || existing.Parked.Epoch != fence.Epoch {
@@ -1627,17 +1723,35 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	if !waitHeadMatches(head, park.Checkpoint) {
 		return RunWait{}, AttentionEvent{}, waitRefused("checkpoint-changed")
 	}
+	// #226: a reauthorization park presents the disposition minted under its own lease (the lease this park
+	// releases, so the disposition parks once), for the never-admitted dispatch its head holds. The binding
+	// of an approved call not yet settled is the store's to attach.
+	var unsettled *waitApproval
+	if disposition := park.Reauthorization; disposition != nil {
+		if disposition.Fence.Owner != fence.Owner || disposition.Fence.Epoch != fence.Epoch || disposition.Fence.Resource != fence.Resource {
+			return RunWait{}, AttentionEvent{}, reauthRefused("stale")
+		}
+		if !HoldsNeverAdmitted(head.Checkpoint, *disposition) {
+			return RunWait{}, AttentionEvent{}, reauthRefused("unbound")
+		}
+		if held, ok := t.approvals[park.Resource]; ok {
+			unsettled = &held
+		}
+	}
 	at, err := t.stamp()
 	if err != nil {
 		return RunWait{}, AttentionEvent{}, err
 	}
 	// #225: the earliest applicable deadline wins, and this park's run limit never extends the one the
 	// store holds.
-	var runCeiling *int64
+	var runCeiling, approvalAt *int64
 	if ceiling, ok := t.ceilings[park.Resource]; ok {
 		runCeiling = &ceiling
 	}
-	deadline, err := StampDeadline(park.Limits, waitTimeMillis(at), runCeiling)
+	if unsettled != nil {
+		approvalAt = &unsettled.at
+	}
+	deadline, err := stampDeadlineWithin(park.Limits, waitTimeMillis(at), runCeiling, approvalAt)
 	if err != nil {
 		return RunWait{}, AttentionEvent{}, asWait(err)
 	}
@@ -1645,6 +1759,10 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 		return RunWait{}, AttentionEvent{}, waitRefused("deadline-passed")
 	}
 	wait := cloneRunWait(park)
+	if unsettled != nil {
+		binding := unsettled.binding
+		wait.Approval = &binding
+	}
 	wait.Deadline = deadline
 	wait.Parked = contract.RunWaitActor{Owner: fence.Owner, Epoch: fence.Epoch, At: at}
 	wait.Attention = WaitAttentionID(wait.Resource, wait.Wait)
@@ -1878,6 +1996,33 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	if err != nil || revalidation.Resource != row.Resource || revalidation.Wait != row.Wait || revalidation.Pins != pins {
 		return RunWait{}, RunLease{}, waitInvalid()
 	}
+	// #226: a reauthorization wait continues only after a refresh for the same principal, taken after the
+	// park and not after the store's time, whose permissions cover what the operation requires. A wake is
+	// never one.
+	var reauthorized *Reauthorized
+	if (row.Reason == "reauthorization") != (claim.Reauthorized != nil) {
+		if row.Reason == "reauthorization" {
+			return RunWait{}, RunLease{}, waitRefused("decision-required")
+		}
+		return RunWait{}, RunLease{}, waitInvalid()
+	}
+	if claim.Reauthorized != nil {
+		refresh, err := checkReauthorized(*claim.Reauthorized)
+		if err != nil {
+			return RunWait{}, RunLease{}, waitInvalid()
+		}
+		disposition := row.Reauthorization
+		if refresh.Principal != disposition.Principal {
+			return RunWait{}, RunLease{}, resumeRefused("identity-changed")
+		}
+		if waitTimeMillis(refresh.At) < waitTimeMillis(row.Parked.At) || waitTimeMillis(refresh.At) > waitTimeMillis(now) {
+			return RunWait{}, RunLease{}, reauthRefused("stale")
+		}
+		if !permitted(disposition.Requires, refresh.Permissions) {
+			return RunWait{}, RunLease{}, reauthRefused("permission-insufficient")
+		}
+		reauthorized = &refresh
+	}
 	// #265 M2: the claim is the one lease a held run is granted, taken in this transaction. Every ceiling
 	// of the run bounds it (#266 N2: an earlier approval not yet settled too), and so does this wait's own
 	// approval, which then bounds every later lease of the run until the approved call settles (#266 H1).
@@ -1906,6 +2051,7 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	if len(settled) > 0 {
 		row.Reconciled = settled
 	}
+	row.Reauthorized = reauthorized
 	return cloneRunWait(*row), lease, nil
 }
 func (t *WaitTable) Export(resource string) (WaitExport, error) {
@@ -2087,6 +2233,10 @@ type ParkInput struct {
 	// Question is the retained user_question event a question wait is for.
 	Question    string
 	RetainUntil *string
+	// Reauthorization (#226) is the trusted re-authorization refusal the run's dispatch ended in
+	// (ReauthorizationOf on the fenced view the run used). It parks one reauthorization wait, under the same
+	// lease it was minted under.
+	Reauthorization *ReauthorizationRequired
 }
 
 func retainedQuestion(ctx context.Context, store RunStore, run, event string) (*contract.Question, error) {
@@ -2161,7 +2311,31 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		}
 		park.Limits = &limits
 	}
-	if checkpoint.Status == "paused" {
+	if input.Reauthorization != nil {
+		// #226: only a trusted, invocation-bound disposition parks a run for re-authorization: one the package
+		// minted from the run's proven effect host during that live dispatch, not yet used, under this park's
+		// own lease, for the never-admitted dispatch the head holds. Anything else keeps the operation's
+		// unknown outcome and is reconciled.
+		if input.Question != "" {
+			return RunWait{}, AttentionEvent{}, waitInvalid()
+		}
+		disposition, trusted := reauthDispositionOf(input.Reauthorization)
+		if disposition == nil {
+			if trusted {
+				return RunWait{}, AttentionEvent{}, reauthRefused("used")
+			}
+			return RunWait{}, AttentionEvent{}, reauthRefused("untrusted")
+		}
+		if disposition.Fence.Owner != input.Fence.Owner || disposition.Fence.Epoch != input.Fence.Epoch || disposition.Resource != input.Fence.Resource {
+			return RunWait{}, AttentionEvent{}, reauthRefused("stale")
+		}
+		if !HoldsNeverAdmitted(head.Checkpoint, *disposition) {
+			return RunWait{}, AttentionEvent{}, reauthRefused("unbound")
+		}
+		park.Reason = "reauthorization"
+		park.Pending = contract.RunWaitPending{Reauthorization: &contract.RunWaitPendingReauthorization{Kind: "reauthorization", Operation: disposition.Operation.Operation, Source: disposition.Operation.Source, Tool: disposition.Operation.Tool, Connection: disposition.Connection, Cause: disposition.Cause}}
+		park.Reauthorization = disposition
+	} else if checkpoint.Status == "paused" {
 		if input.Question != "" {
 			return RunWait{}, AttentionEvent{}, waitInvalid()
 		}
@@ -2213,13 +2387,17 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 			park.Limits = nil
 		}
 	}
-	if park.Pins, err = PinsFrom(checkpoint, input.Model); err != nil {
+	if park.Pins, err = pinsFromFor(checkpoint, input.Model, input.Reauthorization != nil); err != nil {
 		return RunWait{}, AttentionEvent{}, asWait(err)
 	}
 	if park, err = readWaitPark(park); err != nil {
 		return RunWait{}, AttentionEvent{}, err
 	}
-	return store.ParkWait(ctx, park, input.Fence)
+	wait, attention, err := store.ParkWait(ctx, park, input.Fence)
+	if err == nil && input.Reauthorization != nil {
+		input.Reauthorization.use()
+	}
+	return wait, attention, err
 }
 
 // WakeRun delivers host wake evidence to the store. A store error leaves the outcome unknown: read the
@@ -2255,6 +2433,9 @@ type ResumeInput struct {
 	// Current (#227) is the host's current evidence: what the continuation would run under now, with any
 	// explicit admission of a changed model or reference. Without it nothing resumes.
 	Current *ResumeEvidence
+	// Reauthorization (#226): a reauthorization wait continues only with the host's or the person's
+	// explicit action; a wake is never one.
+	Reauthorization *ReauthAction
 }
 
 // ResumedWait is what a resume hands the host: the new lease and fence, the claimed wait, and the
@@ -2267,27 +2448,36 @@ type ResumedWait struct {
 	Approval     *contract.CheckpointApprovalDecision
 	Grant        *contract.CheckpointGrant
 	Resolution   *contract.RunWaitResolution
+	// Reauthorized (#226) is the refresh a reauthorization wait's claim recorded.
+	Reauthorized *Reauthorized
 }
 
 func waitDecision(wait RunWait, input ResumeInput) error {
 	switch wait.Reason {
 	case "approval":
 		decision := input.Approval
-		if input.Grant != nil || decision == nil || decision.CallID != wait.Pending.Approval.CallID || decision.Note != nil && jsLength(*decision.Note) > 2000 {
+		if input.Grant != nil || input.Reauthorization != nil || decision == nil || decision.CallID != wait.Pending.Approval.CallID || decision.Note != nil && jsLength(*decision.Note) > 2000 {
 			return waitRefused("decision-required")
 		}
 	case "budget":
 		grant, pending := input.Grant, wait.Pending.Budget
-		if input.Approval != nil || grant == nil || pending.Unit != "model-requests" || grant.From != pending.Limit || grant.To <= grant.From || grant.To > 100 {
+		if input.Approval != nil || input.Reauthorization != nil || grant == nil || pending.Unit != "model-requests" || grant.From != pending.Limit || grant.To <= grant.From || grant.To > 100 {
 			return waitRefused("decision-required")
 		}
 		// #265 M4: the grant is dated by a store-clock time, the form both writers produce, in both languages.
 		if _, ok := leaseExpiryMillis(grant.At); !ok {
 			return waitRefused("decision-required")
 		}
+	case "reauthorization":
+		// #226: the host's or the person's action is checked against the wait (Reauthorize) after the
+		// revalidation.
+		if input.Approval != nil || input.Grant != nil || input.Reauthorization == nil {
+			return waitRefused("decision-required")
+		}
 	default:
-		// A question's continuation is its resolution; an approval or a grant is not a question's to take.
-		if input.Approval != nil || input.Grant != nil {
+		// A question's continuation is its resolution; an approval, a grant or a re-authorization is not a
+		// question's to take.
+		if input.Approval != nil || input.Grant != nil || input.Reauthorization != nil {
 			return waitRefused("decision-required")
 		}
 	}
@@ -2347,15 +2537,28 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	claimedWait, claimedLease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs, Principal: clonePrincipalBinding(wait.Pins.Principal)}, Reconciled: input.Reconciled, Revalidation: revalidation})
+	// #226: the identity, the action's time and the permissions, before anything is claimed.
+	var reauthorized *Reauthorized
+	if wait.Reason == "reauthorization" {
+		refresh, err := Reauthorize(ReauthWait{Resource: wait.Resource, Wait: wait.Wait, ParkedAt: wait.Parked.At, Connection: wait.Pending.Reauthorization.Connection, Reauthorization: wait.Reauthorization}, *input.Reauthorization)
+		if err != nil {
+			return ResumedWait{}, err
+		}
+		reauthorized = &refresh
+	}
+	claimedWait, claimedLease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs, Principal: clonePrincipalBinding(wait.Pins.Principal)}, Reconciled: input.Reconciled, Revalidation: revalidation, Reauthorized: reauthorized})
 	if err != nil {
 		return ResumedWait{}, err
 	}
-	resumed, lease, err := readClaimed(claimedWait, claimedLease, wait, input.Owner, revalidation)
+	resumed, lease, err := readClaimed(claimedWait, claimedLease, wait, input.Owner, revalidation, reauthorized)
 	if err != nil {
 		return ResumedWait{}, err
 	}
 	out := ResumedWait{Lease: lease, Fence: FenceOf(lease), Wait: resumed, Revalidation: revalidation, Approval: input.Approval, Grant: input.Grant}
+	if resumed.Reauthorized != nil {
+		refresh := *cloneRunWait(resumed).Reauthorized
+		out.Reauthorized = &refresh
+	}
 	if resumed.Resolution != nil {
 		resolution := *cloneRunWait(resumed).Resolution
 		out.Resolution = &resolution
@@ -2376,7 +2579,7 @@ func readStoreWait(held RunWait) (RunWait, error) {
 // resumed by the lease it returns, with the revalidation it was given, and that lease must be held by the
 // claimer for this run and end no later than the run's deadline and an approval's expiry the wait records.
 // A store that answers otherwise is refused invalid: nothing of the continuation is handed to the host.
-func readClaimed(claimed RunWait, claimedLease RunLease, wait RunWait, owner string, revalidation Revalidation) (RunWait, RunLease, error) {
+func readClaimed(claimed RunWait, claimedLease RunLease, wait RunWait, owner string, revalidation Revalidation, reauthorized *Reauthorized) (RunWait, RunLease, error) {
 	held, err := readStoreWait(claimed)
 	if err != nil {
 		return RunWait{}, RunLease{}, waitInvalid()
@@ -2400,6 +2603,14 @@ func readClaimed(claimed RunWait, claimedLease RunLease, wait RunWait, owner str
 		}
 	}
 	beyond := held.Reason == "approval" && (held.Deadline == nil || held.Deadline.Approval == nil)
+	// #226: the claim recorded the refresh it was given, and a reauthorization wait's claim is bounded by
+	// the unsettled approval it carries.
+	c, _ := canonicalRaw(held.Reauthorized)
+	d, _ := canonicalRaw(reauthorized)
+	beyond = beyond || !bytes.Equal(c, d)
+	if held.Reason == "reauthorization" && held.Deadline != nil {
+		bounds = append(bounds, held.Deadline.Approval)
+	}
 	for _, bound := range bounds {
 		beyond = beyond || bound != nil && expiry > waitTimeMillis(*bound)
 	}
@@ -2453,6 +2664,8 @@ func ReportFromExport(source WaitExport, now time.Time) (WaitReport, error) {
 		case question != nil:
 			park.Subject = str(question.Event)
 			park.Content = content(question.Question, nil, question.QuestionDigest)
+		case wait.Pending.Reauthorization != nil:
+			park.Subject = str(wait.Pending.Reauthorization.Connection)
 		}
 		report.Entries = append(report.Entries, park)
 		if d := wait.Disposition; d != nil {

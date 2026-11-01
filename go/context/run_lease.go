@@ -641,15 +641,27 @@ type LeaseAuthority interface {
 // refused as already-admitted whatever the epoch: its outcome is unknown until its own host reconciles
 // it, and a takeover never replays it.
 type ReferenceEffectHost struct {
-	self      *ReferenceEffectHost // identity: a copy shares the key map without the lock, and is not evidence
-	mu        sync.Mutex
-	authority LeaseAuthority
-	admitted  map[string]bool
-	refusals  []contract.RunLeaseRefusal
+	self        *ReferenceEffectHost // identity: a copy shares the key map without the lock, and is not evidence
+	mu          sync.Mutex
+	authority   LeaseAuthority
+	admitted    map[string]bool
+	refusals    []contract.RunLeaseRefusal
+	credentials CredentialCheck
 }
 
 func NewReferenceEffectHost(authority LeaseAuthority) *ReferenceEffectHost {
-	host := &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}}
+	return NewReferenceEffectHostWith(authority, ReferenceEffectHostOptions{})
+}
+
+// ReferenceEffectHostOptions (#226): with Credentials, the host asks the check at its admission boundary,
+// after the fence and the idempotency identity and before it admits the operation; a refusal is returned
+// as NewReauthorizationRequired gives it, nothing admitted and nothing performed.
+type ReferenceEffectHostOptions struct {
+	Credentials CredentialCheck
+}
+
+func NewReferenceEffectHostWith(authority LeaseAuthority, options ReferenceEffectHostOptions) *ReferenceEffectHost {
+	host := &ReferenceEffectHost{authority: authority, admitted: map[string]bool{}, credentials: options.Credentials}
 	host.self = host
 	return host
 }
@@ -920,6 +932,19 @@ func (h *ReferenceEffectHost) admit(ctx context.Context, admission EffectAdmissi
 	if err == nil && h.admitted[admission.IdempotencyKey] {
 		err = &LeaseRefused{Reason: "already-admitted"}
 	}
+	// #226: the credential check is at the admission boundary: a refusal admits nothing and performs nothing.
+	// It can take longer than the lease has left, so the abort and the fence are looked at again before
+	// anything is admitted.
+	if err == nil && h.credentials != nil {
+		refusal, checkErr := h.credentials(ctx, admission.Operation)
+		if err = ctx.Err(); err == nil {
+			if checkErr != nil {
+				err = &CredentialCheckFailed{}
+			} else if err = h.authority.CheckFence(ctx, admission.Fence); err == nil && refusal != nil {
+				err = NewReauthorizationRequired(ctx, admission, *refusal)
+			}
+		}
+	}
 	if err == nil {
 		h.admitted[admission.IdempotencyKey] = true
 	}
@@ -942,6 +967,11 @@ type fencedRunStore struct {
 	store LeaseRunStore
 	fence LeaseFence
 	host  EffectHost
+	// #226: the trusted re-authorization refusal the view's last dispatch ended in, and a resumed
+	// re-authorization wait's grant.
+	mu              sync.Mutex
+	reauthorization *ReauthorizationRequired
+	grant           *reauthGrant
 }
 
 func (f *fencedRunStore) Durability() string { return f.store.Durability() }
@@ -1057,7 +1087,11 @@ func holdLeasePrincipal(store RunStore, record *PrincipalRecord) error {
 	return nil
 }
 
-// fencedEffect admits one non-read effect under the fence of the store the writer writes through.
+// fencedEffect admits one non-read effect under the fence of the store the writer writes through. #226:
+// the admission handed to the effect host is in flight while its dispatch runs (its context carries the
+// attempt); a re-authorization refusal minted for it, once, before anything was performed, that the
+// dispatch returns, from an effect host proven for the run's store, is trusted and kept on the view
+// (ReauthorizationOf).
 func fencedEffect(ctx context.Context, store RunStore, op EffectOperation, perform func(context.Context) error) error {
 	view := leaseViewOf(store)
 	if view == nil {
@@ -1070,5 +1104,33 @@ func fencedEffect(ctx context.Context, store RunStore, op EffectOperation, perfo
 	if err != nil {
 		return err
 	}
-	return view.host.Dispatch(ctx, admission, perform)
+	attempt := &dispatchAttempt{admission: admission, live: true}
+	err = view.host.Dispatch(context.WithValue(ctx, dispatchAttemptKey{}, attempt), admission, func(ctx context.Context) error {
+		attempt.mu.Lock()
+		// #226: a perform after the dispatch ended never runs, and a refusal followed by one is no proof: the
+		// host that minted it did not stand by it.
+		if !attempt.live {
+			minted := attempt.minted
+			attempt.invalid = true
+			attempt.mu.Unlock()
+			if minted != nil {
+				minted.revoke()
+			}
+			return &LeaseRefused{Reason: "invalid"}
+		}
+		attempt.performed = true
+		attempt.mu.Unlock()
+		return perform(ctx)
+	})
+	attempt.mu.Lock()
+	attempt.live = false
+	minted, refusal, trusted := attempt.minted, attempt.refusal, attempt.minted != nil && !attempt.performed && !attempt.invalid
+	attempt.mu.Unlock()
+	if returned, ok := err.(*ReauthorizationRequired); ok && trusted && returned == minted && sameAuthority(provenAuthority(view.host), view.store) {
+		minted.trust(ReauthDisposition{Version: ReauthRecordVersion, Resource: admission.Fence.Resource, Operation: admission.Operation, IdempotencyKey: admission.IdempotencyKey, Fence: admission.Fence, Cause: refusal.Cause, Connection: refusal.Connection, Principal: refusal.Principal, Permissions: slices.Clone(refusal.Permissions), Requires: slices.Clone(refusal.Requires)})
+		view.mu.Lock()
+		view.reauthorization = minted
+		view.mu.Unlock()
+	}
+	return err
 }

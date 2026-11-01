@@ -125,6 +125,18 @@
       "evidence": "deadline-unsettled-1",
       "kind": "deadline",
       "key": "wk.run-unsettled.wait-1.Q7z2Xm9LpV4cR8tN"
+    },
+    {
+      "version": 1,
+      "resource": "run-refreshed",
+      "wait": "wait-1",
+      "evidence": "refreshed-1",
+      "kind": "event",
+      "event": {
+        "kind": "reauthorized",
+        "subject": "tracker-conn"
+      },
+      "key": "wk.run-refreshed.wait-1.Q7z2Xm9LpV4c"
     }
   ],
   "digests": [
@@ -138,7 +150,8 @@
     "sha256:619d7bef573e8615989487906619c76bd21ac27982f0ce141c45c3507a0d4a0b",
     "sha256:ca4eeb4b52f0ee8b5dc30c4209076eb2fc6f1b94384c58a3d61b7d8954a89b79",
     "sha256:5a248c07f08dd9ebf0fec00a3aa325fb2390c86263f9fd8441aa9d0326aa917a",
-    "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97"
+    "sha256:25fdd71348be71a13d88899c0cdb0aaedc1fc469fa720e9f0eb2856d9f28fb97",
+    "sha256:a54dc408e6842f7c277c92ec0ec055f302f19576e64bfc299a2fbf32048b99f2"
   ],
   "keys": {
     "digests": [
@@ -197,6 +210,18 @@
       [
         "Q7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tNQ7z2Xm9LpV4cR8tN",
         "sha256:039f8f151aabbc3a821515573c7425a0fd40450d7ba18969609a5b7065c8c48c"
+      ],
+      [
+        "wk.run-reauth.wait-1.Q7z2Xm9LpV4cR8tN",
+        "sha256:c5daeb763862095e9fc8512e570bf700bd2d09c1dbf9f0c005fecc6ad36069ea"
+      ],
+      [
+        "wk.run-refreshed.wait-1.Q7z2Xm9LpV4c",
+        "sha256:94581062848207767a7b2c3ef1008a4cd6809d5b1e1c7b0754c9db44fde7b42a"
+      ],
+      [
+        "wk.run-bound.wait-2.Q7z2Xm9LpV4cR8tN",
+        "sha256:1a9e0c7a561cf66c3e34d9b0a3a872aee74fe46c913f989fab6f8f8ab42746df"
       ]
     ],
     "refused": [

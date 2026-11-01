@@ -1,0 +1,1295 @@
+{
+  "description": "Handwritten trusted re-authorization dispositions (#226): the exact admission an effect host refused, never admitted, because the connection's credentials expired or were revoked; its operation's idempotency key is the SHA-256 of the operation's canonical JSON and digests are each record's SHA-256 over its canonical JSON. A principal is a digest; no credential, token or provider error is ever carried. refused fail the schema and both readers (a token or an error member, an undigested principal, an unbounded connection, an unknown cause, a malformed or repeated label, another version, a missing member); readerRefused hold the rules the schema cannot state (another operation's key, another run's operation or fence, unsorted labels). heads: the run's head a park binds, with whether it holds the disposition's operation (an index into items) as the never-admitted dispatch: its last dispatch, a host or Runtime effect, read false, unknown, with the typed failure (authentication, tool, not-started) and the operation's source, tool and request digest; member names are exact.",
+  "schema": "run-reauth.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/reauth.ts (readReauthDisposition, readReauthAction, readReauthorized, readReauthRefusal, reauthorize)",
+      "packages/harness/storage/wait.ts (holdsNeverAdmitted)"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "resource": "run-reauth",
+      "operation": {
+        "run": "run-reauth",
+        "operation": "dispatch-1",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+      "fence": {
+        "version": 1,
+        "resource": "run-reauth",
+        "owner": "worker-a",
+        "epoch": "3"
+      },
+      "cause": "expired",
+      "connection": "tracker-conn",
+      "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+      "permissions": [
+        "issues:read",
+        "issues:write"
+      ],
+      "requires": [
+        "issues:write"
+      ]
+    },
+    {
+      "version": 1,
+      "resource": "run-bound",
+      "operation": {
+        "run": "run-bound",
+        "operation": "dispatch-9",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+      },
+      "idempotencyKey": "sha256:185a3385a6b10f904f07c0daaf8beef62e76e7119390e6c609d6ab3a86112af0",
+      "fence": {
+        "version": 1,
+        "resource": "run-bound",
+        "owner": "worker-b",
+        "epoch": "2"
+      },
+      "cause": "revoked",
+      "connection": "tracker.conn:eu-1",
+      "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
+      "permissions": [],
+      "requires": []
+    },
+    {
+      "version": 1,
+      "resource": "run-refreshed",
+      "operation": {
+        "run": "run-refreshed",
+        "operation": "dispatch-4",
+        "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "tool": "create_issue",
+        "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "idempotencyKey": "sha256:365e20b3e04289b64c8217f91ebaed8a22930b86654b21dbc9792dc9c9afe4e8",
+      "fence": {
+        "version": 1,
+        "resource": "run-refreshed",
+        "owner": "worker-a",
+        "epoch": "1"
+      },
+      "cause": "expired",
+      "connection": "tracker-conn",
+      "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+      "permissions": [
+        "issues:read",
+        "issues:write"
+      ],
+      "requires": [
+        "issues:write"
+      ]
+    }
+  ],
+  "digests": [
+    "sha256:f9ec621ce74fec9ec5802e78fc5642fa36d2a13f743a81456d60d23b354257b4",
+    "sha256:1e255c4d2b0464e62e3ca4bffaf578501751ba5a020d9fc111aac15f18f43ffb",
+    "sha256:0840e027294cc91b082f6eb843f91c37d3f60d425d0aae5e85af2beddc60cb1f"
+  ],
+  "refused": [
+    {
+      "problem": "a token member",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ],
+        "token": "SENTINEL-ACCESS-TOKEN"
+      }
+    },
+    {
+      "problem": "a provider error member",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ],
+        "error": "invalid_grant: token expired"
+      }
+    },
+    {
+      "problem": "a principal that is not a digest",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "person-one@example.invalid",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "a connection that is not a bounded reference",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "Bearer abc.def",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "an unknown cause",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "unauthorized",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "a malformed label",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "a repeated label",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "version 2",
+      "disposition": {
+        "version": 2,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "no requires",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "an operation with an epoch",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "epoch": "3"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "an empty record",
+      "disposition": {}
+    },
+    {
+      "problem": "65 permission labels",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "scope-00",
+          "scope-01",
+          "scope-02",
+          "scope-03",
+          "scope-04",
+          "scope-05",
+          "scope-06",
+          "scope-07",
+          "scope-08",
+          "scope-09",
+          "scope-10",
+          "scope-11",
+          "scope-12",
+          "scope-13",
+          "scope-14",
+          "scope-15",
+          "scope-16",
+          "scope-17",
+          "scope-18",
+          "scope-19",
+          "scope-20",
+          "scope-21",
+          "scope-22",
+          "scope-23",
+          "scope-24",
+          "scope-25",
+          "scope-26",
+          "scope-27",
+          "scope-28",
+          "scope-29",
+          "scope-30",
+          "scope-31",
+          "scope-32",
+          "scope-33",
+          "scope-34",
+          "scope-35",
+          "scope-36",
+          "scope-37",
+          "scope-38",
+          "scope-39",
+          "scope-40",
+          "scope-41",
+          "scope-42",
+          "scope-43",
+          "scope-44",
+          "scope-45",
+          "scope-46",
+          "scope-47",
+          "scope-48",
+          "scope-49",
+          "scope-50",
+          "scope-51",
+          "scope-52",
+          "scope-53",
+          "scope-54",
+          "scope-55",
+          "scope-56",
+          "scope-57",
+          "scope-58",
+          "scope-59",
+          "scope-60",
+          "scope-61",
+          "scope-62",
+          "scope-63",
+          "scope-64"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "a connection of 65 characters",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "a label of 129 characters",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+        ]
+      }
+    }
+  ],
+  "readerRefused": [
+    {
+      "problem": "the key of another operation",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:3b5c01343ba39ed8931f1c3ae8a9d1348e270ddf6bc7ecea9397d73556cb1eac",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "another run's operation",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-other",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:b5c7a432de88f738bf793e68896172cf0856c6c15f42f7db82daede19e91d230",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "another run's fence",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-other",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "unsorted permissions",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:write",
+          "issues:read"
+        ],
+        "requires": [
+          "issues:write"
+        ]
+      }
+    },
+    {
+      "problem": "unsorted requires",
+      "disposition": {
+        "version": 1,
+        "resource": "run-reauth",
+        "operation": {
+          "run": "run-reauth",
+          "operation": "dispatch-1",
+          "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "tool": "create_issue",
+          "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "idempotencyKey": "sha256:f6ab2c3abdbc20c4ade925936852ca03f55ef087e9f78f02c6a564d45adec9b4",
+        "fence": {
+          "version": 1,
+          "resource": "run-reauth",
+          "owner": "worker-a",
+          "epoch": "3"
+        },
+        "cause": "expired",
+        "connection": "tracker-conn",
+        "principal": "sha256:e347c2e0480616322565f62e0299dac0dd91c85c1344cf2491c113ab30214150",
+        "permissions": [
+          "issues:read",
+          "issues:write"
+        ],
+        "requires": [
+          "issues:write",
+          "issues:read"
+        ]
+      }
+    }
+  ],
+  "heads": [
+    {
+      "case": "the last dispatch, never admitted",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "model-1",
+              "kind": "model",
+              "read": true,
+              "state": "result",
+              "source": "model",
+              "tool": "chat",
+              "requestDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+            },
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": true
+    },
+    {
+      "case": "a Runtime effect, never admitted",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "runtime",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": true
+    },
+    {
+      "case": "another dispatch came after it",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            },
+            {
+              "id": "model-1",
+              "kind": "model",
+              "read": true,
+              "state": "result",
+              "source": "model",
+              "tool": "chat",
+              "requestDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "its result was recorded",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "result",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "a refused outcome, not the never-admitted one",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "refused",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "an unknown outcome: it may have been admitted",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "unknown",
+                "source": "tool",
+                "outcome": "unknown",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "a raw 401 from the tool after admission",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "refused",
+                "status": 401
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "a read dispatch",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": true,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "a model dispatch",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "model",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "another request",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "another source",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "another tool",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "close_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "another dispatch id",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-2",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "read is null, not false",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "id": "dispatch-1",
+              "kind": "host",
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              },
+              "read": null
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "a member name in another case",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [
+            {
+              "ID": "dispatch-1",
+              "kind": "host",
+              "read": false,
+              "state": "unknown",
+              "source": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+              "tool": "create_issue",
+              "requestDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+              "fingerprint": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+              "request": "{\"title\":\"Mileage\"}",
+              "scope": {
+                "execution": "run-reauth",
+                "role": "author"
+              },
+              "failure": {
+                "version": 1,
+                "code": "authentication",
+                "source": "tool",
+                "outcome": "not-started",
+                "detail": "ReauthorizationRequired: the connection needs re-authorization; the operation was not admitted."
+              }
+            }
+          ],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    },
+    {
+      "case": "no dispatch",
+      "checkpoint": {
+        "version": 2,
+        "durable": {
+          "dispatches": [],
+          "observations": [],
+          "children": []
+        }
+      },
+      "disposition": 0,
+      "holds": false
+    }
+  ]
+}

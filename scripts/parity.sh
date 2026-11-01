@@ -302,6 +302,7 @@ $pkg/principal.test.ts
 $pkg/principalChild.test.ts
 $pkg/principalGate.test.ts
 $pkg/principalPaths.test.ts
+$pkg/principalReauth.test.ts
 $pkg/principalSession.test.ts
 $pkg/contract/record-shapes-v012.json
 $pkg/contract/run-report-v3.json
@@ -395,6 +396,8 @@ $pkg/storage/resume.test.ts
 $pkg/storage/waitConformance.ts
 $pkg/storage/waitConformance.test.ts
 $pkg/storage/waitReview.test.ts
+$pkg/storage/reauth.ts
+$pkg/storage/reauth.test.ts
 EOF
 }
 
