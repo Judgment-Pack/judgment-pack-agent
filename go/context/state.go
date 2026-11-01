@@ -791,6 +791,10 @@ func ValidApproval(v *Value) bool {
 	if held.Runtime != nil && (!runtimeactions.ValidBinding(*held.Runtime) || held.Source.Kind != "runtime") {
 		return false
 	}
+	// A Runtime call is bound by its binding and never keeps a text; a kept text is a string, or absent.
+	if request := v.Get("request"); request != nil && (!request.IsString() || request.Str() == "" || held.Source.Kind == "runtime") {
+		return false
+	}
 	source := v.Get("source")
 	if held.CallID == "" || U16Length(held.CallID) > 256 || !approvalWireName.MatchString(held.Name) ||
 		held.Tool == "" || U16Length(held.Tool) > 128 || !v.Get("args").IsObject() || !oneOf(v.Get("state"), approvalStates...) ||

@@ -1,0 +1,269 @@
+{
+  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a version 3 checkpoint. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: approval_requested shows the person args, in the form the approved call then runs. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text.",
+  "schema": "checkpoint.json#/$defs/approval",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/toolSources.ts (approvedArguments; Go's writer and reader are approvalRequestOf and approvedArguments in go/context/sources.go)"
+    ]
+  },
+  "items": [
+    {
+      "callId": "call-kept",
+      "name": "tracker__write",
+      "tool": "write",
+      "source": {
+        "kind": "custom",
+        "id": "tracker",
+        "trust": "person",
+        "version": "1",
+        "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tool": "write"
+      },
+      "args": {
+        "id": 9007199254740992
+      },
+      "state": "asked",
+      "request": "{\"id\":9007199254740993}"
+    },
+    {
+      "callId": "call-kept",
+      "name": "tracker__write",
+      "tool": "write",
+      "source": {
+        "kind": "custom",
+        "id": "tracker",
+        "trust": "person",
+        "version": "1",
+        "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tool": "write"
+      },
+      "args": {
+        "q": 1
+      },
+      "state": "approved",
+      "request": "{\"q\":1.0}"
+    }
+  ],
+  "keeps": [
+    {
+      "text": "{}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":7}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":-7}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":9007199254740991}",
+      "keeps": false
+    },
+    {
+      "text": "{\"a\":1,\"b\":2}",
+      "keeps": false
+    },
+    {
+      "text": "{\"q\":\"x\"}",
+      "keeps": false
+    },
+    {
+      "text": "{\"q\":true}",
+      "keeps": false
+    },
+    {
+      "text": "{\"a\":[1,{\"b\":\"c\"}]}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":9007199254740993}",
+      "keeps": true
+    },
+    {
+      "text": "{\"id\":9007199254740992}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":1.0}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":0}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":-0}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":0.5}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":1e-400}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":null}",
+      "keeps": true
+    },
+    {
+      "text": "{\"q\":\"�\"}",
+      "keeps": true
+    },
+    {
+      "text": "{\"�\":1}",
+      "keeps": true
+    },
+    {
+      "text": "{\"a\":[0]}",
+      "keeps": true
+    },
+    {
+      "text": "{\"a\":{\"b\":null}}",
+      "keeps": true
+    },
+    {
+      "text": "{\"ID\":1,\"id\":2}",
+      "keeps": true
+    },
+    {
+      "text": "{\"b\":2,\"a\":1}",
+      "keeps": false
+    },
+    {
+      "text": "{ \"id\" : 7 }",
+      "keeps": false
+    },
+    {
+      "text": " {\"id\":7} ",
+      "keeps": false
+    },
+    {
+      "text": "{\"q\":\"\\u0041\"}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":7.0}",
+      "keeps": true
+    }
+  ],
+  "approved": [
+    {
+      "label": "an ordinary record, as a published release wrote it",
+      "args": "{\"id\":7}",
+      "go": "{\"id\":7}",
+      "typescript": {
+        "id": 7
+      }
+    },
+    {
+      "label": "at the most a float64 holds exactly",
+      "args": "{\"id\":9007199254740991}",
+      "go": "{\"id\":9007199254740991}",
+      "typescript": {
+        "id": 9007199254740991
+      }
+    },
+    {
+      "label": "past it, where the model may have written another number",
+      "args": "{\"id\":9007199254740992}",
+      "go": "refused",
+      "typescript": {
+        "id": 9007199254740992
+      }
+    },
+    {
+      "label": "a null, which 1e400 reads as",
+      "args": "{\"q\":null}",
+      "go": "refused",
+      "typescript": {
+        "q": null
+      }
+    },
+    {
+      "label": "a zero, which 1e-400 and -0 read as",
+      "args": "{\"q\":0}",
+      "go": "refused",
+      "typescript": {
+        "q": 0
+      }
+    },
+    {
+      "label": "a decimal, which a longer one may read as",
+      "args": "{\"q\":0.5}",
+      "go": "refused",
+      "typescript": {
+        "q": 0.5
+      }
+    },
+    {
+      "label": "a replacement character, which a lone surrogate reads as",
+      "args": "{\"q\":\"�\"}",
+      "go": "refused",
+      "typescript": {
+        "q": "�"
+      }
+    },
+    {
+      "label": "names that fold together, whose order is lost",
+      "args": "{\"ID\":1,\"id\":2}",
+      "go": "refused",
+      "typescript": {
+        "ID": 1,
+        "id": 2
+      }
+    },
+    {
+      "label": "a kept text past 2^53",
+      "args": "{\"id\":9007199254740992}",
+      "request": "{\"id\":9007199254740993}",
+      "go": "{\"id\":9007199254740993}",
+      "typescript": "refused"
+    },
+    {
+      "label": "a kept spelling",
+      "args": "{\"q\":1}",
+      "request": "{\"q\":1.0}",
+      "go": "{\"q\":1.0}",
+      "typescript": "refused"
+    },
+    {
+      "label": "a kept underflow",
+      "args": "{\"q\":0}",
+      "request": "{\"q\":1e-400}",
+      "go": "{\"q\":1e-400}",
+      "typescript": "refused"
+    },
+    {
+      "label": "a kept text in other whitespace and order, which this writer does not keep and this reader runs",
+      "args": "{\"a\":1,\"b\":2}",
+      "request": " { \"b\" : 2 , \"a\" : 1 } ",
+      "go": " { \"b\" : 2 , \"a\" : 1 } ",
+      "typescript": {
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "label": "a kept text that does not read back to args",
+      "args": "{\"id\":7}",
+      "request": "{\"id\":8}",
+      "go": "refused",
+      "typescript": "refused"
+    },
+    {
+      "label": "a kept text that does not read at all",
+      "args": "{\"id\":7}",
+      "request": "{bad",
+      "go": "refused",
+      "typescript": "refused"
+    }
+  ]
+}

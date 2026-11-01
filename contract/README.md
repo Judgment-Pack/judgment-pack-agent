@@ -177,6 +177,14 @@ files they were rendered from.
   first and second requests of the recorded scenario on each wire, for each placement the endpoint
   capabilities resolve to. This harness's (agent#9); `engines/vercel/prefix.test.ts` checks every
   item against a run.
+- `approval/kept-text.json`: what a call held for approval keeps beside its parsed form and what the approved
+  call then runs with (#275).
+- `storage/durable-repeats.json`: what a write that reads alike a recorded one is to that record, what
+  the durable record can hold, and what each call gets on a run resumed from
+  `contract/testdata/durable-writes/published-checkpoints.json`, which holds checkpoints the v0.12.0 and
+  v0.10.0 tags' own code wrote, byte for byte (#275). `go/context/durable_writes_test.go` and
+  `storage/durableWrites.test.ts` hold the code to it, and the contract tests derive each decision from
+  its text and each row of the checkpoints again.
 - `chat/`: the index of earlier results a chat-scoped run is shown (`turn-index.json`: the index
   after a first run kept three results, and after a second run's result evicted the two oldest), and
   the objects a chat's read cache keys a read by, with each one's canonical JSON and SHA-256

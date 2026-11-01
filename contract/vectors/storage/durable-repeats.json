@@ -1,0 +1,523 @@
+{
+  "description": "What a write that reads alike a recorded one is to that record (#275), written by hand. The dispatch fingerprint is published, persisted and re-derived when a book is read, and it digests the request as ParseJSON reads it, so two different writes can share one: a float64 holds 9007199254740993 and 9007199254740992 as one number. The published fingerprint does not change; the decision is made from the exact text every row records. cases: same is answered from the record and not run; different runs and makes its own record; conflict is refused with DurableRequestConflict, neither run nor answered. Each pair has one fingerprint. recordable: whether the durable record can hold a call's text as written; one it cannot is refused with DurableRequestUnrecordable before anything is claimed, unless a row a published release wrote answers it first. goCases are the same, in Go only: ParseJSON reads a lone surrogate and a replacement character as one string, where JSON.parse keeps them apart, so in TypeScript these never share a fingerprint. A lone surrogate is exact on neither side. resume: each call, in order, on a run resumed from contract/testdata/durable-writes/published-checkpoints.json, and what it gets: its record, a run, a refusal, or HostOutcomeUnknown. items are dispatch rows as they are written. compareDurableRequests in go/context/run_writer.go and packages/harness/storage/writer.ts read every case, and tests/test_contract.py derives each decision from its text.",
+  "schema": "checkpoint.json#/$defs/durableDispatch",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/writer.ts (compareDurableRequests, RunWriter.invoke)",
+      "packages/harness/context/chat.ts (exactArgumentsText)"
+    ]
+  },
+  "cases": [
+    {
+      "label": "the same bytes",
+      "recorded": "{\"id\":7}",
+      "request": "{\"id\":7}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, past 2^53",
+      "recorded": "{\"id\":9007199254740993}",
+      "request": "{\"id\":9007199254740993}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, a spelling JSON.stringify does not write",
+      "recorded": "{\"q\":1.0}",
+      "request": "{\"q\":1.0}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, negative zero",
+      "recorded": "{\"q\":-0}",
+      "request": "{\"q\":-0}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, names that fold together",
+      "recorded": "{\"ID\":1,\"id\":2}",
+      "request": "{\"ID\":1,\"id\":2}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, a repeated name",
+      "recorded": "{\"a\":1,\"a\":2}",
+      "request": "{\"a\":1,\"a\":2}",
+      "decision": "same"
+    },
+    {
+      "label": "the same bytes, out of range",
+      "recorded": "{\"q\":1e400}",
+      "request": "{\"q\":1e400}",
+      "decision": "same"
+    },
+    {
+      "label": "whitespace, in two exact requests",
+      "recorded": "{\"id\":7}",
+      "request": " { \"id\" : 7 } ",
+      "decision": "same"
+    },
+    {
+      "label": "member order, in two exact requests",
+      "recorded": "{\"a\":1,\"b\":2}",
+      "request": "{\"b\":2,\"a\":1}",
+      "decision": "same"
+    },
+    {
+      "label": "a string's escapes, in two exact requests",
+      "recorded": "{\"q\":\"A\"}",
+      "request": "{\"q\":\"\\u0041\"}",
+      "decision": "same"
+    },
+    {
+      "label": "an integer past 2^53 and its neighbour",
+      "recorded": "{\"id\":9007199254740993}",
+      "request": "{\"id\":9007199254740992}",
+      "decision": "different"
+    },
+    {
+      "label": "its neighbour and an integer past 2^53",
+      "recorded": "{\"id\":9007199254740992}",
+      "request": "{\"id\":9007199254740993}",
+      "decision": "different"
+    },
+    {
+      "label": "two integers past 2^53, neither written as a float64 writes it",
+      "recorded": "{\"id\":12345678901234567891}",
+      "request": "{\"id\":12345678901234567892}",
+      "decision": "different"
+    },
+    {
+      "label": "underflow and zero",
+      "recorded": "{\"q\":1e-400}",
+      "request": "{\"q\":0}",
+      "decision": "different"
+    },
+    {
+      "label": "a number out of range and the null it reads as",
+      "recorded": "{\"q\":1e400}",
+      "request": "{\"q\":null}",
+      "decision": "different"
+    },
+    {
+      "label": "two numbers out of range",
+      "recorded": "{\"q\":1e400}",
+      "request": "{\"q\":2e400}",
+      "decision": "different"
+    },
+    {
+      "label": "two decimals past a float64's precision",
+      "recorded": "{\"q\":0.1000000000000000055}",
+      "request": "{\"q\":0.1000000000000000056}",
+      "decision": "different"
+    },
+    {
+      "label": "another spelling of 1",
+      "recorded": "{\"q\":1.0}",
+      "request": "{\"q\":1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "and the other way round",
+      "recorded": "{\"q\":1}",
+      "request": "{\"q\":1.0}",
+      "decision": "conflict"
+    },
+    {
+      "label": "an exponent",
+      "recorded": "{\"q\":1e2}",
+      "request": "{\"q\":100}",
+      "decision": "conflict"
+    },
+    {
+      "label": "an upper-case exponent",
+      "recorded": "{\"q\":1E+21}",
+      "request": "{\"q\":1e+21}",
+      "decision": "conflict"
+    },
+    {
+      "label": "trailing zeros",
+      "recorded": "{\"q\":1.10}",
+      "request": "{\"q\":1.1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "negative zero",
+      "recorded": "{\"q\":-0}",
+      "request": "{\"q\":0}",
+      "decision": "conflict"
+    },
+    {
+      "label": "and the other way round, negative zero",
+      "recorded": "{\"q\":0}",
+      "request": "{\"q\":-0}",
+      "decision": "conflict"
+    },
+    {
+      "label": "a repeated name and what it reads as",
+      "recorded": "{\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+      "request": "{\"a\":{\"y\":2}}",
+      "decision": "conflict"
+    },
+    {
+      "label": "a repeated name written with an escape",
+      "recorded": "{\"a\":1,\"\\u0061\":2}",
+      "request": "{\"a\":2}",
+      "decision": "conflict"
+    },
+    {
+      "label": "names that fold together, in both orders",
+      "recorded": "{\"ID\":1,\"id\":2}",
+      "request": "{\"id\":2,\"ID\":1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "the Kelvin sign and k, in both orders",
+      "recorded": "{\"K\":1,\"k\":2}",
+      "request": "{\"k\":2,\"K\":1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "names that fold together, nested, in both orders",
+      "recorded": "{\"o\":{\"ID\":1,\"id\":2}}",
+      "request": "{\"o\":{\"id\":2,\"ID\":1}}",
+      "decision": "conflict"
+    },
+    {
+      "label": "whitespace, in a request that is not exact",
+      "recorded": "{\"q\":1.0}",
+      "request": "{ \"q\" : 1.0 }",
+      "decision": "conflict"
+    },
+    {
+      "label": "member order, in a request that is not exact",
+      "recorded": "{\"q\":1.0,\"r\":2}",
+      "request": "{\"r\":2,\"q\":1.0}",
+      "decision": "conflict"
+    },
+    {
+      "label": "an array with whitespace: only an object is exact",
+      "recorded": "[1]",
+      "request": " [1] ",
+      "decision": "conflict"
+    },
+    {
+      "label": "the sign of an underflow",
+      "recorded": "{\"q\":-1e-400}",
+      "request": "{\"q\":1e-400}",
+      "decision": "different"
+    },
+    {
+      "label": "exact on one side only, a repeated name on the other",
+      "recorded": "{\"a\":{\"y\":2}}",
+      "request": "{\"a\":{\"x\":1},\"a\":{\"y\":2}}",
+      "decision": "conflict"
+    }
+  ],
+  "goCases": [
+    {
+      "label": "a literal replacement character and a lone surrogate",
+      "recorded": "{\"q\":\"�\"}",
+      "request": "{\"q\":\"\\ud800\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "and the other way round, a lone surrogate",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"�\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "two lone surrogates",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"\\ud801\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "in a member name",
+      "recorded": "{\"�\":1}",
+      "request": "{\"\\ud800\":1}",
+      "decision": "conflict"
+    },
+    {
+      "label": "inside a longer string",
+      "recorded": "{\"q\":\"x�y\"}",
+      "request": "{\"q\":\"x\\ud83dy\"}",
+      "decision": "conflict"
+    },
+    {
+      "label": "the same bytes, a lone surrogate a published row recorded",
+      "recorded": "{\"q\":\"\\ud800\"}",
+      "request": "{\"q\":\"\\ud800\"}",
+      "decision": "same"
+    }
+  ],
+  "recordable": [
+    {
+      "text": "{\"id\":7}",
+      "recordable": true
+    },
+    {
+      "text": "{\"id\":9007199254740993}",
+      "recordable": true
+    },
+    {
+      "text": "{\"id\":9007199254740992}",
+      "recordable": true
+    },
+    {
+      "text": "{\"q\":1.0}",
+      "recordable": true
+    },
+    {
+      "text": "{\"q\":-0}",
+      "recordable": true
+    },
+    {
+      "text": "{\"q\":1e-400}",
+      "recordable": true
+    },
+    {
+      "text": "{\"ID\":1,\"id\":2}",
+      "recordable": true
+    },
+    {
+      "text": "{\"q\":\"\\ud83d\\ude00\"}",
+      "recordable": true
+    },
+    {
+      "text": "{\"a\":1,\"a\":2}",
+      "recordable": false
+    },
+    {
+      "text": "{\"a\":1,\"\\u0061\":2}",
+      "recordable": false
+    },
+    {
+      "text": "{\"o\":{\"a\":1,\"a\":2}}",
+      "recordable": false
+    },
+    {
+      "text": "{\"q\":1e400}",
+      "recordable": false
+    },
+    {
+      "text": "{\"q\":-1e400}",
+      "recordable": false
+    },
+    {
+      "text": "{\"q\":\"\\ud800\"}",
+      "recordable": false
+    }
+  ],
+  "resume": {
+    "v0.12.0": [
+      {
+        "call": "{\"id\":9007199254740993}",
+        "outcome": "record",
+        "answer": "wrote {\"id\":9007199254740993}"
+      },
+      {
+        "call": "{\"id\":9007199254740992}",
+        "outcome": "run",
+        "answer": "ran {\"id\":9007199254740992}"
+      },
+      {
+        "call": "{\"id\":9007199254740992}",
+        "outcome": "record",
+        "answer": "ran {\"id\":9007199254740992}"
+      },
+      {
+        "call": "{\"id\":9007199254740993}",
+        "outcome": "record",
+        "answer": "wrote {\"id\":9007199254740993}"
+      },
+      {
+        "call": "{\"q\":1.0}",
+        "outcome": "record",
+        "answer": "wrote {\"q\":1.0}"
+      },
+      {
+        "call": "{\"q\":1}",
+        "outcome": "conflict"
+      },
+      {
+        "call": "{\"q\":-0}",
+        "outcome": "record",
+        "answer": "wrote {\"q\":-0}"
+      },
+      {
+        "call": "{\"q\":0}",
+        "outcome": "conflict"
+      },
+      {
+        "call": "{\"ID\":1,\"id\":2}",
+        "outcome": "record",
+        "answer": "wrote {\"ID\":1,\"id\":2}"
+      },
+      {
+        "call": "{\"id\":2,\"ID\":1}",
+        "outcome": "conflict"
+      },
+      {
+        "call": "{ \"a\" : 1 , \"b\" : 2 }",
+        "outcome": "record",
+        "answer": "wrote { \"a\" : 1 , \"b\" : 2 }"
+      },
+      {
+        "call": "{\"b\":2,\"a\":1}",
+        "outcome": "record",
+        "answer": "wrote { \"a\" : 1 , \"b\" : 2 }"
+      },
+      {
+        "call": "{\"unknown\":1}",
+        "outcome": "unknown"
+      },
+      {
+        "call": " { \"unknown\" : 1 } ",
+        "outcome": "unknown"
+      },
+      {
+        "call": "{\"new\":1}",
+        "outcome": "run",
+        "answer": "ran {\"new\":1}"
+      }
+    ],
+    "v0.10.0": [
+      {
+        "call": "{\"id\":9007199254740993}",
+        "outcome": "record",
+        "answer": "wrote {\"id\":9007199254740993}"
+      },
+      {
+        "call": "{\"r\":{\"x\":1},\"r\":{\"y\":2}}",
+        "outcome": "record",
+        "answer": "wrote {\"r\":{\"x\":1},\"r\":{\"y\":2}}"
+      },
+      {
+        "call": "{\"r\":{\"y\":2}}",
+        "outcome": "conflict"
+      },
+      {
+        "call": "{\"big\":1e400}",
+        "outcome": "record",
+        "answer": "wrote {\"big\":1e400}"
+      },
+      {
+        "call": "{\"big\":2e400}",
+        "outcome": "unrecordable"
+      },
+      {
+        "call": "{\"big\":null}",
+        "outcome": "run",
+        "answer": "ran {\"big\":null}"
+      },
+      {
+        "call": "{\"big\":null}",
+        "outcome": "record",
+        "answer": "ran {\"big\":null}"
+      },
+      {
+        "call": "{\"unknown\":1}",
+        "outcome": "unknown"
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "row-a3c90e3b7448",
+      "scope": {
+        "execution": "repeats",
+        "role": "author"
+      },
+      "kind": "host",
+      "source": "source",
+      "tool": "write",
+      "fingerprint": "sha256:11c01ac526628fd586fc3f53c0e0856006c2ca715a254658af0990720dfa4fdb",
+      "request": "{\"id\":7}",
+      "requestDigest": "sha256:a3c90e3b7448d23d9eacebd0ebf15cae100e21f9b2c688f3f9d238edcd26d67f",
+      "state": "result",
+      "read": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "wrote {\"id\":7}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "row-2185812179ff",
+      "scope": {
+        "execution": "repeats",
+        "role": "author"
+      },
+      "kind": "host",
+      "source": "source",
+      "tool": "write",
+      "fingerprint": "sha256:be49331a5aa3e28fddc26d4a030a90b613bfa20fcd195415759ecab7e2103864",
+      "request": "{\"id\":9007199254740993}",
+      "requestDigest": "sha256:2185812179ffd2b19c8154d2d409599d231fb75ef4968df59b7f02b435c094fa",
+      "state": "result",
+      "read": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "wrote {\"id\":9007199254740993}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "row-68a5a7ce7f21",
+      "scope": {
+        "execution": "repeats",
+        "role": "author"
+      },
+      "kind": "host",
+      "source": "source",
+      "tool": "write",
+      "fingerprint": "sha256:424b332ddd39a83fe81cac34593247a8dea1d9e07556d0a6b66a43cf01840357",
+      "request": "{\"q\":1.0}",
+      "requestDigest": "sha256:68a5a7ce7f21995bd1d0aacc9510c61dfa5cd2c6167c441584f791b8b42fca33",
+      "state": "result",
+      "read": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "wrote {\"q\":1.0}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "row-dccda74985e4",
+      "scope": {
+        "execution": "repeats",
+        "role": "author"
+      },
+      "kind": "host",
+      "source": "source",
+      "tool": "write",
+      "fingerprint": "sha256:baac994ed70dbbe37ff5af49f78751c1df6bc27b199c628b2237f62c3f870ebf",
+      "request": "{\"ID\":1,\"id\":2}",
+      "requestDigest": "sha256:dccda74985e4c0366840b76a40e7fc6264b8b44c8a91c33d3ed5190ec90fc5e7",
+      "state": "result",
+      "read": false,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "wrote {\"ID\":1,\"id\":2}"
+          }
+        ]
+      }
+    }
+  ]
+}

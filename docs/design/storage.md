@@ -97,6 +97,35 @@ source/tool/argument fingerprint. An unresolved claim refuses as `HostOutcomeUnk
 when the call might never have started. Intentional repetition needs a new host-authorized
 run identity. This is conservative dispatch recovery, with no exactly-once external-effect claim.
 
+The fingerprint digests the request as `ParseJSON` reads it. It is persisted and re-derived when a
+stored book is read, so its form does not change, and it says two requests read alike, not that they
+are one write. The decision is made from the text the row records (#275,
+`contract/vectors/storage/durable-repeats.json`). The same text is the same write, and so are two
+requests their parsed form says exactly (`exactArguments`), which differ only in whitespace, a
+string's escapes or the order of names that do not fold together: the record answers them and they do
+not run. Exact numbers that differ make a different write, which runs and gets its own row with the
+same fingerprint, so a legitimate integer past 2^53 runs beside its neighbour. The same values written
+differently (`1.0` and `1`, `-0` and `0`, a repeated name, two names `encoding/json` folds together, in
+both orders) cannot be told apart: they are refused with `DurableRequestConflict`, neither run nor
+answered. A row a published release wrote is judged by the same rule, from the request it recorded, and
+needs no migration. A call whose text the record cannot hold (a repeated name, a number out of range, a
+lone surrogate) is refused with `DurableRequestUnrecordable` before anything is claimed, unless a row a
+published release wrote answers it first; retained history refuses that text, which used to reach the
+writer after the claim and end the run with a storage failure. TypeScript runs a host write with the
+canonical JSON of what `JSON.parse` read, so what runs is what is keyed; there, under a run store, a host
+write holding an integer past 2^53 or a number read as an infinity is refused the same way, because
+the write it would run is not the one the model wrote.
+
+Every Go wire reader hands on the model's argument text: the parsed value of an Anthropic or Gemini call
+keeps the source text it was read from, so the bytes that run and that a row records are the model's on
+every wire. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
+where it cannot say the model's text (`approval.request`, version 3) the approved call runs that text once it
+reads back to `args`, and it goes through the same decision over the record as any other call. Whitespace and
+member order are not kept: the person is shown `args`, in the form the approved call runs. A record with no
+`request` runs from `args` only where the parsed form cannot have changed what the model wrote; otherwise
+it is refused as stale, because a checkpoint a published release wrote holds nothing else. Text the record
+cannot hold is refused before anyone is asked.
+
 Checkpoint version 2 carries a bounded durable journal, trusted acknowledged operation and
 artifact observations, children and the four delegation handoff states. Prepared request bodies
 and exact continuation frames are retained without transport headers or private reasoning.
@@ -723,13 +752,16 @@ fence (which must be the run's held lease), and one grant. The writer never send
 holds as unknown, except, once on that view, the operation the resumed wait names, whose recorded
 failure is the typed never-admitted refusal, when the run asks for exactly that request again: it is
 claimed again under its own identity and the effect host admits it for the first time. The claim clears
-the typed failure before the dispatch, so a crash after it leaves a row no view can send. In Go, where a
-tool runs the bytes the call wrote, "exactly" means byte for byte. The row's fingerprint is of the parsed
-form (#275), so arguments that only read alike (another spelling of a number, a repeated name, whitespace)
-share it, but they are another request: nothing is sent, the call is answered `HostOutcomeUnknown`, the row
-keeps its typed failure and the grant stays for the refused bytes. In TypeScript a call's request is the
-canonical form of what the tool runs, so the two cannot differ. In both, no arguments at all are the request
-for `{}` (#271). Nothing that
+the typed failure before the dispatch, so a crash after it leaves a row no view can send. "Exactly" means
+the bytes that were refused: the effect host admits their digest and the tool runs the bytes the call wrote,
+so other bytes never run under the refused identity. The row's fingerprint is of the parsed form (#275), so
+other bytes can share it, and they get what any call gets from the row: whitespace or member order answers
+`HostOutcomeUnknown`, another spelling of the same values is refused with `DurableRequestConflict`, and
+different numbers are another write, which runs on a row and under an identity of its own. Each way the
+refused row keeps its typed failure and the grant stays for the refused bytes. TypeScript holds the same
+rule for rows another writer recorded: there a call's request is the canonical form of what the tool runs,
+so a grant also needs a request this run can hold exactly, and a number `JSON.parse` rounded takes none,
+even where its bytes are the row's. In both, no arguments at all are the request for `{}` (#271). Nothing that
 may have been admitted is ever sent again: re-authorization is never retry permission. Whether the
 continuation asks for exactly that request depends on the kind of call, not on the adapter. A host
 tool's request is its arguments, so it keeps its identity on every adapter when they are repeated. A

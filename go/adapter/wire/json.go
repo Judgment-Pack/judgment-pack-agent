@@ -40,6 +40,8 @@ type Value struct {
 	text    string
 	items   []*Value
 	members []member
+	// source is an object's JSON text as Parse read it, byte for byte, until it is written to.
+	source string
 }
 
 type member struct {
@@ -93,21 +95,36 @@ func Obj(fields ...Field) *Value {
 
 // Parse reads one JSON text, as JSON.parse does.
 func Parse(data []byte) (*Value, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	text := string(data)
+	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.UseNumber()
-	value, err := readJSONValue(decoder)
+	value, err := readJSONValue(decoder, text)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		return nil, errTrailingJSON
 	}
+	if value.kind == KindObject {
+		value.source = text
+	}
 	return value, nil
+}
+
+// ArgumentText is a call's arguments as the model wrote them: the text Parse read this object from, or
+// its JSON where it was never read or has been written to since. A Value holds numbers as float64s and
+// keeps the last of a repeated name, so its JSON can be another call: 9007199254740993 reads as
+// 9007199254740992, 1e400 as null, 1e-400 as 0 (#275). The tool runs these bytes and the record keeps them.
+func (v *Value) ArgumentText() string {
+	if v.source != "" {
+		return v.source
+	}
+	return v.String()
 }
 
 var errTrailingJSON = errors.New("data after the JSON value")
 
-func readJSONValue(decoder *json.Decoder) (*Value, error) {
+func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
@@ -130,7 +147,7 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 		case '[':
 			value := &Value{kind: KindArray}
 			for decoder.More() {
-				item, err := readJSONValue(decoder)
+				item, err := readJSONValue(decoder, text)
 				if err != nil {
 					return nil, err
 				}
@@ -142,6 +159,7 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 			return value, nil
 		case '{':
 			value := &Value{kind: KindObject}
+			start := decoder.InputOffset() - 1
 			for decoder.More() {
 				name, err := decoder.Token()
 				if err != nil {
@@ -151,7 +169,7 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 				if !ok {
 					return nil, errTrailingJSON
 				}
-				item, err := readJSONValue(decoder)
+				item, err := readJSONValue(decoder, text)
 				if err != nil {
 					return nil, err
 				}
@@ -160,6 +178,7 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 			if _, err := decoder.Token(); err != nil {
 				return nil, err
 			}
+			value.source = text[start:decoder.InputOffset()]
 			return value, nil
 		}
 	}
@@ -257,6 +276,7 @@ func (v *Value) Set(name string, value *Value) {
 	if v.kind != KindObject {
 		return
 	}
+	v.source = ""
 	for i := range v.members {
 		if v.members[i].name == name {
 			v.members[i].value = value

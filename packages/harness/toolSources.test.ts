@@ -8,6 +8,7 @@ import {sha256} from './records'
  * receipt and the report. The certified scenario 7 runs the same on every engine.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import keptTextVector from '../../contract/vectors/approval/kept-text.json'
 import descriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot-current.json'
 import historicalDescriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot.json'
 import {readDescriptorSnapshot} from './descriptorSnapshot'
@@ -1011,6 +1012,52 @@ describe('the approval pause (ADR-0008)', () => {
     expect(ofType(run.events, 'guardrail')).toContainEqual(expect.objectContaining({ tool: 'ado__update_work_item', reason: 'approval refused' }))
   })
 
+  it('runs an approved call by what a Go writer kept of it, and refuses what it cannot hold as the person saw it (#275)', async () => {
+    const seen: unknown[] = []
+    const { book } = bookOf()
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const }))
+    const { gate, notices } = await gateFor(tools, {}, false, book)
+    const entry = gate.entries.get('ado__update_work_item')!
+    const run = async (args: unknown) => { seen.push(args); return { content: [] } }
+    const record = (args: Record<string, unknown>, request?: string): ApprovalRecord => ({ callId: 'held', name: 'ado__update_work_item', tool: entry.record.tool!, source: entry.record, args, state: 'approved', ...(request === undefined ? {} : { request }) })
+    expect((await gate.approved(record({ id: 7, state: 'Done' }, ' { "state" : "Done" , "id" : 7 } '), signal(), run)).ran).toBe(true)
+    expect(seen).toEqual([{ id: 7, state: 'Done' }])
+    for (const [args, request] of [
+      [{ id: 9007199254740992 }, '{"id":9007199254740993}'],
+      [{ id: 9007199254740992 }, '{"id":9007199254740992}'],
+      [{ id: 1 }, '{"id":1.0}'],
+      [{ q: null }, '{"q":1e400}'],
+      [{ a: 2 }, '{"a":1,"a":2}'],
+      [{ id: 7 }, '{"id":8}'],
+      [{ id: 7 }, '{bad']
+    ] as const) {
+      seen.length = 0
+      const answer = await gate.approved(record(args, request), signal(), run)
+      expect(answer.ran, request).toBe(false)
+      expect(seen).toEqual([])
+      expect(notices.at(-1)).toMatchObject({ reason: 'approval stale' })
+    }
+  })
+  it('takes each row of the kept-text vector as the vector says (#275)', async () => {
+    const vector = keptTextVector as unknown as { items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[] }
+    for (const item of vector.items) expect(validApproval(item)).toBe(true)
+    const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const }))
+    for (const row of vector.approved) {
+      const { gate } = await gateFor(tools, {}, false, bookOf().book)
+      const entry = gate.entries.get('ado__update_work_item')!
+      const seen: unknown[] = []
+      const answer = await gate.approved({ callId: 'held', name: 'ado__update_work_item', tool: entry.record.tool!, source: entry.record, args: JSON.parse(row.args) as Record<string, unknown>, state: 'approved', ...(row.request === undefined ? {} : { request: row.request }) }, signal(), async (args) => { seen.push(args); return { content: [] } })
+      expect(answer.ran, row.label).toBe(row.typescript !== 'refused')
+      expect(seen, row.label).toEqual(row.typescript === 'refused' ? [] : [row.typescript])
+    }
+  })
+  it('reads a kept request closed: a string, only beside its parsed form, never on a Runtime call (#275)', () => {
+    const record = { callId: 'held', name: 'ado__update_work_item', tool: 'update_work_item', source: { kind: 'mcp', id: 'ado', trust: 'public' }, args: {}, state: 'asked' }
+    expect(validApproval(record)).toBe(true)
+    expect(validApproval({ ...record, request: ' {} ' })).toBe(true)
+    for (const request of ['', 5, null, {}]) expect(validApproval({ ...record, request })).toBe(false)
+    expect(validApproval({ ...record, source: { kind: 'runtime', id: 'runtime', trust: 'first-party' }, request: '{}' })).toBe(false)
+  })
   it('refuses, with the approval stale guardrail, a call that reaches the gate with arguments other than its decision’s, and a continued call whose tool is no longer offered as decided', async () => {
     let ran = 0
     const { book } = bookOf()

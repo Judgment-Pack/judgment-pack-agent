@@ -396,3 +396,11 @@ describe('#266 fix round: the approval binds the run until its call settles',()=
   expect(table.resume(claim,{revision:'rev-1',checkpoint},leases).wait.state).toBe('resumed')
  })
 })
+
+describe('#275: the binding of a call held for approval covers what the person was shown',()=>{
+ const approval={callId:'held',name:'tracker__create_issue',tool:'create_issue',source:{kind:'custom',id:'tracker',trust:'person'},args:{id:9007199254740992},state:'asked'} as never
+ it('names the kept text, and a call that keeps none binds as it always has',()=>{
+  expect(approvalBinding({...(approval as object),request:'{"id":9007199254740993}'} as never).callDigest).toBe('sha256:54a95b12cb74b5e1d6634512ec56ca79018b17db2ea2c6551ed165f440d19ce2')
+  expect(approvalBinding(approval).callDigest).not.toBe('sha256:54a95b12cb74b5e1d6634512ec56ca79018b17db2ea2c6551ed165f440d19ce2')
+ })
+})

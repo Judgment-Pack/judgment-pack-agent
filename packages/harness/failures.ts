@@ -2,6 +2,8 @@ import {readCompletion,type ModelCompletion} from './completion'
 import catalog from './contract/catalog.json'
 import type {AssistantEvent} from './engine'
 export type FailureCode=keyof typeof catalog.failures
+/** What a call whose arguments the durable record cannot hold is told (#275): at the writer, or before anyone is asked. */
+export const DURABLE_REQUEST_UNRECORDABLE='DurableRequestUnrecordable: this call\'s arguments cannot be recorded as written: they hold a repeated member name, a number out of range or past what JavaScript holds exactly, or a lone surrogate. Nothing was run. Write them again without it.'
 export type FailureSource='model'|'agent'|'tool'|'context'|'storage'|'desk'
 export interface AIFailure {version:1;code:FailureCode;source:FailureSource;outcome:'not-started'|'refused'|'unknown';status?:number;requestId?:string;retryAt?:string;detail?:string;completion?:ModelCompletion}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)

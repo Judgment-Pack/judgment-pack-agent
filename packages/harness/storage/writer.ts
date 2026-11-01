@@ -14,15 +14,15 @@ import type {StoredChatScope} from '../context/storedChat'
 import type {HistoryRunStore,RunHistoryReceipt} from './history'
 import {LiveHistoryRecorder} from '../history/live'
 import {prepareHistoryOriginal,prepareHistoryCompaction,type PreparedHistoryObservation} from '../history/recording'
-import {historyBytesDigest,historyText,validHistoryRef,HISTORY_MAX_ROWS,HISTORY_MAX_EVENTS,HISTORY_TOTAL_BYTES,type HistoryObjectRef} from '../history/codec'
+import {historyBytesDigest,historyText,readHistoryRequestJSON,validHistoryRef,HISTORY_MAX_ROWS,HISTORY_MAX_EVENTS,HISTORY_TOTAL_BYTES,type HistoryObjectRef} from '../history/codec'
 import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../history/view'
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,isNeverAdmittedFailure,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {readingTool} from '../framing'
-import {canonicalJSON} from '../context/chat'
-import {AIFailureError,failure,normalizeFailure} from '../failures'
+import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
+import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,failure,normalizeFailure} from '../failures'
 import {readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
@@ -40,7 +40,39 @@ export class ContinuationNotRecoverable extends AIFailureError {constructor(){su
 export class StorageOutcomeUnknown extends AIFailureError {constructor(cause?:unknown){super({...failure('storage','storage','unknown'),detail:'StorageOutcomeUnknown: the dispatched operation result was not acknowledged.'});this.name='StorageOutcomeUnknown';if(cause!==undefined)Object.defineProperty(this,'cause',{value:cause})}}
 export class StorageAcknowledgementInvalid extends AIFailureError {constructor(){super({...failure('storage','storage','unknown'),detail:'StorageAcknowledgementInvalid: the host did not acknowledge this exact transaction.'});this.name='StorageAcknowledgementInvalid'}}
 export class HostOutcomeUnknown extends AIFailureError {constructor(){super({...failure('unknown','tool','unknown'),detail:'HostOutcomeUnknown: this operation may have run; it was not run again.'});this.name='HostOutcomeUnknown'}}
+/**
+ * A write that reads the same as one recorded in this run and is written differently (#275): the same
+ * numbers in another spelling, a repeated name, two names Go's encoding/json folds together. It may be
+ * that write and it may not, so it is neither run, which could perform a write twice, nor answered from
+ * that record, which could report a write nothing performed.
+ */
+export class DurableRequestConflict extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:'DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. Repeat that write exactly for its result; a different write needs different values.'});this.name='DurableRequestConflict'}}
+/**
+ * A call whose arguments the durable record cannot hold as written (#275): a repeated member name, a
+ * number out of range or past what JavaScript holds exactly, or a lone surrogate. Refused before anything is claimed, and the
+ * run goes on. JSON.parse has already rounded a host write's integer past 2^53 and read 1e400 as
+ * Infinity, so the write those arguments would run is not the one the model wrote (`exactlyHeld`).
+ */
+export class DurableRequestUnrecordable extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:DURABLE_REQUEST_UNRECORDABLE});this.name='DurableRequestUnrecordable'}}
 export class ContinuationIdentityChanged extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:'ContinuationIdentityChanged: the admitted continuation identity differs.'});this.name='ContinuationIdentityChanged'}}
+/**
+ * What a request with a recorded row's fingerprint is to that row (#275), from the exact text. The
+ * fingerprint is published, persisted and re-derived when a book is read; it says two requests read alike,
+ * not that they are one write. The same text is the same write, and so are two requests their parsed form
+ * says exactly: they differ only in whitespace, a string's escapes or the order of names that do not fold
+ * together, which the fingerprint has always left out, so a resumed run's repeat of a write is never
+ * performed twice. Otherwise exact numbers that differ make a different write. What remains is the same
+ * values written differently, and nothing here says which they are. A host tool's request is always its
+ * canonical JSON, so this decides for rows another writer recorded (`compareDurableRequests` in
+ * go/context/run_writer.go) and for a direct caller's text. It reads only the row's request, which every
+ * published release has recorded byte for byte, so an old row needs no migration.
+ */
+export function compareDurableRequests(recorded:string,request:string):'same'|'different'|'conflict'{
+ if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'
+ try{return canonicalRepeatArgs(recorded)!==canonicalRepeatArgs(request)?'different':'conflict'}catch{return 'conflict'}
+}
+export {exactlyHeld}
+const recordableRequest=(request:string)=>{try{readHistoryRequestJSON(request);return true}catch{return false}}
 export const durableOwner=Symbol('Agent durable writer')
 /** Trusted coordinator accounting, before the root dispatch claim is frozen. */
 export const prepareProviderDispatch=Symbol('Agent coordinator provider preparation')
@@ -725,25 +757,35 @@ export class RunWriter {
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt,admit?:(value:T)=>Promise<void>):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt,admit?:(value:T)=>Promise<void>,recordable=true):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
   if(binding.writer!==this)throw new ContinuationIdentityChanged()
-  let reused:DurableDispatch|undefined,claim!:DurableDispatch
+  let reused:DurableDispatch|undefined,refusal:AIFailureError|undefined,claim!:DurableDispatch
   await this.enqueue(async()=>{
    this.assertRepeatAdmission(binding)
    if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution))canonicalRepeatArgs(request)
    if(this.dispatchClosed)throw new DispatchCanceled(new DOMException('The operation was aborted','AbortError'))
-   reused=this.book.dispatches.find(row=>!read&&!row.read&&row.kind===kind&&row.fingerprint===fingerprint)
-   // #226: a dispatch the run holds as unknown is never sent again, except the one operation a resumed re-authorization
-   // wait granted on this fenced view, whose recorded failure is the typed never-admitted refusal: it is claimed again
-   // under its own identity, once, and its effect host admits it for the first time.
-   if(reused&&reused.state==='unknown'&&(kind==='host'||kind==='runtime')&&takeReauthorizedDispatch(this.store,{run:this.id,operation:reused.id,source,tool,requestDigest:reused.requestDigest},reused.failure)){
-    claim=reused;reused=undefined;claim.state='claimed';delete claim.failure
-    await this.publish(binding,undefined,undefined,undefined,signal);return
+   if(!read){
+    const rows=this.book.dispatches.filter(row=>!row.read&&row.kind===kind&&row.fingerprint===fingerprint),decisions=rows.map(row=>compareDurableRequests(row.request,request))
+    reused=rows[decisions.indexOf('same')]
+    // #226: a dispatch the run holds as unknown is never sent again, except the one operation a resumed re-authorization
+    // wait granted on this fenced view, whose recorded failure is the typed never-admitted refusal: it is claimed again
+    // under its own identity, once, and its effect host admits it for the first time. The effect host admits the row's
+    // digest while the tool runs these bytes, so the grant takes only the very bytes that were refused, and only a write
+    // this run can hold exactly (#275). Anything else keeps the row's failure and the grant, and gets what any other call
+    // gets from this row: an exact variant is HostOutcomeUnknown, the same values written differently are refused, and
+    // different numbers are another write with a row and an identity of their own.
+    if(reused&&reused.state==='unknown'&&(kind==='host'||kind==='runtime')&&recordable&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch(this.store,{run:this.id,operation:reused.id,source,tool,requestDigest:reused.requestDigest},reused.failure)){
+     claim=reused;reused=undefined;claim.state='claimed';delete claim.failure
+     await this.publish(binding,undefined,undefined,undefined,signal);return
+    }
+    if(reused)return
+    if(decisions.includes('conflict')){refusal=new DurableRequestConflict();return}
    }
-   if(reused)return
+   // A record answers first: a published release may have recorded what this release cannot.
+   if((kind==='host'||kind==='runtime')&&(!recordable||!recordableRequest(request))){refusal=new DurableRequestUnrecordable();return}
    if(this.book.dispatches.length>=400)throw new ContinuationNotRecoverable()
    const budgeted=this.budget&&(kind==='model'||kind==='agent')
    const id=budgeted?ticket?this.budget!.consume(ticket,{...scope,source,tool,descriptor:request,kind:kind as 'model'|'agent'}):(()=>{throw new UsageBudgetUnknown()})():crypto.randomUUID()
@@ -757,6 +799,7 @@ export class RunWriter {
    this.capture?.enroll(claim,captureBindings);this.book.dispatches.push(claim)
    if(planAttempt){if(kind!=='agent'||!validNativePlanAttempt(planAttempt,binding))throw new ContinuationIdentityChanged();const state=this.root?.()??this.latest;if(!state)throw new ContinuationIdentityChanged();mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,signal);planAttempt.claim=structuredClone(claim)}else await this.publish(binding,undefined,undefined,undefined,signal)
   })
+  if(refusal)throw refusal
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
   signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
   let value:T

@@ -694,8 +694,8 @@ func ResumeEvidenceDigest(evidence ResumeEvidence) (string, error) {
 }
 
 // ApprovalBindingOf is an approval wait's binding: the asked call's id, the digest of the call the
-// person reviewed (its wire name, tool name, arguments and Runtime binding) and its source. Read from
-// the retained checkpoint, never from the caller.
+// person reviewed (its wire name, tool name, arguments, the text kept beside them and its Runtime
+// binding) and its source. Read from the retained checkpoint, never from the caller.
 func ApprovalBindingOf(approval contract.CheckpointApproval) (ApprovalBinding, error) {
 	call := map[string]any{"name": approval.Name, "tool": approval.Tool, "args": approval.Args}
 	if approval.Args == nil {
@@ -703,6 +703,9 @@ func ApprovalBindingOf(approval contract.CheckpointApproval) (ApprovalBinding, e
 	}
 	if approval.Runtime != nil {
 		call["runtime"] = approval.Runtime
+	}
+	if approval.Request != nil {
+		call["request"] = *approval.Request
 	}
 	raw, err := json.Marshal(ApprovalBinding{CallID: approval.CallID, CallDigest: waitCanonicalDigest(call), Source: approval.Source.ID})
 	if err != nil {

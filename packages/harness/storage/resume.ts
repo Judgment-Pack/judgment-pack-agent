@@ -166,9 +166,9 @@ export const policyIdentity=(members:PolicyMembers|undefined)=>digestOf(members?
 export const pinsDigest=(pins:ResumePins)=>digestOf(readResumePins(pins))
 export const resumeEvidenceDigest=(evidence:ResumeEvidence)=>digestOf(readResumeEvidence(evidence))
 /** An approval wait's binding: the asked call's id, the digest of the call the person reviewed (its wire name, tool name,
- * arguments and Runtime binding) and its source. Read from the retained checkpoint, never from the caller. */
+ * arguments, the text kept beside them and its Runtime binding) and its source. Read from the retained checkpoint, never from the caller. */
 export function approvalBinding(approval:ApprovalRecord):ApprovalBinding{
- return readApprovalBinding({callId:approval.callId,callDigest:digestOf({name:approval.name,tool:approval.tool,args:approval.args,...(approval.runtime===undefined?{}:{runtime:approval.runtime})}),source:approval.source.id})
+ return readApprovalBinding({callId:approval.callId,callDigest:digestOf({name:approval.name,tool:approval.tool,...(approval.request===undefined?{}:{request:approval.request}),args:approval.args,...(approval.runtime===undefined?{}:{runtime:approval.runtime})}),source:approval.source.id})
 }
 /** The execution authority a park pins, read from the retained checkpoint, with the model the trusted host admitted the
  * run with: the resolved policy's identity, the Plan lineage, each source's identity digest (and the asked approval's

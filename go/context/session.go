@@ -1293,8 +1293,12 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	}
 	marker := b.c.Marker
 	record.Marker = &marker
-	b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record})
-	return true
+	patch := CheckpointPatch{"Approval": &record}
+	// A kept text is a member a published reader does not know (ADR-0024).
+	if record.Request != nil {
+		patch["Version"] = 3
+	}
+	return b.c.Execution.MutateCheckpoint(patch) == nil
 }
 
 func (b approvalBook) Closed() string {
@@ -1340,6 +1344,13 @@ func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
 	args := map[string]json.RawMessage{}
 	for key, value := range asked.Args {
 		args[key] = append(json.RawMessage(nil), value...)
+	}
+	// The person is shown what runs: asked again from a checkpoint, args are the parsed form (#275).
+	if asked.Request != nil {
+		var kept map[string]json.RawMessage
+		if json.Unmarshal([]byte(*asked.Request), &kept) == nil && kept != nil {
+			args = kept
+		}
 	}
 	source := copyRecord(asked.Source)
 	return &contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: asked.CallID,
