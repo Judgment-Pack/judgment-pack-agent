@@ -30,6 +30,34 @@ Edit `AGENTS.md` and run `scripts/sync-agent-docs.sh` to regenerate `CLAUDE.md`.
   refused; the helper form uses the `gh` login. Never store a credential, never change global git
   configuration, never push with force (`jpdev push` refuses `--force` and `-f`).
 
+## Acceptance mapping and complexity control
+
+- Maintain one current requirement → implementation → verification → remaining-gate checklist
+  per issue or related batch in its existing issue, pull request or handoff. Update that record;
+  do not introduce a parallel tracking system.
+- Before adding an abstraction, ownership layer, recovery mechanism or work item, check whether
+  the existing design already satisfies the requirement. Prefer the smallest design that preserves
+  all accepted behavior and safety contracts; retain distinct authorities where required.
+- Distinguish authored, executed, reviewed, integrated and released work. Source review or a
+  passing component check does not establish end-to-end completion. Report remaining gates.
+- Reuse existing execution harnesses, fixtures and controls. A separate harness needs a concrete
+  unmet requirement, not merely a new issue or worker.
+- Plan disk and execution headroom for a useful batch, including temporary output, cache growth
+  and retained evidence. Repeated small cleanups do not replace that plan. Preserve cleanup
+  authorization, activity checks, operator reserves and other sessions' work.
+- Before diagnosing a failed check, preserve the exact candidate, command and failure. Change
+  the relevant implementation or execution condition before retrying. A recurring cause requires
+  resolving the underlying problem, not another near-identical attempt. Required fresh-worker
+  handoffs carry the diagnosis and evidence; this does not waive stop or handoff rules.
+- Group related findings into a correction round. Verify the findings and changed paths; repeat
+  broad reviews or full validation only when substantive changes, unresolved evidence or repository
+  requirements justify it. Worker handoffs and review rounds are not issues closed.
+
+These rules preserve independent review, security checks, exact-head CI, ownership, delegation
+and cleanup authorization, and merge/release gates. Simplification must preserve accepted outcomes;
+scope or gate changes remain maintainer decisions. Keep the dependency-ordered batch, focused-check
+and stable integrated-validation guidance above.
+
 ## Before you hand over
 
 Run these self-checks on the builder's own head before writing the commit message:
