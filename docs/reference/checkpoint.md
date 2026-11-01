@@ -182,7 +182,7 @@ Closed: a member the schema does not name is refused.
 | `result` |  | `tool-result.json $defs/mcpToolResult` |  |
 | `marker` |  | string (pattern `^[0-9a-f]{32}$`) |  |
 | `runtime` |  | `$defs/runtimeApprovalBinding` |  |
-| `request` |  | string (min length 1) | The call's arguments as the model wrote them, byte for byte, where args cannot say them (#275): args is the parsed form, so a number past what a float64 holds, a spelling, a zero, a null, a replacement character, two names that fold together, a member order or whitespace would be lost in it. The approved call runs with these bytes, after they are read back to args. Absent where args says exactly what the model wrote. An approval that holds neither is refused as stale rather than run with what its args may have changed. Version 3 only. |
+| `request` |  | string (min length 1) | The call's arguments as the model wrote them, byte for byte, where args cannot say them (#275): args is the parsed form, so a number past what a float64 holds, a spelling, a zero, a decimal, a null, a replacement character or two names that fold together may be lost in it. The approved call runs with these bytes, after they are read back to args. Absent where args says what the model wrote, whitespace and member order aside, as in a record a published release wrote. An approval that holds neither is refused as stale rather than run with what its args may have changed. Version 3 only. |
 
 ### `checkpoint.json $defs/approvalDecision`
 

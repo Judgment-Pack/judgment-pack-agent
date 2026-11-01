@@ -248,7 +248,7 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				s.approve(t)
 				check(t, s, []string{`{"q":1}`}, "DurableRequestConflict", []string{`{"q":1}`})
 			})
-			kept := []string{` { "b" : 2 , "a" : 1 } `, `{"ID":1,"id":2}`, `{"q":0}`, `{"q":null}`, `{"r":0.1000000000000000055}`}
+			kept := []string{`{"q":0}`, `{"ID":1,"id":2}`, `{"q":null}`, `{"r":0.1000000000000000055}`}
 			if engine == "native" { // These run in the race job, and the record is the same on both adapters.
 				kept = kept[:1]
 			}
@@ -265,7 +265,7 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 					check(t, s, []string{call}, "ran "+call, []string{call})
 				})
 			}
-			t.Run("what args say exactly is recorded as a published release recorded it", func(t *testing.T) {
+			t.Run("what args say is recorded as a published release recorded it", func(t *testing.T) {
 				s := scene()
 				s.answers = []string{"ask"}
 				s.run(t, false, nil, []string{`{"id":7}`})
@@ -275,6 +275,17 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				}
 				s.approve(t)
 				check(t, s, []string{`{"id":7}`}, `ran {"id":7}`, []string{`{"id":7}`})
+			})
+			t.Run("whitespace and member order run as the person was shown them", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{` { "b" : 2 , "a" : 1 } `})
+				approval, version, _ := s.head(t)
+				if approval.Has("request") || version != 2 {
+					t.Fatalf("version %v, %s", version, approval.Text())
+				}
+				s.approve(t)
+				check(t, s, []string{`{"a":1,"b":2}`}, `ran {"a":1,"b":2}`, []string{`{"a":1,"b":2}`})
 			})
 			refused := []string{`{"q":1e400}`, `{"a":1,"a":2}`, `{"q":"` + string(rune(0x5c)) + `ud800"}`}
 			if engine == "native" {

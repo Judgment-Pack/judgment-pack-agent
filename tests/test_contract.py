@@ -820,7 +820,7 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual([row["request"] for row in rows], doc["calls"][name]["allowed"])
 
     def test_the_kept_approval_text_follows_from_each_text(self):
-        # #275: a third reading. A text is kept unless it is args' canonical JSON and args cannot have changed it.
+        # #275: a third reading. A text is kept unless args cannot have changed it.
         vector = self.vectors["approval/kept-text.json"]
 
         def fold(name):
@@ -846,27 +846,21 @@ class VectorTests(unittest.TestCase):
             return dict(pairs)
 
         def said(text):
-            # What the parsed form says exactly, whatever it was read from.
+            # What the parsed form says exactly: a number written as it writes, and nothing it may have changed.
+            def number(literal):
+                value = float(literal)
+                if not value.is_integer() or literal != str(int(value)):
+                    raise ValueError(literal)
+                return int(value)
             try:
-                return says(json.loads(text, object_pairs_hook=no_folds))
+                return says(json.loads(text, object_pairs_hook=no_folds, parse_int=number, parse_float=number))
             except ValueError:
                 return False
-
-        def canonical(text):
-            def write(held):
-                if isinstance(held, dict):
-                    return "{" + ",".join(json.dumps(name, ensure_ascii=False) + ":" + write(held[name]) for name in sorted(held)) + "}"
-                if isinstance(held, list):
-                    return "[" + ",".join(write(item) for item in held) + "]"
-                if isinstance(held, float) and held.is_integer():
-                    return str(int(held))
-                return json.dumps(held, ensure_ascii=False)
-            return write(json.loads(text))
 
         kinds = set()
         for row in vector["keeps"]:
             with self.subTest(text=row["text"]):
-                self.assertEqual(row["keeps"], not (said(row["text"]) and canonical(row["text"]) == row["text"]))
+                self.assertEqual(row["keeps"], not said(row["text"]))
                 kinds.add(row["keeps"])
         self.assertEqual(kinds, {True, False})
         for row in vector["approved"]:

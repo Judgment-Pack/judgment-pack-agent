@@ -479,10 +479,17 @@ func TestApprovedArgumentsAreWhatThePersonWasShown(t *testing.T) {
 			t.Errorf("%s does not keep its text: %v", args, kept)
 		}
 	}
-	// What args would write back as other bytes keeps its text.
-	for _, text := range []string{` {"id":7} `, `{ "id" : 7 }`, `{"b":2,"a":1}`, `{"id":7.0}`, `{"id":9007199254740993}`, `{"q":"` + string(rune(0x5c)) + `u0041"}`} {
+	// Another spelling of a number is not args', whatever it reads as.
+	for _, text := range []string{`{"id":7.0}`, `{"id":7e0}`, `{"id":9007199254740993}`} {
 		if kept := approvalRequestOf([]byte(text)); kept == nil || *kept != text {
 			t.Errorf("%s does not keep its text: %v", text, kept)
+		}
+	}
+	// Whitespace, member order and a string's escapes are not kept: no reader of values can tell them, and
+	// the person is shown args.
+	for _, text := range []string{` {"id":7} `, `{ "id" : 7 }`, `{"b":2,"a":1}`, `{"q":"` + string(rune(0x5c)) + `u0041"}`} {
+		if kept := approvalRequestOf([]byte(text)); kept != nil {
+			t.Errorf("%s keeps its text", text)
 		}
 	}
 	for _, row := range []struct{ args, text string }{{`{"id":7}`, `{ "id" : 7 }`}, {`{"id":9007199254740992}`, `{"id":9007199254740993}`}, {`{"q":1}`, `{"q":1.0}`}, {`{"q":0}`, `{"q":1e-400}`}, {`{"a":1,"b":2}`, `{"b":2,"a":1}`}} {

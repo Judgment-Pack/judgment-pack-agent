@@ -118,9 +118,10 @@ the write it would run is not the one the model wrote.
 
 Every Go wire reader hands on the model's argument text: the parsed value of an Anthropic or Gemini call
 keeps the source text it was read from, so the bytes that run and that a row records are the model's on
-every wire. A call held for approval keeps its text too. `approval.args` is the parsed form, so where it
-cannot say the model's text (`approval.request`, version 3) the approved call runs that text once it reads
-back to `args`, and it goes through the same decision over the record as any other call. A record with no
+every wire. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
+where it cannot say the model's text (`approval.request`, version 3) the approved call runs that text once it
+reads back to `args`, and it goes through the same decision over the record as any other call. Whitespace and
+member order are not kept: the person is shown `args`, in the form the approved call runs. A record with no
 `request` runs from `args` only where the parsed form cannot have changed what the model wrote; otherwise
 it is refused as stale, because a checkpoint a published release wrote holds nothing else. Text the record
 cannot hold is refused before anyone is asked.

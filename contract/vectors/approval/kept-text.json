@@ -1,5 +1,5 @@
 {
-  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a version 3 checkpoint. keeps: whether a Go writer keeps a call's text, which it does wherever args would not run as those exact bytes. It keeps none where the text is args' canonical JSON and args cannot have changed it, so an ordinary call's record is what a published release wrote. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text.",
+  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a version 3 checkpoint. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: approval_requested shows the person args, in the form the approved call then runs. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text.",
   "schema": "checkpoint.json#/$defs/approval",
   "source": {
     "harness": {
@@ -42,11 +42,10 @@
         "tool": "write"
       },
       "args": {
-        "a": 1,
-        "b": 2
+        "q": 1
       },
       "state": "approved",
-      "request": " { \"b\" : 2 , \"a\" : 1 } "
+      "request": "{\"q\":1.0}"
     }
   ],
   "keeps": [
@@ -136,18 +135,22 @@
     },
     {
       "text": "{\"b\":2,\"a\":1}",
-      "keeps": true
+      "keeps": false
     },
     {
       "text": "{ \"id\" : 7 }",
-      "keeps": true
+      "keeps": false
     },
     {
       "text": " {\"id\":7} ",
-      "keeps": true
+      "keeps": false
     },
     {
       "text": "{\"q\":\"\\u0041\"}",
+      "keeps": false
+    },
+    {
+      "text": "{\"id\":7.0}",
       "keeps": true
     }
   ],
@@ -239,7 +242,7 @@
       "typescript": "refused"
     },
     {
-      "label": "kept whitespace and member order",
+      "label": "a kept text in other whitespace and order, which this writer does not keep and this reader runs",
       "args": "{\"a\":1,\"b\":2}",
       "request": " { \"b\" : 2 , \"a\" : 1 } ",
       "go": " { \"b\" : 2 , \"a\" : 1 } ",

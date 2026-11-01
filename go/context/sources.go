@@ -1583,18 +1583,20 @@ func approvalArgsSay(raw []byte) bool {
 
 const maxExactFloatInteger = 1<<53 - 1
 
-// approvalRequestOf is what a call held for approval keeps beside its args (#275): its text, where a
-// record's args would not run as those bytes; nothing, where they would.
+// approvalRequestOf is what a call held for approval keeps beside its args (#275): its text, where its
+// args cannot say it; nothing, where they can, so an ordinary call's record is what a published release
+// wrote. Whitespace and the order of names that do not fold together are not kept: approval_requested
+// shows the person args, in the form an approved call then runs, and no reader of values can tell them.
 func approvalRequestOf(raw []byte) *string {
-	if value, err := ParseJSON(raw); err == nil && CanonicalJSON(value) == string(raw) && approvalArgsSay(raw) {
+	if approvalArgsSay(raw) {
 		return nil
 	}
 	text := string(raw)
 	return &text
 }
 
-// approvedArguments is the text an approved call runs with (#275), byte for byte what the person was shown,
-// and false where the record cannot say it. A kept text must read back to the record's args: the two were
+// approvedArguments is the text an approved call runs with (#275), what the person was shown, and false
+// where the record cannot say it. A kept text must read back to the record's args: the two were
 // written together, and a store's redaction may have changed one. A record that keeps none, as a published
 // release wrote it, runs from args only where they cannot have changed what the model wrote.
 func approvedArguments(record contract.CheckpointApproval) (json.RawMessage, bool) {
