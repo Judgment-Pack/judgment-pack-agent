@@ -3,8 +3,8 @@
 A release takes the evidence main CI and the full mutation table already produced at the exact
 release commit, instead of running them again, and refuses when that evidence is missing, partial,
 stale, unreadable or different. The gate is the devkit's
-[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.13.0/docs/ci-evidence.md),
-vendored unchanged from devkit v0.13.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
+[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.14.0/docs/ci-evidence.md),
+vendored unchanged from devkit v0.14.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
 file and release), with this repository's configuration in
 [`.github/ci-evidence.json`](../.github/ci-evidence.json), schema 2. The kit's document is the
 contract; this one records what the agent configures, why, and what changed.
@@ -14,6 +14,11 @@ which the agent kept as its own verifier. Agent #239 and #240 move the agent to 
 v0.13.0, adopting its reported runner identity
 ([devkit #59](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/59)) and its
 pull-request-to-branch reuse ([devkit #60](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/60)).
+Devkit v0.14.0 follows: at v0.13.0 every live plan on `main` decided
+`fresh: reuse-unavailable: KeyError`, because the kit's pinned API version no longer returns
+`merge_commit_sha`, so every check ran. That failed closed. v0.14.0 binds the merge to the pull
+request timeline's `merged` event
+([devkit #70](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/70)).
 `scripts/dev/ci_evidence.py` is removed.
 
 ## Why the shared gate, not a port
@@ -25,7 +30,7 @@ reviewed again here and kept in step with every kit release by hand: the duplica
 The shared gate is a superset of what the agent's verifier checked, and every guarantee of the
 agent's gate is held either by the gate's own contract or by this repository's configuration:
 
-| Guarantee of the agent's gate | Held at v0.13.0 by |
+| Guarantee of the agent's gate | Held by |
 | --- | --- |
 | Exact source: this repository, the release commit, no tree-equivalent commit | the gate's contract (`run-sha`, `evidence-identity`, `input-identity`); inputs are git object ids at the commit |
 | Latest attempt, never an older green one | the gate's selection (`run-newer-failed`, `run-unfinished`, `run-race`, `attempt-changed`, `latest-changed`, `final-latest-changed`) |
@@ -160,7 +165,7 @@ branch's. The workflow sets no bound variable except the two checkout paths, whi
 every hosted run (also a test).
 
 **Main-to-release reuse** (#213) is unchanged in kind: the release takes the exact commit's main
-evidence, now under the gate's v0.13.0 contract.
+evidence, now under the gate's contract.
 
 ## The release
 
