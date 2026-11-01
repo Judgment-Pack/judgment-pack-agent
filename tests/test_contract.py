@@ -77,6 +77,7 @@ EXPECTED_SCHEMAS = {
     "run-lease.json",
     "run-wait.json",
     "run-resume.json",
+    "run-reauth.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -1454,6 +1455,99 @@ class VectorTests(unittest.TestCase):
             self.assertEqual(expected, digest(key))
         derivations = rows["wait/report.json"]["derivations"]
         self.assertEqual([row["report"] for row in derivations], list(range(len(rows["wait/report.json"]["items"]))))
+
+    def test_every_run_reauth_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #226: every member of run-reauth.json (root and definitions) and every enum value is carried
+        # by a handwritten re-authorization or wait vector, every refused record fails the schema, every
+        # reader-only refusal is schema-valid (the readers hold it), and every key and digest is the one an
+        # independent canonical JSON gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("reauth/")}
+        self.assertEqual(set(rows), {"reauth/disposition.json", "reauth/action.json", "reauth/refusal.json"})
+        schema = self.schemas["run-reauth.json"]
+        disposition, action = rows["reauth/disposition.json"], rows["reauth/action.json"]
+        waits = self.vectors["wait/wait.json"]["items"]
+        carried = [(row["schema"], row["items"]) for row in rows.values()]
+        carried += [
+            ("run-reauth.json#/$defs/reauthorized", action["reauthorized"]["items"]),
+            ("run-reauth.json", [case["wait"]["reauthorization"] for case in action["cases"]]),
+            ("run-wait.json", waits),
+        ]
+
+        def invalid(changed):
+            return any(problems(validator(changed, reference), items) for reference, items in carried)
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-reauth.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            with self.subTest(path=path):
+                self.assertTrue(invalid(changed), path)
+
+        def enums(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    yield from enums(value, path + [key])
+
+        for path in enums(schema, []):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-reauth.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                with self.subTest(path=path, value=value):
+                    self.assertTrue(invalid(changed), (path, value))
+        for vector, member, reference in ((disposition, "disposition", "run-reauth.json"), (action, "action", "run-reauth.json#/$defs/action"), (action["reauthorized"], "reauthorized", "run-reauth.json#/$defs/reauthorized")):
+            check = validator(self.schemas, reference)
+            for refused in vector["refused"]:
+                with self.subTest(reference=reference, problem=refused["problem"]):
+                    self.assertNotEqual(problems(check, [refused[member]]), [])
+            for refused in vector["readerRefused"]:
+                with self.subTest(reference=reference, reader=refused["problem"]):
+                    self.assertEqual(problems(check, [refused[member]]), [])
+        refusal = validator(self.schemas, "run-reauth.json#/$defs/refusal")
+        for refused in rows["reauth/refusal.json"]["refused"]:
+            self.assertNotEqual(problems(refusal, [refused]), [])
+        self.assertEqual([item["reason"] for item in rows["reauth/refusal.json"]["items"]], schema["$defs"]["refusal"]["properties"]["reason"]["enum"])
+
+        def digest(value):
+            return "sha256:" + sha256(value if isinstance(value, str) else canonical(value))
+
+        for item, expected in zip(disposition["items"], disposition["digests"], strict=True):
+            self.assertEqual(expected, digest(item))
+            # The idempotency key is the operation's own, as the effect host keys its admissions.
+            self.assertEqual(item["idempotencyKey"], digest(item["operation"]))
+            self.assertEqual({item["operation"]["run"], item["fence"]["resource"]}, {item["resource"]})
+        for item, expected in zip(action["items"], action["digests"], strict=True):
+            self.assertEqual(expected, digest(item))
+        for case in action["cases"]:
+            if "reauthorized" in case["outcome"]:
+                record = action["reauthorized"]["items"][case["outcome"]["reauthorized"]]
+                with self.subTest(case=case["case"]):
+                    self.assertEqual(record["digest"], digest(case["action"]))
+                    self.assertEqual((record["actor"], record["at"], record["principal"], record["permissions"]), (case["action"]["actor"], case["action"]["at"], case["action"]["principal"], case["action"]["permissions"]))
+        # Each wait's disposition is its own run's, for its pending operation; a recorded refresh is the
+        # digest of the action it was claimed with.
+        for wait in waits:
+            if wait["reason"] != "reauthorization":
+                continue
+            held, pending = wait["reauthorization"], wait["pending"]
+            self.assertEqual((held["resource"], held["operation"]["operation"], held["connection"], held["cause"]), (wait["resource"], pending["operation"], pending["connection"], pending["cause"]))
+            self.assertEqual(held["idempotencyKey"], digest(held["operation"]))
+            if "reauthorized" in wait:
+                self.assertIn(wait["reauthorized"]["digest"], action["digests"])
 
     def test_every_run_resume_member_and_value_is_carried_and_every_refused_record_fails(self):
         # #225 and #227: every member of run-resume.json (root and definitions) and every enum value

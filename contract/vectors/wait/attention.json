@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten needs_attention events, one for each wait of wait.json in order (the attention each park records), and two delivery attempts of the first, a failed one and a sent one, kept apart from the event.",
+  "description": "Handwritten needs_attention events, one for each wait of wait.json in order (the attention each park records), and two delivery attempts of the first, a failed one and a sent one, kept apart from the event. #226: a reauthorization's event needs reauthorization and names its connection.",
   "schema": "run-wait.json#/$defs/attention",
   "items": [
     {
@@ -168,6 +168,62 @@
       "deadline": "2026-01-01T01:00:00.000Z",
       "releaseUncertain": false,
       "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+      "resource": "run-reauth",
+      "wait": "wait-1",
+      "reason": "reauthorization",
+      "needs": "reauthorization",
+      "subject": "tracker-conn",
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker-conn"
+        }
+      },
+      "deadline": "2026-01-02T00:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:7d20915778acde7ad6aa8eed09873a96e6643e87afda92e9de92d00c699eb988",
+      "resource": "run-refreshed",
+      "wait": "wait-1",
+      "reason": "reauthorization",
+      "needs": "reauthorization",
+      "subject": "tracker-conn",
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker-conn"
+        }
+      },
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:fe33170f27037afb78afb4bc6b1c57893e041e0871f31cfc3d471548fa1b7211",
+      "resource": "run-bound",
+      "wait": "wait-2",
+      "reason": "reauthorization",
+      "needs": "reauthorization",
+      "subject": "tracker.conn:eu-1",
+      "condition": {
+        "event": {
+          "kind": "reauthorized",
+          "subject": "tracker.conn:eu-1"
+        }
+      },
+      "deadline": "2026-01-01T01:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:10:00.000Z"
     }
   ],
   "deliveries": [
@@ -343,6 +399,49 @@
         },
         "timeoutAt": "2026-01-08T00:00:00.000Z",
         "deadline": "2026-01-01T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "#226: a reauthorization that needs an approval decision",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "needs": "approval-decision",
+        "subject": "tracker-conn",
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "deadline": "2026-01-02T00:00:00.000Z",
+        "releaseUncertain": false,
+        "at": "2026-01-01T00:00:00.000Z"
+      }
+    },
+    {
+      "problem": "#226: a reauthorization with no connection named",
+      "event": {
+        "version": 1,
+        "type": "needs_attention",
+        "id": "sha256:a6285001fa18fd776ea8e4b8f0f8fdcb1488e32412041d070d3b55082e9bc2d1",
+        "resource": "run-reauth",
+        "wait": "wait-1",
+        "reason": "reauthorization",
+        "needs": "reauthorization",
+        "condition": {
+          "event": {
+            "kind": "reauthorized",
+            "subject": "tracker-conn"
+          }
+        },
+        "deadline": "2026-01-02T00:00:00.000Z",
         "releaseUncertain": false,
         "at": "2026-01-01T00:00:00.000Z"
       }

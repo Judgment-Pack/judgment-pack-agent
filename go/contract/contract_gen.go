@@ -290,6 +290,17 @@ var Registry = map[string]func() any{
 	"run-lease.json#/$defs/effectAdmission":         func() any { return new(RunLeaseEffectAdmission) },
 	"run-lease.json#/$defs/refusal":                 func() any { return new(RunLeaseRefusal) },
 	"run-lease.json#/$defs/capabilityRefusal":       func() any { return new(RunLeaseCapabilityRefusal) },
+	"run-reauth.json":                               func() any { return new(RunReauth) },
+	"run-reauth.json#/$defs/identifier":             func() any { return new(string) },
+	"run-reauth.json#/$defs/digest":                 func() any { return new(string) },
+	"run-reauth.json#/$defs/time":                   func() any { return new(string) },
+	"run-reauth.json#/$defs/connection":             func() any { return new(string) },
+	"run-reauth.json#/$defs/actor":                  func() any { return new(string) },
+	"run-reauth.json#/$defs/label":                  func() any { return new(string) },
+	"run-reauth.json#/$defs/labels":                 func() any { return new([]string) },
+	"run-reauth.json#/$defs/action":                 func() any { return new(RunReauthAction) },
+	"run-reauth.json#/$defs/reauthorized":           func() any { return new(RunReauthReauthorized) },
+	"run-reauth.json#/$defs/refusal":                func() any { return new(RunReauthRefusal) },
 	"run-report-v2.json":                            func() any { return new(RunReportV2) },
 	"run-report-v2.json#/$defs/total":               func() any { return new(RunReportV2Total) },
 	"run-report-v2.json#/$defs/totals":              func() any { return new(RunReportV2Totals) },
@@ -328,6 +339,7 @@ var Registry = map[string]func() any{
 	"run-wait.json#/$defs/pendingApproval":          func() any { return new(RunWaitPendingApproval) },
 	"run-wait.json#/$defs/pendingBudget":            func() any { return new(RunWaitPendingBudget) },
 	"run-wait.json#/$defs/pendingQuestion":          func() any { return new(RunWaitPendingQuestion) },
+	"run-wait.json#/$defs/pendingReauthorization":   func() any { return new(RunWaitPendingReauthorization) },
 	"run-wait.json#/$defs/eventCondition":           func() any { return new(RunWaitEventCondition) },
 	"run-wait.json#/$defs/condition":                func() any { return new(RunWaitCondition) },
 	"run-wait.json#/$defs/checkpointBinding":        func() any { return new(RunWaitCheckpointBinding) },
@@ -19745,6 +19757,158 @@ func (v RunLeaseRefusal) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-reauth.json. Version 1 records of re-authorization for unattended runs (ADR-0025
+// decision 4, #226). The root is the trusted, invocation-bound host disposition: the effect host
+// refused one exact admission (its fence, operation and idempotency key) at its own admission
+// boundary because the connection's credentials were expired or revoked, before it admitted the
+// operation or performed anything. The package trusts it only when the effect host proven for the
+// run's store minted it during that live dispatch, once, and the operation was never performed; a
+// record alone, an error a tool returned or a raw provider error is never this proof, and an
+// operation that may have been admitted keeps its unknown outcome. Credentials, tokens and raw
+// provider errors are never carried: the principal is the SHA-256 of the host's principal
+// identity, the connection a bounded reference, and permissions are scope labels. Rules the
+// readers hold that JSON Schema does not state: operation.run, fence.resource and resource are one
+// run; idempotencyKey is the SHA-256 of the operation's canonical JSON; permissions and requires
+// are sorted in UTF-8 byte order without repeats.
+type RunReauth struct {
+	Version        int64             `json:"version"`
+	Resource       string            `json:"resource"`
+	Operation      RunLeaseOperation `json:"operation"`
+	IdempotencyKey string            `json:"idempotencyKey"`
+	Fence          RunLeaseFence     `json:"fence"`
+	Cause          string            `json:"cause"`
+	Connection     string            `json:"connection"`
+	Principal      string            `json:"principal"`
+	Permissions    []string          `json:"permissions"`
+	Requires       []string          `json:"requires"`
+}
+
+var runReauthMembers = []string{"version", "resource", "operation", "idempotencyKey", "fence", "cause", "connection", "principal", "permissions", "requires"}
+
+// UnmarshalJSON decodes a RunReauth object and refuses a member the closed schema does not name.
+func (v *RunReauth) UnmarshalJSON(data []byte) error {
+	type plain RunReauth
+	var p plain
+	extra, err := decodeObject(data, &p, runReauthMembers, true)
+	if err != nil {
+		return errorf("RunReauth: %w", err)
+	}
+	*v = RunReauth(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReauth object.
+func (v RunReauth) MarshalJSON() ([]byte, error) {
+	type plain RunReauth
+	return encodeObject(plain(v), nil)
+}
+
+// From run-reauth.json#/$defs/action. The explicit host or person action a re-authorization resume
+// presents: the connection's credentials refreshed for the same principal, or replaced by another.
+// A replacement, or a refresh whose principal is not the parked one, is a changed identity: it
+// never continues the wait (a new admitted run is needed, ADR-0019). at is when the action was
+// taken; it is not before the park and not after the store's time.
+type RunReauthAction struct {
+	Version     int64    `json:"version"`
+	Resource    string   `json:"resource"`
+	Wait        string   `json:"wait"`
+	Connection  string   `json:"connection"`
+	Action      string   `json:"action"`
+	Principal   string   `json:"principal"`
+	Permissions []string `json:"permissions"`
+	Actor       string   `json:"actor"`
+	At          string   `json:"at"`
+}
+
+var runReauthActionMembers = []string{"version", "resource", "wait", "connection", "action", "principal", "permissions", "actor", "at"}
+
+// UnmarshalJSON decodes a RunReauthAction object and refuses a member the closed schema does not name.
+func (v *RunReauthAction) UnmarshalJSON(data []byte) error {
+	type plain RunReauthAction
+	var p plain
+	extra, err := decodeObject(data, &p, runReauthActionMembers, true)
+	if err != nil {
+		return errorf("RunReauthAction: %w", err)
+	}
+	*v = RunReauthAction(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReauthAction object.
+func (v RunReauthAction) MarshalJSON() ([]byte, error) {
+	type plain RunReauthAction
+	return encodeObject(plain(v), nil)
+}
+
+// From run-reauth.json#/$defs/reauthorized. What a re-authorization wait's claim recorded: the
+// refresh that continued it (its actor and time, the principal, which is the parked one, and the
+// permissions held now, which cover what the operation requires) and the digest of the action
+// record.
+type RunReauthReauthorized struct {
+	Actor       string   `json:"actor"`
+	At          string   `json:"at"`
+	Principal   string   `json:"principal"`
+	Permissions []string `json:"permissions"`
+	Digest      string   `json:"digest"`
+}
+
+var runReauthReauthorizedMembers = []string{"actor", "at", "principal", "permissions", "digest"}
+
+// UnmarshalJSON decodes a RunReauthReauthorized object and refuses a member the closed schema does not name.
+func (v *RunReauthReauthorized) UnmarshalJSON(data []byte) error {
+	type plain RunReauthReauthorized
+	var p plain
+	extra, err := decodeObject(data, &p, runReauthReauthorizedMembers, true)
+	if err != nil {
+		return errorf("RunReauthReauthorized: %w", err)
+	}
+	*v = RunReauthReauthorized(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReauthReauthorized object.
+func (v RunReauthReauthorized) MarshalJSON() ([]byte, error) {
+	type plain RunReauthReauthorized
+	return encodeObject(plain(v), nil)
+}
+
+// From run-reauth.json#/$defs/refusal. A named re-authorization refusal. Nothing was parked,
+// claimed or dispatched. invalid: a malformed disposition, action or claim. untrusted: the
+// disposition was not minted by the run's proven effect host during its live dispatch of that
+// exact admission, was minted twice, or came with the operation performed. used: the disposition
+// already parked a wait. stale: the disposition is bound to another lease than the park's, or the
+// action predates the park or postdates the store's time. unbound: the run's head does not hold
+// the operation as the never-admitted dispatch the disposition names. permission-insufficient: the
+// connection's current permissions do not cover what the operation requires.
+type RunReauthRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runReauthRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunReauthRefusal object and refuses a member the closed schema does not name.
+func (v *RunReauthRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunReauthRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runReauthRefusalMembers, true)
+	if err != nil {
+		return errorf("RunReauthRefusal: %w", err)
+	}
+	*v = RunReauthRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunReauthRefusal object.
+func (v RunReauthRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunReauthRefusal
+	return encodeObject(plain(v), nil)
+}
+
 // From run-report.json. Version 1 canonical presentation of recorded terminal checkpoint facts.
 // Arrays retain their recorded order; absent optional data stays absent. No inferred totals,
 // timings, prices, or provider facts. A pure projector and a bounded validated-prefix builder
@@ -20599,61 +20763,69 @@ func (v RunResumeSourcePin) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-wait.json. Version 1 durable wait of one run (ADR-0025 decisions 2, 3, 5 and 6, #224,
-// #225, #227 and #228): its run-scoped identity, its reason and the pending decision read from the
-// retained checkpoint or event log, its wake condition (an expected event and/or a wake time), an
-// optional timeout, the host's optional deadline policy and the deadline the store stamped from
-// it, an approval wait's binding, the execution authority it pins, its continuation identity, the
-// parked checkpoint it binds, the digest of the host's wake key, the provider release evidence,
-// who parked it and when, and what became of it. The store commits the wait and its one
+// From run-wait.json. Version 1 durable wait of one run (ADR-0025 decisions 2 to 6, #224 to #228):
+// its run-scoped identity, its reason and the pending decision read from the retained checkpoint
+// or event log, its wake condition (an expected event and/or a wake time), an optional timeout,
+// the host's optional deadline policy and the deadline the store stamped from it, an approval
+// wait's binding, the execution authority it pins, its continuation identity, the parked
+// checkpoint it binds, the digest of the host's wake key, the provider release evidence, who
+// parked it and when, and what became of it. The store commits the wait and its one
 // needs_attention event, and releases the run's lease, in one transaction; until the wait is
 // resumed it holds the run, and no lease of the run is granted except the resume's own claim.
 // Rules the reader holds that JSON Schema does not state: pending.kind is the reason; a question
-// wait's condition names an event and no wake time, and a question is carried unless the wait is
-// redacted; an approval wait carries an approval binding for its pending call, whose source is
-// pinned, and limits with approvalTtlMs, and no other wait carries either; limits with waitMs or
-// approvalTtlMs carry a deadline whose wait or approval time is the park time plus that duration,
-// a deadline's run time is no later than limits.run, and its at is after the park time; parked
-// carries no disposition, resolution, resumed or expired; woken and timed-out carry a disposition
-// (timeout exactly for timed-out) and resumed carries a disposition, resumed and revalidation;
-// expired carries expired (kind deadline, at or after its deadline) and the disposition it was
-// woken with, if any, and an approval wait expired after its claim (#266 N1) also carries resumed
-// and revalidation, its expiry at or after the approval's and after the claim; a question wait
-// that is woken carries an answered resolution and one that timed out an unanswered one, a
-// question that expired unwoken an unanswered one at its expiry, and no other wait carries a
-// resolution; reconciled and revalidation only with resumed; every wait has its own wakeKeyDigest
-// within its store; release resources are unique; times are the store clock's.
+// or reauthorization wait's condition names an event and no wake time, and a question is carried
+// unless the wait is redacted; an approval wait carries an approval binding for its pending call,
+// whose source is pinned, and limits with approvalTtlMs, and no other wait carries either; limits
+// with waitMs or approvalTtlMs carry a deadline whose wait or approval time is the park time plus
+// that duration, a deadline's run time is no later than limits.run, and its at is after the park
+// time; parked carries no disposition, resolution, resumed or expired; woken and timed-out carry a
+// disposition (timeout exactly for timed-out) and resumed carries a disposition, resumed and
+// revalidation; expired carries expired (kind deadline, at or after its deadline) and the
+// disposition it was woken with, if any, and an approval wait expired after its claim (#266 N1)
+// also carries resumed and revalidation, its expiry at or after the approval's and after the
+// claim; a question wait that is woken carries an answered resolution and one that timed out an
+// unanswered one, a question that expired unwoken an unanswered one at its expiry, and no other
+// wait carries a resolution; reconciled and revalidation only with resumed; a reauthorization wait
+// (#226) carries the trusted disposition (reauthorization) whose operation is its pending
+// operation, under the lease that parked it, and its pending connection and cause; it carries an
+// approval binding only with a deadline approval time (the expiry of the run's unsettled approval
+// the store held at the park) and never limits.approvalTtlMs; a resumed reauthorization wait
+// carries reauthorized, whose principal is the disposition's and whose permissions cover what it
+// requires; no other wait carries reauthorization or reauthorized; every wait has its own
+// wakeKeyDigest within its store; release resources are unique; times are the store clock's.
 type RunWait struct {
-	Version       int64                    `json:"version"`
-	Resource      string                   `json:"resource"`
-	Wait          string                   `json:"wait"`
-	Reason        string                   `json:"reason"`
-	Pending       RunWaitPending           `json:"pending"`
-	Condition     RunWaitCondition         `json:"condition"`
-	TimeoutAt     *string                  `json:"timeoutAt,omitzero"`
-	Limits        *RunResumeLimits         `json:"limits,omitzero"`
-	Deadline      *RunResumeDeadline       `json:"deadline,omitzero"`
-	Approval      *RunResumeApproval       `json:"approval,omitzero"`
-	Continuation  string                   `json:"continuation"`
-	Checkpoint    RunWaitCheckpointBinding `json:"checkpoint"`
-	Pins          RunResumePins            `json:"pins"`
-	Chat          *RunWaitChatBinding      `json:"chat,omitzero"`
-	WakeKeyDigest string                   `json:"wakeKeyDigest"`
-	Release       []RunWaitRelease         `json:"release"`
-	Parked        RunWaitActor             `json:"parked"`
-	Attention     string                   `json:"attention"`
-	RetainUntil   *string                  `json:"retainUntil,omitzero"`
-	State         string                   `json:"state"`
-	Disposition   *RunWaitDisposition      `json:"disposition,omitzero"`
-	Expired       *RunWaitDisposition      `json:"expired,omitzero"`
-	Resolution    *RunWaitResolution       `json:"resolution,omitzero"`
-	Resumed       *RunWaitActor            `json:"resumed,omitzero"`
-	Revalidation  *RunResume               `json:"revalidation,omitzero"`
-	Reconciled    []RunWaitRelease         `json:"reconciled,omitzero"`
-	Redacted      *bool                    `json:"redacted,omitzero"`
+	Version         int64                    `json:"version"`
+	Resource        string                   `json:"resource"`
+	Wait            string                   `json:"wait"`
+	Reason          string                   `json:"reason"`
+	Pending         RunWaitPending           `json:"pending"`
+	Condition       RunWaitCondition         `json:"condition"`
+	TimeoutAt       *string                  `json:"timeoutAt,omitzero"`
+	Limits          *RunResumeLimits         `json:"limits,omitzero"`
+	Deadline        *RunResumeDeadline       `json:"deadline,omitzero"`
+	Approval        *RunResumeApproval       `json:"approval,omitzero"`
+	Continuation    string                   `json:"continuation"`
+	Checkpoint      RunWaitCheckpointBinding `json:"checkpoint"`
+	Pins            RunResumePins            `json:"pins"`
+	Chat            *RunWaitChatBinding      `json:"chat,omitzero"`
+	WakeKeyDigest   string                   `json:"wakeKeyDigest"`
+	Release         []RunWaitRelease         `json:"release"`
+	Parked          RunWaitActor             `json:"parked"`
+	Attention       string                   `json:"attention"`
+	RetainUntil     *string                  `json:"retainUntil,omitzero"`
+	State           string                   `json:"state"`
+	Disposition     *RunWaitDisposition      `json:"disposition,omitzero"`
+	Expired         *RunWaitDisposition      `json:"expired,omitzero"`
+	Resolution      *RunWaitResolution       `json:"resolution,omitzero"`
+	Resumed         *RunWaitActor            `json:"resumed,omitzero"`
+	Revalidation    *RunResume               `json:"revalidation,omitzero"`
+	Reconciled      []RunWaitRelease         `json:"reconciled,omitzero"`
+	Reauthorization *RunReauth               `json:"reauthorization,omitzero"`
+	Reauthorized    *RunReauthReauthorized   `json:"reauthorized,omitzero"`
+	Redacted        *bool                    `json:"redacted,omitzero"`
 }
 
-var runWaitMembers = []string{"version", "resource", "wait", "reason", "pending", "condition", "timeoutAt", "limits", "deadline", "approval", "continuation", "checkpoint", "pins", "chat", "wakeKeyDigest", "release", "parked", "attention", "retainUntil", "state", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "redacted"}
+var runWaitMembers = []string{"version", "resource", "wait", "reason", "pending", "condition", "timeoutAt", "limits", "deadline", "approval", "continuation", "checkpoint", "pins", "chat", "wakeKeyDigest", "release", "parked", "attention", "retainUntil", "state", "disposition", "expired", "resolution", "resumed", "revalidation", "reconciled", "reauthorization", "reauthorized", "redacted"}
 
 // UnmarshalJSON decodes a RunWait object and refuses a member the closed schema does not name.
 func (v *RunWait) UnmarshalJSON(data []byte) error {
@@ -21004,8 +21176,9 @@ func (v RunWaitExport) MarshalJSON() ([]byte, error) {
 }
 
 // From run-wait.json#/$defs/pending. The decision the wait is for, read from the retained record,
-// never from the caller: the asked approval's call, the paused allowance, or the retained
-// user_question event and its question.
+// never from the caller: the asked approval's call, the paused allowance, the retained
+// user_question event and its question, or the never-admitted operation of a trusted
+// re-authorization disposition.
 //
 // A union: exactly one member is set. An object is decoded by its "kind" member.
 type RunWaitPending struct {
@@ -21015,6 +21188,8 @@ type RunWaitPending struct {
 	Budget *RunWaitPendingBudget
 	// Question is set where kind is "question".
 	Question *RunWaitPendingQuestion
+	// Reauthorization is set where kind is "reauthorization".
+	Reauthorization *RunWaitPendingReauthorization
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -21036,6 +21211,9 @@ func (v *RunWaitPending) UnmarshalJSON(data []byte) error {
 		case "question":
 			v.Question = new(RunWaitPendingQuestion)
 			return json.Unmarshal(data, v.Question)
+		case "reauthorization":
+			v.Reauthorization = new(RunWaitPendingReauthorization)
+			return json.Unmarshal(data, v.Reauthorization)
 		}
 		return errorf("RunWaitPending: no member has kind %q", tag)
 	}
@@ -21053,6 +21231,9 @@ func (v RunWaitPending) MarshalJSON() ([]byte, error) {
 	}
 	if v.Question != nil {
 		set = append(set, v.Question)
+	}
+	if v.Reauthorization != nil {
+		set = append(set, v.Reauthorization)
 	}
 	if len(set) != 1 {
 		return nil, errorf("RunWaitPending: %d members are set; a union holds exactly one", len(set))
@@ -21148,6 +21329,39 @@ func (v *RunWaitPendingQuestion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunWaitPendingQuestion object.
 func (v RunWaitPendingQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunWaitPendingQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From run-wait.json#/$defs/pendingReauthorization. A reauthorization wait's operation (#226): the
+// dispatch the run's head holds as never admitted (its claim id, source and tool), the connection
+// whose credentials need the host's or a person's action, and why.
+type RunWaitPendingReauthorization struct {
+	Kind       string `json:"kind"`
+	Operation  string `json:"operation"`
+	Source     string `json:"source"`
+	Tool       string `json:"tool"`
+	Connection string `json:"connection"`
+	Cause      string `json:"cause"`
+}
+
+var runWaitPendingReauthorizationMembers = []string{"kind", "operation", "source", "tool", "connection", "cause"}
+
+// UnmarshalJSON decodes a RunWaitPendingReauthorization object and refuses a member the closed schema does not name.
+func (v *RunWaitPendingReauthorization) UnmarshalJSON(data []byte) error {
+	type plain RunWaitPendingReauthorization
+	var p plain
+	extra, err := decodeObject(data, &p, runWaitPendingReauthorizationMembers, true)
+	if err != nil {
+		return errorf("RunWaitPendingReauthorization: %w", err)
+	}
+	*v = RunWaitPendingReauthorization(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunWaitPendingReauthorization object.
+func (v RunWaitPendingReauthorization) MarshalJSON() ([]byte, error) {
+	type plain RunWaitPendingReauthorization
 	return encodeObject(plain(v), nil)
 }
 

@@ -7,8 +7,9 @@ ADR-0024. Decision 1 (one driver and fencing) is built in v0.12.0 (#223, #253; s
 its amendment). Decision 2 (durable waits and questions, #224) and decision 6 (attention
 and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3 and 5
 (deadlines and approval expiry, #225; revalidation on every resume, #227), with the run
-closure of #265 (M2), are built for v0.13.0 (see their amendment); decisions 4, 7 and 8
-(#226, #229, #230) are not built and are assigned to v0.13.0.
+closure of #265 (M2), are built for v0.13.0 (see their amendment); decision 4 (re-authorization,
+#226) is built for v0.13.0 (see its amendment); decisions 7 and 8 (#229, #230) are not built and are
+assigned to v0.13.0.
 
 ## Boundary and compatibility
 
@@ -178,8 +179,9 @@ Refusals are `invalid`, `nothing-pending`, `wait-pending`, `conflict`, `checkpoi
 `decision-required`, `timed-out`, `release-uncertain` and `chat-changed`; capability refusals are
 `store-unsupported` (no wait or lease port), `store-lifetime` (waits or leases end with the
 store's process) and `chat-store-unsupported`. Deadlines on runs and approvals (decision 3) and
-resume revalidation (decision 5) are built since (their amendment below). The re-authorization,
-retired-model, changed-reference and deadline attention reasons are not built: a retired model or a
+resume revalidation (decision 5) are built since (their amendment below), and so is the
+re-authorization reason (decision 4, #226, its amendment above). The retired-model, changed-reference
+and deadline attention reasons are not built: a retired model or a
 changed reference is a named revalidation refusal the host reports, and a deadline ends a wait with a
 recorded deadline wake.
 
@@ -214,6 +216,62 @@ and pending operation. Refreshing credentials for the same admitted identity can
 continue only after those checks. A changed identity retains ADR-0019's withholding
 and new-run reapproval rule; it is not silently relabelled as a refresh. A narrower
 permission set can still make the pending operation inadmissible.
+
+### Amendment (#226): re-authorization as built
+
+Status: built for v0.13.0 (#226). The records are `contract/schemas/run-reauth.json` (version 1) with
+handwritten shared vectors in `contract/vectors/reauth/`, and members of the not yet released
+`run-wait.json` (version 1): the reason and attention need `reauthorization`, the pending
+`reauthorization` decision, and `reauthorization` and `reauthorized`. TypeScript is
+`packages/harness/storage/reauth.ts` with `lease.ts` and `wait.ts`; Go is `go/context/run_reauth.go`
+with `run_lease.go` and `run_wait.go`. The host-facing contract is in `docs/design/storage.md`
+(Re-authorization waits). No checkpoint, event, lease or published report format changes, and with no
+credential check configured the run's bytes are unchanged.
+
+**The trusted disposition.** The effect host's admission boundary is where never-admitted is known: the
+reference effect host's optional credential check runs after the fence and the idempotency identity and
+before it records the admission, with the abort and the fence checked again after it, and a refusal (`expired` or `revoked`, a bounded connection
+reference, the principal's SHA-256, the scope labels held and required) is minted against the exact
+admission in flight; nothing is admitted or performed. The package trusts it only when minted once,
+for that live admission, before anything was performed, well formed, returned by the dispatch, from an
+effect host proven for the run's store (#253); anything else, and any error after admission, is an
+ordinary failure whose outcome stays unknown. A late `perform` runs nothing and takes the trust back. A
+credential check's own error is replaced by one fixed failure. The writer records the typed failure
+(`authentication`, `tool`, `not-started`) only for a refusal trusted for that very dispatch, and then
+closes dispatch, so the head holds the refused operation as its last dispatch and the model is not asked
+again. Any other failure of that shape is recorded as `authentication`, `tool`, `unknown`, so the typed
+failure on a row can only mean that refusal: the park's head check and the re-send's grant both read it.
+
+**Park and resume.** A trusted proof parks one `reauthorization` wait under the lease it was minted
+under, over that head (`stale`, `unbound`, `used`, `untrusted` otherwise), waiting for the host's or
+the person's action as an event; the store attaches the binding and expiry of the run's unsettled
+approval, if any. Resume needs the action (`decision-required` without it), revalidates the pins
+(#227) and then the action: a replacement or another principal is `identity-changed` (a new admitted
+run, ADR-0019), an action from before the park is `stale`, permissions that no longer cover what the
+operation requires are `permission-insufficient`; the store's claim checks them again against its clock
+and records the refresh, and its lease is bounded by every ceiling of the run.
+
+**No retry.** The continuation's fenced view (`reauthorizedRunStore`) carries one grant: the writer
+sends again only the never-admitted operation the wait names, once, under its own identity, and only if
+the run asks for exactly that request (in Go byte for byte, since a tool runs the bytes the call wrote and
+the row's fingerprint is of the parsed form, #275); its claim clears the typed failure before the dispatch,
+and nothing that may have been admitted is ever sent again. A host tool's request is its arguments, so it
+keeps its identity on every adapter. A Runtime call's request carries its call id, so a new call id is a
+new operation on any adapter. ADR-0008 still restores an approved call whose result was never written as
+executed with an unknown outcome; re-authorization does not re-send it, and a new decision in the same
+run with the same arguments sends nothing.
+
+**A refused re-send does not wait again.** It is trusted and stops the run, but its row is no longer the
+head's last dispatch, so the park answers `unbound`; the view's grant is spent, and another view of the
+claim may send it once while the lease is held. Otherwise it stays unknown. We keep this limit rather
+than read "last dispatch" as "last host or Runtime dispatch": it fails safe, and the wider head check
+would apply to every park and every store.
+
+The wait conformance kit gains the `reauth.*` properties: the fence (owner and epoch) and each way a head
+can fail at the park, the claim's refresh (required, the parked principal, covering permissions, its
+time), the attached approval, its expiry and the claim's bound, `limitRun` keeping that time, the timeout
+and deadline wakes, and these across restarts. It does not exercise a repeated reauthorization park or
+`reauthorized` on another wait's claim.
 
 ## 5. Revalidation on every resume
 
@@ -289,7 +347,7 @@ substituted), a changed model or reference without its exact explicit admission,
 without the trusted host's new layer, and an approval under a changed identity. The resumed wait
 records the revalidation, with every change's old and new value.
 
-Not built here: a reauthorization wait (decision 4, #226), attention events for a retired model, a
+Not built here: a reauthorization wait (decision 4, #226; built since, its amendment above), attention events for a retired model, a
 changed reference or a deadline (they are named refusals and a recorded deadline wake), a package
 transition that ends a wait a revalidation refuses for good, a Go ChatStore, and host store kinds:
 the deadline, closure and claim rules live in each host store's own wait and lease ports (their
