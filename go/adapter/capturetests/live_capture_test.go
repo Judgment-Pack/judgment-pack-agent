@@ -1,4 +1,4 @@
-package adapter_test
+package capturetests
 
 import (
 	"context"

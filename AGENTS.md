@@ -121,8 +121,9 @@ summary block, and anything you stopped on or chose not to do.
 - The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list (scoped on a pull
   request, see below). Edit `dev.json` when a check is added, not the workflow.
 - The `contract` job runs `contract`, `local-paths`, `agent-docs` and `diff-check` on every event;
-  the `check` job runs every other step and skips those four. A pull request's `check` job runs
-  `scripts/dev/check.sh --all --changed origin/<base>`: only the steps that `jpdev.json` maps its
+  the `go-race` job runs the `go-race` step on a runner of its own (#254); the `check` job runs
+  every other step and skips those five. On a pull request `check` and `go-race` each run their part
+  of `scripts/dev/check.sh --all --changed origin/<base>`: only the steps that `jpdev.json` maps its
   changed paths to, and the whole list when a changed path matches no rule (the workflows,
   `.gitignore`, `.gitattributes`, the root `package.json` and `package-lock.json`, a file in a new
   place) or when `jpdev.json`, `dev.json` or the runner changed. A push to `main` runs the whole
