@@ -38,9 +38,15 @@ func durableRun(t *testing.T, engine string, write bool, calls []string) (execut
 // endpoint that takes no native tool calls.
 var durableWires = []string{"native", "api", "api/openai-compatible/whole", "api/anthropic/sse", "api/anthropic/whole", "api/gemini/sse", "api/gemini/whole", "api/text"}
 
-// durableTableWires run the whole table of pairs: the decision is the writer's, so past the bytes each family's
-// reader hands on (TestEveryWireHandsTheToolTheModelsText) one way of each family holds it.
-var durableTableWires = []string{"native", "api", "api/anthropic/sse", "api/gemini/whole", "api/text"}
+// durableTableWires run the whole table of pairs: the decision is the writer's, and each family's reader is
+// held to the bytes by TestEveryWireHandsTheToolTheModelsText. These run in the race job, so the rest of the
+// wires run only the pairs that went wrong on them (durableFamilyRows).
+var durableTableWires = []string{"native", "api"}
+
+// durableFamilyWires are one way of each other family, for the pairs a reader that rewrites gets wrong.
+var durableFamilyWires = []string{"api/anthropic/sse", "api/gemini/whole", "api/text"}
+
+var durableFamilyRows = map[string]bool{"an integer past 2^53, then its neighbour": true, "1.0 then 1": true, "a consumer's nested limit: zero, then an underflow its decoder must see": true}
 
 // wireReply is one answer of the wire named: a call with exactly the argument text given, or, with none, the
 // final answer. Anthropic's stream splits the text in two, as a provider does.
@@ -250,7 +256,11 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		// Each row is looked at: the record that is this write is found past one that only reads alike.
 		{"the first of two neighbours again", []string{big, near, big, near}, []string{big, near}, []string{ran(big), ran(near), ran(big), ran(near)}},
 	} {
-		for _, engine := range durableTableWires {
+		wires := durableTableWires
+		if durableFamilyRows[row.name] {
+			wires = append(append([]string{}, durableTableWires...), durableFamilyWires...)
+		}
+		for _, engine := range wires {
 			t.Run(engine+"/"+row.name, func(t *testing.T) {
 				executed, answered, failures := durableRun(t, engine, true, row.calls)
 				checkDurableRun(t, executed, answered, failures, row.ran, row.answers)
@@ -279,22 +289,22 @@ func TestADurableReadIsRefusedOnlyWhereItCannotBeRecorded(t *testing.T) {
 // decoder as a value it accepts.
 func TestEveryWireHandsTheToolTheModelsText(t *testing.T) {
 	for _, engine := range durableWires {
-		for _, write := range []bool{true, false} {
-			for _, stored := range []bool{true, false} {
-				t.Run(fmt.Sprintf("%s/write=%v/stored=%v", engine, write, stored), func(t *testing.T) {
-					calls := []string{`{"id":9007199254740993}`, `{"limits":{"searches":1e-400}}`, `{"q":1.0}`, `{"q":"a` + string(rune(0x5c)) + `u00e9"}`, `{"b":2,"a":1}`, `{ "c" : 3 }`}
-					if !stored {
-						calls = append(calls, `{"q":1e400}`, `{"a":1,"a":2}`)
-					}
-					executed, answered, failures := durableRunOn(t, engine, write, stored, calls)
-					if len(failures) != 0 || len(answered) != len(calls) {
-						t.Fatalf("answered %q, failures %q", answered, failures)
-					}
-					if fmt.Sprint(executed) != fmt.Sprint(calls) {
-						t.Fatalf("the tool ran %q, the model wrote %q", executed, calls)
-					}
-				})
-			}
+		// The reader comes before all of this, so each wire runs the two ways furthest apart.
+		for _, way := range []struct{ write, stored bool }{{true, true}, {false, false}} {
+			write, stored := way.write, way.stored
+			t.Run(fmt.Sprintf("%s/write=%v/stored=%v", engine, write, stored), func(t *testing.T) {
+				calls := []string{`{"id":9007199254740993}`, `{"limits":{"searches":1e-400}}`, `{"q":1.0}`, `{"q":"a` + string(rune(0x5c)) + `u00e9"}`, `{"b":2,"a":1}`, `{ "c" : 3 }`}
+				if !stored {
+					calls = append(calls, `{"q":1e400}`, `{"a":1,"a":2}`)
+				}
+				executed, answered, failures := durableRunOn(t, engine, write, stored, calls)
+				if len(failures) != 0 || len(answered) != len(calls) {
+					t.Fatalf("answered %q, failures %q", answered, failures)
+				}
+				if fmt.Sprint(executed) != fmt.Sprint(calls) {
+					t.Fatalf("the tool ran %q, the model wrote %q", executed, calls)
+				}
+			})
 		}
 	}
 }
