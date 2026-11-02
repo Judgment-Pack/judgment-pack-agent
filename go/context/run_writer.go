@@ -1426,9 +1426,10 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 					break
 				}
 				w.mu.Unlock()
-				// #229: a repeated start is answered from its job's record where its row cannot say, and is never
-				// sent again.
-				if jobStart != nil && row.State != "result" {
+				// #229: a repeated start is answered from its job's record, whatever its row holds, and is never sent
+				// again. A row says nothing about its job: result holds words from an earlier moment. Only with the job
+				// record lost does a result answer.
+				if jobStart != nil {
 					port, err := jobPortOfView(w.Store)
 					if err != nil {
 						return zero, err
@@ -1437,14 +1438,13 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 					if err != nil {
 						return zero, err
 					}
-					if held == nil {
-						return zero, &HostOutcomeUnknown{}
+					if held != nil {
+						job, err := jobReadBack(*held, w.ID, JobIdentity(w.ID, row.ID))
+						if err != nil {
+							return zero, err
+						}
+						return any(JobStartResult(job)).(T), nil
 					}
-					job, err := jobReadBack(*held, w.ID, JobIdentity(w.ID, row.ID))
-					if err != nil {
-						return zero, err
-					}
-					return any(JobStartResult(job)).(T), nil
 				}
 				if row.State != "result" || row.Result == nil {
 					return zero, &HostOutcomeUnknown{}

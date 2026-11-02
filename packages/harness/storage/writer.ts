@@ -851,8 +851,9 @@ export class RunWriter {
    else await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(refusal)throw refusal
-  // #229: a repeated start is answered from its job's record where its row cannot say, and is never sent again.
-  if(reused&&jobStart&&reused.state!=='result'){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held===undefined)throw new HostOutcomeUnknown();return jobStartResult(readRunJob(structuredClone(held))) as T}
+  // #229: a repeated start is answered from its job's record, whatever its row holds, and is never sent again. A row says
+  // nothing about its job: `result` holds words from an earlier moment. Only with the job record lost does a result answer.
+  if(reused&&jobStart){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held!==undefined)return jobStartResult(readRunJob(structuredClone(held))) as T;if(reused.state!=='result')throw new HostOutcomeUnknown()}
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
   if(jobId!==undefined)jobStart!.bind(jobId)
   signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')

@@ -553,6 +553,23 @@ describe('after a start ran, the model is told what its job says (#229, H-1)',()
   expect(events.find(e=>e.type==='tool_result')).toMatchObject({isError:false,text:jobStartResult(job).content![0]!.text})
   expect(JSON.stringify(events)).not.toContain('hhhh')
  })
+ it('R-1: a repeat answers from the job whatever the row holds: a completed job, and evidence after a closure',async()=>{
+  for(const [answer,evidence,state] of [[started,completion,'completed'],[async()=>({started:false} as JobStartAnswer),completion,'not-started']] as const){
+   const held=await oneJob(answer),calls=vi.mocked(held.start)
+   await completeJob(held.store,evidence(held.job.job))
+   const repeat=await drive(held.view,[held.tool],provider([CALL,{say:'x'}]).call,{resume:true}),job=(await readJob(held.store,RUN,held.job.job))!
+   expect(job.state).toBe(state);expect(calls).toHaveBeenCalledTimes(1)
+   expect(repeat.find(e=>e.type==='tool_result')).toMatchObject({text:jobStartResult(job).content![0]!.text})
+   expect(JSON.stringify(repeat.find(e=>e.type==='tool_result'))).not.toContain('nothing is running')
+  }
+ })
+ it('R-1: with its job record lost, a repeat of a start with a result still answers its row, and starts nothing',async()=>{
+  const held=await oneJob()
+  const rows=(held.store as unknown as {jobs:{rows:Map<string,unknown>}}).jobs.rows;rows.delete(RUN)
+  const repeat=await drive(held.view,[held.tool],provider([CALL,{say:'x'}]).call,{resume:true})
+  expect(held.start).toHaveBeenCalledTimes(1)
+  expect(repeat.find(e=>e.type==='tool_result')).toMatchObject({text:expect.stringContaining('started, not finished')})
+ })
  it('M-3: a closed job the answer contradicts says evidence says it ran, not that nothing is running',async()=>{
   const {job,row,events}=await ran(async(input,held)=>{await reconcileJob(held.store,reconciliation(input.job));return started()})
   expect(job.state).toBe('not-started');expect(job.contradictions).toHaveLength(1)

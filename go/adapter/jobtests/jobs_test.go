@@ -298,6 +298,22 @@ func refusedAs(err error, reason string) bool {
 	var refused *runcontext.JobRefused
 	return errors.As(err, &refused) && refused.Reason == reason
 }
+
+// lastToolResult is the last tool result's text: a request body also holds what earlier turns were told.
+func lastToolResult(t *testing.T, result *runResult) string {
+	t.Helper()
+	for i := len(result.events) - 1; i >= 0; i-- {
+		raw, err := json.Marshal(result.events[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), `"type":"tool_result"`) {
+			return string(raw)
+		}
+	}
+	return ""
+}
+
 func toolAnswer(result *runResult) string {
 	raw, _ := json.Marshal(result.events)
 	return string(raw) + strings.Join(result.bodies, "\n")
@@ -1061,6 +1077,33 @@ func TestJobsAStartThatRanIsToldWhatItsJobSays(t *testing.T) {
 				}
 				if !strings.Contains(answer, c.in) || strings.Contains(answer, "JobRefused") || strings.Contains(answer, "invalid-tool-input") || strings.Contains(answer, "SENTINEL-HOST-TEXT") {
 					t.Fatal(answer)
+				}
+			})
+		}
+	}
+}
+
+// R-1: a repeat answers from the job whatever the row holds.
+func TestJobsARepeatAnswersFromTheJobWhateverItsRowHolds(t *testing.T) {
+	for name, c := range map[string]struct {
+		answer runcontext.JobStartAnswer
+		state  string
+	}{"a completed job": {startedAnswer, "completed"}, "evidence after a closure": {runcontext.JobStartAnswer{}, "not-started"}} {
+		for _, engine := range engines {
+			t.Run(name+"/"+engine, func(t *testing.T) {
+				l := newLeased(t, nil)
+				calls := &startCalls{}
+				tool := startTool(t, calls, answered(c.answer, nil), "allow", nil)
+				drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+				job := onlyJob(t, l.store)
+				if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(job.Job, nil)); err != nil {
+					t.Fatal(err)
+				}
+				repeat := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
+				job = onlyJob(t, l.store)
+				answer := lastToolResult(t, repeat)
+				if job.State != c.state || calls.count() != 1 || strings.Contains(answer, "nothing is running") || !strings.Contains(answer, c.state) {
+					t.Fatal(job.State, calls.count(), answer)
 				}
 			})
 		}
