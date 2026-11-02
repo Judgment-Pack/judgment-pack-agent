@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-job.json",
+  "title": "Run-owned background job",
+  "description": "Version 1 record of one run's background job (ADR-0025 decision 7, #229): kept by the store beside the run, never in its checkpoint or event log, and registered in the same transaction as its start's dispatch claim. Registration proves nothing: a job is unproven until a typed answer, a host's reconciliation or a completion says otherwise. A start or a completion that arrives after the job was closed as not-started is kept as a contradiction. Each state holds exactly what proves it, and the readers hold rules the schema cannot state: the job's identity is the SHA-256 of the canonical JSON of {resource, operation}, a handle is known exactly when a start was, and generation is always 1 (a restart is a new job).",
+  "type": "object",
+  "required": ["version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "state"],
+  "properties": {
+    "version": {"const": 1},
+    "kind": {"const": "job"},
+    "resource": {"$ref": "#/$defs/id", "description": "The run that owns the job."},
+    "job": {"$ref": "#/$defs/digest"},
+    "generation": {"$ref": "#/$defs/generation"},
+    "operation": {"$ref": "#/$defs/id", "description": "The start's dispatch claim id: the row that is the effect's idempotency identity."},
+    "source": {"$ref": "#/$defs/id"},
+    "tool": {"$ref": "#/$defs/id"},
+    "requestDigest": {"$ref": "#/$defs/digest"},
+    "keyDigest": {"$ref": "#/$defs/digest", "description": "The SHA-256 of the host's completion key. The key stays the host's, and no two jobs or waits of a store share a digest."},
+    "registered": {"$ref": "#/$defs/actor"},
+    "reclaimed": {"$ref": "#/$defs/actor", "description": "The fence a re-authorization grant re-sent the start under."},
+    "principal": {"$ref": "run-principal.json#/$defs/binding"},
+    "state": {"$ref": "#/$defs/state"},
+    "handle": {"$ref": "#/$defs/id", "description": "The host's reference to the external job. Never shown to the model."},
+    "receipt": {"$ref": "#/$defs/id", "description": "A bounded reference to the host's receipt, not the receipt. Never shown to the model."},
+    "started": {"$ref": "#/$defs/fact"},
+    "closed": {"$ref": "#/$defs/fact"},
+    "completion": {"$ref": "#/$defs/completionRecord"},
+    "contradictions": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/contradiction"}}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "time": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"},
+    "epoch": {"type": "string", "pattern": "^[1-9][0-9]{0,17}$"},
+    "key": {"type": "string", "pattern": "^[!-~]{32,512}$", "description": "A completion key: at least 16 distinct characters, a fresh secret per job, kept by the host across its own restarts."},
+    "generation": {"const": 1},
+    "state": {"enum": ["unproven", "started", "not-started", "completed"]},
+    "outcome": {"enum": ["succeeded", "failed", "cancelled", "unknown"]},
+    "actor": {
+      "type": "object",
+      "required": ["owner", "epoch", "at"],
+      "properties": {"owner": {"$ref": "#/$defs/id"}, "epoch": {"$ref": "#/$defs/epoch"}, "at": {"$ref": "#/$defs/time"}},
+      "additionalProperties": false
+    },
+    "fact": {
+      "description": "How a start became known or closed: the writer's typed answer, or a host's reconciliation with its evidence id.",
+      "type": "object",
+      "required": ["by", "at", "digest"],
+      "properties": {"by": {"enum": ["answer", "reconcile"]}, "at": {"$ref": "#/$defs/time"}, "digest": {"$ref": "#/$defs/digest"}, "evidence": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "completionRecord": {
+      "type": "object",
+      "required": ["evidence", "outcome", "at", "digest"],
+      "properties": {"evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "at": {"$ref": "#/$defs/time"}, "digest": {"$ref": "#/$defs/digest"}, "resultDigest": {"$ref": "#/$defs/digest"}, "receipt": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "contradiction": {
+      "description": "Evidence that arrived after the job was closed as not-started: kept and reported, and it moves nothing.",
+      "type": "object",
+      "required": ["kind", "at", "digest"],
+      "properties": {"kind": {"enum": ["started", "completed"]}, "at": {"$ref": "#/$defs/time"}, "digest": {"$ref": "#/$defs/digest"}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "handle": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "registration": {
+      "description": "What a start's dispatch claim commit registers in its own transaction.",
+      "type": "object",
+      "required": ["job", "operation", "source", "tool", "requestDigest", "keyDigest"],
+      "properties": {"job": {"$ref": "#/$defs/digest"}, "operation": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/id"}, "tool": {"$ref": "#/$defs/id"}, "requestDigest": {"$ref": "#/$defs/digest"}, "keyDigest": {"$ref": "#/$defs/digest"}},
+      "additionalProperties": false
+    },
+    "answer": {
+      "description": "The writer's record of the host's typed answer to a start, under the fence that admitted it.",
+      "type": "object",
+      "required": ["version", "resource", "job", "generation", "answer"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "answer": {"enum": ["started", "not-started"]}, "handle": {"$ref": "#/$defs/id"}, "receipt": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "reconciliation": {
+      "description": "A host's finding about an unproven start, authenticated by the completion key, with no lease. not-started means the authority that would run it has closed it.",
+      "type": "object",
+      "required": ["version", "resource", "job", "generation", "evidence", "finding", "key"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "evidence": {"$ref": "#/$defs/id"}, "finding": {"enum": ["started", "not-started", "unknown"]}, "handle": {"$ref": "#/$defs/id"}, "receipt": {"$ref": "#/$defs/id"}, "key": {"$ref": "#/$defs/key"}},
+      "additionalProperties": false
+    },
+    "completion": {
+      "description": "A host's completion of a job, authenticated by the completion key, with no lease.",
+      "type": "object",
+      "required": ["version", "resource", "job", "generation", "evidence", "outcome", "key"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "resultDigest": {"$ref": "#/$defs/digest"}, "receipt": {"$ref": "#/$defs/id"}, "key": {"$ref": "#/$defs/key"}},
+      "additionalProperties": false
+    },
+    "projection": {
+      "description": "What the model is told of a job: states and digests, never a handle, a receipt or host text.",
+      "type": "object",
+      "required": ["job", "generation", "state"],
+      "properties": {"job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "state": {"$ref": "#/$defs/state"}, "outcome": {"$ref": "#/$defs/outcome"}, "resultDigest": {"$ref": "#/$defs/digest"}, "contradicted": {"const": true}, "changed": {"type": "boolean"}, "note": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "gatewayMembers": {
+      "description": "The members a host adds to its gateway /act for an admission. A delegated run sends no keyScope.",
+      "type": "object",
+      "required": ["actionKey"],
+      "properties": {"actionKey": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "keyScope": {"const": "authority"}, "reconcile": {"const": true}},
+      "additionalProperties": false
+    },
+    "refusal": {
+      "description": "A named job refusal. Nothing changed.",
+      "type": "object",
+      "required": ["version", "reason"],
+      "properties": {"version": {"const": 1}, "reason": {"enum": ["invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven"]}},
+      "additionalProperties": false
+    },
+    "capabilityRefusal": {
+      "description": "A store or tool that cannot give the guarantee refuses by name before anything is offered.",
+      "type": "object",
+      "required": ["version", "reason"],
+      "properties": {"version": {"const": 1}, "reason": {"enum": ["store-unsupported", "store-lifetime", "job-host-unsupported"]}},
+      "additionalProperties": false
+    },
+    "export": {
+      "description": "One run's retained jobs, in registration order: the report's source.",
+      "type": "object",
+      "required": ["version", "resource", "jobs"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "jobs": {"type": "array", "maxItems": 64, "items": {"$ref": "#"}}},
+      "additionalProperties": false
+    },
+    "reportEntry": {
+      "type": "object",
+      "required": ["job", "decision", "at"],
+      "properties": {"job": {"$ref": "#/$defs/digest"}, "decision": {"enum": ["register", "start", "not-started", "reclaim", "complete", "contradiction"]}, "at": {"$ref": "#/$defs/time"}, "owner": {"$ref": "#/$defs/id"}, "epoch": {"$ref": "#/$defs/epoch"}, "by": {"enum": ["answer", "reconcile"]}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "contradicts": {"enum": ["started", "completed"]}, "tool": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "report": {
+      "description": "One run's job report, read from its retained jobs, never from a prompt. It carries no key or handle.",
+      "type": "object",
+      "required": ["version", "resource", "entries"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "entries": {"type": "array", "items": {"$ref": "#/$defs/reportEntry"}}},
+      "additionalProperties": false
+    }
+  }
+}

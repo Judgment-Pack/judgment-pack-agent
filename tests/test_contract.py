@@ -80,6 +80,7 @@ EXPECTED_SCHEMAS = {
     "run-principal.json",
     "run-report-v3.json",
     "run-reauth.json",
+    "run-job.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -1295,6 +1296,75 @@ class VectorTests(unittest.TestCase):
         reads = rows["principal/admission.json"]
         self.assertTrue(all(case["read"] is None or 0 <= case["read"] < len(reads["items"]) for case in reads["cases"]))
         self.assertEqual(sorted({case["read"] for case in reads["cases"] + reads["standing"] if case["read"] is not None}), list(range(len(reads["items"]))))
+
+    def test_every_run_job_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #229: every member of run-job.json (root and definitions) and every enum value is carried by a
+        # handwritten job vector, every refused record fails the schema, every reader-only refusal is
+        # schema-valid (the readers hold it), and every digest is the one an independent canonical JSON gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("job/")}
+        self.assertEqual(set(rows), {"job/job.json", "job/answer.json", "job/reconciliation.json", "job/completion.json", "job/refusal.json", "job/transitions.json", "job/model.json", "job/gateway.json", "job/report.json"})
+        schema = self.schemas["run-job.json"]
+        registrations = [step["registration"] for scenario in rows["job/transitions.json"]["scenarios"] for step in scenario["steps"] if "registration" in step]
+        carried = [(row["schema"], row["items"]) for row in rows.values()]
+        carried += [("run-job.json#/$defs/registration", registrations), ("run-job.json#/$defs/export", rows["job/report.json"]["exports"]), ("run-job.json#/$defs/capabilityRefusal", rows["job/refusal.json"]["capability"])]
+        carried += [("run-job.json#/$defs/key", [row["key"] for row in rows["job/job.json"]["keys"]])]
+
+        def invalid(changed):
+            return any(problems(validator(changed, reference), items) for reference, items in carried)
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-job.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            with self.subTest(path=path):
+                self.assertTrue(invalid(changed), path)
+
+        def enums(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    yield from enums(value, path + [key])
+
+        for path in enums(schema, []):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-job.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                with self.subTest(path=path, value=value):
+                    self.assertTrue(invalid(changed), (path, value))
+        for name, reference in (("job/job.json", "run-job.json"), ("job/answer.json", "run-job.json#/$defs/answer"), ("job/reconciliation.json", "run-job.json#/$defs/reconciliation"), ("job/completion.json", "run-job.json#/$defs/completion")):
+            for row in rows[name]["refused"]:
+                with self.subTest(vector=name, problem=row["problem"]):
+                    self.assertTrue(problems(validator(self.schemas, reference), [row["record"]]), row["problem"])
+            for row in rows[name]["readerRefused"]:
+                with self.subTest(vector=name, problem=row["problem"]):
+                    self.assertEqual(problems(validator(self.schemas, reference), [row["record"]]), [])
+
+        def digest(value):
+            return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+        for name in ("job/answer.json", "job/reconciliation.json", "job/completion.json"):
+            for item, expected in zip(rows[name]["items"], rows[name]["digests"], strict=True):
+                self.assertEqual(digest({key: value for key, value in item.items() if key != "key"}), expected)
+        for row in rows["job/job.json"]["identities"]:
+            self.assertEqual(digest({"resource": row["resource"], "operation": row["operation"]}), row["job"])
+        for row in rows["job/job.json"]["keys"]:
+            self.assertEqual("sha256:" + hashlib.sha256(row["key"].encode()).hexdigest(), row["digest"])
+        for item in rows["job/job.json"]["items"]:
+            self.assertEqual(digest({"resource": item["resource"], "operation": item["operation"]}), item["job"])
 
     def test_every_run_wait_member_and_value_is_carried_and_every_refused_record_fails(self):
         # #224 and #228: every member of run-wait.json (root and definitions) and every enum value is

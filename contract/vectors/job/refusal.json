@@ -1,0 +1,83 @@
+{
+ "description": "Handwritten named job refusals, one per reason, in order, and records both readers refuse.",
+ "schema": "run-job.json#/$defs/refusal",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "reason": "invalid"
+  },
+  {
+   "version": 1,
+   "reason": "no-job"
+  },
+  {
+   "version": 1,
+   "reason": "unauthenticated"
+  },
+  {
+   "version": 1,
+   "reason": "conflict"
+  },
+  {
+   "version": 1,
+   "reason": "stale"
+  },
+  {
+   "version": 1,
+   "reason": "key-reused"
+  },
+  {
+   "version": 1,
+   "reason": "jobs-exhausted"
+  },
+  {
+   "version": 1,
+   "reason": "job-settled"
+  },
+  {
+   "version": 1,
+   "reason": "job-unproven"
+  }
+ ],
+ "capability": [
+  {
+   "version": 1,
+   "reason": "store-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "store-lifetime"
+  },
+  {
+   "version": 1,
+   "reason": "job-host-unsupported"
+  }
+ ],
+ "refused": [
+  {
+   "version": 1,
+   "reason": "poll-refused"
+  },
+  {
+   "version": 2,
+   "reason": "invalid"
+  },
+  {
+   "version": 1
+  },
+  {
+   "version": 1,
+   "reason": "invalid",
+   "extra": 1
+  }
+ ]
+}

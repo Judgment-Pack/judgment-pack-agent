@@ -1,0 +1,167 @@
+{
+ "description": "Handwritten members a host adds to its gateway /act for an admission, and a gateway refusal read as a finding. A delegated run sends no keyScope.",
+ "schema": "run-job.json#/$defs/gatewayMembers",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+   "keyScope": "authority"
+  },
+  {
+   "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+   "keyScope": "authority",
+   "reconcile": true
+  },
+  {
+   "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+  },
+  {
+   "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+   "reconcile": true
+  }
+ ],
+ "cases": [
+  {
+   "name": "an undelegated first send",
+   "admission": {
+    "version": 1,
+    "fence": {
+     "version": 1,
+     "resource": "run-j",
+     "owner": "worker-a",
+     "epoch": "1"
+    },
+    "operation": {
+     "run": "run-j",
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0"
+    },
+    "idempotencyKey": "sha256:31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+   },
+   "members": {
+    "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+    "keyScope": "authority"
+   }
+  },
+  {
+   "name": "an undelegated reconciliation",
+   "admission": {
+    "version": 1,
+    "fence": {
+     "version": 1,
+     "resource": "run-j",
+     "owner": "worker-a",
+     "epoch": "1"
+    },
+    "operation": {
+     "run": "run-j",
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0"
+    },
+    "idempotencyKey": "sha256:31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+   },
+   "reconcile": true,
+   "members": {
+    "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+    "keyScope": "authority",
+    "reconcile": true
+   }
+  },
+  {
+   "name": "a delegated send has no keyScope",
+   "admission": {
+    "version": 1,
+    "fence": {
+     "version": 2,
+     "resource": "run-j",
+     "owner": "worker-a",
+     "epoch": "1",
+     "principal": {
+      "sub": {
+       "kind": "person",
+       "issuer": "https://host.example/",
+       "subject": "subject-1"
+      },
+      "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "host": "kit-host"
+     }
+    },
+    "operation": {
+     "run": "run-j",
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0"
+    },
+    "idempotencyKey": "sha256:31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+   },
+   "members": {
+    "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+   }
+  },
+  {
+   "name": "a delegated reconciliation",
+   "admission": {
+    "version": 1,
+    "fence": {
+     "version": 2,
+     "resource": "run-j",
+     "owner": "worker-a",
+     "epoch": "1",
+     "principal": {
+      "sub": {
+       "kind": "person",
+       "issuer": "https://host.example/",
+       "subject": "subject-1"
+      },
+      "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "host": "kit-host"
+     }
+    },
+    "operation": {
+     "run": "run-j",
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0"
+    },
+    "idempotencyKey": "sha256:31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053"
+   },
+   "reconcile": true,
+   "members": {
+    "actionKey": "31f48309704fdaceef60c88792a8aaca30f722d5024d2ddc66a6a2f9a1d2b053",
+    "reconcile": true
+   }
+  }
+ ],
+ "findings": [
+  {
+   "refusal": "action-key-not-dispatched",
+   "finding": "not-started"
+  },
+  {
+   "refusal": "action-key-scope-conflict",
+   "finding": "unknown"
+  },
+  {
+   "refusal": "action-key-closed",
+   "finding": "unknown"
+  },
+  {
+   "refusal": "anything-else",
+   "finding": "unknown"
+  }
+ ]
+}

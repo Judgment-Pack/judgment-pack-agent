@@ -1,0 +1,273 @@
+{
+ "description": "Handwritten job exports and the reports derived from them, and exports both readers refuse.",
+ "schema": "run-job.json#/$defs/report",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "entries": [
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "register",
+     "at": "2026-01-01T00:00:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1",
+     "source": "runner",
+     "tool": "start_job"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "not-started",
+     "at": "2026-01-01T00:02:00.000Z",
+     "by": "reconcile",
+     "evidence": "find-2"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "contradiction",
+     "at": "2026-01-01T00:04:00.000Z",
+     "contradicts": "completed",
+     "evidence": "done-1",
+     "outcome": "succeeded"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "contradiction",
+     "at": "2026-01-01T00:05:00.000Z",
+     "contradicts": "started"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "entries": [
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "register",
+     "at": "2026-01-01T00:00:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1",
+     "source": "runner",
+     "tool": "start_job"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "reclaim",
+     "at": "2026-01-01T00:01:00.000Z",
+     "owner": "worker-b",
+     "epoch": "2"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "start",
+     "at": "2026-01-01T00:02:00.000Z",
+     "by": "answer"
+    },
+    {
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "decision": "complete",
+     "at": "2026-01-01T00:03:00.000Z",
+     "evidence": "done-1",
+     "outcome": "succeeded"
+    }
+   ]
+  }
+ ],
+ "exports": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "jobs": [
+    {
+     "version": 1,
+     "kind": "job",
+     "resource": "run-j",
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "generation": 1,
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+     "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+     "registered": {
+      "owner": "worker-a",
+      "epoch": "1",
+      "at": "2026-01-01T00:00:00.000Z"
+     },
+     "state": "not-started",
+     "closed": {
+      "by": "reconcile",
+      "at": "2026-01-01T00:02:00.000Z",
+      "digest": "sha256:35f70286624fd801fbc53b15309de4a381d8a2a4db6f5e48ddb7f65e1ec87063",
+      "evidence": "find-2"
+     },
+     "contradictions": [
+      {
+       "kind": "completed",
+       "at": "2026-01-01T00:04:00.000Z",
+       "digest": "sha256:61c603cec9606b8a4d810f9c0969d67038ca32ae45c714b9cc74b4abeb2f04b7",
+       "evidence": "done-1",
+       "outcome": "succeeded"
+      },
+      {
+       "kind": "started",
+       "at": "2026-01-01T00:05:00.000Z",
+       "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd",
+       "handle": "ext-1"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "jobs": [
+    {
+     "version": 1,
+     "kind": "job",
+     "resource": "run-j",
+     "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+     "generation": 1,
+     "operation": "op-1",
+     "source": "runner",
+     "tool": "start_job",
+     "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+     "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+     "registered": {
+      "owner": "worker-a",
+      "epoch": "1",
+      "at": "2026-01-01T00:00:00.000Z"
+     },
+     "state": "completed",
+     "reclaimed": {
+      "owner": "worker-b",
+      "epoch": "2",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "handle": "ext-1",
+     "receipt": "rcpt-1",
+     "started": {
+      "by": "answer",
+      "at": "2026-01-01T00:02:00.000Z",
+      "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+     },
+     "completion": {
+      "evidence": "done-1",
+      "outcome": "succeeded",
+      "at": "2026-01-01T00:03:00.000Z",
+      "digest": "sha256:61c603cec9606b8a4d810f9c0969d67038ca32ae45c714b9cc74b4abeb2f04b7",
+      "resultDigest": "sha256:83e15d1bb765dd3232dedc04b128e8076d4f4c89f933536dc8819c7925b1122f",
+      "receipt": "rcpt-2"
+     }
+    }
+   ]
+  }
+ ],
+ "capabilityItems": [
+  {
+   "version": 1,
+   "reason": "store-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "store-lifetime"
+  },
+  {
+   "version": 1,
+   "reason": "job-host-unsupported"
+  }
+ ],
+ "exportsRefused": [
+  {
+   "name": "another run's job",
+   "record": {
+    "version": 1,
+    "resource": "run-other",
+    "jobs": [
+     {
+      "version": 1,
+      "kind": "job",
+      "resource": "run-j",
+      "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+      "generation": 1,
+      "operation": "op-1",
+      "source": "runner",
+      "tool": "start_job",
+      "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+      "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+      "registered": {
+       "owner": "worker-a",
+       "epoch": "1",
+       "at": "2026-01-01T00:00:00.000Z"
+      },
+      "state": "unproven"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a job twice",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "jobs": [
+     {
+      "version": 1,
+      "kind": "job",
+      "resource": "run-j",
+      "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+      "generation": 1,
+      "operation": "op-1",
+      "source": "runner",
+      "tool": "start_job",
+      "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+      "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+      "registered": {
+       "owner": "worker-a",
+       "epoch": "1",
+       "at": "2026-01-01T00:00:00.000Z"
+      },
+      "state": "unproven"
+     },
+     {
+      "version": 1,
+      "kind": "job",
+      "resource": "run-j",
+      "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+      "generation": 1,
+      "operation": "op-1",
+      "source": "runner",
+      "tool": "start_job",
+      "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+      "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+      "registered": {
+       "owner": "worker-a",
+       "epoch": "1",
+       "at": "2026-01-01T00:00:00.000Z"
+      },
+      "state": "unproven"
+     }
+    ]
+   }
+  },
+  {
+   "name": "version 2",
+   "record": {
+    "version": 2,
+    "resource": "run-j",
+    "jobs": []
+   }
+  }
+ ]
+}
