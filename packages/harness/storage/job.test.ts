@@ -671,8 +671,9 @@ describe('a cancel asks; only a completion says it stopped (#229)',()=>{
   const first=await drive(held.view,[tools.start,tools.cancel],provider([cancelCall(held.job.job)]).call,{resume:true})
   const asked=first.find(e=>e.type==='approval_requested') as unknown as {callId:string;request?:string;args?:Record<string,unknown>}
   await completeJob(held.store,completion(held.job.job))
-  const events=await drive(held.view,[tools.start,tools.cancel],provider([{say:'x'}]).call,{resume:true,approval:{callId:asked.callId,approved:true,...HELD_PROOF(asked)}})
-  expect(tools.sent).not.toHaveBeenCalled();expect(JSON.stringify(toolResultOf(events))).toContain('JobRefused: job-settled')
+  const next=provider([{say:'x'}])
+  await drive(held.view,[tools.start,tools.cancel],next.call,{resume:true,approval:{callId:asked.callId,approved:true,...HELD_PROOF(asked)}})
+  expect(tools.sent).not.toHaveBeenCalled();expect(next.state.bodies.join('\n')).toContain('JobRefused: job-settled')
   expect((await headRows(held.store)).dispatches.filter(d=>d.tool.includes('cancel_job'))).toEqual([])
  })
  it('R-6: a handle kept as its digest is never sent as the reference: the host gets it as a digest',async()=>{
