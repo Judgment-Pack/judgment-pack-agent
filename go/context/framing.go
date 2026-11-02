@@ -44,7 +44,8 @@ const (
 // MarkerRemoved is what an occurrence of the run's marker inside the data becomes.
 const MarkerRemoved = "[marker removed]"
 
-// DataMarker is a fresh, unguessable marker: 128 random bits, as hex. One per run.
+// DataMarker is a fresh, unguessable marker: 128 random bits, as hex. One per open of a run's context; a
+// tool's offered text under a host that enrolls its offers keeps the one its gate holds (#289).
 func DataMarker() string {
 	var bytes [16]byte
 	if _, err := rand.Read(bytes[:]); err != nil {

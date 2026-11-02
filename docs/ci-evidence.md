@@ -272,7 +272,8 @@ Two changes, neither of which changes a command or a test:
   `plantests` (the prepared-plan, enrollment and native Plan tests), `capturetests` (live capture,
   usage budgets and the native routes that use their fixtures), `reauthtests` (re-authorization, waits
   and runtime actions), `principaltests` (the delegated runs, and the heaviest re-authorization test),
-  `durableapprovaltests`, and `durablewritetests` and `durablewiretests` (durable writes). A test
+  `durableapprovaltests`, `durablewritetests` and `durablewiretests` (durable writes), and
+  `enrollmenttests` (runs under a host that enrolls its offers, #289; its rows run in parallel). A test
   binary cannot import another's test files, so where a cluster divides a family its helpers are
   copied, and say so.
 
@@ -294,7 +295,7 @@ and no evidence is false, but it costs an hour on a release candidate. So the on
 runner of its own. No limit was raised and no test was dropped: both steps are the same `go test` flags,
 under the same 40-minute limit per binary and the same 3,000 s per step.
 
-- **The two steps.** `go-race-a` names its packages. `go-race-b` asks `go list ./context/... ./adapter/...`
+- **The two steps.** `go-race-a` names its packages, `./gate` among them. `go-race-b` asks `go list ./context/... ./adapter/...`
   and takes every package `go-race-a` does not name, so a new package runs, in `go-race-b`, before anyone
   has placed it. `tests/test_release_evidence.py` runs both steps' own text with a stand-in `go`, over this
   tree and over this tree with a package added: together they are the packages of the one pattern, each
@@ -311,6 +312,12 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   | `./adapter/plantests` | 394 | `./adapter/capturetests` | 371 |
   | `./adapter/agent` | 112 | `./adapter`, `./adapter/wire`, `./adapter/turn` | 96 |
   | total | 3,015 | total | 2,718 |
+
+  Two more went to `go-race-a` after that, as the leg with more room. `./adapter/enrollmenttests` (#298) came out
+  of `./adapter/delegate`, whose race run had grown past the binary's 40-minute limit on a slow runner; each of its
+  rows is whole runs through the writer, and none was dropped. Under race it takes 186 s on 16 CPUs and 342 s at
+  `GOMAXPROCS=4`, the hosted runner's size. `./gate` (2 s, #302) was in neither leg: it is outside the pattern
+  `go-race-b` lists, so it is named here and the exclusion does not need it.
 
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
   tests still to come add to that side first. To move a binary to `go-race-a`, name it in that step and in

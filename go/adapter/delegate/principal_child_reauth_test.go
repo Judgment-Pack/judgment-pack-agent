@@ -67,8 +67,7 @@ func newChildHost(t *testing.T) *childHost {
 }
 
 // run drives the parent's delegation through the real coordinator, with the child's gate holding the tools the
-// boundary enrolls. parentFirst is the parent's first turn, and call is what the child calls. A resume enrolls nothing:
-// the reopened parent's quarantined descriptions change, which an enrolling gate refuses.
+// boundary enrolls. parentFirst is the parent's first turn, and call is what the child calls.
 func (f *childHost) run(t *testing.T, view runcontext.RunStore, resume bool, parentFirst func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error, tools []runcontext.HostTool, call, args string) ([]contract.RunEvent, error) {
 	t.Helper()
 	var events []contract.RunEvent
@@ -112,13 +111,6 @@ func (f *childHost) run(t *testing.T, view runcontext.RunStore, resume bool, par
 	})
 	run.Context.Principal = f.principal(0, childAdmit)
 	run.HostTools = tools
-	if resume {
-		// No child starts on a resume, so nothing is enrolled for one.
-		run.Gate = reauthGate(f.resumeFixture.host)
-		run.Children = f.children
-		err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), run)
-		return events, err
-	}
 	parentGate := gate.New(gate.Options{})
 	parentGate.SetOffer(contract.ToolOffer{})
 	run.Gate = parentGate.Calls()
@@ -275,12 +267,22 @@ func TestAChildsGrantIsNotTakenAfterItsResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	childRuns, asked, checks := f.childRuns, f.asked, f.checks.Load()
-	events, err := f.run(t, view, true, nil, tools, "list_context", `{}`)
+	parentCalls := func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+		for _, tool := range request.Tools {
+			if strings.HasPrefix(tool.Description, "list_context:") {
+				_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "parent-wire", Name: tool.Name, Arguments: json.RawMessage(`{}`)})
+				return err
+			}
+		}
+		t.Error("the parent was not offered list_context")
+		return nil
+	}
+	events, err := f.run(t, view, true, parentCalls, tools, "list_context", `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if f.childRuns != childRuns || f.asked != asked || f.checks.Load() != checks {
-		t.Fatalf("the child ran again (%d), asked for a link (%d), or reached the check (%d)", f.childRuns-childRuns, f.asked-asked, f.checks.Load()-checks)
+	if f.childRuns != childRuns || f.asked != asked || f.checks.Load() != checks+1 {
+		t.Fatalf("the child ran again (%d), asked for a link (%d), or the checks moved by %d and not the parent's one", f.childRuns-childRuns, f.asked-asked, f.checks.Load()-checks)
 	}
 	if states := childTaskStates(events); len(states) != 1 || states[0] != "interrupted" {
 		t.Fatalf("the restored child is reported %v", states)
@@ -293,6 +295,7 @@ func TestAChildsGrantIsNotTakenAfterItsResume(t *testing.T) {
 		Durable struct {
 			Dispatches []struct {
 				Kind, Tool, State string
+				Scope             struct{ Task string }
 				Failure           struct{ Outcome string }
 			}
 		}
@@ -300,16 +303,24 @@ func TestAChildsGrantIsNotTakenAfterItsResume(t *testing.T) {
 	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
 		t.Fatal(err)
 	}
-	hosts := 0
-	for _, row := range saved.Durable.Dispatches {
-		if row.Kind == "host" {
-			hosts++
-			if row.Tool != "list_context" || row.State != "unknown" || row.Failure.Outcome != "not-started" {
-				t.Fatalf("the child's row: %+v", row)
+	type row struct {
+		tool, state string
+		child       bool
+	}
+	got := []row{}
+	for _, held := range saved.Durable.Dispatches {
+		if held.Kind == "host" && held.Tool == "list_context" {
+			got = append(got, row{held.Tool, held.State, held.Scope.Task != ""})
+			if held.Scope.Task != "" && held.Failure.Outcome != "not-started" {
+				t.Fatalf("the child's row: %+v", held)
 			}
 		}
 	}
-	if hosts != 1 || f.counted() != 0 {
-		t.Fatalf("host rows %d, counted %d", hosts, f.counted())
+	// The grant goes to nobody: the child's row stays unknown for good, and the parent's own call is a new row.
+	if len(got) != 2 || got[0] != (row{"list_context", "unknown", true}) || got[1] != (row{"list_context", "result", false}) {
+		t.Fatalf("the rows: %+v", got)
+	}
+	if f.counted() != 0 {
+		t.Fatalf("counted %d", f.counted())
 	}
 }

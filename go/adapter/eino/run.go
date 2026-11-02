@@ -120,6 +120,7 @@ func execute(ctx context.Context, run *adapter.Run, observation *observationStat
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
 		RuntimeCalls:      run.Gate,
+		FramingCalls:      adapter.FramingCalls(run),
 		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: rawReasoning.Thinking},
 		Host:              run.Host,
 		Skills:            run.Skills,

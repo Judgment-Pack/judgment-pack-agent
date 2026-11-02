@@ -133,6 +133,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
 		RuntimeCalls:      run.Gate,
+		FramingCalls:      adapter.FramingCalls(run),
 		Agent:             &runcontext.AgentSession{Model: run.Agent.Model, Effort: rawReasoning.Effort},
 		Host:              run.Host,
 		Skills:            run.Skills,

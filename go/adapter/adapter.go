@@ -72,6 +72,8 @@ type Run struct {
 	HostTools []runcontext.HostTool
 	// EnrollContext is an optional trusted-host acknowledgement of the detached final
 	// declarations from the actual contextual session. The host enrolls them with Gate.EnrollContext.
+	// A run opens its context more than once, and each open calls this. With it set, each open frames
+	// with the marker Gate holds, so the gate sees the bytes it enrolled (#289).
 	EnrollContext func(context.Context, ContextOffer) error
 	// Skills are the skills the host declares for the run (ADR-0009), each with the digest the person
 	// approved; the boundary admits, catalogues and loads them. A delegated child's run is handed none.
