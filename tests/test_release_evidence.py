@@ -432,6 +432,9 @@ class Workflows(unittest.TestCase):
         row = next(row for row in json.loads(read('dev.json'))['checks'] if row['name'] == 'go-race')
         self.assertRegex(row['run'], r'^go test -count=1 -race -timeout=\d+m \./context/\.\.\. \./adapter/\.\.\.$')
         self.assertEqual(row['cwd'], 'go')
+        # The adapter's test-only packages are found by these patterns, in go-test too.
+        plain = next(row for row in json.loads(read('dev.json'))['checks'] if row['name'] == 'go-test')
+        self.assertEqual((plain['run'], plain['cwd']), ('go test -count=1 ./...', 'go'))
         mapped = {path for rule in json.loads(read('jpdev.json'))['changed'] if 'go-race' in rule['checks']
                   for path in rule['paths']}
         self.assertEqual(sorted(mapped), ['contract/**', 'corpus/**', 'go/**', 'packages/harness/**'])

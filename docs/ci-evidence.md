@@ -218,12 +218,14 @@ Two changes, neither of which changes a command or a test:
   reuse. No Go test reads either. It needs no build: the scripted server loads the TypeScript through
   Vite's module runner. Its evidence is its own artifact, `ci-evidence-ci-go-race-<attempt>`; its plan,
   its capture and the release's readmission are the job's own, under the same rules.
-- **The test binaries.** `./adapter/plantests` (the prepared-plan, enrollment and native Plan tests)
-  and `./adapter/capturetests` (live capture, usage budgets and the native routes that use their
-  fixtures) are test packages of their own, so that each has its own process and limit and `go test`
-  runs them side by side. `./adapter/...` already selects them. The reauthorization tests, the largest
-  cluster left in `./adapter`, stay there for now, because open pull requests change them and build on
-  their helpers.
+- **The test binaries.** The heaviest clusters are test packages of their own, so that each has its
+  own process and limit and `go test` runs them side by side. `./adapter/...` already selects them:
+  `plantests` (the prepared-plan, enrollment and native Plan tests), `capturetests` (live capture,
+  usage budgets and the native routes that use their fixtures), `reauthtests` (re-authorization, waits
+  and runtime actions), `principaltests` (the delegated runs, and the heaviest re-authorization test),
+  `durableapprovaltests`, and `durablewritetests` and `durablewiretests` (durable writes). A test
+  binary cannot import another's test files, so where a cluster divides a family its helpers are
+  copied, and say so.
 
 So that a binary's time is seen before it reaches its limit, the job prints what each binary took,
 on a failure too (`check.sh`'s summary keeps one line of the step's output), and warns past three
@@ -231,8 +233,7 @@ quarters of the 40-minute limit. That warning is the sign that the next split is
 
 A required check does not change: branch protection requires `DCO` and `contract`. The release
 requires `go-race` by its job name in `.github/ci-evidence.json`, as it required the step inside
-`check`. The first hosted run of the new job took 2,017 s, `./adapter` 1,937 s of it: 81 percent of the
-limit, past the warning, so #254 stays open for the reauthorization tests' own binary.
+`check`. Hosted times per binary are printed by the job, and are in the pull requests of #254.
 
 ## The release
 
