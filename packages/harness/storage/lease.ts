@@ -1,8 +1,9 @@
-import {AIFailureError,failure} from '../failures'
+import {AIFailureError,authoredFailure,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {storageId} from './common'
 import {StorageConformanceFailure} from './conformance'
+import {principalBinding,sameBinding,validPrincipalBinding,type PrincipalBinding,type PrincipalRecord} from '../principal'
 import type {StorageRevision} from './common'
 import type {RunCommit,RunReceipt,RunStore} from './run'
 import type {ChatEntry,ChatPatch,ChatStore} from './chat'
@@ -10,7 +11,9 @@ import type {ContextSnapshotHead,ContextSnapshotUpdate,HistoryRunStore,RunHistor
 /* Run leases and fencing (ADR-0025 decision 1, #223; contract/schemas/run-lease.json).
  * The vocabulary is the ADR's: a lease has an owner, an authoritative expiry decided by the store clock and an exact,
  * monotonically increasing epoch. The fence ({resource, owner, epoch}) is the evidence presented at every checkpoint
- * commit and checked by the effect host at every admission. A lease grants neither tool permission nor approval. */
+ * commit and checked by the effect host at every admission. A lease grants neither tool permission nor approval.
+ * A delegated run's lease is version 2 and holds the run's principals (ADR-0029): leases bound time and delegations bound
+ * authority, and a takeover is a new epoch of the same subject and root actor, never a change of principal. */
 export const LEASE_RECORD_VERSION=1 as const
 /** The largest epoch: 18 decimal digits, exact in a signed 64-bit integer and never carried as a JSON number. */
 export const LEASE_EPOCH_MAX='999999999999999999'
@@ -18,12 +21,12 @@ export const LEASE_EPOCH_MAX='999999999999999999'
 export const LEASE_DURATION_MAX_MS=86_400_000
 export type LeaseEpoch=string
 export type LeaseLifetime='durable'|'process'
-export interface RunLease {version:1;resource:string;owner:string;epoch:LeaseEpoch;expiry:string;state:'held'|'released'}
-export interface LeaseFence {version:1;resource:string;owner:string;epoch:LeaseEpoch}
-export interface LeaseAcquire {resource:string;owner:string;expectedRevision:StorageRevision|null;durationMs:number}
-export type LeaseRefusalReason='invalid'|'no-lease'|'held'|'revision-changed'|'stale-epoch'|'other-owner'|'expired'|'released'|'epoch-exhausted'|'resource-mismatch'|'already-admitted'
+export interface RunLease {version:1|2;resource:string;owner:string;epoch:LeaseEpoch;expiry:string;state:'held'|'released';principal?:PrincipalBinding}
+export interface LeaseFence {version:1|2;resource:string;owner:string;epoch:LeaseEpoch;principal?:PrincipalBinding}
+export interface LeaseAcquire {resource:string;owner:string;expectedRevision:StorageRevision|null;durationMs:number;principal?:PrincipalBinding}
+export type LeaseRefusalReason='invalid'|'no-lease'|'held'|'revision-changed'|'stale-epoch'|'other-owner'|'expired'|'released'|'epoch-exhausted'|'resource-mismatch'|'already-admitted'|'principal-changed'
 export type LeaseCapabilityReason='store-unsupported'|'store-lifetime'|'effect-host-unfenced'
-export const LEASE_REFUSAL_REASONS:readonly LeaseRefusalReason[]=['invalid','no-lease','held','revision-changed','stale-epoch','other-owner','expired','released','epoch-exhausted','resource-mismatch','already-admitted']
+export const LEASE_REFUSAL_REASONS:readonly LeaseRefusalReason[]=['invalid','no-lease','held','revision-changed','stale-epoch','other-owner','expired','released','epoch-exhausted','resource-mismatch','already-admitted','principal-changed']
 export const LEASE_CAPABILITY_REASONS:readonly LeaseCapabilityReason[]=['store-unsupported','store-lifetime','effect-host-unfenced']
 /** A named lease or fence refusal. Nothing was committed or admitted, except already-admitted: an effect host admitted
  * that idempotency identity before, so its outcome is unknown and it is never performed again. */
@@ -54,13 +57,17 @@ export function compareLeaseEpochs(a:LeaseEpoch,b:LeaseEpoch):-1|0|1{if(!validLe
 const validExpiry=(value:unknown):value is string=>{if(typeof value!=='string'||!EXPIRY.test(value))return false;const ms=Date.parse(value);return Number.isSafeInteger(ms)&&new Date(ms).toISOString()===value}
 function expiryAt(ms:number):string{const text=Number.isSafeInteger(ms)?new Date(ms).toISOString():'';return validExpiry(text)?text:invalid()}
 const requireDuration=(value:unknown):number=>Number.isSafeInteger(value)&&Number(value)>=1&&Number(value)<=LEASE_DURATION_MAX_MS?Number(value):invalid()
+/** Version 1 names no principal; version 2 (ADR-0029) names exactly the run's. */
+const principalOf=(value:Record<string,unknown>):PrincipalBinding|undefined=>value.version===2?(validPrincipalBinding(value.principal)?{sub:{...value.principal.sub},rootActor:value.principal.rootActor,host:value.principal.host}:invalid()):undefined
 export function readLeaseFence(value:unknown):LeaseFence{
- if(!object(value)||!exact(value,['version','resource','owner','epoch'])||value.version!==1||!storageId(value.resource)||!storageId(value.owner)||!validLeaseEpoch(value.epoch))return invalid()
- return {version:1,resource:value.resource,owner:value.owner,epoch:value.epoch}
+ if(!object(value)||!exact(value,value.version===2?['version','resource','owner','epoch','principal']:['version','resource','owner','epoch'])||value.version!==1&&value.version!==2||!storageId(value.resource)||!storageId(value.owner)||!validLeaseEpoch(value.epoch))return invalid()
+ const principal=principalOf(value)
+ return {version:value.version,resource:value.resource,owner:value.owner,epoch:value.epoch,...(principal?{principal}:{})}
 }
 export function readRunLease(value:unknown):RunLease{
- if(!object(value)||!exact(value,['version','resource','owner','epoch','expiry','state'])||value.version!==1||!storageId(value.resource)||!storageId(value.owner)||!validLeaseEpoch(value.epoch)||!validExpiry(value.expiry)||value.state!=='held'&&value.state!=='released')return invalid()
- return {version:1,resource:value.resource,owner:value.owner,epoch:value.epoch,expiry:value.expiry,state:value.state}
+ if(!object(value)||!exact(value,value.version===2?['version','resource','owner','epoch','expiry','state','principal']:['version','resource','owner','epoch','expiry','state'])||value.version!==1&&value.version!==2||!storageId(value.resource)||!storageId(value.owner)||!validLeaseEpoch(value.epoch)||!validExpiry(value.expiry)||value.state!=='held'&&value.state!=='released')return invalid()
+ const principal=principalOf(value)
+ return {version:value.version,resource:value.resource,owner:value.owner,epoch:value.epoch,expiry:value.expiry,state:value.state,...(principal?{principal}:{})}
 }
 export function readLeaseRefusal(value:unknown):{version:1;reason:LeaseRefusalReason}{
  if(!object(value)||!exact(value,['version','reason'])||value.version!==1||!LEASE_REFUSAL_REASONS.includes(value.reason as LeaseRefusalReason))return invalid()
@@ -70,7 +77,7 @@ export function readLeaseCapabilityRefusal(value:unknown):{version:1;reason:Leas
  if(!object(value)||!exact(value,['version','reason'])||value.version!==1||!LEASE_CAPABILITY_REASONS.includes(value.reason as LeaseCapabilityReason))return invalid()
  return {version:1,reason:value.reason as LeaseCapabilityReason}
 }
-export const fenceOf=(lease:RunLease):LeaseFence=>({version:1,resource:lease.resource,owner:lease.owner,epoch:lease.epoch})
+export const fenceOf=(lease:RunLease):LeaseFence=>({version:lease.version,resource:lease.resource,owner:lease.owner,epoch:lease.epoch,...(lease.principal?{principal:{...lease.principal,sub:{...lease.principal.sub}}}:{})})
 
 /** The lease port a store kind implements once per resource kind (desk #609). Every transition is atomic and checked
  * against the store's own clock; a caller's clock never extends a lease. */
@@ -78,7 +85,11 @@ export interface LeaseStore {
  readonly leaseVersion:1
  /** durable: leases and epochs survive the store's process. process: they end with it (memory test kinds). */
  readonly leaseLifetime:LeaseLifetime
- /** Compares expectedRevision with the resource's current revision. Refuses held while an unexpired lease is held. */
+ /** ADR-0029: true for a store that holds a run's principals on its leases and refuses principal-changed; a store that does not cannot host a delegated run's lease. */
+ readonly leasePrincipals?:true
+ /** Compares expectedRevision with the resource's current revision. Refuses held while an unexpired lease is held. Binds
+  * the resource to request.principal at its first lease and keeps that binding across release, expiry and restart: another
+  * subject or root actor, or none where one is bound, or one where none is, refuses principal-changed. */
  acquireLease(request:LeaseAcquire,signal?:AbortSignal):Promise<RunLease>
  /** Current owner and epoch only, before expiry. An expired lease is never revived. */
  renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>
@@ -111,12 +122,14 @@ export class LeaseTable {
  /** `ceiling` (#225, store-clock milliseconds): the latest the lease may expire, the run's deadline or an approval's
   * expiry; the caller refuses before it when the ceiling is not after the store's time. */
  acquire(request:LeaseAcquire,currentRevision:StorageRevision|null,ceiling?:number):RunLease{
-  if(!object(request)||!exact(request,['resource','owner','expectedRevision','durationMs'])||!storageId(request.resource)||!storageId(request.owner)||request.expectedRevision!==null&&!storageId(request.expectedRevision))return invalid()
+  if(!object(request)||!exact(request,request.principal===undefined?['resource','owner','expectedRevision','durationMs']:['resource','owner','expectedRevision','durationMs','principal'])||!storageId(request.resource)||!storageId(request.owner)||request.expectedRevision!==null&&!storageId(request.expectedRevision)||request.principal!==undefined&&!validPrincipalBinding(request.principal))return invalid()
   const duration=requireDuration(request.durationMs),now=this.now()
   if(request.expectedRevision!==currentRevision)throw new LeaseRefused('revision-changed')
   const row=this.rows.get(request.resource)
   if(row&&row.state==='held'&&now<Date.parse(row.expiry))throw new LeaseRefused('held')
-  const lease:RunLease={version:1,resource:request.resource,owner:request.owner,epoch:nextLeaseEpoch(row?.epoch),expiry:expiryAt(Math.min(now+duration,ceiling??Infinity)),state:'held'}
+  // ADR-0029: a takeover is a new epoch of the same principals, never a change of principal.
+  if(row&&!sameBinding(row.principal,request.principal))throw new LeaseRefused('principal-changed')
+  const lease:RunLease={version:request.principal?2:1,resource:request.resource,owner:request.owner,epoch:nextLeaseEpoch(row?.epoch),expiry:expiryAt(Math.min(now+duration,ceiling??Infinity)),state:'held',...(request.principal?{principal:{...request.principal,sub:{...request.principal.sub}}}:{})}
   this.rows.set(lease.resource,lease);return {...lease}
  }
  /** Throws the named reason unless the fence is current: this epoch, this owner, held and unexpired by the store clock.
@@ -126,6 +139,7 @@ export class LeaseTable {
   if(!row)throw new LeaseRefused('no-lease')
   if(row.epoch!==held.epoch)throw new LeaseRefused('stale-epoch')
   if(row.owner!==held.owner)throw new LeaseRefused('other-owner')
+  if(!sameBinding(row.principal,held.principal))throw new LeaseRefused('principal-changed')
   if(row.state==='released')throw new LeaseRefused('released')
   if(now>=Date.parse(row.expiry))throw new LeaseRefused('expired')
   return row
@@ -338,6 +352,14 @@ async function exerciseEffectHost(host:EffectHost,kit:KitAuthority):Promise<void
   kit.table.release(b)
   await refuses('host.released',effectAdmission(b,op('op-9')),'released')
   if(performed!==1)fail('host.performed-once')
+  // ADR-0029: the host hands the whole fence to its authority, so a delegated run's lease holds its principals at admission.
+  const sub={kind:'person' as const,issuer:'https://kit.example/',subject:'kit-subject'}
+  const principal={sub,rootActor:'b1'.repeat(16),host:'kit-host'},held=fenceOf(kit.table.acquire({resource:'host-delegated',owner:'worker-a',expectedRevision:null,durationMs:1000,principal},null))
+  if(await host.dispatch(effectAdmission(held,op('op-10','host-delegated')),perform)!=='performed'||performed!==2)fail('host.principal.admit')
+  await refuses('host.principal.other-actor',effectAdmission({...held,principal:{...principal,rootActor:'b2'.repeat(16)}},op('op-11','host-delegated')),'principal-changed')
+  await refuses('host.principal.other-subject',effectAdmission({...held,principal:{...principal,sub:{...sub,subject:'other'}}},op('op-12','host-delegated')),'principal-changed')
+  await refuses('host.principal.none',effectAdmission({version:1,resource:held.resource,owner:held.owner,epoch:held.epoch},op('op-13','host-delegated')),'principal-changed')
+  if(performed!==2)fail('host.principal.performed-once')
  }catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('host.operation')}
 }
 /** #223 review, #253: the effect-host conformance. The kit owns the lease authority it hands the factory and moves its
@@ -389,6 +411,8 @@ export function fencedRunStore(store:RunStore,fence:LeaseFence,effectHost?:Effec
  if(lease.leaseVersion!==1||typeof lease.commitFenced!=='function'||store.durability==='single-writer-callback'||lease.historyVersion===1&&(typeof lease.commitHistoryFenced!=='function'||typeof lease.commitContextSnapshotFenced!=='function'))throw new LeaseCapabilityRefused('store-unsupported')
  if(effectHost!==undefined&&effectHost.effectFencing!=='enforced')throw new LeaseCapabilityRefused('effect-host-unfenced')
  const held=readLeaseFence(fence)
+ // ADR-0029: a store that does not keep a lease's principals cannot host a delegated run's lease.
+ if(held.principal&&lease.leasePrincipals!==true)throw new LeaseCapabilityRefused('store-unsupported')
  const view:Record<string,unknown>={durability:store.durability,load:bind(store,'load'),readEvents:bind(store,'readEvents'),commit:(input:RunCommit,signal?:AbortSignal)=>lease.commitFenced!(input,held,signal)}
  if(lease.historyVersion===1){view.historyVersion=1;for(const name of HISTORY_METHODS)view[name]=bind(store,name);view.commitHistory=(input:RunHistoryCommit,signal?:AbortSignal)=>lease.commitHistoryFenced!(input,held,signal);view.commitContextSnapshot=(input:ContextSnapshotUpdate,commitId:string,signal?:AbortSignal)=>lease.commitContextSnapshotFenced!(input,commitId,held,signal)}
  Object.freeze(view);leased.set(view,{fence:held,store,...(effectHost?{effectHost}:{})})
@@ -416,6 +440,12 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
 }
 /** admitUnattended, then the fenced view the unattended run uses as its RunStore. */
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}
+/** @internal ADR-0029: a fenced store's lease holds the run's principals: a lease of others, a delegated run's without
+ * them or an undelegated run's with them dispatches nothing. */
+export function holdLeasePrincipal(store:RunStore,record:PrincipalRecord|undefined):void{
+ const fence=leased.get(store)?.fence
+ if(fence&&!sameBinding(fence.principal,record?principalBinding(record):undefined))throw authoredFailure('stale-state',"The run's lease holds other principals than the run (principal-changed). Nothing was sent.",'context')
+}
 /** @internal The writer's admission of one non-read effect under the fence of the store it writes through. #226: the
  * admission handed to the effect host is in flight while its dispatch runs; a re-authorization refusal minted for it, once,
  * before anything was performed, that the dispatch rejects with, from an effect host proven for the run's store, is

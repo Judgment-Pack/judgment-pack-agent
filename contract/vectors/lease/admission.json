@@ -1,5 +1,5 @@
 {
-  "description": "Handwritten effect admissions. The idempotency key is the SHA-256 of the canonical JSON of the operation alone (run, operation, source, tool, requestDigest), so the admission under the first epoch and the takeover's under the second carry the same key. A key that does not match its operation is refused.",
+  "description": "Handwritten effect admissions. The idempotency key is the SHA-256 of the canonical JSON of the operation alone (run, operation, source, tool, requestDigest), so the admission under the first epoch and the takeover's under the second carry the same key. A key that does not match its operation is refused. A delegated run's admission presents a version 2 fence; the key is the same, since it names no principal and no epoch.",
   "schema": "run-lease.json#/$defs/effectAdmission",
   "source": {
     "harness": {
@@ -36,6 +36,32 @@
         "resource": "run-alpha",
         "owner": "worker-b",
         "epoch": "2"
+      },
+      "operation": {
+        "run": "run-alpha",
+        "operation": "claim-0001",
+        "source": "host",
+        "tool": "send_report",
+        "requestDigest": "sha256:abababababababababababababababababababababababababababababababab"
+      },
+      "idempotencyKey": "sha256:36d1a824c16c87d04011038e66175f7fcc49697228dd653ca28fb2d057b1dca6"
+    },
+    {
+      "version": 1,
+      "fence": {
+        "version": 2,
+        "resource": "run-alpha",
+        "owner": "worker-a",
+        "epoch": "1",
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        }
       },
       "operation": {
         "run": "run-alpha",

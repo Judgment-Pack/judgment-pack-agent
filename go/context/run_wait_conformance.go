@@ -24,7 +24,7 @@ type WaitStoreFactory func(now func() time.Time, restart WaitRunStore) WaitRunSt
 const kitApproval = `{"callId":"call-1","name":"tracker__create_issue","tool":"create_issue","source":{"kind":"mcp","id":"tracker","trust":"public","toolListDigest":"sha256:71a65542f0fc25b85f4458bef0b54a2b11d921be4d6ca8cf3c9dc215cd790820","tool":"create_issue"},"args":{"title":"Mileage"},"state":"asked"}`
 
 // kitKeys: one key per wait (#265 M1).
-var kitKeys = map[string]string{"a": "kit.wait-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "b": "kit.wait-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "c": "kit.wait-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4"}
+var kitKeys = map[string]string{"a": "kit.wait-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "b": "kit.wait-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "c": "kit.wait-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "d": "kit.wait-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8"}
 
 func kitReason(err error) string {
 	var wait *WaitRefused
@@ -66,7 +66,8 @@ func kitCheckpoint(change func(map[string]any)) []byte {
 // the claim's refresh (required; the parked principal; permissions after the refresh that cover the operation;
 // taken after the park and not after the store's time), the run's unsettled approval binding and expiry the
 // store attaches (the claim's lease bounded by it, refused from it, and LimitRun keeping it), the timeout and
-// the deadline wake of a reauthorization wait (each terminal), and each across restarts. It returns a
+// the deadline wake of a reauthorization wait (each terminal), and each across restarts; with LeasePrincipals
+// (ADR-0029), the principals a delegated run's wait pins, its claim and a later takeover keep. It returns a
 // StorageConformanceFailure naming the first property broken.
 func CheckRunStoreWaitConformance(ctx context.Context, create WaitStoreFactory) (err error) {
 	defer func() {
@@ -359,6 +360,65 @@ func waitConformance(ctx context.Context, create WaitStoreFactory) (err error) {
 	check("wait.restart.earliest", err == nil && limited.Run == iso(5*time.Hour+10*time.Minute))
 	_, err = store.WakeWait(ctx, decision("wait-b", kitKeys["a"], "decision-x"))
 	refuses("wait.restart.key", err, "unauthenticated")
+
+	// ADR-0029: a store that declares it keeps a delegated run's principals with the wait and the lease,
+	// across a restart: the wait's pins hold them, its claim is a lease of the same principals, and a
+	// later takeover keeps them.
+	if keeps, ok := any(store).(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
+		principal := PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+		otherActor, otherSubject := principal, principal
+		otherActor.RootActor = strings.Repeat("b2", 16)
+		otherSubject.Sub.Subject = "other"
+		same := func(held *PrincipalBinding) bool { return SamePrincipalBinding(held, &principal) }
+		receipt, err := store.Commit(ctx, RunCommit{RunID: "wait-p", CommitID: "wait-p-open", Checkpoint: asked})
+		check("wait.open", err == nil)
+		held, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "wait-p", Owner: "worker-a", ExpectedRevision: receipt.Revision, DurationMs: hour, Principal: &principal})
+		check("wait.principal.lease", err == nil && held.Version == 2 && same(held.Principal))
+		delegatedPins := pins
+		delegatedPins.Principal = &principal
+		delegatedDigest, err := PinsDigest(delegatedPins)
+		check("wait.fixture", err == nil)
+		park := parkOf("wait-p", receipt.Revision, kitKeys["d"], 4*hour, true)
+		park.Pins = delegatedPins
+		_, _, err = store.ParkWait(ctx, park, FenceOf(held))
+		check("wait.principal.park", err == nil)
+		parked := readWait("wait-p")
+		check("wait.principal.pinned", parked != nil && same(parked.Pins.Principal))
+		restart("wait.restart.principal")
+		parked = readWait("wait-p")
+		check("wait.restart.principal", parked != nil && same(parked.Pins.Principal))
+		_, err = store.WakeWait(ctx, decision("wait-p", kitKeys["d"], "decision-1"))
+		check("wait.principal.wake", err == nil)
+		claimP := func(owner string, binding *PrincipalBinding) WaitClaim {
+			base := claim("wait-p", "decision-1", owner, receipt.Revision)
+			base.Lease.Principal = binding
+			base.Revalidation.Pins = delegatedDigest
+			return base
+		}
+		_, _, err = store.ResumeWait(ctx, claimP("worker-b", &otherActor))
+		refuses("wait.principal.claim-actor", err, "principal-changed")
+		_, _, err = store.ResumeWait(ctx, claimP("worker-b", &otherSubject))
+		refuses("wait.principal.claim-subject", err, "principal-changed")
+		_, _, err = store.ResumeWait(ctx, claimP("worker-b", nil))
+		refuses("wait.principal.claim-none", err, "principal-changed")
+		parked = readWait("wait-p")
+		check("wait.principal.claim-unchanged", parked != nil && parked.State == "woken")
+		resumed, lease, err := store.ResumeWait(ctx, claimP("worker-b", &principal))
+		check("wait.principal.claim", err == nil && resumed.State == "resumed" && lease.Version == 2 && same(lease.Principal) && lease.Epoch == "2")
+		fence := FenceOf(lease)
+		forged := fence
+		forged.Principal = &otherActor
+		refuses("wait.principal.fence", store.CheckFence(ctx, forged), "principal-changed")
+		done, err := commitWith("wait-p", receipt.Revision, "wait-p-done", func(m map[string]any) { m["state"] = "executed" }, &fence)
+		check("wait.principal.commit", err == nil)
+		_, err = store.ReleaseLease(ctx, fence)
+		check("wait.principal.release", err == nil)
+		restart("wait.restart.principal-lease")
+		_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "wait-p", Owner: "worker-c", ExpectedRevision: done.Revision, DurationMs: hour, Principal: &otherActor})
+		refuses("wait.restart.principal-takeover", err, "principal-changed")
+		kept, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "wait-p", Owner: "worker-c", ExpectedRevision: done.Revision, DurationMs: hour, Principal: &principal})
+		check("wait.restart.principal-kept", err == nil && kept.Epoch == "3")
+	}
 	return nil
 }
 

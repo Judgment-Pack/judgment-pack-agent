@@ -124,8 +124,8 @@ func TestLeaseSharedVectorsBothReaders(t *testing.T) {
 		}
 		keys = append(keys, key)
 	}
-	if len(keys) != 2 || keys[0] != keys[1] {
-		t.Fatalf("the takeover's key changed with the epoch: %v", keys)
+	if len(keys) != 3 || keys[0] != keys[1] || keys[0] != keys[2] {
+		t.Fatalf("the key changed with the epoch or the principals: %v", keys)
 	}
 	for _, row := range admissions.Refused {
 		problem, admission := refusedMember(t, row, "admission")

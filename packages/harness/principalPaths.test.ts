@@ -17,7 +17,7 @@ import type {AgentAssistantSession,AssistantEvent,AssistantSession,EngineSession
 import type {AgentRun} from './agent'
 import {answerWith} from './testing/scenarioDriver'
 import {declareSources,toolListDigest} from './toolSources'
-import {holdsDelegation,openPrincipal,requireOpenedPrincipal,type AdmissionAnswer,type AdmissionRead,type RunPrincipal} from './principal'
+import {holdsDelegation,openPrincipal,requireOpenedPrincipal,type AdmissionAnswer,type AdmissionRead,type ChildLinkRequest,type RunPrincipal} from './principal'
 import {normalize} from './thinking'
 import {configureHarness} from './host'
 import {testHost} from './testing/host'
@@ -25,6 +25,9 @@ import {testHost} from './testing/host'
 beforeEach(()=>configureHarness(testHost()))
 const T='2026-10-30T01:00:00.000Z',LATE='2026-10-30T08:00:00.000Z'
 const REVOKED:AdmissionAnswer={admission:'refuse',refusal:'revoked'},ADMIT:AdmissionAnswer={admission:'admit'}
+const CHILD_CHAIN=JSON.stringify(chains.items[1])
+/** The host's child port, answering the narrowed link. */
+const withChild=(given:RunPrincipal,asked:ChildLinkRequest[]=[]):RunPrincipal=>({...given,child:request=>{asked.push(request);return {chain:CHILD_CHAIN}}})
 const principal=(reads:AdmissionRead[],{now=T,answer=ADMIT,chain=0}:{now?:string;answer?:AdmissionAnswer|((read:AdmissionRead)=>AdmissionAnswer);chain?:number}={}):RunPrincipal=>({chain:JSON.stringify(chains.items[chain]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(now),admission:read=>{reads.push(read);return typeof answer==='function'?answer(read):answer}})
 
 describe('an acting Runtime call under a delegation',()=>{
@@ -304,10 +307,11 @@ describe('a run resumed at its handoff',()=>{
    const steps={taskSteps:true}
    it('dispatches nothing once the delegation is revoked',async()=>{
     const store=new MemoryRunStore(),ran:string[]=[],seen:string[]=[],reads:AdmissionRead[]=[],tools=[await noteTool(ran)],id=`steps-${state}`
-    const saved=await stopped(id,state,store,principal(reads),tools,steps)
+    const saved=await stopped(id,state,store,withChild(principal(reads)),tools,steps)
     expect(saved.handoff?.state).toBe(state)
-    await collect(root(store,id,second(seen),tools,principal(reads,{answer:REVOKED}),true,steps))
+    await collect(root(store,id,second(seen),tools,withChild(principal(reads,{answer:REVOKED})),true,steps))
     expect(ran).toEqual([])
+    expect(seen).toEqual([])
    },30_000)
    for(const [label,next] of [['another subject',4],['no delegation at all',undefined]] as const)it(`starts no child under ${label}`,async()=>{
     const store=new MemoryRunStore(),ran:string[]=[],seen:string[]=[],reads:AdmissionRead[]=[],tools=[await noteTool(ran)],id=`steps-${state}-${next}`
@@ -327,15 +331,20 @@ describe('a run resumed at its handoff',()=>{
    }
    it('dispatches nothing once the delegation is revoked, by name',async()=>{
     const store=new MemoryRunStore(),ran:string[]=[],seen:string[]=[],reads:AdmissionRead[]=[],tools=[await noteTool(ran)],id=`revoked-${state}-${carried}`
-    await stopped(id,state,store,principal(reads),tools)
+    await stopped(id,state,store,withChild(principal(reads)),tools)
     expect(ran).toEqual([])
     const before=reads.length
-    const events=await resume(id,store,tools,seen,principal(reads,{answer:REVOKED}))
+    const asked:ChildLinkRequest[]=[]
+    const events=await resume(id,store,tools,seen,withChild(principal(reads,{answer:REVOKED}),asked))
     expect(ran).toEqual([])
     expect(events.filter(e=>e.type==='error'&&/ContinuationNotRecoverable/.test(e.message))).toEqual([])
-    expect(seen).toEqual(['child'])
-    expect(reads.at(-1)?.chain).toEqual(reads[0]?.chain)
+    expect(seen).toEqual([])
     expect(reads.length).toBeGreaterThan(before)
+    // The child port is not asked of a delegation that no longer stands, and the refusal is recorded and told to the parent.
+    expect(asked).toEqual([])
+    expect(events.filter(e=>e.type==='guardrail'&&e.reason==='delegation refused').map(e=>(e as {refusal?:{name:string}}).refusal?.name)).toContain('revoked')
+    const last=[...events].reverse().find(e=>e.type==='delegated_task') as Extract<AssistantEvent,{type:'delegated_task'}>
+    expect(last.task).toMatchObject({state:'failed',problem:expect.stringContaining('revoked'),failure:{code:'permission',outcome:'not-started'}})
    },30_000)
    for(const [label,next] of [['another subject',4],['no delegation at all',undefined]] as const)it(`starts no child under ${label}, and names principal-changed`,async()=>{
     const store=new MemoryRunStore(),ran:string[]=[],seen:string[]=[],reads:AdmissionRead[]=[],tools=[await noteTool(ran)],id=`other-${state}-${carried}-${next}`

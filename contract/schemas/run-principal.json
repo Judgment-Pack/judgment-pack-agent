@@ -378,7 +378,7 @@
       ]
     },
     "refusal": {
-      "description": "A named refusal of a delegated run. Verification of the chain (when the run starts, and of a child's chain when it is handed one): malformed, unsupported-version, key-mismatch, signature-mismatch, chain-broken, widened, and software-mismatch where the leaf's software is not the run's. Admission of a call, immediately before dispatch and with counting unset before an approval pause: not-yet-valid and expired at the host's time; the host admission port's agent-unregistered, software-mismatch, not-issued, revoked, subject-mismatch, subject-unauthorized and out-of-scope (limit); the package's own out-of-scope; admission-unknown where the port gave no valid answer in time or the host's time could not be read. A resume or takeover under another subject or root actor: principal-changed. reason is present exactly for out-of-scope.",
+      "description": "A named refusal of a delegated run. Verification of the chain (when the run starts, and of a child's chain when it is handed one): malformed, unsupported-version, key-mismatch, signature-mismatch, chain-broken, widened, and software-mismatch where the leaf's software is not the run's. Admission of a call, immediately before dispatch and with counting unset before an approval pause: not-yet-valid and expired at the host's time; the host admission port's agent-unregistered, software-mismatch, not-issued, revoked, subject-mismatch, subject-unauthorized and out-of-scope (limit); the package's own out-of-scope; admission-unknown where the port gave no valid answer in time or the host's time could not be read. A resume or takeover under another subject or root actor: principal-changed. A delegated child: delegation-not-permitted below a link that permits none or with no child port, not-parent-actor where the issuing host answers so, chain-broken for a chain that is not the parent's with one link below it, widened for a wider link. reason is present exactly for out-of-scope.",
       "type": "object",
       "required": [
         "name"
@@ -402,7 +402,9 @@
             "subject-mismatch",
             "subject-unauthorized",
             "admission-unknown",
-            "principal-changed"
+            "principal-changed",
+            "delegation-not-permitted",
+            "not-parent-actor"
           ]
         },
         "reason": {
@@ -531,6 +533,118 @@
             },
             "reason": {
               "$ref": "#/$defs/scopeReason"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "binding": {
+      "description": "The principals a delegated run's lease and wait hold, in the form of the reference gateway's reservation scope: the chain's subject, the root link's agent and the issuing host. A takeover or a resume is a new epoch of the same binding, never a change of principal (RFC 0030 §7 rule 2).",
+      "type": "object",
+      "required": [
+        "sub",
+        "rootActor",
+        "host"
+      ],
+      "properties": {
+        "sub": {
+          "$ref": "#/$defs/principalReference"
+        },
+        "rootActor": {
+          "$ref": "#/$defs/opaqueIdentifier"
+        },
+        "host": {
+          "$ref": "#/$defs/flatToken"
+        }
+      },
+      "additionalProperties": false
+    },
+    "childLinkRequest": {
+      "description": "What the package asks the host's child port for one delegated child (RFC 0030 §3): the issuing host, the parent's chain, the task, its profile, and the tools with a source the child is offered. The model never names or supplies the link.",
+      "type": "object",
+      "required": [
+        "readVersion",
+        "host",
+        "chain",
+        "task",
+        "profile",
+        "tools"
+      ],
+      "properties": {
+        "readVersion": {
+          "const": "1"
+        },
+        "host": {
+          "$ref": "#/$defs/flatToken"
+        },
+        "chain": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "task": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "tool"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tool": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "childLinkAnswer": {
+      "description": "The child port's answer, exactly one of two forms: the child's whole chain as JSON text (the parent's, and the link the issuing host issued below it), which the package verifies by steps 1 to 7 and holds to exactly one link below the parent's; or the host's refusal. Anything else, a throw or no answer within five seconds refuses the child as admission-unknown.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "chain"
+          ],
+          "properties": {
+            "chain": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "refusal"
+          ],
+          "properties": {
+            "refusal": {
+              "enum": [
+                "delegation-not-permitted",
+                "not-parent-actor"
+              ]
             }
           },
           "additionalProperties": false

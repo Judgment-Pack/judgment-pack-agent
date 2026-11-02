@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect,isNeverAdmittedFailure,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
+import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {readingTool} from '../framing'
 import {canonicalJSON} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -845,6 +845,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  const config=input?.runStore
  // ADR-0029: a durable root's delegation is refused, by name, before its store is touched, and a resume under other principals is refused by name before anything of it is bound.
  const delegation=config&&input?.principal?await openRunPrincipal(input.principal):undefined
+ if(config)holdLeasePrincipal(config.store,delegation?.record)
  if(input?.usageBudget&&(!config||config.store.durability==='single-writer-callback'))throw new UsageBudgetUnsupported()
  if(input?.checkpoint&&checkpointProfiles.has(input.checkpoint)){if(input.execution?.durable)throw new ContinuationNotRecoverable();return session}
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
