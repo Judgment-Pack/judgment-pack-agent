@@ -145,7 +145,7 @@ describe('a durable approval wait across a new process over the same store (#224
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'another-call',approved:true}})).rejects.toEqual(refusal('decision-required'))
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
   // #275: a digest that is not one is no decision; refused before anything is claimed, as the continuation would refuse it.
-  for(const shownDigest of ['not a digest','sha256:'+'A'.repeat(64),7])await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,shownDigest} as never})).rejects.toEqual(refusal('decision-required'))
+  for(const approved of [true,false])for(const shownDigest of ['not a digest','sha256:'+'A'.repeat(64),7])await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved,shownDigest} as never})).rejects.toEqual(refusal('decision-required'))
   // An acknowledgement the store does not hold is reconciled by reading, never by dispatching.
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-unseen',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('unacknowledged'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})

@@ -578,6 +578,11 @@ func TestWaitResumeNeedsTheDecisionAndANewLease(t *testing.T) {
 		i, malformed := input, "sha256:"+strings.Repeat("A", 64)
 		i.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true, ShownDigest: &malformed}
 		return i
+	}(), func() ResumeInput {
+		// A person's refusal needs no digest, and one that is not a digest is still no decision.
+		i, malformed := input, "sha256:"+strings.Repeat("A", 64)
+		i.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: false, ShownDigest: &malformed}
+		return i
 	}()} {
 		if _, err := ResumeParked(ctx, withCurrent(t, bad)); waitReasonOf(err) != "decision-required" {
 			t.Fatalf("decision: %v", err)
