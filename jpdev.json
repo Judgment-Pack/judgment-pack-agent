@@ -22,7 +22,8 @@
         "certify-deepagents",
         "differential",
         "go-test",
-        "go-race",
+        "go-race-a",
+        "go-race-b",
         "harness-check",
         "parity"
       ]
@@ -60,7 +61,8 @@
         "certify-deepagents",
         "go-generate",
         "go-test",
-        "go-race",
+        "go-race-a",
+        "go-race-b",
         "harness-check"
       ]
     },
@@ -84,7 +86,8 @@
         "go-vet",
         "go-generate",
         "go-test",
-        "go-race",
+        "go-race-a",
+        "go-race-b",
         "harness-check"
       ]
     },
@@ -104,7 +107,8 @@
         "certify-codex",
         "certify-deepagents",
         "go-test",
-        "go-race",
+        "go-race-a",
+        "go-race-b",
         "harness-check"
       ]
     },
