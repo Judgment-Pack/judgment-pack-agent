@@ -1,16 +1,17 @@
 name: CI
 
-# The check list is dev.json, run by scripts/dev/check.sh (the devkit's vendored runner). Three jobs
+# The check list is dev.json, run by scripts/dev/check.sh (the devkit's vendored runner). Four jobs
 # divide it between them, each check run once: `contract`, which branch protection requires by
-# name, runs the four cheap steps on every event; `go-race` runs the race step on a runner of its
-# own (#254: it was more than half of the time of one job); `check` sets the toolchains up from the
-# manifest and runs every other step, the Desk parity step included. On a pull request `check` and
-# `go-race` run the steps jpdev.json maps the changed paths to (`check.sh --changed`), each its own
+# name, runs the four cheap steps on every event; `go-race-a` and `go-race-b` each run one of the two
+# race steps on a runner of its own (#254: the race tests were more than half of the time of one job;
+# #292: together they had too little room under the step's limit); `check` sets the toolchains up from
+# the manifest and runs every other step, the Desk parity step included. On a pull request `check` and
+# the race jobs run the steps jpdev.json maps the changed paths to (`check.sh --changed`), each its own
 # part of them; on a push to main and on a dispatch, their whole part of the list.
 #
 # The release takes main's evidence instead of running this again (docs/ci-evidence.md): each job
 # records it with scripts/dev/release_evidence.py (devkit v0.14.0). On a push to main the `check`
-# and `go-race` jobs first ask whether the merged pull request's own run already passed some of
+# and race jobs first ask whether the merged pull request's own run already passed some of
 # their tree-only checks (`pull_request_reuse` in .github/ci-evidence.json), bound through records
 # the pull request cannot write; every refusal runs the job's whole part. JPDEV_BIND_ENV names the
 # variables those checks read as flags: check.sh prints their digests, and both runs must have had
@@ -168,7 +169,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/dev/release_evidence.py reuse --workflow ci --job check --output "${{ runner.temp }}/reuse-plan.json"
       # Pull requests select mapped checks; main and a dispatch run the full list. The four steps the
-      # contract job runs on every event and the go-race job's step are not run here. Main skips
+      # contract job runs on every event and the race jobs' two steps are not run here. Main skips
       # what the plan covered.
       - name: Checks
         env:
@@ -177,7 +178,7 @@ jobs:
           COVERED: ${{ steps.plan.outputs.covered }}
         run: |
           set -o pipefail
-          skip=contract,local-paths,agent-docs,diff-check,go-race
+          skip=contract,local-paths,agent-docs,diff-check,go-race-a,go-race-b
           if [ -n "$COVERED" ]; then skip="$skip,$COVERED"; fi
           if [ "$EVENT" = pull_request ]; then
             scripts/dev/check.sh --all --changed "origin/$BASE_REF" --skip "$skip" | tee "${{ runner.temp }}/checks.log"
@@ -203,15 +204,21 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # dev.json's go-race step alone: the same command, packages and limits, on a runner of its own
-  # (#254). It needs Go, and Node for the scripted server the Eino adapter's tests start; neither the
-  # Desk nor the Gateway checkout. Its evidence and its reuse are the job's own, under the same rules
-  # as the `check` job's.
+  # dev.json's two race steps, each alone on a runner of its own (#254, #292): the same command and
+  # limits over the same packages as the one step they were, divided by the hosted time of each test
+  # binary, and any new package falls to go-race-b. Each needs Go, and Node for the scripted server the
+  # Eino adapter's tests start; neither the Desk nor the Gateway checkout. Each leg's evidence and reuse
+  # are its own, under the same rules as the `check` job's, and a release requires both legs.
   go-race:
-    name: go-race
+    name: go-race-${{ matrix.part }}
     runs-on: ubuntu-latest
     # The step's own limit in dev.json is 50 minutes.
     timeout-minutes: 60
+    strategy:
+      # A leg that fails must not cancel the other: each one's times and evidence are worth having.
+      fail-fast: false
+      matrix:
+        part: [a, b]
     # The reuse plan reads the merged pull request, its timeline and its run; nothing is written.
     permissions:
       contents: read
@@ -233,10 +240,12 @@ jobs:
           persist-credentials: false
       - name: Read the toolchains from dev.json
         id: dev
+        env:
+          RACE_STEP: go-race-${{ matrix.part }}
         run: |
           set -eu
           python3 - >> "$GITHUB_OUTPUT" <<'PY'
-          import json
+          import json, os
           m = json.load(open("dev.json", encoding="utf-8"))
           tc = m.get("toolchains", {})
           print("node=" + tc.get("node", {}).get("version", ""))
@@ -244,7 +253,7 @@ jobs:
           print("python=" + tc.get("python", {}).get("version", "3.12"))
           # Every other step, by name, so that a step added to the manifest never runs in this job.
           steps = [row["name"] for row in m["checks"]] + (["parity"] if "parity" in m else [])
-          print("others=" + ",".join(name for name in steps if name != "go-race"))
+          print("others=" + ",".join(name for name in steps if name != os.environ["RACE_STEP"]))
           PY
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -265,7 +274,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/dev/release_evidence.py reuse --workflow ci --job go-race --output "${{ runner.temp }}/reuse-plan.json"
+        run: python3 scripts/dev/release_evidence.py reuse --workflow ci --job go-race-${{ matrix.part }} --output "${{ runner.temp }}/reuse-plan.json"
       - name: Checks
         env:
           EVENT: ${{ github.event_name }}
@@ -285,26 +294,30 @@ jobs:
 
       - name: Each test binary's time
         # check.sh's summary keeps one line of the step's output. What matters is each test binary's
-        # time against its own limit, on a runner that can be well over twice as slow as the fastest
-        # (#254), so print them, on a failure too, and warn before a binary reaches the limit.
+        # time against its own limit and the step's against its 3,000 seconds, on a runner that can be
+        # well over twice as slow as the fastest (#254, #292), so print them, on a failure too, and warn
+        # before either limit is reached.
         if: ${{ !cancelled() }}
         env:
-          LOG: ${{ runner.temp }}/logs/go-race.log
+          LOG: ${{ runner.temp }}/logs/go-race-${{ matrix.part }}.log
+          STEP: go-race-${{ matrix.part }}
+          SUMMARY: ${{ runner.temp }}/checks.log
         run: |
           [ -f "$LOG" ] || exit 0
           grep -E '^(ok|FAIL|panic: test timed out)' "$LOG" || true
           awk '$1 == "ok" && $3 + 0 > 1800 { print "::warning::" $2 " took " $3 ", past three quarters of its 40-minute limit" }' "$LOG"
+          awk -v step="$STEP" '$1 == "PASS" && $2 == step && $3 + 0 > 2250 { print "::warning::" step " took " $3 ", past three quarters of its 3000-second limit" }' "$SUMMARY"
       - name: Record exact CI inputs and coverage
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --reuse-plan "${{ runner.temp }}/reuse-plan.json" --output "${{ runner.temp }}/evidence.json"
+        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race-${{ matrix.part }} --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --reuse-plan "${{ runner.temp }}/reuse-plan.json" --output "${{ runner.temp }}/evidence.json"
       - name: Record the pull request's checks
         if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
-        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
+        run: python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race-${{ matrix.part }} --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
         if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: ci-evidence-ci-go-race-${{ github.run_attempt }}
+          name: ci-evidence-ci-go-race-${{ matrix.part }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/evidence.json
           if-no-files-found: error
           retention-days: 7
