@@ -323,6 +323,34 @@
   },
   "allOf": [
     {
+      "description": "A principal exactly where the reported checkpoint's version holds one.",
+      "if": {
+        "required": [
+          "checkpointVersion"
+        ],
+        "properties": {
+          "checkpointVersion": {
+            "enum": [
+              4,
+              6
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "principal"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "principal"
+          ]
+        }
+      }
+    },
+    {
       "if": {
         "properties": {
           "checkpointVersion": {

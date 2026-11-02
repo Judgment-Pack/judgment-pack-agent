@@ -5861,7 +5861,8 @@
     "recordReader.test.ts",
     "certification/records.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: the stamp now also selects checkpoints 5 and 6; the row 'record versions stamp checkpoints before their digest, with 5 and 6' holds it.",
    "origin": "agent#165"
   },
   {
@@ -11233,7 +11234,8 @@
    "tests": [
     "principalSession.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: the rule now also holds version 6; the row 'principal P19 a checkpoint of 4 or 6 without its principal is read' holds it.",
    "origin": "agent#260",
    "note": "Go twin (by hand): drop the version 4 coupling in ReadExecution; caught at ^TestPrincipalSessionRecordsAndResume$/a_delegated_run's_tool_events,_refusal_and_checkpoint_4_carry_its_principal."
   },
@@ -11257,7 +11259,8 @@
    "tests": [
     "principal.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: report 3 also reports checkpoints 5 and 6, under validReportThree; the row 'principal P21 a report 3 is read whatever its principal' holds it.",
    "origin": "agent#260",
    "note": "Go twin (by hand): drop the version 3 check in validReportSemantics; caught at ^TestPrincipalRecordVectors$ (a report whose chain does not end with its leaf)."
   },
@@ -11741,6 +11744,43 @@
    "status": "caught",
    "origin": "agent#275",
    "note": "Go twin (by hand): ApprovalShownDigest over args; caught at ^TestTheKeptApprovalTextVector$, ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "record versions stamp checkpoints before their digest, with 5 and 6",
+   "file": "records.ts",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?((value as {principal?:unknown}).principal!==undefined?((value as {approval?:{request?:unknown}}).approval?.request!==undefined?6:4):(value as {approval?:{request?:unknown}}).approval?.request!==undefined?5:((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
+   "replace": "version:1",
+   "tests": [
+    "recordReader.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Replaces the row of the same safeguard; Go twin as that row's."
+  },
+  {
+   "name": "principal P19 a checkpoint of 4 or 6 without its principal is read",
+   "file": "execution/state.ts",
+   "find": " if((value.version===4||value.version===6)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "replace": " if(value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): CheckpointHoldsPrincipal's clause dropped from ReadExecution; caught at ^TestPrincipalSessionRecordsAndResume$, ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$."
+  },
+  {
+   "name": "principal P21 a report 3 is read whatever its principal",
+   "file": "runReportReader.ts",
+   "find": "  if(v3&&object(held)&&!validReportThree(held))return invalid()",
+   "replace": "  void v3",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): validReportThree's principal clause; caught at ^TestAKeptTextsCheckpointIsReported$."
   }
  ]
 }
