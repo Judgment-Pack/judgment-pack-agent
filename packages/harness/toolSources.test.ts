@@ -9,6 +9,7 @@ import {sha256} from './records'
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import keptTextVector from '../../contract/vectors/approval/kept-text.json'
+import keptTextDecision from '../../contract/vectors/approval/kept-text-decision.json'
 import descriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot-current.json'
 import historicalDescriptorVector from '../../contract/vectors/tool-offer/descriptor-snapshot.json'
 import {readDescriptorSnapshot} from './descriptorSnapshot'
@@ -1055,6 +1056,11 @@ describe('the approval pause (ADR-0008)', () => {
       expect(readApprovalDecision({ callId: 'held', approved: row.approved, ...(row.shownDigest === undefined ? {} : { shownDigest: row.shownDigest }) })?.shownDigest).toBe(row.shownDigest)
     }
     expect(readApprovalDecision({ callId: 'held', approved: true, shownDigest: 'not a digest' })).toBeUndefined()
+    for (const item of keptTextDecision.items) {
+      const read = readApprovalDecision(item)
+      expect(read?.shownDigest).toBe(item.shownDigest)
+      expect(approvalNotShown({ args: JSON.parse(keptTextDecision.args) as Record<string, unknown>, request: keptTextDecision.text }, read!)).toBeUndefined()
+    }
     // A host reads the card as a string, and binds to its digest: JSON.parse of args would show another number.
     for (const row of vector.shown) {
       const asked = { args: JSON.parse(row.args) as Record<string, unknown>, ...(row.request === undefined ? {} : { request: row.request }) }

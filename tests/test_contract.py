@@ -856,6 +856,8 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(row["reads"], reads)
         for row in shown["shown"]:
             self.assertEqual(row["digest"], "sha256:" + sha256(row["text"]))
+        decision = self.vectors["approval/kept-text-decision.json"]
+        self.assertEqual([item["shownDigest"] for item in decision["items"]], ["sha256:" + sha256(decision["text"])])
 
     def test_the_kept_approval_text_follows_from_each_text(self):
         # #275: a third reading. A text is kept unless args cannot have changed it.

@@ -504,7 +504,7 @@ func TestReportIntegerDiscriminator(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if (value.RunReport != nil) != (row.Version == 1) || (value.RunReportV2 != nil) != (row.Version == 2) || len(keptRaw(reflect.ValueOf(value))) != 0 {
+			if (value.RunReport != nil) != (row.Version == 1) || (value.RunReportV2 != nil) != (row.Version == 2) || (value.RunReportV3 != nil) != (row.Version == 3) || len(keptRaw(reflect.ValueOf(value))) != 0 {
 				t.Fatal("version did not select exactly its typed report")
 			}
 			encoded, err := json.Marshal(value)

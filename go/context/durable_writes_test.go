@@ -774,6 +774,29 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 	if len(vector.Decisions) == 0 {
 		t.Fatal("no decisions")
 	}
+	held, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-decision.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept struct {
+		Text, Args string
+		Items      []contract.CheckpointApprovalDecision
+	}
+	if err = json.Unmarshal(held, &kept); err != nil {
+		t.Fatal(err)
+	}
+	var keptArgs map[string]json.RawMessage
+	if err = json.Unmarshal([]byte(kept.Args), &keptArgs); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range kept.Items {
+		if err = approvalDecisionHolds(contract.CheckpointApproval{Args: keptArgs, Request: &kept.Text}, item); err != nil || item.ShownDigest == nil {
+			t.Errorf("the vector's decision does not hold: %v", err)
+		}
+	}
+	if len(kept.Items) == 0 {
+		t.Fatal("no decision in the vector")
+	}
 	for _, row := range vector.Decisions {
 		var args map[string]json.RawMessage
 		if err = json.Unmarshal([]byte(row.Args), &args); err != nil {
