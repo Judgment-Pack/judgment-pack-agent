@@ -77,7 +77,9 @@ rule.
    suite can exhaust Go's default 10-minute aggregate package timeout while an individual test is
    still making progress, and the adapter package needs about twice its usual time on slower
    hosted runners. The selected packages, assertions and race instrumentation remain the same.
-   The whole step retains its 3,000-second limit.
+   The whole step retains its 3,000-second limit. CI runs it in a `go-race` job of its own, and the
+   adapter's heaviest test clusters are test binaries of their own
+   ([#254](ci-evidence.md#the-race-step-on-its-own-runner-254)).
 3. Include the latest `dependency-audit` run for the release candidate in release review, following
    the [dependency advisory policy](security/dependency-policy.md). Record the candidate commit,
    query time, coverage, result and every finding's disposition. Run the live check for that commit
@@ -122,7 +124,7 @@ Every job works on the commit the run was started for, by its digest, not on the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Verifies trusted exact-source CI evidence.** The devkit's
    [release evidence gate](ci-evidence.md) (v0.14.0, vendored as `scripts/dev/release_evidence.py`)
-   requires complete successful `contract` and `check` jobs and the four full mutation shards of
+   requires complete successful `contract`, `check` and `go-race` jobs and the four full mutation shards of
    trusted main runs at the exact release commit, on runners that reported the image the release
    runner reports, with the inputs the commit holds. Checks main took from its merged pull
    request's run are admitted again. The `Package` job proceeds only on the gate's `reuse`
@@ -163,7 +165,7 @@ fails: release a new version.
 
 The full mutation table still runs on every main push, weekly and by dispatch; pull requests run a
 sample. The release takes the four full shards of a push or dispatch run on main at the commit,
-with `contract` and `check`, through the [release evidence gate](ci-evidence.md). It selects the
+with `contract`, `check` and `go-race`, through the [release evidence gate](ci-evidence.md). It selects the
 newest applicable attempt on main whatever its result; a newer failed, cancelled or running attempt
 (a weekly scheduled run included) refuses, and nothing searches back for an older green one. A
 pull request's sample and a partial re-run cannot qualify. That every row still applies is the
