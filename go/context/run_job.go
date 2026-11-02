@@ -2327,10 +2327,13 @@ func (c *SessionContext) jobCancelRefusal(ctx context.Context, seam *jobToolSeam
 	if err != nil {
 		return "no-job"
 	}
-	for _, tool := range c.session.HostTools {
-		if tool.job == seam.pair && tool.Source != nil {
-			raw, _ := canonicalRaw(tool.Source.Record(tool.SourceTool))
-			return JobCancelRefusal(held, tool.Name, durableDigest(raw))
+	if c.Sources == nil {
+		return "no-job"
+	}
+	for name, entry := range c.Sources.Entries {
+		if entry.Declared.job == seam.pair {
+			raw, _ := canonicalRaw(entry.Record)
+			return JobCancelRefusal(held, name, durableDigest(raw))
 		}
 	}
 	return "no-job"
