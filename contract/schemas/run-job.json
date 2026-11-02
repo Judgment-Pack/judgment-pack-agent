@@ -20,7 +20,8 @@
     "reclaimed": {"$ref": "#/$defs/actor", "description": "The fence a re-authorization grant re-sent the start under."},
     "principal": {"$ref": "run-principal.json#/$defs/binding"},
     "state": {"$ref": "#/$defs/state"},
-    "handle": {"$ref": "#/$defs/id", "description": "The host's reference to the external job. Never shown to the model."},
+    "handle": {"$ref": "#/$defs/id", "description": "The host's reference to the external job, or, with handleDigested, the SHA-256 digest of bytes the record could not hold, which is no reference and is never sent as one. Never shown to the model."},
+    "handleDigested": {"const": true, "description": "The handle is the digest of the host's bytes, not the host's reference. A real handle can read the same, so only this member says which it is."},
     "receipt": {"$ref": "#/$defs/id", "description": "A bounded reference to the host's receipt, not the receipt. Never shown to the model."},
     "started": {"$ref": "#/$defs/fact"},
     "closed": {"$ref": "#/$defs/fact"},
@@ -74,7 +75,7 @@
       "description": "The writer's record of the host's typed answer to a start, under the fence that admitted it.",
       "type": "object",
       "required": ["version", "resource", "job", "generation", "answer"],
-      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "answer": {"enum": ["started", "not-started"]}, "handle": {"$ref": "#/$defs/id"}, "receipt": {"$ref": "#/$defs/id"}},
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "answer": {"enum": ["started", "not-started"]}, "handle": {"$ref": "#/$defs/id"}, "handleDigested": {"const": true}, "receipt": {"$ref": "#/$defs/id"}},
       "additionalProperties": false
     },
     "reconciliation": {

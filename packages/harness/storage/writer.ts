@@ -892,7 +892,7 @@ export class RunWriter {
     const port=jobPortOfView(this.store)
     try{
     const answer=readJobStartAnswer(value)
-    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
+    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
     }catch{
      try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
      throw jobStartUnrecorded()

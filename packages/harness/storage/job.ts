@@ -39,12 +39,13 @@ export interface JobContradiction {kind:'started'|'completed';at:string;digest:s
 export interface RunJob {
  version:1;kind:'job';resource:string;job:string;generation:1;operation:string;source:string;tool:string;requestDigest:string;keyDigest:string
  registered:JobActor;reclaimed?:JobActor;principal?:PrincipalBinding;state:JobState
- handle?:string;receipt?:string;started?:JobFact;closed?:JobFact;completion?:JobCompletion;contradictions?:JobContradiction[]
+ /** handleDigested: `handle` is the digest of the host's bytes, not its reference, and is never sent as one. */
+ handle?:string;handleDigested?:true;receipt?:string;started?:JobFact;closed?:JobFact;completion?:JobCompletion;contradictions?:JobContradiction[]
 }
 /** What a start's dispatch claim commit registers in its own transaction (RunCommit.job). */
 export interface JobRegistration {job:string;operation:string;source:string;tool:string;requestDigest:string;keyDigest:string}
 /** The writer's record of the host's typed answer to a start, under the fence that admitted it. */
-export interface JobAnswer {version:1;resource:string;job:string;generation:1;answer:'started'|'not-started';handle?:string;receipt?:string}
+export interface JobAnswer {version:1;resource:string;job:string;generation:1;answer:'started'|'not-started';handle?:string;handleDigested?:true;receipt?:string}
 /** A host's finding about an unproven start, authenticated by the completion key, with no lease. not-started means the
  * authority that would run it has closed it: nothing can start it afterwards. */
 export interface JobReconciliation {version:1;resource:string;job:string;generation:1;evidence:string;finding:JobFinding;handle?:string;receipt?:string;key:string}
@@ -111,13 +112,14 @@ export function readJobRegistration(v:unknown):JobRegistration{
 /** Reads a version 1 job record and holds every rule the schema cannot state: its identity follows its run and operation,
  * and each state holds exactly what proves it. */
 export function readRunJob(v:unknown):RunJob{
- const held=shape(v,['version','kind','resource','job','generation','operation','source','tool','requestDigest','keyDigest','registered','state'],['reclaimed','principal','handle','receipt','started','closed','completion','contradictions'])
+ const held=shape(v,['version','kind','resource','job','generation','operation','source','tool','requestDigest','keyDigest','registered','state'],['reclaimed','principal','handle','handleDigested','receipt','started','closed','completion','contradictions'])
  if(held.version!==JOB_RECORD_VERSION||held.kind!=='job')return invalid()
  const job:RunJob={version:1,kind:'job',resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),operation:id(held.operation),source:id(held.source),tool:id(held.tool),requestDigest:digest(held.requestDigest),keyDigest:digest(held.keyDigest),registered:readActor(held.registered),state:one(held.state,['unproven','started','not-started','completed'] as const)}
  if(job.job!==jobIdentity(job.resource,job.operation))return invalid()
  if(held.reclaimed!==undefined)job.reclaimed=readActor(held.reclaimed)
  if(held.principal!==undefined){if(!validPrincipalBinding(held.principal))return invalid();job.principal={sub:{...held.principal.sub},rootActor:held.principal.rootActor,host:held.principal.host}}
  if(held.handle!==undefined)job.handle=id(held.handle)
+ if(held.handleDigested!==undefined){if(held.handleDigested!==true||typeof held.handle!=='string'||!DIGEST.test(held.handle))return invalid();job.handleDigested=true}
  if(held.receipt!==undefined)job.receipt=id(held.receipt)
  if(held.started!==undefined)job.started=readFact(held.started)
  if(held.closed!==undefined)job.closed=readFact(held.closed)
@@ -130,11 +132,12 @@ export function readRunJob(v:unknown):RunJob{
  return job
 }
 export function readJobAnswer(v:unknown):JobAnswer{
- const held=shape(v,['version','resource','job','generation','answer'],['handle','receipt'])
+ const held=shape(v,['version','resource','job','generation','answer'],['handle','handleDigested','receipt'])
  if(held.version!==JOB_RECORD_VERSION)return invalid()
  const answer=one(held.answer,['started','not-started'] as const)
+ if(held.handleDigested!==undefined&&(held.handleDigested!==true||typeof held.handle!=='string'||!DIGEST.test(held.handle)))return invalid()
  if((answer==='started')!==(held.handle!==undefined)||answer==='not-started'&&held.receipt!==undefined)return invalid()
- return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),answer,...(held.handle===undefined?{}:{handle:id(held.handle)}),...(held.receipt===undefined?{}:{receipt:id(held.receipt)})}
+ return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),answer,...(held.handle===undefined?{}:{handle:id(held.handle)}),...(held.handleDigested===undefined?{}:{handleDigested:true as const}),...(held.receipt===undefined?{}:{receipt:id(held.receipt)})}
 }
 export function readJobReconciliation(v:unknown):JobReconciliation{
  const held=shape(v,['version','resource','job','generation','evidence','finding','key'],['handle','receipt'])
@@ -191,12 +194,12 @@ export class JobTable {
   return structuredClone(row)
  }
  /** The one rule for a start being known or closed, whichever way the fact arrives. */
- private settle(row:RunJob,finding:'started'|'not-started',fact:JobFact,handle?:string,receipt?:string):RunJob{
+ private settle(row:RunJob,finding:'started'|'not-started',fact:JobFact,handle?:string,receipt?:string,digested?:true):RunJob{
   if(finding==='started'){
    if(row.state==='not-started')return this.contradict(row,{kind:'started',at:fact.at,digest:fact.digest,...(fact.evidence===undefined?{}:{evidence:fact.evidence}),handle:handle!})
-   if(row.started&&row.handle!==handle)throw new JobRefused('conflict')
+   if(row.started&&(row.handle!==handle||row.handleDigested!==digested))throw new JobRefused('conflict')
    if(row.started)return structuredClone(row)
-   row.handle=handle!;if(receipt!==undefined)row.receipt=receipt
+   row.handle=handle!;if(digested)row.handleDigested=true;if(receipt!==undefined)row.receipt=receipt
    row.started=fact
    if(row.state==='unproven')row.state='started'
    return structuredClone(row)
@@ -212,7 +215,7 @@ export class JobTable {
  answer(input:JobAnswer,fence:LeaseFence):RunJob{
   const held=readJobAnswer(input),presented=readLeaseFence(fence),row=this.held(held.resource,held.job),admitter=row.reclaimed??row.registered
   if(presented.resource!==row.resource||presented.owner!==admitter.owner||presented.epoch!==admitter.epoch)throw new JobRefused('unauthenticated')
-  return this.settle(row,held.answer,{by:'answer',at:this.now(),digest:jobEvidenceDigest(held)},held.handle,held.receipt)
+  return this.settle(row,held.answer,{by:'answer',at:this.now(),digest:jobEvidenceDigest(held)},held.handle,held.receipt,held.handleDigested)
  }
  private authenticate(row:RunJob,key:string):void{if(jobKeyDigest(key)!==row.keyDigest)throw new JobRefused('unauthenticated')}
  /** Evidence already taken: the same id and digest is retained; the same id with other content is conflict. */
@@ -364,15 +367,17 @@ export function jobContinuation(job:RunJob,marker=dataMarker()):string{return `$
 
 /** The host's typed answer to a start. Anything else leaves the job unproven. A handle or receipt the record cannot hold (over
  * 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, `sha256:<hex>`: the start is known, the job
- * is started and can complete, and the same bytes answer the same. The host, not the job, then holds the means to reach it. */
-export type JobStartAnswer={started:true;handle:string;receipt?:string}|{started:false}
+ * is started and can complete, and the same bytes answer the same. The host, not the job, then holds the means to reach it, and
+ * `handleDigested` on the record says so, because a real handle can read the same. A host does not send that member. */
+export type JobStartAnswer={started:true;handle:string;handleDigested?:true;receipt?:string}|{started:false}
 const keptEvidence=(v:unknown):string=>typeof v!=='string'||v===''?invalid():storageId(v)?v:`sha256:${sha256(v)}`
 export function readJobStartAnswer(v:unknown):JobStartAnswer{
  if(!object(v))return invalid()
  if(v.started===false){shape(v,['started']);return {started:false}}
  if(v.started!==true)return invalid()
  const held=shape(v,['started','handle'],['receipt'])
- return {started:true,handle:keptEvidence(held.handle),...(held.receipt===undefined?{}:{receipt:keptEvidence(held.receipt)})}
+ const handle=keptEvidence(held.handle)
+ return {started:true,handle,...(handle===held.handle?{}:{handleDigested:true as const}),...(held.receipt===undefined?{}:{receipt:keptEvidence(held.receipt)})}
 }
 const JOB_TOOL=Symbol('run-owned job tool')
 /** A start tool's seam: `mint` gives the digest of a fresh completion key for the job (jobKeyDigest), which stays the host's;

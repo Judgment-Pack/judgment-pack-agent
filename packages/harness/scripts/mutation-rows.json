@@ -12719,7 +12719,7 @@
   {
    "name": "job J10 another handle overwrites the first",
    "file": "storage/job.ts",
-   "find": "   if(row.started&&row.handle!==handle)throw new JobRefused('conflict')\n   if(row.started)return structuredClone(row)\n",
+   "find": "   if(row.started&&(row.handle!==handle||row.handleDigested!==digested))throw new JobRefused('conflict')\n   if(row.started)return structuredClone(row)\n",
    "replace": "",
    "tests": [
     "storage/jobRecords.test.ts"
@@ -13319,7 +13319,7 @@
   {
    "name": "job W18 a repeated start is answered with no job",
    "file": "storage/writer.ts",
-   "find": "  if(reused&&jobStart&&reused.state!=='result'){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held===undefined)throw new HostOutcomeUnknown();return jobStartResult(readRunJob(structuredClone(held))) as T}\n",
+   "find": "  if(reused&&jobStart){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held!==undefined)return jobStartResult(readRunJob(structuredClone(held))) as T;if(reused.state!=='result')throw new HostOutcomeUnknown()}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts"
@@ -13379,8 +13379,8 @@
   {
    "name": "job W22 the row keeps the host's answer",
    "file": "storage/writer.ts",
-   "find": "    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T\n",
-   "replace": "    await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)\n",
+   "find": "    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T\n",
+   "replace": "    await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)\n",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -13711,6 +13711,126 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsARestart."
+  },
+  {
+   "name": "job R-1a a repeat of a start answers its row while its job says otherwise",
+   "file": "storage/writer.ts",
+   "find": "if(reused&&jobStart){const held=",
+   "replace": "if(reused&&jobStart&&reused.state!=='result'){const held=",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARepeatAnswers."
+  },
+  {
+   "name": "job R-1b a result is not answered with its job record lost",
+   "file": "storage/writer.ts",
+   "find": "if(held!==undefined)return jobStartResult(readRunJob(structuredClone(held))) as T;if(reused.state!=='result')throw new HostOutcomeUnknown()}",
+   "replace": "if(held!==undefined)return jobStartResult(readRunJob(structuredClone(held))) as T;throw new HostOutcomeUnknown()}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job R-2a a job tool is offered under a chat the session passes",
+   "file": "storage/writer.ts",
+   "find": " if(config?.context&&session.hostTools?.some(tool=>jobSeamOf(tool)!==undefined))throw new JobCapabilityRefused('chat-store-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job R-2b a job tool is offered under a head that holds a chat",
+   "file": "storage/writer.ts",
+   "find": "  if(await heldChat(this.store,this.id,signal))throw new JobCapabilityRefused('chat-store-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job R-3a the kit lets a refusal change the job",
+   "file": "storage/jobConformance.ts",
+   "find": "await refuses(property,attempt,reason);check(property,same(await store.readJob(run,job),before))}",
+   "replace": "await refuses(property,attempt,reason);void before}",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+  },
+  {
+   "name": "job R-3b the kit restarts once",
+   "file": "storage/jobConformance.ts",
+   "find": " await restartWhole()\n const headAfter=",
+   "replace": " const headAfter=",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+  },
+  {
+   "name": "job R-3c the kit parks on one job only",
+   "file": "storage/jobConformance.ts",
+   "find": " check('job.wake.other',(await readWait('run-two')).state==='parked')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+  },
+  {
+   "name": "job R-6a a digested handle goes unmarked",
+   "file": "storage/job.ts",
+   "find": " return {started:true,handle,...(handle===held.handle?{}:{handleDigested:true as const}),",
+   "replace": " return {started:true,handle,",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job R-6b a marker is read on any handle",
+   "file": "storage/job.ts",
+   "find": " if(held.handleDigested!==undefined){if(held.handleDigested!==true||typeof held.handle!=='string'||!DIGEST.test(held.handle))return invalid();job.handleDigested=true}\n",
+   "replace": " if(held.handleDigested!==undefined)job.handleDigested=true\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors|TestJobEvidenceVectors."
+  },
+  {
+   "name": "job R-6c a real handle reading as the digest is taken for it",
+   "file": "storage/job.ts",
+   "find": "if(row.started&&(row.handle!==handle||row.handleDigested!==digested))",
+   "replace": "if(row.started&&row.handle!==handle)",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
   }
  ]
 }

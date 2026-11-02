@@ -246,7 +246,7 @@ func readJobContradiction(raw json.RawMessage) (JobContradiction, error) {
 // ReadRunJob reads a version 1 job record and holds every rule the schema cannot state: its identity follows
 // its run and operation, and each state holds exactly what proves it.
 func ReadRunJob(raw []byte) (RunJob, error) {
-	m, err := jobMembers(raw, []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "state"}, []string{"reclaimed", "principal", "handle", "receipt", "started", "closed", "completion", "contradictions"})
+	m, err := jobMembers(raw, []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "state"}, []string{"reclaimed", "principal", "handle", "handleDigested", "receipt", "started", "closed", "completion", "contradictions"})
 	if err != nil {
 		return RunJob{}, err
 	}
@@ -295,6 +295,9 @@ func ReadRunJob(raw []byte) (RunJob, error) {
 	}
 	if jobOptionalID(m, "handle", &job.Handle) != nil || jobOptionalID(m, "receipt", &job.Receipt) != nil {
 		return RunJob{}, jobInvalid()
+	}
+	if job.HandleDigested, err = jobHandleMarker(m, job.Handle); err != nil {
+		return RunJob{}, err
 	}
 	if m.has("started") {
 		if job.Started, err = readJobFact(m["started"]); err != nil {
@@ -387,7 +390,7 @@ func readJobCommon(m waitMembers, resource, job *string) error {
 
 // ReadJobAnswer reads the writer's record of the host's typed answer to a start.
 func ReadJobAnswer(raw []byte) (JobAnswer, error) {
-	m, err := jobMembers(raw, []string{"version", "resource", "job", "generation", "answer"}, []string{"handle", "receipt"})
+	m, err := jobMembers(raw, []string{"version", "resource", "job", "generation", "answer"}, []string{"handle", "handleDigested", "receipt"})
 	if err != nil {
 		return JobAnswer{}, err
 	}
@@ -404,7 +407,22 @@ func ReadJobAnswer(raw []byte) (JobAnswer, error) {
 	if jobOptionalID(m, "handle", &out.Handle) != nil || jobOptionalID(m, "receipt", &out.Receipt) != nil {
 		return JobAnswer{}, jobInvalid()
 	}
+	if out.HandleDigested, err = jobHandleMarker(m, out.Handle); err != nil {
+		return JobAnswer{}, err
+	}
 	return out, nil
+}
+
+// jobHandleMarker reads handleDigested: only true, and only on a handle of the digest's form.
+func jobHandleMarker(m waitMembers, handle *string) (*bool, error) {
+	if !m.has("handleDigested") {
+		return nil, nil
+	}
+	if string(bytes.TrimSpace(m["handleDigested"])) != "true" || handle == nil || !jobDigest.MatchString(*handle) {
+		return nil, jobInvalid()
+	}
+	yes := true
+	return &yes, nil
 }
 
 // ReadJobReconciliation reads a host's finding about an unproven start.
@@ -645,18 +663,18 @@ func (t *JobTable) contradict(row *RunJob, entry JobContradiction) (RunJob, erro
 }
 
 // settle is the one rule for a start being known or closed, whichever way the fact arrives.
-func (t *JobTable) settle(row *RunJob, finding string, fact JobFact, handle, receipt *string) (RunJob, error) {
+func (t *JobTable) settle(row *RunJob, finding string, fact JobFact, handle, receipt *string, digested *bool) (RunJob, error) {
 	if finding == "started" {
 		if row.State == "not-started" {
 			return t.contradict(row, JobContradiction{Kind: "started", At: fact.At, Digest: fact.Digest, Evidence: fact.Evidence, Handle: handle})
 		}
-		if row.Started != nil && *row.Handle != *handle {
+		if row.Started != nil && (*row.Handle != *handle || (row.HandleDigested != nil) != (digested != nil)) {
 			return RunJob{}, jobRefused("conflict")
 		}
 		if row.Started != nil {
 			return cloneRunJob(*row), nil
 		}
-		row.Handle, row.Receipt = handle, receipt
+		row.Handle, row.HandleDigested, row.Receipt = handle, digested, receipt
 		row.Started = &fact
 		if row.State == "unproven" {
 			row.State = "started"
@@ -697,7 +715,7 @@ func (t *JobTable) Answer(input JobAnswer, fence LeaseFence) (RunJob, error) {
 	if fence.Resource != row.Resource || fence.Owner != admitter.Owner || fence.Epoch != admitter.Epoch {
 		return RunJob{}, jobRefused("unauthenticated")
 	}
-	return t.settle(row, held.Answer, JobFact{By: "answer", At: t.stamp(), Digest: JobEvidenceDigest(held)}, held.Handle, held.Receipt)
+	return t.settle(row, held.Answer, JobFact{By: "answer", At: t.stamp(), Digest: JobEvidenceDigest(held)}, held.Handle, held.Receipt, held.HandleDigested)
 }
 func jobAuthenticate(row *RunJob, key string) error {
 	digest, err := JobKeyDigest(key)
@@ -776,7 +794,7 @@ func (t *JobTable) Reconcile(input JobReconciliation) (RunJob, error) {
 		return *seen, nil
 	}
 	evidence := held.Evidence
-	return t.settle(row, held.Finding, JobFact{By: "reconcile", At: t.stamp(), Digest: digest, Evidence: &evidence}, held.Handle, held.Receipt)
+	return t.settle(row, held.Finding, JobFact{By: "reconcile", At: t.stamp(), Digest: digest, Evidence: &evidence}, held.Handle, held.Receipt, nil)
 }
 
 // JobWake is what a completion hands the wait parked on its job.
@@ -1230,11 +1248,14 @@ func JobContinuationText(job RunJob, marker string) (string, error) {
 // JobStartAnswer is the host's typed answer to a start. Anything else leaves the job unproven. A handle or receipt
 // the record cannot hold (over 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes,
 // sha256:<hex>: the start is known, the job is started and can complete, and the same bytes answer the same. The
-// host, not the job, then holds the means to reach it.
+// host, not the job, then holds the means to reach it, and handleDigested on the record says so, because a real
+// handle can read the same.
 type JobStartAnswer struct {
 	Started bool
 	Handle  string
 	Receipt string
+	// handleDigested is the reader's: the Handle is now the digest of the host's bytes, not its reference.
+	handleDigested bool
 }
 
 func readJobStartAnswer(answer *JobStartAnswer) error {
@@ -1250,7 +1271,9 @@ func readJobStartAnswer(answer *JobStartAnswer) error {
 	if answer.Handle == "" {
 		return jobInvalid()
 	}
-	answer.Handle = keptJobEvidence(answer.Handle)
+	kept := keptJobEvidence(answer.Handle)
+	answer.handleDigested = kept != answer.Handle
+	answer.Handle = kept
 	if answer.Receipt != "" {
 		answer.Receipt = keptJobEvidence(answer.Receipt)
 	}
@@ -1538,6 +1561,10 @@ func (w *RunWriter) finishJobStart(ctx context.Context, held *jobStartDispatch) 
 	if held.answer.Started {
 		handle := held.answer.Handle
 		answer.Answer, answer.Handle = "started", &handle
+		if held.answer.handleDigested {
+			yes := true
+			answer.HandleDigested = &yes
+		}
 		if held.answer.Receipt != "" {
 			receipt := held.answer.Receipt
 			answer.Receipt = &receipt

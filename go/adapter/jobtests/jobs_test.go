@@ -1119,7 +1119,7 @@ func TestJobsAHandleTheRecordCannotHoldIsKeptAsItsDigest(t *testing.T) {
 			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
 			job := onlyJob(t, l.store)
 			sum := func(text string) string { return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(text))) }
-			if job.State != "started" || job.Handle == nil || *job.Handle != sum(long) || job.Receipt == nil || *job.Receipt != sum(receipt) {
+			if job.State != "started" || job.Handle == nil || *job.Handle != sum(long) || job.HandleDigested == nil || !*job.HandleDigested || job.Receipt == nil || *job.Receipt != sum(receipt) {
 				t.Fatalf("%+v", job)
 			}
 			rows, _ := headBook(t, l.store)

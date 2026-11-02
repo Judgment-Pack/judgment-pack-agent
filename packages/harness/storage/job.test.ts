@@ -548,7 +548,7 @@ describe('after a start ran, the model is told what its job says (#229, H-1)',()
  })
  it('a handle and a receipt the record cannot hold are kept as the digest of their bytes, and the job has started',async()=>{
   const long='h'.repeat(300),receipt='r'.repeat(300),{job,row,events}=await ran(async()=>({started:true,handle:long,receipt}))
-  expect(job).toMatchObject({state:'started',handle:`sha256:${sha256(long)}`,receipt:`sha256:${sha256(receipt)}`})
+  expect(job).toMatchObject({state:'started',handle:`sha256:${sha256(long)}`,handleDigested:true,receipt:`sha256:${sha256(receipt)}`})
   expect(row.state).toBe('result')
   expect(events.find(e=>e.type==='tool_result')).toMatchObject({isError:false,text:jobStartResult(job).content![0]!.text})
   expect(JSON.stringify(events)).not.toContain('hhhh')

@@ -630,7 +630,8 @@
    },
    "read": {
     "started": true,
-    "handle": "sha256:7501aff06f185bd2ac47a4a687343ce3d91d52c9e5022364b36fd1b7ed6fddee"
+    "handle": "sha256:7501aff06f185bd2ac47a4a687343ce3d91d52c9e5022364b36fd1b7ed6fddee",
+    "handleDigested": true
    }
   },
   {
@@ -654,7 +655,8 @@
    },
    "read": {
     "started": true,
-    "handle": "sha256:6bebff9b0b1988ff731efc2fa07f561a3566ee113df50b63b81a6df668803396"
+    "handle": "sha256:6bebff9b0b1988ff731efc2fa07f561a3566ee113df50b63b81a6df668803396",
+    "handleDigested": true
    }
   }
  ],

@@ -774,7 +774,8 @@ to end the turn. A handle, a receipt and host text never reach the model. Once a
 what it answered that could not be recorded (not typed, or conflicting with what the job holds), and whatever it threw, leaves the
 row `unknown` with one fixed failure, `JobStartUnrecorded`, and the model is answered from the job as a repeat is. A handle or
 receipt the record cannot hold (over 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, and the job
-is `started`: it can complete, and the same bytes answer the same, but the host holds the means to reach it. Rows of job tools record no observation, so they are never
+is `started`: it can complete, and the same bytes answer the same, but the host holds the means to reach it. `handleDigested: true`
+on the record says which it is, because a real handle can read the same, and a digest is never sent as the external reference. Rows of job tools record no observation, so they are never
 plan evidence; a start cited in `complete_plan_step` is held to its job, read afresh: `completed` with `succeeded` proves it whatever
 the row says, and anything else refuses `unsuccessful-operation`.
 

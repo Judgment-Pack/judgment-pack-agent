@@ -315,14 +315,15 @@ func TestJobModelVectors(t *testing.T) {
 	}
 	for _, row := range jobVectorRows(t, file["startAnswersKept"]) {
 		var held, read struct {
-			Started bool   `json:"started"`
-			Handle  string `json:"handle"`
-			Receipt string `json:"receipt"`
+			Started        bool   `json:"started"`
+			Handle         string `json:"handle"`
+			HandleDigested bool   `json:"handleDigested"`
+			Receipt        string `json:"receipt"`
 		}
 		_ = json.Unmarshal(row["answer"], &held)
 		_ = json.Unmarshal(row["read"], &read)
 		answer := JobStartAnswer{Started: held.Started, Handle: held.Handle, Receipt: held.Receipt}
-		if err := readJobStartAnswer(&answer); err != nil || answer.Handle != read.Handle || answer.Receipt != read.Receipt {
+		if err := readJobStartAnswer(&answer); err != nil || answer.Handle != read.Handle || answer.Receipt != read.Receipt || answer.handleDigested != read.HandleDigested {
 			t.Fatal(vectorName(row), answer, err)
 		}
 	}

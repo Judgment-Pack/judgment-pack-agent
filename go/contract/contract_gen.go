@@ -19664,6 +19664,7 @@ type RunJob struct {
 	Principal      *RunPrincipalBinding    `json:"principal,omitzero"`
 	State          string                  `json:"state"`
 	Handle         *string                 `json:"handle,omitzero"`
+	HandleDigested *bool                   `json:"handleDigested,omitzero"`
 	Receipt        *string                 `json:"receipt,omitzero"`
 	Started        *RunJobFact             `json:"started,omitzero"`
 	Closed         *RunJobFact             `json:"closed,omitzero"`
@@ -19671,7 +19672,7 @@ type RunJob struct {
 	Contradictions []RunJobContradiction   `json:"contradictions,omitzero"`
 }
 
-var runJobMembers = []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "reclaimed", "principal", "state", "handle", "receipt", "started", "closed", "completion", "contradictions"}
+var runJobMembers = []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "reclaimed", "principal", "state", "handle", "handleDigested", "receipt", "started", "closed", "completion", "contradictions"}
 
 // UnmarshalJSON decodes a RunJob object and refuses a member the closed schema does not name.
 func (v *RunJob) UnmarshalJSON(data []byte) error {
@@ -19723,16 +19724,17 @@ func (v RunJobActor) MarshalJSON() ([]byte, error) {
 // From run-job.json#/$defs/answer. The writer's record of the host's typed answer to a start,
 // under the fence that admitted it.
 type RunJobAnswer struct {
-	Version    int64   `json:"version"`
-	Resource   string  `json:"resource"`
-	Job        string  `json:"job"`
-	Generation int64   `json:"generation"`
-	Answer     string  `json:"answer"`
-	Handle     *string `json:"handle,omitzero"`
-	Receipt    *string `json:"receipt,omitzero"`
+	Version        int64   `json:"version"`
+	Resource       string  `json:"resource"`
+	Job            string  `json:"job"`
+	Generation     int64   `json:"generation"`
+	Answer         string  `json:"answer"`
+	Handle         *string `json:"handle,omitzero"`
+	HandleDigested *bool   `json:"handleDigested,omitzero"`
+	Receipt        *string `json:"receipt,omitzero"`
 }
 
-var runJobAnswerMembers = []string{"version", "resource", "job", "generation", "answer", "handle", "receipt"}
+var runJobAnswerMembers = []string{"version", "resource", "job", "generation", "answer", "handle", "handleDigested", "receipt"}
 
 // UnmarshalJSON decodes a RunJobAnswer object and refuses a member the closed schema does not name.
 func (v *RunJobAnswer) UnmarshalJSON(data []byte) error {
