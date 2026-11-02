@@ -289,6 +289,16 @@ func attachReauthorizedDispatch(store RunStore, operation EffectOperation, fence
 // unknown. Only the one operation a resumed re-authorization wait granted on this view, whose recorded
 // failure is the typed never-admitted refusal, which only a trusted refusal records, and only once:
 // anything else stays unknown and is never sent again.
+func reauthorizedDispatchOpen(store RunStore, operation EffectOperation, recorded *contract.Failure) bool {
+	view := leaseViewOf(store)
+	if view == nil || !isNeverAdmittedFailure(recorded) {
+		return false
+	}
+	view.mu.Lock()
+	defer view.mu.Unlock()
+	return view.grant != nil && !view.grant.used && view.grant.operation == operation
+}
+
 func takeReauthorizedDispatch(store RunStore, operation EffectOperation, recorded *contract.Failure) bool {
 	view := leaseViewOf(store)
 	if view == nil || !isNeverAdmittedFailure(recorded) {

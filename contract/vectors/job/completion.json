@@ -1,0 +1,158 @@
+{
+ "description": "Handwritten job evidence: what both readers accept with its digest (the key left out, computed apart from the package), what fails the schema, and what only the readers refuse.",
+ "schema": "run-job.json#/$defs/completion",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "done-1",
+   "outcome": "succeeded",
+   "resultDigest": "sha256:83e15d1bb765dd3232dedc04b128e8076d4f4c89f933536dc8819c7925b1122f",
+   "receipt": "rcpt-2",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "done-2",
+   "outcome": "failed",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "d",
+   "outcome": "cancelled",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "d",
+   "outcome": "unknown",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  }
+ ],
+ "digests": [
+  "sha256:61c603cec9606b8a4d810f9c0969d67038ca32ae45c714b9cc74b4abeb2f04b7",
+  "sha256:114d99215992644b2d843cbaf5e945e0f10eb3972cc15a512a7448ee5b10a000",
+  "sha256:7920a2906ca4a3dc17b1e78b13db5d025835907071de10baabc1fb6e5fd9146b",
+  "sha256:716d7bec0e38ecbb34aac2a0b0509e3cdd8f817ebfd0b3830def7aaf2c052324"
+ ],
+ "refused": [
+  {
+   "problem": "an outcome not named",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "d",
+    "outcome": "done",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "no key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "done-2",
+    "outcome": "failed"
+   }
+  },
+  {
+   "problem": "a short key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "done-2",
+    "outcome": "failed",
+    "key": "short"
+   }
+  },
+  {
+   "problem": "generation 2",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 2,
+    "evidence": "done-2",
+    "outcome": "failed",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "a job of another form",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "job-1",
+    "generation": 1,
+    "evidence": "done-2",
+    "outcome": "failed",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "a result digest of another form",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "d",
+    "outcome": "failed",
+    "resultDigest": "abc",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "an unknown member",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "done-2",
+    "outcome": "failed",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K",
+    "at": "2026-01-01T00:01:00.000Z"
+   }
+  },
+  {
+   "problem": "no evidence id",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "outcome": "failed",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  }
+ ],
+ "readerRefused": []
+}

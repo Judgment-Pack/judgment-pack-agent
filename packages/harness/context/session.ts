@@ -10,8 +10,9 @@ import {StoredChatScope} from './storedChat'
 import {ContextTurnBindingInvalid} from './chatSnapshot'
 import {runtimeTaxonomyProblem, taxonomyAnnotations} from '../toolTaxonomy'
 import {ContinuationNotRecoverable,ContinuationIdentityChanged} from '../storage/writer'
+import {JobCapabilityRefused,JobRefused,jobSeamOf,readRunJob,type RunJob} from '../storage/job'
 import {quarantineModelResponse} from '../storage/model'
-import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded,durableReadingTool,exactlyHeld,type DurableBinding,type DurableRunInput} from '../storage/writer'
+import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded as resultSucceeded,durableReadingTool,exactlyHeld,type DurableBinding,type DurableRunInput} from '../storage/writer'
 import {sha256} from '../records'
 import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
@@ -81,7 +82,7 @@ export type Compactor=(request:CompactorRequest,signal:AbortSignal)=>Promise<str
  * (`checkpoint.json#/$defs/approvalDecision`), the continuation input beside a request grant. A
  * decision for any other call is refused before anything runs (`stale-state`).
  */
-export interface ContextInput {/** ADR-0029: the delegation a delegated run acts under, supplied by the issuing host; absent, the run is undelegated and its records unchanged. */principal?:RunPrincipal;/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
+export interface ContextInput {/** #229: the job a resumed job wait's run continues after (resumeParked's `job`), as its record says: one fixed line and one data block in the first request. */jobContinuation?:RunJob;/** ADR-0029: the delegation a delegated run acts under, supplied by the issuing host; absent, the run is undelegated and its records unchanged. */principal?:RunPrincipal;/** Explicit task-step capability opt-in; never execution authority. */taskSteps?:true;taskStepEnvelope?:import('../taskSteps').TaskStepEnvelope;usageBudget?:UsageBudgetInput;[prepareProviderDispatch]?:(kind:'model'|'agent',role:string,recovering:boolean,atomic?:true)=>Promise<void>;runStore?:DurableRunInput;[durableOwner]?:DurableBinding;acceptedDocuments?:AcceptedDocument[];currentState?:string;artifactProposals?:boolean;authorize?:(signal:AbortSignal)=>Promise<void>;checkpoint?:(state:import('../execution/state').ExecutionCheckpoint)=>Promise<void>;execution?:import('../execution/state').ExecutionCheckpoint;requestCap?:number;currentRequest?:CurrentRequest;phase?:'plan'|'work';plan?:ChatPlan;planResolver?:import('../planning/references').PlanResolver;planDrift?:import('../execution/plan').DepartureKind[];configuration?:ContextConfiguration;documents?:ContextDocument[];chat?:ChatScope;runtime?:RuntimeIdentity;memory?:boolean;objective?:string;link?:ExecutionLink;connection?:AITarget;connectionRevisions?:Readonly<Record<string,string>>;delegationReuse?:boolean;approval?:import('../execution/state').ApprovalDecision;compactor?:Compactor}
 /** How the delegation coordinator reaches a run it starts (agent#14): told the run's context once its execution is initialized, before its first request. */
 export interface ExecutionLink {attach(context:SessionContext):void;/** ADR-0006: the delegating run's source gate, which a child's gate shares the report's rows and the changed sources of. */sources?():SourceGate|undefined;/** ADR-0029: the delegating run's principal, which a child's own is narrowed from. */principal?():OpenedPrincipal|undefined}
 export interface ContextUsage {inputBytes:number;estimatedInputTokens:number;inputBudgetBytes:number;outputReserveTokens:number;compactions:number;retainedItems:number}
@@ -1030,10 +1031,16 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string,admission?:ReceiptAdmission)=>{
   const binding=session.context?.[durableOwner]
   const source=declared.entries.get(tool.name)?.record
+  // #229: a job tool's rows are never plan evidence; a start runs the row's own bytes under its job's identity. What a start
+  // throws is no answer: its words reach neither the row nor the model. A refusal the package trusts is minted before anything
+  // is performed, so it never comes from here.
+  const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded
+  let started:string|undefined
+  if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');try{return await job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}catch{return undefined as unknown as McpToolResult}}}
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
-  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args))
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined)
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})
@@ -1051,7 +1058,19 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   if(taskBinding.root)await taskBinding.writer.restoreTaskEvidence(taskBinding,session.signal)
  }else if(session.context?.taskStepEnvelope||taskBinding?.writer.hasTaskSteps||taskBinding?.writer.checkpoint?.planState?.taskSchedule||taskBinding?.writer.checkpoint?.planState?.taskEnvelope)throw new ContinuationIdentityChanged()
  }catch(error){context.close();throw error}
- context.execution.proof=()=>{const binding=session.context?.[durableOwner],book=binding?.writer.checkpoint?.durable;return binding&&book?{book,scope:scopeFor(binding,context.storageRole).scope,...(binding.writer.hasTaskSteps?{children:binding.writer.taskCompletionProof(binding)}:{})}:undefined}
+ context.execution.proof=()=>{const binding=session.context?.[durableOwner],book=binding?.writer.checkpoint?.durable;return binding&&book?{book,scope:scopeFor(binding,context.storageRole).scope,...(binding.writer.hasTaskSteps?{children:binding.writer.taskCompletionProof(binding)}:{}),...(binding.writer.jobProof?{jobs:binding.writer.jobProof}:{})}:undefined}
+ // #229: with job tools offered, the run must have the job port, and plan evidence is held to the job records. Refused by name before anything is offered.
+ try{
+  if(session.hostTools.some(tool=>jobSeamOf(tool)!==undefined)){
+   const binding=session.context?.[durableOwner]
+   if(session.childDefinition)throw new JobCapabilityRefused('child-unsupported')
+   if(!binding)throw new JobCapabilityRefused('store-unsupported')
+   await binding.writer.attachJobs(session.signal)
+   context.execution.refreshProof=signal=>binding.writer.refreshJobs(signal)
+  }
+  // The record a resumed job wait hands on is this run's, read through the reader.
+  if(session.context?.jobContinuation!==undefined){const job=readRunJob(structuredClone(session.context.jobContinuation)),binding=session.context[durableOwner];if(!binding||binding.writer.runId!==job.resource)throw new JobRefused('invalid')}
+ }catch(error){context.close();throw error}
  context.execution.publishPlan=async(state,event)=>{
   const guarded=context.output.value(event,'message')
   if(canonicalJSON(guarded)!==canonicalJSON(event))throw new ContinuationNotRecoverable()

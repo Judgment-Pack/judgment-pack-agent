@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -413,12 +414,16 @@ type ExecutionController struct {
 	PlanRefused         func()
 	TaskCompletionProof func() []TaskCompletionEvidence
 	PlanProof           func() (*DurableBook, DurableScope)
-	planDecisionEvent   *contract.RunEvent
-	PublishPlan         func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
-	session             Session
-	ledger              *ContextLedger
-	restored            bool
-	attempt             int
+	// PlanJobs (#229) is this run's jobs afresh, by their start's dispatch id, where the host offers job tools.
+	PlanJobs func(context.Context) (map[string]RunJob, error)
+	// PlanJobsHeld is the same as of the last read, for what is offered to the model; a close reads afresh.
+	PlanJobsHeld      func() map[string]RunJob
+	planDecisionEvent *contract.RunEvent
+	PublishPlan       func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
+	session           Session
+	ledger            *ContextLedger
+	restored          bool
+	attempt           int
 	// criticMu is the switch's lock: it also guards operation writers and snapshot serialisation.
 	criticMu *sync.Mutex
 
@@ -552,6 +557,14 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		if asked {
 			if err := approvalDecisionHolds(*saved.Approval, *decision); err != nil {
 				return err
+			}
+			// #229: job tools are a new surface, so no host has yet to move: every approved start proves what the
+			// person was shown, a text kept or not. Refused here, before the claim, so the pause stands and the
+			// call can be asked again.
+			if decision.Approved && decision.ShownDigest == nil && slices.ContainsFunc(c.session.HostTools, func(tool HostTool) bool {
+				return tool.job != nil && tool.job.start != nil && tool.Name == saved.Approval.Name
+			}) {
+				return failure.Authored("stale-state", approvalNotShownDetail, "context")
 			}
 		}
 		if (saved.Status == "paused" && !asked) || saved.Used >= saved.Limit {

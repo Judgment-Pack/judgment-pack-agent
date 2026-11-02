@@ -7,7 +7,9 @@ import type {TaskStep} from './state'
 import {revisePlan,validPlanState,type IdentifiedPlan,type StepEvidence,type CompletionRefusal,type Departure,type AcceptedPlan} from './plan'
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 const exact=(v:Record<string,unknown>,keys:string[])=>Object.keys(v).every(k=>keys.includes(k))
-export interface PlanProof {book:DurableBook;scope:DurableScope;children?:import('../taskSteps').TaskCompletionEvidence[]}
+export interface PlanProof {book:DurableBook;scope:DurableScope;children?:import('../taskSteps').TaskCompletionEvidence[]
+ /** #229: this run's jobs by their start's dispatch id, where the host offers job tools; absent otherwise. */
+ jobs?:ReadonlyMap<string,{state:string;completion?:{outcome:string}}>}
 const id=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=256
 export const contentDigest=(value:unknown)=>`sha256:${sha256(canonicalJSON(value))}`
 export function readEvidence(value:unknown):StepEvidence|undefined{
@@ -25,6 +27,11 @@ export function evidenceFailure(evidence:StepEvidence,proof:PlanProof|undefined)
   const op=proof.book.dispatches.find(d=>d.id===id)
   if(!op)return 'unknown-operation'
   if(!same(op.scope))return 'wrong-scope'
+  // #229: a start's row proves only that it was asked for. The job's own record decides: settled and succeeded proves it
+  // whatever the row says, and anything else does not. Rows of job tools record no observation, so with no job on record a
+  // start, and any read of a job, falls through to the refusal below.
+  const job=proof.jobs?.get(id)
+  if(job){if(job.state!=='completed'||job.completion?.outcome!=='succeeded')return 'unsuccessful-operation';continue}
   if(!['host','runtime'].includes(op.kind)||op.state!=='result'||op.failure||op.result===undefined||object(op.result)&&op.result.isError===true||!proof.book.observations.some(o=>o.kind==='operation'&&o.dispatchId===id&&same(o.scope)))return 'unsuccessful-operation'
  }
  for(const artifact of evidence.artifacts){
