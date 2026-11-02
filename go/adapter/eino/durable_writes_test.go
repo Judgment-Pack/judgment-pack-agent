@@ -478,3 +478,58 @@ func TestAResumedRunsFirstRequestHoldsTheModelsText(t *testing.T) {
 		})
 	}
 }
+
+// Under a token budget the next request is read too, so what the record cannot hold must not go back as written: the
+// call is refused and the run goes on, on the family whose input carries it literally.
+func TestARefusedCallDoesNotStopTheNextRequestUnderABudget(t *testing.T) {
+	for _, call := range []string{`{"q":1e400}`, `{"a":1,"a":2}`, `{"n":1.0,"q":"` + string(rune(0x5c)) + `ud800"}`} {
+		t.Run(call, func(t *testing.T) {
+			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			budget, err := runcontext.NewMemoryUsageBudgetStore("usage-project", runcontext.MemoryUsageBudgetOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := gate.New(gate.Options{})
+			g.SetOffer(contract.ToolOffer{})
+			ran := 0
+			tool := runcontext.HostTool{Name: "change_record", Description: "change_record: change one record", Effect: "workflow", InputSchema: json.RawMessage(`{"type":"object"}`), Taxonomy: &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"},
+				Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+					ran++
+					return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("ran")}, nil), nil
+				}}
+			errors := []string{}
+			requests := 0
+			r := &adapter.Run{Prompt: "Change it.", Wire: "anthropic", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), HostTools: []runcontext.HostTool{tool},
+				Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Change it.", Input: "Change it."}, Connection: "provider", ConnectionRevisions: map[string]string{"provider": "one"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "budget"},
+					UsageBudget: &runcontext.UsageBudgetInput{Store: budget, Scope: runcontext.UsageBudgetScope{Resource: "usage-project", ID: "shared-scope", Revision: "policy-r1", Limits: runcontext.UsageAmounts{"modelRequests": 8, "inputTokens": 1000, "outputTokens": 1000000}},
+						Bounder: func(_ context.Context, request runcontext.UsageBoundRequest) (runcontext.UsageAmounts, error) {
+							out := runcontext.UsageAmounts{"inputTokens": 10}
+							if request.EncodedOutputMaximum != nil {
+								out["outputTokens"] = *request.EncodedOutputMaximum
+							}
+							return out, nil
+						}}},
+				Emit: func(e contract.RunEvent) {
+					if e.Error != nil {
+						errors = append(errors, e.Error.Message)
+					}
+				},
+				EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+					return g.EnrollContext(offer.ID, offer.HostTools)
+				},
+				Model: func(context.Context, string, relay.Request) (*http.Response, error) {
+					requests++
+					if requests == 1 {
+						return wireReply("api/anthropic/sse", "call-1", tool.Name, call), nil
+					}
+					return wireReply("api/anthropic/sse", "", "", ""), nil
+				}}
+			if err := eino.New().Run(context.Background(), r); err != nil {
+				t.Fatal(err)
+			}
+			if len(errors) != 0 || ran != 0 || requests != 2 {
+				t.Fatalf("errors %q, ran %d, requests %d", errors, ran, requests)
+			}
+		})
+	}
+}

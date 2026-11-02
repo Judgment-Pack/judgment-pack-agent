@@ -147,7 +147,17 @@ func (s *approvalScene) approve(t *testing.T, calls ...string) {
 		t.Fatalf("no asked approval: %v", approval)
 	}
 	s.events = nil
-	s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: true}, calls)
+	head, err := s.store.Load(context.Background(), "run-approval")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved contract.Checkpoint
+	if err = json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	// A host that has moved to the readers says what the person was shown.
+	digest := runcontext.ApprovalShownDigest(*saved.Approval)
+	s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: true, ShownDigest: &digest}, calls)
 }
 
 func (s *approvalScene) answered(t *testing.T) string {
@@ -367,6 +377,100 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 					}
 					if got := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(s.ran[0]))); got != reference {
 						t.Fatalf("the reference is %s, what ran digests as %s", reference, got)
+					}
+				})
+			}
+			// A host that has not moved: its card and its reference are over args, and its decision proves nothing.
+			for _, call := range []string{big, `{"amount":10.50}`} {
+				if engine == "native" && call != big {
+					continue
+				}
+				t.Run("a host that has not moved runs nothing: "+call, func(t *testing.T) {
+					s := scene()
+					s.answers = []string{"ask"}
+					s.run(t, false, nil, []string{call})
+					before, _ := s.store.Load(context.Background(), "run-approval")
+					approval, _, _ := s.head(t)
+					card := approval.Get("args").Text()
+					if card == call {
+						t.Fatalf("the unmoved card already shows %s", card)
+					}
+					wrong := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(card)))
+					for _, shown := range []*string{nil, &wrong} {
+						s.events = nil
+						s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: true, ShownDigest: shown}, nil)
+						if len(s.ran) != 0 {
+							t.Fatalf("the tool ran %q", s.ran)
+						}
+						named := false
+						for _, event := range s.events {
+							if event.Error != nil && strings.Contains(event.Error.Message, "ApprovalNotShown") && strings.Contains(event.Error.Message, "approvalShownDigest") {
+								named = true
+							}
+						}
+						if !named {
+							t.Fatalf("no named refusal: %+v", s.events)
+						}
+						after, _ := s.store.Load(context.Background(), "run-approval")
+						if after.Revision != before.Revision {
+							t.Fatal("the pause moved")
+						}
+					}
+					// The same pause, once the host has moved.
+					s.approve(t)
+					if len(s.ran) != 1 || s.ran[0] != call {
+						t.Fatalf("the tool ran %q", s.ran)
+					}
+				})
+			}
+			t.Run("a person's refusal needs no digest", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{big})
+				approval, _, _ := s.head(t)
+				s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: false}, nil)
+				if got, _, _ := s.head(t); got.Get("state").Str() == "asked" || len(s.ran) != 0 {
+					t.Fatalf("%s, ran %q", got.Text(), s.ran)
+				}
+			})
+			t.Run("no text kept: a host that has not moved goes on as it was", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{`{"id":7}`})
+				approval, version, _ := s.head(t)
+				if approval.Has("request") || version != 2 {
+					t.Fatalf("version %v, %s", version, approval.Text())
+				}
+				s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: true}, nil)
+				if len(s.ran) != 1 || s.ran[0] != `{"id":7}` {
+					t.Fatalf("the tool ran %q", s.ran)
+				}
+			})
+			// MEDIUM-11: one form shown, run and digested, for what encoding/json would have written otherwise.
+			for _, call := range []string{`{"a":"x&y"}`, `{"html":"<b>&</b>"}`, `{"ls":"` + string(rune(0x2028)) + `"}`, `{"` + string(rune(0x1F600)) + `":1,"` + string(rune(0xFFEE)) + `":2}`} {
+				if engine == "native" && !strings.Contains(call, "&") {
+					continue
+				}
+				t.Run("one form shown, run and digested: "+call, func(t *testing.T) {
+					s := scene()
+					s.answers = []string{"ask"}
+					s.run(t, false, nil, []string{call})
+					head, err := s.store.Load(context.Background(), "run-approval")
+					if err != nil {
+						t.Fatal(err)
+					}
+					var saved contract.Checkpoint
+					if err = json.Unmarshal(head.Checkpoint, &saved); err != nil {
+						t.Fatal(err)
+					}
+					card, reference := runcontext.ApprovalShownArguments(*saved.Approval), runcontext.ApprovalShownDigest(*saved.Approval)
+					s.approve(t)
+					if len(s.ran) != 1 || s.ran[0] != card {
+						t.Fatalf("the card shows %s, the tool received %q", card, s.ran)
+					}
+					_, _, rows := s.head(t)
+					if len(rows) != 1 || fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(rows[0]))) != reference {
+						t.Fatalf("the reference is %s, the row is %q", reference, rows)
 					}
 				})
 			}

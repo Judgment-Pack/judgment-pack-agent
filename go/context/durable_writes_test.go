@@ -722,7 +722,16 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 			Request *string `json:"request"`
 			Text    string  `json:"text"`
 			Digest  string  `json:"digest"`
+			Runs    string  `json:"runs"`
 		} `json:"shown"`
+		Decisions []struct {
+			Label       string  `json:"label"`
+			Args        string  `json:"args"`
+			Request     *string `json:"request"`
+			Approved    bool    `json:"approved"`
+			ShownDigest *string `json:"shownDigest"`
+			Reads       bool    `json:"reads"`
+		} `json:"decisions"`
 		Bindings []struct {
 			Args       string  `json:"args"`
 			Request    *string `json:"request"`
@@ -756,6 +765,27 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 		if got := ApprovalShownDigest(asked); got != row.Digest {
 			t.Errorf("%s: a host binds to %s", row.Label, got)
 		}
+		if row.Runs != "" {
+			if got, ok := approvedArguments(asked); !ok || string(got) != row.Runs {
+				t.Errorf("%s: shown %s, runs %s, %v", row.Label, row.Text, got, ok)
+			}
+		}
+	}
+	if len(vector.Decisions) == 0 {
+		t.Fatal("no decisions")
+	}
+	for _, row := range vector.Decisions {
+		var args map[string]json.RawMessage
+		if err = json.Unmarshal([]byte(row.Args), &args); err != nil {
+			t.Fatal(err)
+		}
+		err := approvalDecisionHolds(contract.CheckpointApproval{Args: args, Request: row.Request}, contract.CheckpointApprovalDecision{Approved: row.Approved, ShownDigest: row.ShownDigest})
+		if (err == nil) != row.Reads {
+			t.Errorf("%s: %v", row.Label, err)
+		}
+		if err != nil && !strings.HasPrefix(err.Error(), "ApprovalNotShown: ") {
+			t.Errorf("%s: not named: %v", row.Label, err)
+		}
 	}
 	for _, row := range vector.Bindings {
 		var args map[string]json.RawMessage
@@ -781,6 +811,88 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 		text, ok := approvedArguments(contract.CheckpointApproval{Args: args, Request: row.Request})
 		if want := row.Go != "refused"; ok != want || want && string(text) != row.Go {
 			t.Errorf("%s: runs %q, %v, want %q", row.Label, text, ok, row.Go)
+		}
+	}
+}
+
+// An empty kept text is no text: it does not read (LOW-10).
+func TestAnEmptyKeptTextDoesNotRead(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-checkpoint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	item := vector.Items[0]
+	item["approval"].(map[string]any)["request"] = ""
+	text, _ := json.Marshal(item)
+	if _, err = ReadExecution(MustParseJSON(string(text))); err == nil {
+		t.Fatal("an empty kept text reads")
+	}
+}
+
+// The records every checkpoint format reaches: its report with repeat tools on, its archive's derived view and its
+// corpus view, at each version from 4.
+func keptTextCustody(t *testing.T, version int) *Value {
+	t.Helper()
+	raw, err := os.ReadFile("../../contract/testdata/repeat-tools/records.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := MustParseJSON(string(raw)).Get("custodyCheckpoint").Clone()
+	formats, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-checkpoint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	item := MustParseJSON(string(formats)).Get("items").Items()[1]
+	cp.Set("version", Number(float64(version)))
+	if CheckpointHoldsRequest(version) {
+		cp.Set("approval", item.Get("approval").Clone())
+	}
+	if CheckpointHoldsPrincipal(version) {
+		cp.Set("principal", item.Get("principal").Clone())
+	}
+	return cp
+}
+
+func TestAKeptTextsRunWithRepeatToolsIsReported(t *testing.T) {
+	for _, version := range []int{4, 5, 6} {
+		value := keptTextCustody(t, version)
+		cp, err := ReadExecution(value)
+		if err != nil {
+			t.Fatalf("version %d: %v", version, err)
+		}
+		report, err := ProjectRunReport(*cp)
+		if err != nil {
+			t.Fatalf("version %d: %v", version, err)
+		}
+		if !report.Has("repeatTools") {
+			t.Fatalf("version %d: %s", version, report.Text())
+		}
+		if _, err = ReadRunReport(report); err != nil {
+			t.Fatalf("version %d does not read: %v", version, err)
+		}
+	}
+}
+
+func TestTheCorpusViewReadsEveryCheckpointFormat(t *testing.T) {
+	for _, version := range []int{4, 5, 6} {
+		document := keptTextCustody(t, version)
+		raw := []byte(CanonicalJSON(document))
+		view, err := newCorpusCheckpointView(HistoryObjectRef{HistoryBytesDigest(raw), len(raw)}, document)
+		if err != nil || view.SourceVersion != version {
+			t.Fatalf("version %d: %+v, %v", version, view.SourceVersion, err)
+		}
+		encoded, err := json.Marshal(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = ReadCorpusCheckpointView([]byte(CanonicalJSON(MustParseJSON(string(encoded))))); err != nil {
+			t.Fatalf("version %d does not read back: %v", version, err)
 		}
 	}
 }

@@ -1946,14 +1946,18 @@ func (v CheckpointApproval) MarshalJSON() ([]byte, error) {
 // the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the
 // pending approval's, or the run is refused before anything runs (stale-state); approved: whether
 // the call may run; note: the person's words, at most 2,000 characters, shown to the model as
-// data. Closed.
+// data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest).
+// Approving a call whose record keeps its text needs it, and it must match, or the run is refused
+// before anything runs and the pause stands; with no text kept it is optional and, where sent,
+// must match. It is input only, and no record holds it. Closed.
 type CheckpointApprovalDecision struct {
-	CallID   string  `json:"callId"`
-	Approved bool    `json:"approved"`
-	Note     *string `json:"note,omitzero"`
+	CallID      string  `json:"callId"`
+	Approved    bool    `json:"approved"`
+	Note        *string `json:"note,omitzero"`
+	ShownDigest *string `json:"shownDigest,omitzero"`
 }
 
-var checkpointApprovalDecisionMembers = []string{"callId", "approved", "note"}
+var checkpointApprovalDecisionMembers = []string{"callId", "approved", "note", "shownDigest"}
 
 // UnmarshalJSON decodes a CheckpointApprovalDecision object and refuses a member the closed schema does not name.
 func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {

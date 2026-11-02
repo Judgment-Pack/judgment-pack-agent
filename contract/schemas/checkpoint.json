@@ -707,7 +707,7 @@
       "additionalProperties": false
     },
     "approvalDecision": {
-      "description": "The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data. Closed.",
+      "description": "The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest). Approving a call whose record keeps its text needs it, and it must match, or the run is refused before anything runs and the pause stands; with no text kept it is optional and, where sent, must match. It is input only, and no record holds it. Closed.",
       "type": "object",
       "required": [
         "callId",
@@ -725,6 +725,10 @@
         "note": {
           "type": "string",
           "maxLength": 2000
+        },
+        "shownDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       },
       "additionalProperties": false

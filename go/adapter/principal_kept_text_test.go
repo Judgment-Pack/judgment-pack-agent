@@ -72,7 +72,8 @@ func TestAHeldCallKeepsItsTextWithoutLoweringADelegatedRun(t *testing.T) {
 						t.Fatal("a delegated checkpoint with no principal reads")
 					}
 				}
-				second := runHostTool(t, store, "run-held", engine, true, &contract.CheckpointApprovalDecision{CallID: saved.Approval.CallID, Approved: true}, tool, nil)
+				digest := runcontext.ApprovalShownDigest(*saved.Approval)
+				second := runHostTool(t, store, "run-held", engine, true, &contract.CheckpointApprovalDecision{CallID: saved.Approval.CallID, Approved: true, ShownDigest: &digest}, tool, nil)
 				if second.err != nil {
 					t.Fatal(second.err)
 				}

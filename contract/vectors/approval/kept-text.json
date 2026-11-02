@@ -1,5 +1,5 @@
 {
-  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a checkpoint of version 5 or 6. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: args are the canonical form at every depth, which approval_requested shows and the approved call runs. Two names that fold together are refused before anyone is asked, so they are not here. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text. shown: the text a host renders for a call and shows as a string, never through a parsed value, and the digest an approval reference binds to: the SHA-256 of that text's UTF-8 bytes, approvalShownArguments and approvalShownDigest in toolSources.ts, ApprovalShownArguments and ApprovalShownDigest in go/context/sources.go. A digest over args cannot tell 9007199254740992 from 9007199254740993. bindings: the digest of the call the package's own approval wait binds to, which covers the kept text, so another spelling of one parsed form is another call.",
+  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a checkpoint of version 5 or 6. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: args are the canonical form at every depth, which approval_requested shows and the approved call runs. Two names that fold together are refused before anyone is asked, so they are not here. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text. shown: the text a host renders for a call and shows as a string, never through a parsed value, and the digest an approval reference binds to: the SHA-256 of that text's UTF-8 bytes, approvalShownArguments and approvalShownDigest in toolSources.ts, ApprovalShownArguments and ApprovalShownDigest in go/context/sources.go. A digest over args cannot tell 9007199254740992 from 9007199254740993. bindings: the digest of the call the package's own approval wait binds to, which covers the kept text, so another spelling of one parsed form is another call. decisions: what a decision must prove. Approving a call whose record keeps its text needs shownDigest, and a digest sent must match, so a host that has not moved to the readers refuses by name rather than approving one number while another runs.",
   "schema": "checkpoint.json#/$defs/approval",
   "source": {
     "harness": {
@@ -288,6 +288,34 @@
       "args": "{\"q\":\"x\"}",
       "text": "{\"q\":\"x\"}",
       "digest": "sha256:a69fbbcf7209c6f659a75067c9fa03037c2ae23f55a6f854d5994209129bbbf6"
+    },
+    {
+      "label": "an ampersand, which encoding/json escapes",
+      "args": "{\"a\":\"x&y\"}",
+      "text": "{\"a\":\"x&y\"}",
+      "digest": "sha256:fdc830e44f258aeeb07250ed3907b23a33a16a119a8b76e864a4765464cb6925",
+      "runs": "{\"a\":\"x&y\"}"
+    },
+    {
+      "label": "angle brackets",
+      "args": "{\"html\":\"<b>&</b>\"}",
+      "text": "{\"html\":\"<b>&</b>\"}",
+      "digest": "sha256:c01640c92dbd9b430da043db3d570ed76fe48fdee4672c0cc2ca2c986ec2f1ab",
+      "runs": "{\"html\":\"<b>&</b>\"}"
+    },
+    {
+      "label": "a line separator",
+      "args": "{\"ls\":\" \"}",
+      "text": "{\"ls\":\" \"}",
+      "digest": "sha256:887845cf8cfd31e4348bdf2159a11e219b36a0a9e3f86acdbe7ad74097ac4dbb",
+      "runs": "{\"ls\":\" \"}"
+    },
+    {
+      "label": "astral names, in UTF-16 order",
+      "args": "{\"😀\":1,\"￮\":2}",
+      "text": "{\"😀\":1,\"￮\":2}",
+      "digest": "sha256:cda86a39aa13f4f09297af0d55c78cca4c3f85a55acbc96a3d4e4b5ffe20ce0c",
+      "runs": "{\"😀\":1,\"￮\":2}"
     }
   ],
   "bindings": [
@@ -307,6 +335,65 @@
       "args": "{\"q\":1}",
       "canonical": "{\"args\":{\"q\":1},\"name\":\"tracker__create_issue\",\"tool\":\"create_issue\"}",
       "callDigest": "sha256:9413b93bb7c2b4e579d49279f1b2c3dd843c65b66ff1d24ec9f53c2caf8ba055"
+    }
+  ],
+  "decisions": [
+    {
+      "label": "a kept text, approved with its digest",
+      "request": "{\"id\":9007199254740993}",
+      "args": "{\"id\":9007199254740992}",
+      "approved": true,
+      "shownDigest": "sha256:2185812179ffd2b19c8154d2d409599d231fb75ef4968df59b7f02b435c094fa",
+      "reads": true
+    },
+    {
+      "label": "a kept text, approved with no digest: an unmoved host",
+      "request": "{\"id\":9007199254740993}",
+      "args": "{\"id\":9007199254740992}",
+      "approved": true,
+      "reads": false
+    },
+    {
+      "label": "a kept text, approved with a digest over args",
+      "request": "{\"id\":9007199254740993}",
+      "args": "{\"id\":9007199254740992}",
+      "approved": true,
+      "shownDigest": "sha256:24bb430971eb50f964e63784a7ad4f3411bc7cdb1659188e371150793e872da1",
+      "reads": false
+    },
+    {
+      "label": "an amount, approved with no digest",
+      "request": "{\"amount\":10.50}",
+      "args": "{\"amount\":10.5}",
+      "approved": true,
+      "reads": false
+    },
+    {
+      "label": "a kept text, refused with no digest: nothing runs",
+      "request": "{\"id\":9007199254740993}",
+      "args": "{\"id\":9007199254740992}",
+      "approved": false,
+      "reads": true
+    },
+    {
+      "label": "no text kept, approved with no digest",
+      "args": "{\"id\":7}",
+      "approved": true,
+      "reads": true
+    },
+    {
+      "label": "no text kept, approved with its digest",
+      "args": "{\"id\":7}",
+      "approved": true,
+      "shownDigest": "sha256:a3c90e3b7448d23d9eacebd0ebf15cae100e21f9b2c688f3f9d238edcd26d67f",
+      "reads": true
+    },
+    {
+      "label": "no text kept, approved with another digest",
+      "args": "{\"id\":7}",
+      "approved": true,
+      "shownDigest": "sha256:45c136947617ef3fbd1bd0681138b8dc6eade620558927c3e7c9f899fdfbd958",
+      "reads": false
     }
   ]
 }

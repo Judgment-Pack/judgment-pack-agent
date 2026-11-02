@@ -1795,6 +1795,11 @@ func shownArguments(request *string, args map[string]json.RawMessage) string {
 	return CanonicalJSON(value)
 }
 
+// approvalDecisionHolds STUB
+func approvalDecisionHolds(contract.CheckpointApproval, contract.CheckpointApprovalDecision) error {
+	return nil
+}
+
 func canonicalArgs(args json.RawMessage) string {
 	value, err := ParseJSON(nonEmptyArgs(args))
 	if err != nil {

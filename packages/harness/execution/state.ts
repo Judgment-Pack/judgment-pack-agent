@@ -114,7 +114,7 @@ export function validSkillLoads(value:unknown):value is SkillLoad[]{
  */
 export interface ApprovalRecord {runtime?:import('../runtimeActions').RuntimeApprovalBinding;/** The model's text, where a Go writer's args cannot say it (#275). */request?:string;callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
 /** The person's decision on a paused act call (ADR-0008; `checkpoint.json#/$defs/approvalDecision`), handed to the run as `context.approval`. */
-export interface ApprovalDecision {callId:string;approved:boolean;note?:string}
+export interface ApprovalDecision {callId:string;approved:boolean;note?:string;/** The digest of the text the person was shown (#275, `approvalShownDigest`). */shownDigest?:string}
 const APPROVAL_STATES=['asked','approved','refused','executed','answered']
 const WIRE_NAME=/^[A-Za-z0-9_-]{1,64}$/
 /** A source record as an approval carries it, read closed (`tool-offer.json#/$defs/sourceRecord`). */
@@ -130,6 +130,24 @@ export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{
  if(!object(v)||!exact(v,['callId','approved','note'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000))return
  return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string})}
 }
+/**
+ * The text a host renders for a call held for approval: what the approved call runs (#275). A stored record's
+ * args are the parsed form, so where the record keeps the model's text, that is what runs; otherwise it is args'
+ * canonical JSON. Takes the checkpoint's approval or an approval_requested event, live or stored.
+ * `ApprovalShownArguments` in go/context/sources.go is its twin.
+ */
+export function approvalShownArguments(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return asked.request ?? canonicalJSON(asked.args ?? {})
+}
+/**
+ * What a host binds an approval reference to: the SHA-256 of `approvalShownArguments`' UTF-8 bytes (#275). A digest
+ * over args cannot tell 9007199254740992 from 9007199254740993. `ApprovalShownDigest` in go/context/sources.go is its twin.
+ */
+export function approvalShownDigest(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return `sha256:${sha256(approvalShownArguments(asked))}`
+}
+/** STUB */
+export function approvalNotShown(_asked:{request?:string;args?:Record<string,unknown>},_decision:{approved:boolean;shownDigest?:string}):string|undefined{return undefined}
 /** The refused result an act call the person refused carries (ADR-0008): never run. */
 export function refusedResult(name:string):McpToolResult{
  const held={...failure('permission','tool','not-started'),detail:`The person refused this call of ${name}; it was not run and nothing was changed.`}

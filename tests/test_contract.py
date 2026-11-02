@@ -833,6 +833,29 @@ class VectorTests(unittest.TestCase):
             self.assertIn("request", item["approval"])
             self.assertEqual("principal" in item, item["version"] == 6)
         self.assertEqual({item["type"] for item in self.vectors["approval/kept-text-event.json"]["items"]}, {"approval_requested", "execution_checkpoint"})
+        # Every format has its corpus view, and an archive's view of it.
+        check = validator(self.schemas, "corpus-checkpoint-view.json")
+        ref = {"digest": "sha256:" + "a" * 64, "bytes": 1}
+        for item in vector["items"]:
+            view = {"version": 1, "kind": "corpus-checkpoint-view", "source": ref, "sourceVersion": item["version"], "derived": ref, "representation": "derived", "document": item}
+            self.assertEqual(problems(check, [view]), [])
+        # A decision needs the digest of the text that runs exactly where a text is kept, and a digest sent must match.
+        shown = self.vectors["approval/kept-text.json"]
+        for row in shown["decisions"]:
+            with self.subTest(row=row["label"]):
+                text = row.get("request")
+                canonical = json.dumps(json.loads(row["args"]), separators=(",", ":"), sort_keys=True)
+                digest = "sha256:" + sha256(text if text is not None else canonical)
+                sent = row.get("shownDigest")
+                if not row["approved"]:
+                    reads = True
+                elif text is not None:
+                    reads = sent == digest
+                else:
+                    reads = sent is None or sent == digest
+                self.assertEqual(row["reads"], reads)
+        for row in shown["shown"]:
+            self.assertEqual(row["digest"], "sha256:" + sha256(row["text"]))
 
     def test_the_kept_approval_text_follows_from_each_text(self):
         # #275: a third reading. A text is kept unless args cannot have changed it.

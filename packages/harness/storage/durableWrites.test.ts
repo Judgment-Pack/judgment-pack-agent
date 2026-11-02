@@ -20,6 +20,8 @@ import { UnknownRecordMember, readRunEvent, writeRunEvent } from '../recordReade
 import { mutateCheckpoint } from '../execution/mutation'
 import { projectRunReport } from '../runReport'
 import { readRunReport } from '../runReportReader'
+import { corpusCheckpointView, readCorpusCheckpointView } from '../history/corpusCheckpointView'
+import { historyBytesDigest, historyJSONBytes } from '../history/codec'
 
 const vector = JSON.parse(readFileSync('../../contract/vectors/storage/durable-repeats.json', 'utf8')) as {
   cases: { label: string; recorded: string; request: string; decision: 'same' | 'different' | 'conflict' }[]
@@ -153,6 +155,21 @@ describe('the decision over two requests that read alike (#275)', () => {
     expect((writeRunEvent({ type: 'approval_requested', callId: 'held', request: '{"id":9007199254740993}' } as never) as { version?: number }).version).toBe(3)
     for (const item of eventVector.items) expect(() => readRunEvent(item)).not.toThrow()
     expect(() => readRunEvent({ ...eventVector.items[0], version: 2 })).toThrow()
+  })
+
+  it('reports a kept text\'s run with repeat tools on, and views it in the corpus', () => {
+    const custody = (JSON.parse(readFileSync('../../contract/testdata/repeat-tools/records.json', 'utf8')) as { custodyCheckpoint: Record<string, unknown> }).custodyCheckpoint
+    const held = formats.items[1] as { approval: unknown; principal: unknown }
+    for (const version of [4, 5, 6]) {
+      const checkpoint = { ...structuredClone(custody), version, ...(version >= 5 ? { approval: held.approval } : {}), ...(version === 4 || version === 6 ? { principal: held.principal } : {}) } as never
+      const report = projectRunReport(readExecution(checkpoint)!) as unknown as Record<string, unknown>
+      expect(report.repeatTools, String(version)).toBeDefined()
+      expect(() => readRunReport(report), String(version)).not.toThrow()
+      const bytes = historyJSONBytes(checkpoint)
+      const view = corpusCheckpointView({ digest: historyBytesDigest(bytes), bytes: bytes.length }, checkpoint)
+      expect(view.sourceVersion).toBe(version)
+      expect(readCorpusCheckpointView(JSON.parse(JSON.stringify(view))).sourceVersion).toBe(version)
+    }
   })
 
   it('reads a kept approval text only at version 5 or 6, as Go does', () => {

@@ -44,7 +44,7 @@ import { CONTEXT_DEFAULTS, SOURCE_DEFAULTS } from './context/policy'
 import { readingTool } from './framing'
 import { toolFailureResult, AIFailureError, failureEvent } from './failures'
 import { GateViolation } from './toolGate'
-import { readApprovalDecision, readExecution, refusedResult, validApproval, validSourceFigures, type ApprovalRecord, type ExecutionCheckpoint, type SourceFigures } from './execution/state'
+import { readApprovalDecision, readExecution, refusedResult, validApproval, approvalNotShown, validSourceFigures, type ApprovalRecord, type ExecutionCheckpoint, type SourceFigures } from './execution/state'
 import { contextDigest } from './context/ledger'
 import {approvalShownArguments,
   approvalShownDigest,
@@ -1044,7 +1044,17 @@ describe('the approval pause (ADR-0008)', () => {
     }
   })
   it('takes each row of the kept-text vector as the vector says (#275)', async () => {
-    const vector = keptTextVector as unknown as { items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[]; shown: { label: string; args: string; request?: string; text: string; digest: string }[] }
+    const vector = keptTextVector as unknown as { decisions: { label: string; args: string; request?: string; approved: boolean; shownDigest?: string; reads: boolean }[]; items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[]; shown: { label: string; args: string; request?: string; text: string; digest: string }[] }
+    expect(vector.decisions.length).toBeGreaterThan(0)
+    for (const row of vector.decisions) {
+      const held = { args: JSON.parse(row.args) as Record<string, unknown>, ...(row.request === undefined ? {} : { request: row.request }) }
+      const problem = approvalNotShown(held, { approved: row.approved, ...(row.shownDigest === undefined ? {} : { shownDigest: row.shownDigest }) })
+      expect(problem === undefined, row.label).toBe(row.reads)
+      if (problem !== undefined) expect(problem.startsWith('ApprovalNotShown: '), row.label).toBe(true)
+      // The reader passes the member on, closed.
+      expect(readApprovalDecision({ callId: 'held', approved: row.approved, ...(row.shownDigest === undefined ? {} : { shownDigest: row.shownDigest }) })?.shownDigest).toBe(row.shownDigest)
+    }
+    expect(readApprovalDecision({ callId: 'held', approved: true, shownDigest: 'not a digest' })).toBeUndefined()
     // A host reads the card as a string, and binds to its digest: JSON.parse of args would show another number.
     for (const row of vector.shown) {
       const asked = { args: JSON.parse(row.args) as Record<string, unknown>, ...(row.request === undefined ? {} : { request: row.request }) }
