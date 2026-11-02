@@ -8,11 +8,19 @@ import {evidenceFailure,availablePlanEvidence} from '../execution/planActions'
 import {planDigest} from '../execution/plan'
 import {approvalShownDigest,readExecution} from '../execution/state'
 import {MemoryRunStore,type RunStore} from './run'
+import {AIFailureError,failure} from '../failures'
+import {sha256} from '../records'
+import {ChatContext} from '../context/chat'
+import {StoredChatScope} from '../context/storedChat'
+import {declareSubagents,type SubagentDeclaration} from '../subagents'
+import {CONTEXT_DEFAULTS} from '../context/policy'
+import declaration from '../../../contract/vectors/subagents/declaration.json'
+import modelVector from '../../../contract/vectors/job/model.json'
 import {RECORD_DEFAULTS} from '../records'
 import type {ExecutionCheckpoint} from '../execution/state'
 import {RunWriter,type DurableBinding} from './writer'
-import {LeaseCapabilityRefused,ReferenceEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type LeaseLifetime} from './lease'
-import {admitJobs,completeJob,exportJobs,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob} from './job'
+import {LeaseCapabilityRefused,ReferenceEffectHost,certifyEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type LeaseLifetime} from './lease'
+import {admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob} from './job'
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
 
 /* #229: run-owned jobs through the real Vercel engine, the package's writer and the reference effect host. The Go twins are
@@ -68,11 +76,12 @@ vi.setConfig({testTimeout:120_000})
 
 describe('a start is registered with its claim, before it is admitted (#229)',()=>{
  it('the job exists, unproven, when the effect host is asked; the row and the model hold only what the package composed',async()=>{
-  const clock={at:T0},store=new DurableJobStore({now:()=>new Date(clock.at)}),inner=new ReferenceEffectHost(store)
+  const clock={at:T0},store=new DurableJobStore({now:()=>new Date(clock.at)})
   const lease=await store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR}),fence=fenceOf(lease)
   const seen:(string|undefined)[]=[]
   let keyAt:string|undefined,requested:string|undefined
-  const host:EffectHost={effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{seen.push((await readJob(store,RUN,jobIdentity(RUN,admission.operation.operation)))?.state);return inner.dispatch(admission,perform,signal)}}
+  const host=await certifyEffectHost(authority=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{seen.push((await readJob(store,RUN,jobIdentity(RUN,admission.operation.operation)))?.state);return inner.dispatch(admission,perform,signal)}} as EffectHost},store)
+  seen.length=0
   const view=fencedRunStore(store,fence,host),first=provider([CALL,{say:'Running.'}])
   const tool=await startTool(async input=>{requested=input.request;keyAt=input.job;return started()})
   const events=await drive(view,[tool],first.call)
@@ -269,7 +278,7 @@ describe('completion and reconciliation, from the host only (#229)',()=>{
  it('H2: a grant re-sends a start only while its job is unproven; a closed job refuses it, and the grant is not spent',async()=>{
   // A trusted refusal under the credential check leaves the job unproven with a typed row, and the run parks for it.
   const refusal={cause:'expired' as const,connection:'runner-conn',principal:`sha256:${'c'.repeat(64)}`,permissions:['jobs:write'],requires:['jobs:write']}
-  const run=async(closeFirst:boolean)=>{
+  const run=async(close?:Partial<JobReconciliation>)=>{
    const clock={at:T0},store=new DurableJobStore({now:()=>new Date(clock.at)}),creds={refused:true as boolean}
    const host=new ReferenceEffectHost(store,{credentials:async()=>creds.refused?refusal:undefined})
    const a=await store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR}),view=unattendedRunStore({store,fence:fenceOf(a),effectHost:host})
@@ -283,19 +292,26 @@ describe('completion and reconciliation, from the host only (#229)',()=>{
    clock.at=T0+2*MINUTE
    const resumed=await resumeParked({store,resource:RUN,wait:'wait-r',evidence:'refreshed',owner:'worker-b',durationMs:HOUR,current:await current(store,'wait-r'),reauthorization:{version:1,resource:RUN,wait:'wait-r',connection:'runner-conn',action:'refresh',principal:refusal.principal,permissions:['jobs:write'],actor:'person-owner',at:iso(T0+MINUTE)}})
    creds.refused=false
-   if(closeFirst)await reconcileJob(store,reconciliation(job.job))
+   if(close)await reconcileJob(store,reconciliation(job.job,close))
    const continued=await reauthorizedRunStore({store,effectHost:host,resumed}),repeat=provider([CALL,{say:'done'}])
    const events=await drive(continued,[tool],repeat.call,{resume:true})
    return {store,start,job,events,row:(await headRows(store)).dispatches.find(d=>d.id===job.operation)!,after:(await readJob(store,RUN,job.job))!}
   }
-  const open=await run(false)
+  const open=await run()
   expect(open.start).toHaveBeenCalledTimes(1)
   expect(open.after).toMatchObject({state:'started',handle:SECRET,reclaimed:{owner:'worker-b'}});expect(open.row.state).toBe('result')
-  const closed=await run(true)
+  const closed=await run({})
   expect(closed.start).not.toHaveBeenCalled()
   expect(closed.after.state).toBe('not-started');expect(closed.row.state).toBe('unknown')
   expect(closed.row.failure).toMatchObject({code:'authentication',outcome:'not-started'})
-  expect(closed.events.some(e=>e.type==='tool_result'&&e.isError===true&&JSON.stringify(e).includes('JobRefused: job-settled'))).toBe(true)
+  // H-1: what it is told is what the job says, not that its input was invalid.
+  expect(closed.events.find(e=>e.type==='tool_result')).toMatchObject({isError:true,text:jobStartResult(closed.after).content![0]!.text})
+  expect(JSON.stringify(closed.events)).not.toContain('JobRefused')
+  const running=await run({finding:'started',handle:'H1'})
+  expect(running.start).not.toHaveBeenCalled()
+  expect(running.after).toMatchObject({state:'started',handle:'H1'});expect(running.row.state).toBe('unknown')
+  expect(running.events.find(e=>e.type==='tool_result')).toMatchObject({text:jobStartResult(running.after).content![0]!.text})
+  expect(JSON.stringify(running.events)).not.toContain('JobRefused')
  })
  it('a re-claim is under the current fence (the store)',async()=>{
   const held=await oneJob(async()=>{throw Error('lost')})
@@ -509,6 +525,103 @@ describe('a held start goes through the ordinary approval (#229)',()=>{
  })
 })
 
+describe('after a start ran, the model is told what its job says (#229, H-1)',()=>{
+ const ran=async(start:(input:{job:string},held:Awaited<ReturnType<typeof leased>>)=>Promise<unknown>)=>{
+  const held=await leased(),calls=vi.fn(),first=provider([CALL,{say:'x'}])
+  const tool=await startTool((async(input:{job:string})=>{calls();return start(input,held)}) as never)
+  const events=await drive(held.view,[tool],first.call),job=(await listJobs(held.store,RUN)).jobs[0]!
+  return {job,events,calls,row:(await headRows(held.store)).dispatches.find(d=>d.id===job.operation)!}
+ }
+ const CASES:[string,(input:{job:string},held:Awaited<ReturnType<typeof leased>>)=>Promise<unknown>,string][]=[
+  ['an answer that is not typed',async()=>({content:[{type:'text',text:'ok'}]}),'unproven'],
+  ['no answer at all',async()=>undefined,'unproven'],
+  ['a start that throws, with the host\'s words',async()=>{throw new AIFailureError({...failure('tool-failed','tool','unknown'),detail:'SENTINEL-HOST-TEXT: created job H1 then failed'})},'unproven'],
+  ['a handle that conflicts with a reconciliation',async(input,held)=>{await reconcileJob(held.store,reconciliation(input.job,{finding:'started',handle:'H1'}));return {started:true,handle:'H2'}},'started'],
+  ['a late not-started on a completed job',async(input,held)=>{await completeJob(held.store,completion(input.job));return {started:false}},'completed'],
+ ]
+ for(const [name,start,state] of CASES)it(name,async()=>{
+  const {job,events,calls,row}=await ran(start)
+  expect(calls).toHaveBeenCalledTimes(1);expect(job.state).toBe(state)
+  expect(row.state).toBe('unknown');expect(row.failure).toEqual(modelVector.startFailure)
+  expect(events.find(e=>e.type==='tool_result')).toMatchObject({text:jobStartResult(job).content![0]!.text})
+  expect(JSON.stringify(events)).not.toMatch(/JobRefused|invalid-tool-input|SENTINEL-HOST-TEXT/)
+ })
+ it('a handle and a receipt the record cannot hold are kept as the digest of their bytes, and the job has started',async()=>{
+  const long='h'.repeat(300),receipt='r'.repeat(300),{job,row,events}=await ran(async()=>({started:true,handle:long,receipt}))
+  expect(job).toMatchObject({state:'started',handle:`sha256:${sha256(long)}`,receipt:`sha256:${sha256(receipt)}`})
+  expect(row.state).toBe('result')
+  expect(events.find(e=>e.type==='tool_result')).toMatchObject({isError:false,text:jobStartResult(job).content![0]!.text})
+  expect(JSON.stringify(events)).not.toContain('hhhh')
+ })
+ it('M-3: a closed job the answer contradicts says evidence says it ran, not that nothing is running',async()=>{
+  const {job,row,events}=await ran(async(input,held)=>{await reconcileJob(held.store,reconciliation(input.job));return started()})
+  expect(job.state).toBe('not-started');expect(job.contradictions).toHaveLength(1)
+  const text=jobStartResult(job).content![0]!.text
+  expect(text).toContain('evidence since says it ran');expect(text).not.toContain('nothing is running')
+  expect(events.find(e=>e.type==='tool_result')).toMatchObject({text});expect(row.state).toBe('result')
+ })
+ it('a gateway start reaches the members through its job: the key its effect host admitted',async()=>{
+  const seen:unknown[]=[],keys:string[]=[]
+  const held=await leased(),inner=new ReferenceEffectHost(held.store)
+  const host=await certifyEffectHost(authority=>{const own=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{keys.push(admission.idempotencyKey);return own.dispatch(admission,perform,signal)}} as EffectHost},held.store)
+  void inner;keys.length=0
+  const view=fencedRunStore(held.store,held.fence,host)
+  const tool=await startTool((async(input:{job:string})=>{seen.push(gatewayActionMembers((await readJob(held.store,RUN,input.job))!));return started()}) as never)
+  await drive(view,[tool],provider([CALL,{say:'x'}]).call)
+  expect(seen).toEqual([{actionKey:keys[0]!.slice('sha256:'.length),keyScope:'authority'}])
+ })
+})
+describe('what is refused before an offer or a park (#229)',()=>{
+ it('M-2: a view with no effect host, or one that only declares enforced, reaches no offer, no row and no start',async()=>{
+  for(const host of [undefined,{effectFencing:'enforced',dispatch:async(_:unknown,perform:()=>Promise<unknown>)=>perform()} as unknown as EffectHost]){
+   const store=new DurableJobStore({now:()=>new Date(T0)}),lease=await store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+   const start=vi.fn(started),first=provider([CALL,{say:'x'}])
+   const events=await drive(fencedRunStore(store,fenceOf(lease),host),[await startTool(start)],first.call)
+   expect(JSON.stringify(events)).toContain('LeaseCapabilityRefused: effect-host-unfenced')
+   expect(start).not.toHaveBeenCalled();expect(first.state.requests).toBe(0)
+   expect((await store.exportJobs(RUN)).jobs).toEqual([])
+  }
+ })
+ it('M-4: a run at its request limit does not park: a claim would be spent and nothing could continue',async()=>{
+  const held=await leased(),tool=await startTool(started)
+  const session={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[tool],signal:new AbortController().signal,allowConversation:true,critic:'off',model:{family:'openai-compatible',model:'fixture',call:provider([CALL,{say:'running'}]).call},context:{requestCap:2,currentRequest:{message:'Run the job.',input:'job'},runStore:{store:held.view,id:RUN}}} as unknown as EngineSession
+  for await(const _ of vercel.start(session)){}
+  const job=(await listJobs(held.store,RUN)).jobs[0]!
+  await expect(parkJob(held.store,held.fence,job.job)).rejects.toEqual(waitRefusal('not-resumable'))
+  expect((await exportWaits(held.store,RUN)).waits).toEqual([])
+  expect((await held.store.readLease(RUN))?.state).toBe('held')
+ })
+ it('M-5: a run under a stored chat does not park: its chat could not take the continuation',async()=>{
+  const held=await leased(),scope=new StoredChatScope(held.view as never,'chat-1',new ChatContext({scope:'fixture'}))
+  const session={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[await startTool(started)],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{currentRequest:{message:'Run the job.',input:'job'},chat:scope,runStore:{store:held.view,id:RUN,context:scope}},model:{family:'openai-compatible',model:'fixture',call:provider([CALL,{say:'running'}]).call}} as unknown as EngineSession
+  for await(const _ of vercel.start(session)){}
+  const job=(await listJobs(held.store,RUN)).jobs[0]!;expect(job.state).toBe('started')
+  await expect(parkJob(held.store,held.fence,job.job)).rejects.toMatchObject({name:'WaitCapabilityRefused',reason:'chat-store-unsupported'})
+  expect((await exportWaits(held.store,RUN)).waits).toEqual([])
+ })
+ it('M-6: a job with no row in the head means jobs and rows from different moments: refused before anything is offered',async()=>{
+  const held=await leased(),start=vi.fn(started),tool=await startTool(start)
+  await drive(held.view,[tool],provider([{say:'nothing yet'}]).call)
+  const head=(await held.store.load(RUN))!,lost=jobIdentity(RUN,'op-restored-away')
+  await held.store.commitFenced({runId:RUN,expectedRevision:head.revision,commitId:'restored',checkpoint:head.checkpoint,events:[],job:{job:lost,operation:'op-restored-away',source:'runner',tool:'start_job',requestDigest:`sha256:${'a'.repeat(64)}`,keyDigest:jobKeyDigest(KEY)}},held.fence)
+  const repeat=provider([CALL,{say:'x'}]),events=await drive(held.view,[tool],repeat.call,{resume:true})
+  expect(JSON.stringify(events)).toContain('JobCapabilityRefused: store-inconsistent')
+  expect(start).not.toHaveBeenCalled();expect(repeat.state.requests).toBe(0)
+  expect((await held.store.exportJobs(RUN)).jobs).toHaveLength(1)
+ })
+ it('M-8: a sub-agent is offered no job tool: the declaration is withheld, and a child session is refused by name',async()=>{
+  const held=await leased(),read=jobReadTool(held.view),start=await startTool(started)
+  for(const tool of [read,start]){
+   const definition={...structuredClone(declaration.items[0]),tools:[tool.name]} as unknown as SubagentDeclaration
+   const admitted=await declareSubagents([definition],[tool],[],CONTEXT_DEFAULTS)
+   expect(admitted.subagents).toEqual([])
+   expect(admitted.withheld).toEqual([expect.objectContaining({detail:'A sub-agent is offered no job tool: a job belongs to the run that started it.'})])
+  }
+  const session={prompt:'Read.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[read],signal:new AbortController().signal,allowConversation:true,critic:'off',childDefinition:{id:'child'},context:{currentRequest:{message:'Read.',input:'r'},runStore:{store:held.view,id:RUN}},model:{family:'openai-compatible',model:'fixture',call:provider([{say:'x'}]).call}} as unknown as EngineSession
+  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event)
+  expect(JSON.stringify(out)).toContain('JobCapabilityRefused: child-unsupported')
+ })
+})
 describe('capability and what stays unchanged (#229)',()=>{
  it('job tools need a fenced store whose jobs outlive its process, and an effect host; a gateway start needs the key scope',async()=>{
   const memory=new MemoryRunStore(),lease=await memory.acquireLease({resource:RUN,owner:'a',expectedRevision:null,durationMs:HOUR})

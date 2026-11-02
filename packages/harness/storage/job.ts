@@ -5,7 +5,7 @@ import {dataMarker,frameData} from '../framing'
 import {approvalNotShown,approvalShownArguments} from '../execution/state'
 import {validPrincipalBinding,type PrincipalBinding} from '../principal'
 import {storageId} from './common'
-import {admitUnattended,leasedViewOf,readEffectAdmission,readLeaseFence,validLeaseEpoch,type EffectAdmission,type EffectHost,type LeaseFence} from './lease'
+import {admitUnattended,effectIdempotencyKey,leasedViewOf,readLeaseFence,validLeaseEpoch,type EffectHost,type LeaseFence} from './lease'
 import type {RunStore} from './run'
 import type {ChatStore} from './chat'
 import type {HostTool,McpToolResult} from '../engine'
@@ -415,9 +415,9 @@ export function jobReadTool(view:RunStore):HostTool{
  * builds). The action key is the idempotency key without its prefix, and it carries no owner, subject or lease: the gateway's
  * own record of the key's first scope proves the same owner, and anything else keeps the outcome unknown. A delegated run
  * sends what the gateway's delegated scope already holds, with no keyScope. `reconcile` asks without ever dispatching. */
-export function gatewayActionMembers(admission:EffectAdmission,options:{reconcile?:true}={}):{actionKey:string;keyScope?:'authority';reconcile?:true}{
- const held=readEffectAdmission(admission)
- return {actionKey:held.idempotencyKey.slice('sha256:'.length),...(held.fence.principal?{}:{keyScope:'authority' as const}),...(options.reconcile?{reconcile:true as const}:{})}
+export function gatewayActionMembers(job:RunJob,options:{reconcile?:true}={}):{actionKey:string;keyScope?:'authority';reconcile?:true}{
+ const held=readRunJob(structuredClone(job)),key=effectIdempotencyKey({run:held.resource,operation:held.operation,source:held.source,tool:held.tool,requestDigest:held.requestDigest})
+ return {actionKey:key.slice('sha256:'.length),...(held.principal?{}:{keyScope:'authority' as const}),...(options.reconcile?{reconcile:true as const}:{})}
 }
 /** A gateway's refusal of a reconciling /act as a finding. Only a key the gateway durably closed is not-started: any other
  * refusal, another subject's key included, keeps the outcome unknown. A retained answer is parsed by the host like the first

@@ -83,6 +83,54 @@ const RESTARTS:Record<string,Parameters<typeof kind>[1]>={
  'job.restart.contradiction':{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)delete row.contradictions}},
  'job.restart.key':{then:fresh=>{fresh.jobs.keyHeld=()=>false}},
 }
+/** The history path, where a store's claims really commit: registers a job while skipping the check `when` selects. */
+const bypass=(when:(reg:JobRegistration,jobs:Held,run:string)=>boolean):Fault=>(store,{jobs})=>wrap(store,'commitHistoryFenced',original=>async(input,fence,signal)=>{
+ const reg=input.run.job
+ if(!reg||!when(reg,jobs,input.run.runId))return original(input,fence,signal)
+ const receipt=await original({...input,run:withoutJob(input.run)},fence,signal);jobs.register(input.run.runId,reg,fence);return receipt
+})
+const pathOf=(path:'fenced'|'history')=>({method:path==='fenced'?'commitFenced':'commitHistoryFenced',claim:(input:Held)=>path==='fenced'?input:input.run})
+/** A compare-and-set that fails still registers the job. */
+const staleRegisters=(path:'fenced'|'history'):Fault=>(store,{jobs})=>{const {method,claim}=pathOf(path);wrap(store,method,original=>async(input,fence,signal)=>{
+ try{return await original(input,fence,signal)}catch(error){const c=claim(input);if(c.job&&(await store.load(c.runId))?.revision!==c.expectedRevision)jobs.register(c.runId,c.job,fence);throw error}
+})}
+/** A repeated commit id with another registration is answered, and registers again. */
+const repeatRegisters=(path:'fenced'|'history'):Fault=>(store,{jobs})=>{const {method,claim}=pathOf(path),seen=new Map<string,unknown>();wrap(store,method,original=>async(input,fence,signal)=>{
+ const c=claim(input)
+ if(c.job&&seen.has(c.commitId)){jobs.register(c.runId,c.job,fence);return seen.get(c.commitId)}
+ const receipt=await original(input,fence,signal);seen.set(c.commitId,receipt);return receipt
+})}
+const firstReads=(name:string,keyOf:(...args:any[])=>string):Fault=>store=>{const first=new Map<string,unknown>();wrap(store,name,original=>async(...args)=>{const key=keyOf(...args);if(!first.has(key))first.set(key,await original(...args));return structuredClone(first.get(key))})}
+/** What a store does wrong beyond a single property, each naming the property the kit must fail it on. */
+const STORES:[string,string,Fault][]=[
+ ['E3 the history path skips the identity check','job.history.identity',bypass((reg,_,run)=>reg.job!==jobIdentity(run,reg.operation))],
+ ['E3 the history path skips the key check','job.history.key',bypass((reg,jobs)=>jobs.keyHeld(reg.keyDigest))],
+ ['E3 the history path skips the limit','job.history.limit',bypass((_,jobs,run)=>(jobs.rows.get(run)?.length??0)>=64)],
+ ['E3b the history path does not check the fence','job.history.fence',store=>wrap(store,'commitHistoryFenced',original=>async(input,fence,signal)=>original(input,input.run.job?fenceOf((await store.readLease(input.run.runId))!):fence,signal))],
+ ['E4 two heads: the history path answers a receipt and never moves the head','job.history.head',(store,{jobs})=>wrap(store,'commitHistoryFenced',original=>async(input,fence,signal)=>{if(!input.run.job)return original(input,fence,signal);jobs.register(input.run.runId,input.run.job,fence);return {commitId:input.run.commitId}})],
+ ['E5 a compare-and-set that fails still registers, fenced','job.stale.fenced',staleRegisters('fenced')],
+ ['E5 a compare-and-set that fails still registers, history','job.stale.history',staleRegisters('history')],
+ ['E6 the export drops contradictions','job.export.reads',store=>wrap(store,'exportJobs',original=>async(...args)=>{const held=await original(...args);for(const row of held.jobs)delete row.contradictions;return held})],
+ ['E7 a re-claim takes an expired fence of the same owner','job.reclaim.expired',(store,{jobs})=>wrap(store,'reclaimJob',original=>async(resource,job,fence,signal)=>{const lease=await store.readLease(resource);return lease&&fence.owner===lease.owner&&fence.epoch===lease.epoch?jobs.reclaim(resource,job,fence):original(resource,job,fence,signal)})],
+ ['E7 a re-claim takes a stale fence of the same owner','job.reclaim.stale',(store,{jobs})=>wrap(store,'reclaimJob',original=>async(resource,job,fence,signal)=>{const lease=await store.readLease(resource);return lease&&fence.owner===lease.owner&&fence.epoch!==lease.epoch?jobs.reclaim(resource,job,fence):original(resource,job,fence,signal)})],
+ ['E8 a repeated commit id with another registration registers again, fenced','job.repeat.fenced',repeatRegisters('fenced')],
+ ['E8 a repeated commit id with another registration registers again, history','job.repeat.history',repeatRegisters('history')],
+ ['E9 an answer finds its job across runs by owner and epoch','job.answer.across',(store,{jobs})=>wrap(store,'answerJob',original=>(answer,fence,signal)=>{for(const [resource,rows] of jobs.rows as Map<string,Held[]>)if(rows.some(row=>row.job===answer.job))return original({...answer,resource},fence,signal);return original(answer,fence,signal)})],
+ ['An answer ignores the fence\'s run','job.answer.run',store=>wrap(store,'answerJob',original=>(answer,fence,signal)=>original(answer,{...fence,resource:answer.resource},signal))],
+ ['E10 a completion wakes a wait past its deadline','job.wake.deadline',(_,{waits})=>{const original=waits.wakeJob.bind(waits);waits.wakeJob=(resource:string,job:string,evidence:Held)=>{const row=waits.rows.get(resource)?.find((r:Held)=>r.state==='parked'&&r.pending.job===job);if(row?.deadline){row.disposition={...evidence,kind:'event',at:waits.now()};row.state='woken';return}original(resource,job,evidence)}}],
+ ['E11 a park accepts another run\'s started job','job.park.other',(_,{jobs})=>{const original=jobs.admitPark.bind(jobs);jobs.admitPark=(resource:string,job:string)=>{for(const rows of jobs.rows.values())for(const row of rows)if(row.job===job)return row;return original(resource,job)}}],
+ ['E12 listJobs answers as of the first read','job.list.fresh',firstReads('listJobs',(resource,after,limit)=>`${resource}/${after}/${limit}`)],
+ ['E13 readJob answers as of the first read','job.read.fresh',firstReads('readJob',(resource,job)=>`${resource}/${job}`)],
+ ['A repeated contradiction id with other content is taken','job.contradiction.conflict',store=>wrap(store,'completeJob',original=>async(evidence,signal)=>{try{return await original(evidence,signal)}catch(error){if(evidence.resource==='run-d'&&error instanceof JobRefused&&error.reason==='conflict')return store.readJob(evidence.resource,evidence.job);throw error}})],
+]
+/** What a restart loses, each naming the property the kit must fail it on. */
+const LOST:[string,string,NonNullable<Parameters<typeof kind>[1]>][]=[
+ ['E1 jobs registered through the history path do not survive','job.restart.job',{then:fresh=>{fresh.jobs.rows.delete('run-history')}}],
+ ['E2 a completion does not survive: the job reads as started again','job.restart.record',{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)if(row.state==='completed'&&row.started){row.state='started';delete row.completion}}}],
+ ['E2b a restart loses the handle','job.restart.record',{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)if(row.state==='started'){row.handle='another-handle'}}}],
+ ['E2b a restart loses who re-claimed','job.restart.record',{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)delete row.reclaimed}}],
+ ['An open wait does not survive','job.restart.wait',{then:fresh=>{fresh.waits.rows.clear()}}],
+]
 const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
 describe('the job conformance kit (#229)',()=>{
  it('the memory kind passes, restarted over a copy of its state',async()=>{
@@ -92,6 +140,12 @@ describe('the job conformance kit (#229)',()=>{
   await expect(runStoreJobConformance(kind(fault))).rejects.toEqual(fails(property))
  })
  for(const [property,after] of Object.entries(RESTARTS))it(`a restart that loses it fails ${property}`,async()=>{
+  await expect(runStoreJobConformance(kind(undefined,after))).rejects.toEqual(fails(property))
+ })
+ for(const [name,property,fault] of STORES)it(`${name}: fails ${property}`,async()=>{
+  await expect(runStoreJobConformance(kind(fault))).rejects.toEqual(fails(property))
+ })
+ for(const [name,property,after] of LOST)it(`${name}: fails ${property}`,async()=>{
   await expect(runStoreJobConformance(kind(undefined,after))).rejects.toEqual(fails(property))
  })
  it('a store whose port throws something unnamed fails as an operation',async()=>{

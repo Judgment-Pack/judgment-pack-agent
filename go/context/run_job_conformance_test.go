@@ -53,6 +53,7 @@ type jobFault struct {
 	reconcile func(s jobFault, ctx context.Context, input JobReconciliation) (RunJob, error)
 	complete  func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error)
 	reclaim   func(s jobFault, ctx context.Context, resource, job string, fence LeaseFence) (RunJob, error)
+	export    func(s jobFault, ctx context.Context, resource string) (JobExport, error)
 	park      func(s jobFault, ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error)
 	wake      func(s jobFault, ctx context.Context, evidence WakeEvidence) (WakeDisposition, error)
 	resume    func(s jobFault, ctx context.Context, claim WaitClaim) (RunWait, RunLease, error)
@@ -482,6 +483,219 @@ var jobFaults = map[string]jobFault{
 	}},
 }
 
+func (s jobFault) ExportJobs(ctx context.Context, resource string) (JobExport, error) {
+	if s.export != nil {
+		return s.export(s, ctx, resource)
+	}
+	return s.durableJobStore.ExportJobs(ctx, resource)
+}
+
+// bypassHistory: on the history path, where a store's claims really commit, a job registers while the check `when`
+// selects is skipped.
+func bypassHistory(when func(s jobFault, reg JobRegistration, run string) bool) jobFault {
+	return jobFault{history: func(s jobFault, ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+		reg := input.Run.Job
+		if reg == nil || !when(s, *reg, input.Run.RunID) {
+			return s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
+		}
+		bare := input
+		bare.Run = withoutJob(input.Run)
+		receipt, err := s.durableJobStore.CommitHistoryFenced(ctx, bare, fence)
+		if err == nil {
+			s.jobs.Register(input.Run.RunID, *reg, fence)
+		}
+		return receipt, err
+	}}
+}
+
+// staleRegister: a compare-and-set that fails still registers the job.
+func staleRegister(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence, err error) {
+	if err == nil || input.Job == nil {
+		return
+	}
+	if head, _ := s.durableJobStore.Load(ctx, input.RunID); head != nil && head.Revision != input.ExpectedRevision {
+		s.jobs.Register(input.RunID, *input.Job, fence)
+	}
+}
+
+// repeatRegisters: a repeated commit id with another registration is answered, and registers again.
+func repeatRegisters(history bool) jobFault {
+	seen := map[string]bool{}
+	if history {
+		return jobFault{history: func(s jobFault, ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+			if input.Run.Job != nil && seen[input.Run.CommitID] {
+				s.jobs.Register(input.Run.RunID, *input.Run.Job, fence)
+				return RunHistoryReceipt{}, nil
+			}
+			receipt, err := s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
+			seen[input.Run.CommitID] = err == nil
+			return receipt, err
+		}}
+	}
+	return jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+		if input.Job != nil && seen[input.CommitID] {
+			s.jobs.Register(input.RunID, *input.Job, fence)
+			return RunReceipt{}, nil
+		}
+		receipt, err := s.durableJobStore.CommitFenced(ctx, input, fence)
+		seen[input.CommitID] = err == nil
+		return receipt, err
+	}}
+}
+
+func firstJobReads() jobFault {
+	first := map[string]*RunJob{}
+	return jobFault{read: func(s jobFault, ctx context.Context, resource, job string) (*RunJob, error) {
+		key := resource + "/" + job
+		if held, ok := first[key]; ok {
+			return held, nil
+		}
+		held, err := s.durableJobStore.ReadJob(ctx, resource, job)
+		first[key] = held
+		return held, err
+	}}
+}
+
+func firstJobLists() jobFault {
+	first := map[string]JobPage{}
+	return jobFault{list: func(s jobFault, ctx context.Context, resource, after string, limit int) (JobPage, error) {
+		key := resource + "/" + after
+		if held, ok := first[key]; ok {
+			return held, nil
+		}
+		held, err := s.durableJobStore.ListJobs(ctx, resource, after, limit)
+		first[key] = held
+		return held, err
+	}}
+}
+
+// jobStores: what a store does wrong beyond a single property, each with the property the kit must fail it on.
+func jobStores() map[string]struct {
+	property string
+	fault    jobFault
+} {
+	return map[string]struct {
+		property string
+		fault    jobFault
+	}{
+		"E3 identity": {"job.history.identity", bypassHistory(func(_ jobFault, reg JobRegistration, run string) bool {
+			return reg.Job != JobIdentity(run, reg.Operation)
+		})},
+		"E3 key":   {"job.history.key", bypassHistory(func(s jobFault, reg JobRegistration, _ string) bool { return s.jobs.KeyHeld(reg.KeyDigest) })},
+		"E3 limit": {"job.history.limit", bypassHistory(func(s jobFault, _ JobRegistration, run string) bool { return len(s.jobs.rows[run]) >= JobRunLimit })},
+		"E3b fence": {"job.history.fence", jobFault{history: func(s jobFault, ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+			if input.Run.Job != nil {
+				if lease, err := s.ReadLease(ctx, input.Run.RunID); err == nil && lease != nil {
+					fence = FenceOf(*lease)
+				}
+			}
+			return s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
+		}}},
+		"E4 two heads": {"job.history.head", jobFault{history: func(s jobFault, ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+			if input.Run.Job == nil {
+				return s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
+			}
+			s.jobs.Register(input.Run.RunID, *input.Run.Job, fence)
+			return RunHistoryReceipt{}, nil
+		}}},
+		"E5 fenced": {"job.stale.fenced", jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+			receipt, err := s.durableJobStore.CommitFenced(ctx, input, fence)
+			staleRegister(s, ctx, input, fence, err)
+			return receipt, err
+		}}},
+		"E5 history": {"job.stale.history", jobFault{history: func(s jobFault, ctx context.Context, input RunHistoryCommit, fence LeaseFence) (RunHistoryReceipt, error) {
+			receipt, err := s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
+			staleRegister(s, ctx, input.Run, fence, err)
+			return receipt, err
+		}}},
+		"E6 export": {"job.export.reads", jobFault{export: func(s jobFault, ctx context.Context, resource string) (JobExport, error) {
+			held, err := s.durableJobStore.ExportJobs(ctx, resource)
+			for i := range held.Jobs {
+				held.Jobs[i].Contradictions = nil
+			}
+			return held, err
+		}}},
+		"E7 expired": {"job.reclaim.expired", jobFault{reclaim: func(s jobFault, ctx context.Context, resource, job string, fence LeaseFence) (RunJob, error) {
+			if lease, err := s.ReadLease(ctx, resource); err == nil && lease != nil && lease.Owner == fence.Owner && lease.Epoch == fence.Epoch {
+				return s.jobs.Reclaim(resource, job, fence)
+			}
+			return s.durableJobStore.ReclaimJob(ctx, resource, job, fence)
+		}}},
+		"E7 stale": {"job.reclaim.stale", jobFault{reclaim: func(s jobFault, ctx context.Context, resource, job string, fence LeaseFence) (RunJob, error) {
+			if lease, err := s.ReadLease(ctx, resource); err == nil && lease != nil && lease.Owner == fence.Owner && lease.Epoch != fence.Epoch {
+				return s.jobs.Reclaim(resource, job, fence)
+			}
+			return s.durableJobStore.ReclaimJob(ctx, resource, job, fence)
+		}}},
+		"E8 fenced":  {"job.repeat.fenced", repeatRegisters(false)},
+		"E8 history": {"job.repeat.history", repeatRegisters(true)},
+		"E9 across": {"job.answer.across", jobFault{answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
+			for resource, rows := range s.jobs.rows {
+				for _, row := range rows {
+					if row.Job == input.Job {
+						input.Resource = resource
+					}
+				}
+			}
+			return s.durableJobStore.AnswerJob(ctx, input, fence)
+		}}},
+		"the fence's run": {"job.answer.run", jobFault{answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
+			fence.Resource = input.Resource
+			return s.durableJobStore.AnswerJob(ctx, input, fence)
+		}}},
+		"E10 deadline": {"job.wake.deadline", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+			job, err := s.durableJobStore.CompleteJob(ctx, input)
+			for _, row := range s.waits.rows[input.Resource] {
+				if row.State == "parked" && row.Deadline != nil && row.Pending.Job != nil && row.Pending.Job.Job == input.Job && job.Completion != nil {
+					row.State, row.Disposition = "woken", &WakeDisposition{Evidence: input.Evidence, Kind: "event", At: job.Completion.At, Digest: job.Completion.Digest}
+				}
+			}
+			return job, err
+		}}},
+		"E11 another run": {"job.park.other", jobFault{park: func(s jobFault, ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+			if park.Pending.Job != nil {
+				for resource, rows := range s.jobs.rows {
+					for _, row := range rows {
+						if resource != park.Resource && row.Job == park.Pending.Job.Job {
+							s.jobs.rows[park.Resource] = append(s.jobs.rows[park.Resource], row)
+						}
+					}
+				}
+			}
+			return s.durableJobStore.ParkWait(ctx, park, fence)
+		}}},
+		"E12 list": {"job.list.fresh", firstJobLists()},
+		"E13 read": {"job.read.fresh", firstJobReads()},
+		"a repeated contradiction id": {"job.contradiction.conflict", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+			job, err := s.durableJobStore.CompleteJob(ctx, input)
+			var refused *JobRefused
+			if input.Resource == "run-d" && errors.As(err, &refused) && refused.Reason == "conflict" {
+				held, readErr := s.durableJobStore.ReadJob(ctx, input.Resource, input.Job)
+				if readErr == nil && held != nil {
+					return *held, nil
+				}
+			}
+			return job, err
+		}}},
+	}
+}
+
+func TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion(t *testing.T) {
+	for name, c := range jobStores() {
+		t.Run(name, func(t *testing.T) {
+			create := memoryJobKind(func(store *MemoryRunStore) JobRunStore {
+				held := c.fault
+				held.durableJobStore = durableJobStore{store}
+				return &held
+			}, nil)
+			var failure *StorageConformanceFailure
+			if err := CheckRunStoreJobConformance(context.Background(), create); !errors.As(err, &failure) || failure.Property != c.property {
+				t.Fatalf("got %v, want the property %s", err, c.property)
+			}
+		})
+	}
+}
+
 func TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy(t *testing.T) {
 	if err := CheckRunStoreJobConformance(context.Background(), memoryJobKind(plainJobKind, nil)); err != nil {
 		t.Fatal(err)
@@ -511,6 +725,34 @@ func TestJobConformanceKitHoldsARestart(t *testing.T) {
 		then     func(*MemoryRunStore)
 	}{
 		{"job.restart.job", func(fresh *MemoryRunStore) { fresh.jobs.rows = map[string][]*RunJob{} }},
+		{"job.restart.job", func(fresh *MemoryRunStore) { delete(fresh.jobs.rows, "run-history") }},
+		{"job.restart.record", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.jobs.rows {
+				for _, row := range rows {
+					if row.State == "completed" && row.Started != nil {
+						row.State, row.Completion = "started", nil
+					}
+				}
+			}
+		}},
+		{"job.restart.record", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.jobs.rows {
+				for _, row := range rows {
+					if row.State == "started" {
+						other := "another-handle"
+						row.Handle = &other
+					}
+				}
+			}
+		}},
+		{"job.restart.record", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.jobs.rows {
+				for _, row := range rows {
+					row.Reclaimed = nil
+				}
+			}
+		}},
+		{"job.restart.wait", func(fresh *MemoryRunStore) { fresh.waits.rows = map[string][]*RunWait{} }},
 		{"job.restart.contradiction", func(fresh *MemoryRunStore) {
 			for _, rows := range fresh.jobs.rows {
 				for _, row := range rows {

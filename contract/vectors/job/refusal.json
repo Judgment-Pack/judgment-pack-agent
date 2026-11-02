@@ -60,6 +60,14 @@
   {
    "version": 1,
    "reason": "job-host-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "child-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "store-inconsistent"
   }
  ],
  "refused": [

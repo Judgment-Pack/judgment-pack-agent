@@ -2,11 +2,14 @@ package jobtests
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +21,7 @@ import (
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/eino"
 	runcontext "github.com/Judgment-Pack/judgment-pack-agent/go/context"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/relay"
 )
@@ -146,6 +150,7 @@ func modelFinal() *http.Response {
 // options are what a continuation of a run brings.
 type options struct {
 	ctx          context.Context
+	requestCap   *int
 	resume       bool
 	decision     *contract.CheckpointApprovalDecision
 	continuation *runcontext.RunJob
@@ -160,7 +165,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 	g.SetOffer(contract.ToolOffer{})
 	start := ""
 	run := &adapter.Run{Prompt: "Run the job.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Gate: g.Calls(), HostTools: tools,
-		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation},
+		Context: &runcontext.Input{RequestCap: with.requestCap, CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation},
 		Emit: func(event contract.RunEvent) {
 			mu.Lock()
 			out.events = append(out.events, event)
@@ -327,8 +332,16 @@ func TestJobsAStartIsRegisteredWithItsClaimBeforeItIsAdmitted(t *testing.T) {
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
 			l := newLeased(t, nil)
-			spy := &spyHost{inner: l.host, store: l.store}
-			view, err := runcontext.FencedRunStore(l.store, l.fence, spy)
+			spy := &spyHost{store: l.store}
+			certified, err := runcontext.CertifyEffectHost(context.Background(), func(authority runcontext.LeaseAuthority) runcontext.EffectHost {
+				spy.inner = runcontext.NewReferenceEffectHost(authority)
+				return spy
+			}, l.store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			spy.seen = nil
+			view, err := runcontext.FencedRunStore(l.store, l.fence, certified)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -494,6 +507,18 @@ func TestJobsALateAnswerIsKept(t *testing.T) {
 // reauthRun parks a start a trusted credential check refused, wakes it and claims it.
 func reauthRun(t *testing.T, engine string, closeFirst bool) (*startCalls, durableJobStore, runcontext.RunJob, *runResult) {
 	t.Helper()
+	return reauthRunWith(t, engine, func(l *leasedRun, job string) {
+		if !closeFirst {
+			return
+		}
+		if _, err := runcontext.ReconcileJob(context.Background(), l.store, runcontext.JobReconciliation{Version: 1, Resource: jobRun, Job: job, Generation: 1, Evidence: "find-1", Finding: "not-started", Key: jobKey}); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func reauthRunWith(t *testing.T, engine string, before func(*leasedRun, string)) (*startCalls, durableJobStore, runcontext.RunJob, *runResult) {
+	t.Helper()
 	principal := "sha256:" + strings.Repeat("7", 64)
 	var refused atomic.Bool
 	refused.Store(true)
@@ -527,11 +552,7 @@ func reauthRun(t *testing.T, engine string, closeFirst bool) (*startCalls, durab
 		t.Fatal(err)
 	}
 	refused.Store(false)
-	if closeFirst {
-		if _, err := runcontext.ReconcileJob(ctx, l.store, runcontext.JobReconciliation{Version: 1, Resource: jobRun, Job: job.Job, Generation: 1, Evidence: "find-1", Finding: "not-started", Key: jobKey}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	before(l, job.Job)
 	view, err := runcontext.ReauthorizedRunStore(ctx, l.store, l.host, resumed)
 	if err != nil {
 		t.Fatal(err)
@@ -577,7 +598,7 @@ func TestJobsAGrantResendsAStartOnlyWhileItsJobIsUnproven(t *testing.T) {
 		})
 		t.Run(engine+"/closed", func(t *testing.T) {
 			calls, store, job, result := reauthRun(t, engine, true)
-			if calls.count() != 0 || !strings.Contains(toolAnswer(result), "JobRefused: job-settled") {
+			if calls.count() != 0 || strings.Contains(toolAnswer(result), "JobRefused") || !strings.Contains(toolAnswer(result), "it did not start") {
 				t.Fatal(calls.count(), toolAnswer(result))
 			}
 			held, _ := runcontext.ReadJob(context.Background(), store, jobRun, job.Job)
@@ -974,6 +995,225 @@ func TestJobsAJobOfAnotherRunAnswersNoJob(t *testing.T) {
 		if _, err := read.Execute(ctx, json.RawMessage(args)); !refusedAs(err, "no-job") {
 			t.Fatal(args, err)
 		}
+	}
+}
+
+// startFailure is the failure a start's row holds once it ran and its answer could not be recorded.
+func startFailure(t *testing.T) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile("../../../contract/vectors/job/model.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		StartFailure map[string]any `json:"startFailure"`
+	}
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	return file.StartFailure
+}
+
+func reconcileStarted(t *testing.T, store runcontext.RunStore, job, handle string) {
+	t.Helper()
+	if _, err := runcontext.ReconcileJob(context.Background(), store, runcontext.JobReconciliation{Version: 1, Resource: jobRun, Job: job, Generation: 1, Evidence: "find-1", Finding: "started", Handle: &handle, Key: jobKey}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJobsAStartThatRanIsToldWhatItsJobSays(t *testing.T) {
+	const hostText = "SENTINEL-HOST-TEXT: created job H1 then failed"
+	for name, c := range map[string]struct {
+		start     func(*testing.T, *leasedRun, runcontext.JobStartInput) (runcontext.JobStartAnswer, error)
+		state, in string
+	}{
+		"an answer that is not typed": {func(*testing.T, *leasedRun, runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+			return runcontext.JobStartAnswer{Started: true}, nil
+		}, "unproven", "not proven to have started"},
+		"a start that fails with the host's words": {func(*testing.T, *leasedRun, runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+			return runcontext.JobStartAnswer{}, failure.Authored("tool-failed", hostText, "tool")
+		}, "unproven", "not proven to have started"},
+		"a handle that conflicts with a reconciliation": {func(t *testing.T, l *leasedRun, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+			reconcileStarted(t, l.store, input.Job, "H1")
+			return runcontext.JobStartAnswer{Started: true, Handle: "H2"}, nil
+		}, "started", "started, not finished"},
+		"a late not-started on a completed job": {func(t *testing.T, l *leasedRun, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+			if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(input.Job, nil)); err != nil {
+				t.Fatal(err)
+			}
+			return runcontext.JobStartAnswer{}, nil
+		}, "completed", "completed"},
+	} {
+		for _, engine := range engines {
+			t.Run(name+"/"+engine, func(t *testing.T) {
+				l := newLeased(t, nil)
+				calls := &startCalls{}
+				tool := startTool(t, calls, func(_ context.Context, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+					return c.start(t, l, input)
+				}, "allow", nil)
+				result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+				job := onlyJob(t, l.store)
+				rows, _ := headBook(t, l.store)
+				row := rows.row(job.Operation)
+				answer := toolAnswer(result)
+				if calls.count() != 1 || job.State != c.state || row.State != "unknown" || !reflect.DeepEqual(row.Failure, startFailure(t)) {
+					t.Fatalf("%d %+v %+v", calls.count(), job, row)
+				}
+				if !strings.Contains(answer, c.in) || strings.Contains(answer, "JobRefused") || strings.Contains(answer, "invalid-tool-input") || strings.Contains(answer, "SENTINEL-HOST-TEXT") {
+					t.Fatal(answer)
+				}
+			})
+		}
+	}
+}
+
+func TestJobsAHandleTheRecordCannotHoldIsKeptAsItsDigest(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			long, receipt := strings.Repeat("h", 300), strings.Repeat("r", 300)
+			tool := startTool(t, &startCalls{}, answered(runcontext.JobStartAnswer{Started: true, Handle: long, Receipt: receipt}, nil), "allow", nil)
+			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+			job := onlyJob(t, l.store)
+			sum := func(text string) string { return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(text))) }
+			if job.State != "started" || job.Handle == nil || *job.Handle != sum(long) || job.Receipt == nil || *job.Receipt != sum(receipt) {
+				t.Fatalf("%+v", job)
+			}
+			rows, _ := headBook(t, l.store)
+			if rows.row(job.Operation).State != "result" || strings.Contains(toolAnswer(result), "hhhh") || !strings.Contains(toolAnswer(result), "started, not finished") {
+				t.Fatal(rows.row(job.Operation), toolAnswer(result))
+			}
+		})
+	}
+}
+
+func TestJobsAClosedJobTheAnswerContradictsSaysSo(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			tool := startTool(t, &startCalls{}, func(_ context.Context, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+				if _, err := runcontext.ReconcileJob(context.Background(), l.store, runcontext.JobReconciliation{Version: 1, Resource: jobRun, Job: input.Job, Generation: 1, Evidence: "find-1", Finding: "not-started", Key: jobKey}); err != nil {
+					t.Fatal(err)
+				}
+				return startedAnswer, nil
+			}, "allow", nil)
+			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+			job := onlyJob(t, l.store)
+			if job.State != "not-started" || len(job.Contradictions) != 1 || !strings.Contains(toolAnswer(result), "evidence since says it ran") || strings.Contains(toolAnswer(result), "nothing is running") {
+				t.Fatalf("%+v %s", job, toolAnswer(result))
+			}
+		})
+	}
+}
+
+// A refused re-claim on a job a reconciliation proved started is answered from that job.
+func TestJobsARefusedReclaimOnAStartedJobIsAnsweredFromTheJob(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			calls, store, job, result := reauthRunWith(t, engine, func(l *leasedRun, job string) { reconcileStarted(t, l.store, job, "H1") })
+			held, _ := runcontext.ReadJob(context.Background(), store, jobRun, job.Job)
+			if calls.count() != 0 || held.State != "started" || strings.Contains(toolAnswer(result), "JobRefused") || !strings.Contains(toolAnswer(result), "started, not finished") {
+				t.Fatal(calls.count(), held.State, toolAnswer(result))
+			}
+		})
+	}
+}
+
+// M-7: a nested run on the context a start was handed is no start itself.
+func TestJobsANestedRunInAStartRegistersNothing(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l, nested := newLeased(t, nil), newLeased(t, nil)
+			var mints atomic.Int32
+			mint := func(context.Context, string) (string, error) { mints.Add(1); return runcontext.JobKeyDigest(jobKey) }
+			tool := startTool(t, &startCalls{}, func(ctx context.Context, _ runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+				drive(t, nested.view, engine, nil, nil, options{ctx: ctx})
+				return startedAnswer, nil
+			}, "allow", mint)
+			drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+			if job := onlyJob(t, l.store); job.State != "started" || mints.Load() != 1 {
+				t.Fatalf("%+v %d", job, mints.Load())
+			}
+			page, err := runcontext.ListJobs(context.Background(), nested.store, jobRun, "", 10)
+			if err != nil || len(page.Jobs) != 0 {
+				t.Fatalf("%+v %v", page, err)
+			}
+		})
+	}
+}
+
+// declaredOnly says the fence is enforced and checks nothing.
+type declaredOnly struct{}
+
+func (declaredOnly) EffectFencing() string { return runcontext.EffectFencingEnforced }
+func (declaredOnly) Dispatch(ctx context.Context, _ runcontext.EffectAdmission, perform func(context.Context) error) error {
+	return perform(ctx)
+}
+
+func TestJobsAViewNotHeldToItsStoreReachesNoOfferAndNoStart(t *testing.T) {
+	for name, host := range map[string]runcontext.EffectHost{"no host": nil, "a host that only declares": declaredOnly{}} {
+		for _, engine := range engines {
+			t.Run(name+"/"+engine, func(t *testing.T) {
+				l := newLeased(t, nil)
+				view, err := runcontext.FencedRunStore(l.store, l.fence, host)
+				if err != nil {
+					t.Fatal(err)
+				}
+				calls := &startCalls{}
+				result := drive(t, view, engine, []runcontext.HostTool{startTool(t, calls, answered(startedAnswer, nil), "allow", nil)}, []jobCall{{"start", jobArgs}}, options{})
+				page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+				text := toolAnswer(result)
+				if result.err != nil {
+					text += result.err.Error()
+				}
+				if calls.count() != 0 || len(page.Jobs) != 0 || result.asks.Load() != 0 || !strings.Contains(text, "effect-host-unfenced") {
+					t.Fatal(calls.count(), len(page.Jobs), result.asks.Load(), text)
+				}
+			})
+		}
+	}
+}
+
+func TestJobsARunAtItsRequestLimitDoesNotPark(t *testing.T) {
+	l := newLeased(t, nil)
+	cap := 2
+	drive(t, l.view, "eino", []runcontext.HostTool{startTool(t, &startCalls{}, answered(startedAnswer, nil), "allow", nil)}, []jobCall{{"start", jobArgs}}, options{requestCap: &cap})
+	job := onlyJob(t, l.store)
+	var refused *runcontext.WaitRefused
+	if err := parkJob(t, l, job.Job, nil); !errors.As(err, &refused) || refused.Reason != "not-resumable" {
+		t.Fatal(err)
+	}
+	waits, err := l.store.ExportWaits(context.Background(), jobRun)
+	if err != nil || len(waits.Waits) != 0 {
+		t.Fatalf("%+v %v", waits, err)
+	}
+}
+
+func TestJobsAJobWithNoRowInTheHeadIsRefusedBeforeAnOffer(t *testing.T) {
+	ctx := context.Background()
+	l := newLeased(t, nil)
+	calls := &startCalls{}
+	tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
+	drive(t, l.view, "eino", []runcontext.HostTool{tool}, nil, options{})
+	head, err := l.store.Load(ctx, jobRun)
+	if err != nil || head == nil {
+		t.Fatal(head, err)
+	}
+	key, _ := runcontext.JobKeyDigest(jobKey)
+	if _, err := l.store.CommitFenced(ctx, runcontext.RunCommit{RunID: jobRun, ExpectedRevision: head.Revision, CommitID: "restored", Checkpoint: head.Checkpoint, Events: [][]byte{}, Job: &runcontext.JobRegistration{Job: runcontext.JobIdentity(jobRun, "op-restored-away"), Operation: "op-restored-away", Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, l.fence); err != nil {
+		t.Fatal(err)
+	}
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
+			text := toolAnswer(result)
+			if result.err != nil {
+				text += result.err.Error()
+			}
+			if calls.count() != 0 || result.asks.Load() != 0 || !strings.Contains(text, "JobCapabilityRefused: store-inconsistent") {
+				t.Fatal(calls.count(), result.asks.Load(), text)
+			}
+		})
 	}
 }
 

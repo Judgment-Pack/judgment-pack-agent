@@ -1,6 +1,5 @@
 import {describe,it,expect} from 'vitest'
 import {canonicalJSON} from '../context/chat'
-import type {EffectAdmission} from './lease'
 import {JOB_CONTINUATION,JOB_GENERATION,JOB_REFUSAL_REASONS,JOB_CAPABILITY_REASONS,JobCapabilityRefused,JobRefused,JobTable,gatewayActionMembers,gatewayRefusalFinding,jobContinuation,jobEvidenceDigest,jobIdentity,jobKeyDigest,jobProjection,jobReportFromExport,jobStartResult,readJobAnswer,readJobArgument,readJobCapabilityRefusal,readJobCompletion,readJobExport,readJobReconciliation,readJobRefusal,readJobStartAnswer,readRunJob,validJobKey,type JobAnswer,type JobCompletionEvidence,type JobReconciliation,type JobRegistration,type RunJob} from './job'
 import jobVector from '../../../contract/vectors/job/job.json'
 import answerVector from '../../../contract/vectors/job/answer.json'
@@ -71,8 +70,9 @@ describe('job records and evidence: shared vectors (#229)',()=>{
   for(const row of modelVector.arguments)expect(readJobArgument(JSON.parse(row.raw))).toBe(row.job)
   for(const row of modelVector.argumentsRefused)expect(()=>readJobArgument(JSON.parse(row.raw)),row.name).toThrow(JobRefused)
   for(const row of modelVector.startAnswers)expect(readJobStartAnswer(row.answer)).toEqual(row.answer)
+  for(const row of modelVector.startAnswersKept)expect(readJobStartAnswer(row.answer),row.name).toEqual(row.read)
   for(const row of modelVector.startAnswersRefused)expect(()=>readJobStartAnswer(row.answer),row.name).toThrow(JobRefused)
-  for(const row of gatewayVector.cases)expect(gatewayActionMembers(row.admission as EffectAdmission,row.reconcile?{reconcile:true}:{}),row.name).toEqual(row.members)
+  for(const row of gatewayVector.cases)expect(gatewayActionMembers(row.job as RunJob,row.reconcile?{reconcile:true}:{}),row.name).toEqual(row.members)
   for(const row of gatewayVector.findings)expect(gatewayRefusalFinding(row.refusal),row.refusal).toBe(row.finding)
   reportVector.exports.forEach((source,i)=>expect(canonicalJSON(jobReportFromExport(source as never))).toBe(canonicalJSON(reportVector.items[i])))
   for(const row of reportVector.exportsRefused)expect(()=>readJobExport(row.record),row.name).toThrow(JobRefused)

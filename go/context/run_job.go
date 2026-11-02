@@ -1369,25 +1369,21 @@ func JobReadTool(view RunStore) (HostTool, error) {
 // of the key's first scope proves the same owner, and anything else keeps the outcome unknown. A delegated run
 // sends what the gateway's delegated scope already holds, with no keyScope. reconcile asks without ever
 // dispatching.
-func GatewayActionMembers(admission EffectAdmission, reconcile bool) (JobGatewayMembers, error) {
-	raw, err := json.Marshal(admission)
-	if err != nil {
-		return JobGatewayMembers{}, leaseInvalid()
-	}
-	held, err := ReadEffectAdmission(raw)
+func GatewayActionMembers(job RunJob, reconcile bool) (JobGatewayMembers, error) {
+	key, err := EffectIdempotencyKey(EffectOperation{Run: job.Resource, Operation: job.Operation, Source: job.Source, Tool: job.Tool, RequestDigest: job.RequestDigest})
 	if err != nil {
 		return JobGatewayMembers{}, err
 	}
-	out := JobGatewayMembers{ActionKey: strings.TrimPrefix(held.IdempotencyKey, "sha256:")}
-	if held.Fence.Principal == nil {
+	members := JobGatewayMembers{ActionKey: strings.TrimPrefix(key, "sha256:")}
+	if job.Principal == nil {
 		scope := "authority"
-		out.KeyScope = &scope
+		members.KeyScope = &scope
 	}
 	if reconcile {
 		yes := true
-		out.Reconcile = &yes
+		members.Reconcile = &yes
 	}
-	return out, nil
+	return members, nil
 }
 
 // GatewayRefusalFinding reads a gateway's refusal of a reconciling /act as a finding. Only a key the gateway

@@ -313,16 +313,41 @@ func TestJobModelVectors(t *testing.T) {
 			t.Fatal(string(row["answer"]), err)
 		}
 	}
+	for _, row := range jobVectorRows(t, file["startAnswersKept"]) {
+		var held, read struct {
+			Started bool   `json:"started"`
+			Handle  string `json:"handle"`
+			Receipt string `json:"receipt"`
+		}
+		_ = json.Unmarshal(row["answer"], &held)
+		_ = json.Unmarshal(row["read"], &read)
+		answer := JobStartAnswer{Started: held.Started, Handle: held.Handle, Receipt: held.Receipt}
+		if err := readJobStartAnswer(&answer); err != nil || answer.Handle != read.Handle || answer.Receipt != read.Receipt {
+			t.Fatal(vectorName(row), answer, err)
+		}
+	}
+	for _, row := range jobVectorRows(t, file["startAnswersRefused"]) {
+		var held struct {
+			Started bool   `json:"started"`
+			Handle  string `json:"handle"`
+		}
+		if json.Unmarshal(row["answer"], &held) != nil || !held.Started || held.Handle != "" {
+			continue // Go's answer is a struct: only a started answer with no handle has this form.
+		}
+		if readJobStartAnswer(&JobStartAnswer{Started: true}) == nil {
+			t.Fatal(vectorName(row))
+		}
+	}
 	if readJobStartAnswer(nil) == nil || readJobStartAnswer(&JobStartAnswer{Started: true}) == nil || readJobStartAnswer(&JobStartAnswer{Handle: "h"}) == nil {
 		t.Fatal("an answer that is not typed was read")
 	}
 	gateway := readJobVector(t, "gateway.json")
 	for _, row := range jobVectorRows(t, gateway["cases"]) {
-		var admission EffectAdmission
-		if err := json.Unmarshal(row["admission"], &admission); err != nil {
+		job, err := ReadRunJob(row["job"])
+		if err != nil {
 			t.Fatal(err)
 		}
-		members, err := GatewayActionMembers(admission, string(row["reconcile"]) == "true")
+		members, err := GatewayActionMembers(job, string(row["reconcile"]) == "true")
 		if err != nil || jobCanonOf(t, members) != jobCanon(t, row["members"]) {
 			t.Fatal(vectorName(row), jobCanonOf(t, members), err)
 		}
@@ -733,5 +758,47 @@ func TestJobEvidenceIsHeldToTheJobsRecord(t *testing.T) {
 	other := planEvidenceFailure(ObjectOf("operations", Array(String(id)), "artifacts", Array()), book, DurableScope{Execution: "other", Role: "author"}, job("completed", "succeeded"))
 	if other != "wrong-scope" {
 		t.Fatal(other)
+	}
+}
+
+// M-8: a sub-agent is offered no job tool: the declaration is withheld, and a child session is refused by name.
+func TestJobToolsAreOfferedToNoSubAgent(t *testing.T) {
+	ctx := context.Background()
+	store := durableJobStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-child", Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := UnattendedRunStore(store, FenceOf(lease), NewReferenceEffectHost(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := JobReadTool(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start, err := JobStartTool(JobStartSpec{Name: "start_job", Description: "Start.", InputSchema: json.RawMessage(`{"type":"object"}`), Source: &ToolSource{Kind: "custom", ID: "runner"}, Mint: func(context.Context, string) (string, error) { return "", nil }, Start: func(context.Context, JobStartInput) (JobStartAnswer, error) { return JobStartAnswer{}, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := Policy{CataloguedSubagents: 16, SubagentCatalogueBytes: 4000, MaxInputBytes: 1 << 20, TurnMilliseconds: 1 << 20, ToolResultBytes: 1 << 20}
+	for _, tool := range []HostTool{read, start} {
+		s := subagentFixture(t)
+		s.Tools = []string{tool.Name}
+		admitted, notices, err := DeclareSubagents([]Subagent{s}, []HostTool{tool}, nil, policy)
+		raw, _ := json.Marshal(notices)
+		if err != nil || len(admitted) != 0 || !strings.Contains(string(raw), "A sub-agent is offered no job tool: a job belongs to the run that started it.") {
+			t.Fatal(tool.Name, err, len(admitted), string(raw))
+		}
+	}
+	session := modelSession()
+	child := subagentFixture(t)
+	session.ChildDefinition = &child
+	session.HostTools = []HostTool{read}
+	session.Context = &Input{CurrentRequest: &CurrentRequest{Message: "Read.", Input: "r"}, RunStore: &DurableRunInput{Store: view, ID: "run-child"}}
+	_, err = ContextualSession(ctx, session)
+	var refused *JobCapabilityRefused
+	if !errors.As(err, &refused) || refused.Reason != "child-unsupported" {
+		t.Fatal(err)
 	}
 }
