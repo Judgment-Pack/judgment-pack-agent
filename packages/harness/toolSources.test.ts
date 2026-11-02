@@ -398,6 +398,10 @@ describe('identity per tool call (ADR-0019)', () => {
     expect(await gate.decide('expenses__submit', { amount: 13 }, 'later')).toMatchObject({ answer: 'allow' })
   })
 
+  it('a service act cannot be declared with approval none, so no first act gets past its question that way (#285)', async () => {
+    await expect(gateFor([serviceTool({ approval: 'none' })])).rejects.toMatchObject({ failure: { code: 'configuration' }, message: expect.stringContaining('host approval cannot widen the declared act effect') })
+  })
+
   it('asks the first service act with required approval and executes only after the recorded approval', async () => {
     for (const approve of [undefined, () => 'allow' as const]) {
       const execute = vi.fn(async () => ({ content: [] }))
@@ -1194,6 +1198,20 @@ describe('Gateway descriptor snapshot source pins (agent#168)', () => {
     await expect(declareSources([snapshotTool(), legacy], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
     const changed = snapshotTool({ name: 'close', source: { ...snapshotTool().source!, descriptorSnapshot: bytes(descriptorVector.changedText) } })
     await expect(declareSources([snapshotTool(), changed], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+  })
+  it('observes through the function admitted: replacing it on the source afterwards hides nothing (#285)', async () => {
+    let changed = false
+    const source = { ...snapshotTool().source!, currentDescriptorSnapshot: () => bytes(changed ? descriptorVector.changedText : descriptorVector.snapshotText) }
+    const tool = { ...snapshotTool(), source }
+    const { call, offered } = await gateFor([tool])
+    const name = offered.hostTools[0]!.name
+    source.currentDescriptorSnapshot = () => bytes(descriptorVector.snapshotText)
+    changed = true
+    await expect(call(name, {})).rejects.toBeInstanceOf(GateViolation)
+  })
+  it('refuses a declared tool its approved snapshot does not hold, before anything is offered (#285)', async () => {
+    await expect(declareSources([snapshotTool(), snapshotTool({ name: 'not_in_the_snapshot' })], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+    await expect(declareSources([snapshotTool({ name: 'not_in_the_snapshot' })], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
   })
   it('checks current full bytes before any call and latches changed/error/malformed observations for every tool', async () => {
     for (const changed of [bytes(descriptorVector.changedText), new Uint8Array(), bytes('{}'), new Uint8Array(327681), undefined]) {

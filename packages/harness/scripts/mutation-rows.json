@@ -4481,7 +4481,8 @@
    "tests": [
     "toolSources.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "retired by #285: this clause cannot change anything. An act always has approval required since tool taxonomies: declaring approval none on one is refused (host approval cannot widen the declared act effect), so no service act reaches this line without it. toolSources.test.ts > a service act cannot be declared with approval none holds that. The row was reported caught only by failures that had nothing to do with its mutant.",
    "origin": "agent#102 review #127"
   },
   {
@@ -4841,11 +4842,11 @@
     "name": "dropped agent critic reasoning uses the author effort default parameter",
     "file": "engines/codex/index.ts",
     "find": "effort?: CodexEffort) => {",
-    "replace": "effort: CodexEffort | undefined = session.reasoning) => {",
+    "replace": "effort: CodexEffort | undefined = session.values.forRole('author').reasoning) => {",
     "tests": ["policySession.test.ts"],
     "status": "caught",
     "origin": "agent#142-release-audit-2",
-    "note": "Go twin: set an empty critic effort back to r.run.Reasoning(\"author\") in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
+    "note": "#285: re-anchored; the mutant read session.reasoning, a member that no longer exists, so it changed nothing. Go twin: set an empty critic effort back to r.run.Reasoning(\"author\") in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
   },
   {
     "name": "request session boundary exposes raw effort",
@@ -6084,7 +6085,8 @@
    "tests": [
     "toolSources.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "retired by #285: this check cannot be reached. descriptorApprovalProblem already refuses a declared tool its approved snapshot does not hold, with the whole declaration, before the source is grouped; toolSources.test.ts > refuses a declared tool its approved snapshot does not hold holds that. The row was reported caught only by failures that had nothing to do with its mutant.",
    "origin": "agent#168",
    "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
   },
@@ -9017,11 +9019,12 @@
   "find": "   if(row.state==='resumed'||terminal(row))throw new WaitRefused('stale')\n",
   "replace": "",
   "tests": [
-    "storage/resume.test.ts"
+    "storage/resume.test.ts",
+    "storage/waitReview.test.ts"
   ],
   "status": "caught",
   "origin": "agent#225",
-  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
+  "note": "#285: resume.test.ts does not notice it; storage/waitReview.test.ts > a settled call is never ended by it does, so the row names that file. Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
 },
 {
   "name": "deadline D19 a question its deadline ends keeps no resolution",
