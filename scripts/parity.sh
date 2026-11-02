@@ -400,6 +400,7 @@ $pkg/storage/waitConformance.test.ts
 $pkg/storage/waitReview.test.ts
 $pkg/storage/reauth.ts
 $pkg/storage/reauth.test.ts
+$pkg/storage/startRefusal.test.ts
 EOF
 }
 

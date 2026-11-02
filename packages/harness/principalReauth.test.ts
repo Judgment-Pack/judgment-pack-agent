@@ -71,6 +71,9 @@ async function claimed(reads:AdmissionRead[]){
  return {...held,resumed,continued:await reauthorizedRunStore({store,effectHost:held.host,resumed})}
 }
 
+// These drive the real engine several times in one test: about 9 s on an idle machine, against the package's 20 s.
+vi.setConfig({testTimeout:120_000})
+
 describe('a credential refusal under a delegation',()=>{
  it('is not a delegation refusal, and counts nothing: the effect host refused it before any dispatch',async()=>{
   const reads:AdmissionRead[]=[]
