@@ -225,8 +225,11 @@ handwritten shared vectors in `contract/vectors/reauth/`, and members of the not
 `reauthorization` decision, and `reauthorization` and `reauthorized`. TypeScript is
 `packages/harness/storage/reauth.ts` with `lease.ts` and `wait.ts`; Go is `go/context/run_reauth.go`
 with `run_lease.go` and `run_wait.go`. The host-facing contract is in `docs/design/storage.md`
-(Re-authorization waits). No checkpoint, event, lease or published report format changes, and with no
-credential check configured the run's bytes are unchanged.
+(Re-authorization waits). No checkpoint, event, lease or published report format changes. With no credential
+check configured no refusal is minted and a run's bytes are unchanged, with two exceptions that apply with or
+without a check. Under a run store, a tool's own failure of exactly the typed never-admitted shape is recorded
+and reported as `authentication`, `tool`, `unknown` with no detail; with no run store it still reaches the
+model as written. Under a fenced view, a `perform` after the dispatch has ended runs nothing.
 
 **The trusted disposition.** The effect host's admission boundary is where never-admitted is known: the
 reference effect host's optional credential check runs after the fence and the idempotency identity and

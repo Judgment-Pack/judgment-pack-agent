@@ -2571,7 +2571,7 @@ func waitDecision(wait RunWait, input ResumeInput) error {
 	switch wait.Reason {
 	case "approval":
 		decision := input.Approval
-		if input.Grant != nil || input.Reauthorization != nil || decision == nil || decision.CallID != wait.Pending.Approval.CallID || decision.Note != nil && jsLength(*decision.Note) > 2000 {
+		if input.Grant != nil || input.Reauthorization != nil || decision == nil || decision.CallID != wait.Pending.Approval.CallID || decision.Note != nil && jsLength(*decision.Note) > 2000 || decision.ShownDigest != nil && !sourceDigest.MatchString(*decision.ShownDigest) {
 			return waitRefused("decision-required")
 		}
 	case "budget":

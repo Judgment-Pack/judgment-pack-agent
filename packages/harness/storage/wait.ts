@@ -788,8 +788,7 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
 /** Deliver host wake evidence to the store. A store error leaves the outcome unknown: read the wait to reconcile it. */
 export async function wakeRun(store:RunStore,evidence:WakeEvidence,signal?:AbortSignal):Promise<WakeDisposition>{return waitStoreOf(store).wakeWait(readWakeEvidence(evidence),signal)}
 
-/** `shownDigest` (#275's member) is carried through a parked approval for the continuation's decision; its check is the gate's. */
-export interface ApprovalDecisionInput {callId:string;approved:boolean;note?:string;shownDigest?:string}
+export interface ApprovalDecisionInput {callId:string;approved:boolean;note?:string;/** The digest of the text the person was shown (#275, `approvalShownDigest`): the continuation checks it. */shownDigest?:string}
 export interface BudgetGrantInput {from:number;to:number;at:string}
 export interface ResumeInput {
  store:RunStore;resource:string;wait:string
@@ -817,7 +816,7 @@ function decisionFor(wait:RunWait,input:ResumeInput):{approval?:ApprovalDecision
  if(wait.reason==='approval'){
   if(input.grant!==undefined||input.reauthorization!==undefined)throw new WaitRefused('decision-required')
   const decision=input.approval
-  if(!object(decision)||decision.callId!==(wait.pending as {callId:string}).callId||typeof decision.approved!=='boolean'||decision.note!==undefined&&(typeof decision.note!=='string'||decision.note.length>2000)||decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'||!DIGEST.test(decision.shownDigest))||Object.keys(decision).some(k=>!['callId','approved','note','shownDigest'].includes(k)))throw new WaitRefused('decision-required')
+  if(!object(decision)||decision.callId!==(wait.pending as {callId:string}).callId||typeof decision.approved!=='boolean'||decision.note!==undefined&&(typeof decision.note!=='string'||decision.note.length>2000)||decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(decision.shownDigest))||Object.keys(decision).some(k=>!['callId','approved','note','shownDigest'].includes(k)))throw new WaitRefused('decision-required')
   return {approval:{callId:decision.callId,approved:decision.approved,...(decision.note===undefined?{}:{note:decision.note}),...(decision.shownDigest===undefined?{}:{shownDigest:decision.shownDigest})}}
  }
  if(wait.reason==='budget'){

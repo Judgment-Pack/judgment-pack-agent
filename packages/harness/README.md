@@ -914,9 +914,9 @@ the operation as never admitted. `resumeParked` needs the host's or the person's
 `identity-changed`, an action before the park `stale`, permissions that no longer cover the operation
 `permission-insufficient`. `reauthorizedRunStore` is the continuation's view: the writer sends the
 never-admitted operation again once, under its own identity, if the run asks for that request; nothing
-that may have been admitted is sent again. A check's error, a tool's error and a refusal with any other
-member are not recorded; a secret that fits a bounded reference's pattern would be, so keeping those out
-is the host's. The wait conformance kit certifies the store's part (`reauth.*`), except a repeated park
+that may have been admitted is sent again. The reference host's check error, a tool's plain or wrapped error
+and a refusal with any other member are not recorded. A typed failure with an authored detail is, and so is a
+secret that fits a bounded reference's pattern, so keeping credentials out of those is the host's. The wait conformance kit certifies the store's part (`reauth.*`), except a repeated park
 and `reauthorized` on another wait's claim. See `docs/design/storage.md`.
 
 ### Proposal edit refusal details

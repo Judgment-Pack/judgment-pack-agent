@@ -115,11 +115,15 @@ the resume a child starts from a delegation that stands, under its own link.
 with a source requires a read, and a read has no credential check. A child's calls of the package's own tools
 that the durable record classes as effects (`list_context`, `update_plan`, `complete_plan_step`,
 `request_budget_increase`) do reach it, as a parent's do, and so does a tool with no source, `delegation` and a
-non-read effect. Refused for its credentials there, the child's task ends `interrupted` in TypeScript and `failed`
-in Go, the whole run stops, and the run parks on the child's proof, which names `source: host` and that tool. It
+non-read effect. Refused for its credentials there, the whole run stops with the child's proof on its view, which
+names `source: host` and that tool. The task's state depends on the engine: `interrupted` on TypeScript's `vercel`
+and `deepagents` with no task steps, `failed` with task steps there and in Go, and on TypeScript's `codex` `running`
+at the stop and `interrupted` at the resume. The host can park on the proof when the refused row is the head's last
+dispatch; with a sibling's row after it, the park refuses `unbound` and the run stays stopped with its lease held. It
 fails closed: nothing is dispatched or counted, no delegation refusal is recorded, and nobody takes the grant,
 because the writer's fingerprint holds the row's scope and the child is not run again. After the resume the child's
-row stays unknown for good, and the parent's own call of that tool is a new row. Whether the package's own tools
+row stays `unknown` with the typed failure (`authentication`, `not-started`) for good, and the parent's own call of
+that tool is a new row. Whether the package's own tools
 belong at the effect host is an earlier classification this decision leaves alone, since changing it moves a byte
 of a run with no delegation.
 
