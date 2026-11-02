@@ -849,12 +849,12 @@ func closesAfresh(t *testing.T, outcome, want, not string) {
 	revision := "sha256:" + runcontext.ContextDigest(`[{"id":"step-1","status":"in_progress","step":"Run it"}]`)
 	calls := []jobCall{{"update_plan", `{"plan":[{"step":"Run it","status":"in_progress"}],"explanation":"start"}`}, {"complete_plan_step", `{"id":"step-1","expectedRevision":"` + revision + `","outcome":"completed","evidence":{"operations":["` + job.Operation + `"],"artifacts":[]}}`}}
 	// The job settles while the run is open: the close must read that, not what the run opened with.
-	counting := failsOnFirstList{durableJobStore: l.store, fail: func() {
+	counting := &failsOnFirstList{durableJobStore: l.store, fail: func() {
 		if _, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, func(e *runcontext.JobCompletionEvidence) { e.Outcome = outcome })); err != nil {
 			t.Fatal(err)
 		}
 	}, seen: &atomic.Int32{}}
-	view, err := runcontext.FencedRunStore(counting, l.fence, l.host)
+	view, err := runcontext.FencedRunStore(counting, l.fence, runcontext.NewReferenceEffectHost(counting))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1119,6 +1119,51 @@ func TestJobsARefusedReclaimOnAStartedJobIsAnsweredFromTheJob(t *testing.T) {
 	}
 }
 
+// keyHost notes the idempotency key each admission carries.
+type keyHost struct {
+	inner *runcontext.ReferenceEffectHost
+	keys  *[]string
+}
+
+func (h keyHost) EffectFencing() string { return h.inner.EffectFencing() }
+func (h keyHost) Dispatch(ctx context.Context, admission runcontext.EffectAdmission, perform func(context.Context) error) error {
+	*h.keys = append(*h.keys, admission.IdempotencyKey)
+	return h.inner.Dispatch(ctx, admission, perform)
+}
+
+// M-9: a start reaches the gateway's members through its job: the key its effect host admitted.
+func TestJobsAStartReachesTheGatewayMembersThroughItsJob(t *testing.T) {
+	ctx := context.Background()
+	l := newLeased(t, nil)
+	keys := []string{}
+	certified, err := runcontext.CertifyEffectHost(ctx, func(authority runcontext.LeaseAuthority) runcontext.EffectHost {
+		return keyHost{inner: runcontext.NewReferenceEffectHost(authority), keys: &keys}
+	}, l.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keys[:0]
+	view, err := runcontext.FencedRunStore(l.store, l.fence, certified)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members runcontext.JobGatewayMembers
+	tool := startTool(t, &startCalls{}, func(ctx context.Context, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+		job, err := runcontext.ReadJob(ctx, l.store, jobRun, input.Job)
+		if err != nil || job == nil {
+			t.Fatal(job, err)
+		}
+		if members, err = runcontext.GatewayActionMembers(*job, false); err != nil {
+			t.Fatal(err)
+		}
+		return startedAnswer, nil
+	}, "allow", nil)
+	drive(t, view, "eino", []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+	if len(keys) != 1 || "sha256:"+members.ActionKey != keys[0] || members.KeyScope == nil || *members.KeyScope != "authority" {
+		t.Fatalf("%+v %v", members, keys)
+	}
+}
+
 // M-7: a nested run on the context a start was handed is no start itself.
 func TestJobsANestedRunInAStartRegistersNothing(t *testing.T) {
 	for _, engine := range engines {
@@ -1191,20 +1236,20 @@ func TestJobsARunAtItsRequestLimitDoesNotPark(t *testing.T) {
 
 func TestJobsAJobWithNoRowInTheHeadIsRefusedBeforeAnOffer(t *testing.T) {
 	ctx := context.Background()
-	l := newLeased(t, nil)
-	calls := &startCalls{}
-	tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
-	drive(t, l.view, "eino", []runcontext.HostTool{tool}, nil, options{})
-	head, err := l.store.Load(ctx, jobRun)
-	if err != nil || head == nil {
-		t.Fatal(head, err)
-	}
-	key, _ := runcontext.JobKeyDigest(jobKey)
-	if _, err := l.store.CommitFenced(ctx, runcontext.RunCommit{RunID: jobRun, ExpectedRevision: head.Revision, CommitID: "restored", Checkpoint: head.Checkpoint, Events: [][]byte{}, Job: &runcontext.JobRegistration{Job: runcontext.JobIdentity(jobRun, "op-restored-away"), Operation: "op-restored-away", Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, l.fence); err != nil {
-		t.Fatal(err)
-	}
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			calls := &startCalls{}
+			tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
+			drive(t, l.view, engine, []runcontext.HostTool{tool}, nil, options{})
+			head, err := l.store.Load(ctx, jobRun)
+			if err != nil || head == nil {
+				t.Fatal(head, err)
+			}
+			key, _ := runcontext.JobKeyDigest(jobKey)
+			if _, err := l.store.CommitFenced(ctx, runcontext.RunCommit{RunID: jobRun, ExpectedRevision: head.Revision, CommitID: "restored", Checkpoint: head.Checkpoint, Events: [][]byte{}, Job: &runcontext.JobRegistration{Job: runcontext.JobIdentity(jobRun, "op-restored-away"), Operation: "op-restored-away", Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, l.fence); err != nil {
+				t.Fatal(err)
+			}
 			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
 			text := toolAnswer(result)
 			if result.err != nil {

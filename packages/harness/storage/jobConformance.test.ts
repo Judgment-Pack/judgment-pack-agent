@@ -1,8 +1,8 @@
 import {describe,it,expect} from 'vitest'
 import {StorageConformanceFailure} from './conformance'
-import {JobRefused,type JobLifetime,type JobRegistration} from './job'
+import {JobRefused,jobIdentity,type JobLifetime,type JobRegistration} from './job'
 import {runStoreJobConformance,type JobRunStore,type JobStoreFactory} from './jobConformance'
-import {LeaseRefused,type LeaseFence,type LeaseLifetime} from './lease'
+import {LeaseRefused,fenceOf,type LeaseFence,type LeaseLifetime} from './lease'
 import {MemoryRunStore} from './run'
 import {WaitRefused,type WaitLifetime} from './wait'
 
@@ -44,7 +44,7 @@ const FAULTS:Record<string,Fault>={
  'job.owner.complete':store=>wrap(store,'completeJob',original=>(evidence,signal)=>original({...evidence,resource:'run-a'},signal)),
  'job.owner.reconcile':store=>wrap(store,'reconcileJob',original=>(evidence,signal)=>original({...evidence,resource:'run-a'},signal)),
  'job.answer.other':(_,{jobs})=>{const original=jobs.answer.bind(jobs);jobs.answer=(input:Held,fence:LeaseFence)=>original(input,{...fence,owner:'worker-a'})},
- 'job.answer.late':(store,{leases})=>wrap(store,'answerJob',original=>(input,fence,signal)=>{if(fence.owner==='worker-a')leases.check(fence);return original(input,fence,signal)}),
+ 'job.answer.late':(store,{leases})=>wrap(store,'answerJob',original=>(input,fence,signal)=>{if(fence.owner==='worker-a'&&fence.resource===input.resource)leases.check(fence);return original(input,fence,signal)}),
  'job.answer.conflict':(_,{jobs})=>{const original=jobs.answer.bind(jobs);jobs.answer=(input:Held,fence:LeaseFence)=>{try{return original(input,fence)}catch(error){if(error instanceof JobRefused&&error.reason==='conflict')return structuredClone(jobs.read(input.resource,input.job));throw error}}},
  'job.answer.same':store=>{const seen=new Set<string>();wrap(store,'answerJob',original=>async(input,fence,signal)=>{if(seen.has(input.job+input.handle))throw new JobRefused('stale');const answer=await original(input,fence,signal);seen.add(input.job+input.handle);return answer})},
  'job.complete.key':(_,{jobs})=>{const original=jobs.complete.bind(jobs);jobs.complete=(input:Held)=>{const held=jobs.authenticate;jobs.authenticate=()=>undefined;try{return original(input)}finally{jobs.authenticate=held}}},
@@ -118,7 +118,7 @@ const STORES:[string,string,Fault][]=[
  ['E9 an answer finds its job across runs by owner and epoch','job.answer.across',(store,{jobs})=>wrap(store,'answerJob',original=>(answer,fence,signal)=>{for(const [resource,rows] of jobs.rows as Map<string,Held[]>)if(rows.some(row=>row.job===answer.job))return original({...answer,resource},fence,signal);return original(answer,fence,signal)})],
  ['An answer ignores the fence\'s run','job.answer.run',store=>wrap(store,'answerJob',original=>(answer,fence,signal)=>original(answer,{...fence,resource:answer.resource},signal))],
  ['E10 a completion wakes a wait past its deadline','job.wake.deadline',(_,{waits})=>{const original=waits.wakeJob.bind(waits);waits.wakeJob=(resource:string,job:string,evidence:Held)=>{const row=waits.rows.get(resource)?.find((r:Held)=>r.state==='parked'&&r.pending.job===job);if(row?.deadline){row.disposition={...evidence,kind:'event',at:waits.now()};row.state='woken';return}original(resource,job,evidence)}}],
- ['E11 a park accepts another run\'s started job','job.park.other',(_,{jobs})=>{const original=jobs.admitPark.bind(jobs);jobs.admitPark=(resource:string,job:string)=>{for(const rows of jobs.rows.values())for(const row of rows)if(row.job===job)return row;return original(resource,job)}}],
+ ['E11 a park accepts another run\'s started job','job.park.other',(_,{jobs})=>{const original=jobs.admitPark.bind(jobs);jobs.admitPark=(resource:string,job:string)=>{for(const rows of jobs.rows.values())for(const row of rows)if(row.job===job&&row.resource!==resource)return row;return original(resource,job)}}],
  ['E12 listJobs answers as of the first read','job.list.fresh',firstReads('listJobs',(resource,after,limit)=>`${resource}/${after}/${limit}`)],
  ['E13 readJob answers as of the first read','job.read.fresh',firstReads('readJob',(resource,job)=>`${resource}/${job}`)],
  ['A repeated contradiction id with other content is taken','job.contradiction.conflict',store=>wrap(store,'completeJob',original=>async(evidence,signal)=>{try{return await original(evidence,signal)}catch(error){if(evidence.resource==='run-d'&&error instanceof JobRefused&&error.reason==='conflict')return store.readJob(evidence.resource,evidence.job);throw error}})],

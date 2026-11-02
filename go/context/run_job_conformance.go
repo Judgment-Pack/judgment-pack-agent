@@ -25,10 +25,11 @@ var jobKitWakes = []string{"kit.wake-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "kit.wake-b.Hs
 const jobKitWrong = "kit.job-wrong.Ge7Zq2My5Rf4Xs9Ku1Bn6Ta"
 
 type jobKit struct {
-	ctx    context.Context
-	at     time.Time
-	create JobStoreFactory
-	store  JobRunStore
+	ctx     context.Context
+	at      time.Time
+	create  JobStoreFactory
+	store   JobRunStore
+	touched []string
 }
 
 func (k *jobKit) check(property string, ok bool) {
@@ -63,12 +64,16 @@ func (k *jobKit) sameJob(a, b RunJob) bool {
 	return string(x) == string(y)
 }
 
+// jobKitKey is a fresh printable secret for its number.
+func jobKitKey(n int) string { return fmt.Sprintf("kit.limit.%03d.Q7z2Xm9LpV4cR8tNb3Yh6Df1", n) }
+
 type jobKitRun struct {
 	revision string
 	fence    LeaseFence
 }
 
 func (k *jobKit) open(run string) jobKitRun {
+	k.touched = append(k.touched, run)
 	head, err := k.store.Commit(k.ctx, RunCommit{RunID: run, CommitID: run + "-open", Checkpoint: []byte(`{"kit":"job"}`), Events: [][]byte{}})
 	if err != nil {
 		panic(err)
@@ -111,6 +116,30 @@ func (k *jobKit) park(run, job, wake string, timeoutAt *string) RunWait {
 	}
 	digest, _ := WakeKeyDigest(wake)
 	return RunWait{Version: 1, Resource: run, Wait: "wait-1", Reason: "job", Pending: contract.RunWaitPending{Job: &contract.RunWaitPendingJob{Kind: "job", Job: job, Generation: 1}}, Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: JobWaitEvent, Subject: job}}, TimeoutAt: timeoutAt, Continuation: "k", Checkpoint: contract.RunWaitCheckpointBinding{Revision: head.Revision, Digest: CheckpointBytesDigest(head.Checkpoint)}, Pins: jobKitPins, WakeKeyDigest: digest, Release: []WaitRelease{}}
+}
+func (k *jobKit) allJobs(run string) []RunJob {
+	out := []RunJob{}
+	for after := "__first__"; ; {
+		if after == "__first__" {
+			after = ""
+		}
+		page, err := k.store.ListJobs(k.ctx, run, after, 100)
+		if err != nil {
+			panic(err)
+		}
+		out = append(out, page.Jobs...)
+		if page.Next == "" {
+			return out
+		}
+		after = page.Next
+	}
+}
+func (k *jobKit) waitOf(run string) *RunWait {
+	held, err := k.store.ReadWait(k.ctx, run, "wait-1")
+	if err != nil {
+		panic(err)
+	}
+	return held
 }
 func (k *jobKit) wait(run string) RunWait {
 	held, err := k.store.ReadWait(k.ctx, run, "wait-1")
@@ -177,6 +206,63 @@ func (k *jobKit) properties() {
 		held := k.job("run-a", JobIdentity("run-a", "op-history"))
 		k.check("job.register.history", held != nil && held.State == "unproven")
 	}
+	// The history path, where a store with that capability really commits its claims (the writer's path): every check
+	// holds there. Through the store of the moment: a restart replaces it.
+	viaHistory := func(input RunCommit, fence LeaseFence) error {
+		_, err := store().(LeaseHistoryRunStore).CommitHistoryFenced(ctx, RunHistoryCommit{Run: input, Observations: []HistoryObjectRef{}}, fence)
+		return err
+	}
+	historyPath := func() bool {
+		held, ok := store().(LeaseHistoryRunStore)
+		return ok && held.HistoryVersion() == 1
+	}
+	hist := k.open("run-history")
+	if historyPath() {
+		if err = viaHistory(k.claim("run-history", hist.revision, "op-1", jobKitKey(100)), hist.fence); err != nil {
+			panic(err)
+		}
+		moved := k.revision("run-history")
+		held := k.job("run-history", JobIdentity("run-history", "op-1"))
+		k.check("job.history.head", moved != hist.revision && held != nil && held.State == "unproven")
+		otherHist := hist.fence
+		otherHist.Owner = "worker-x"
+		k.refuses("job.history.fence", viaHistory(k.claim("run-history", moved, "op-other", jobKitWrong), otherHist), "other-owner")
+		k.check("job.history.fence", k.job("run-history", JobIdentity("run-history", "op-other")) == nil)
+		badHist := k.claim("run-history", moved, "op-bad", jobKitWrong)
+		badHist.Job.Job = JobIdentity("run-history", "op-other")
+		k.refuses("job.history.identity", viaHistory(badHist, hist.fence), "invalid")
+		k.refuses("job.history.key", viaHistory(k.claim("run-history", moved, "op-2", jobKitKey(100)), hist.fence), "key-reused")
+		k.check("job.history.key", k.revision("run-history") == moved && k.job("run-history", JobIdentity("run-history", "op-2")) == nil)
+	}
+	// On both paths: a compare-and-set that fails registers nothing, and a repeated commit id must carry the same
+	// registration.
+	for i, path := range []struct {
+		name   string
+		commit func(RunCommit, LeaseFence) error
+	}{
+		{"fenced", func(input RunCommit, fence LeaseFence) error {
+			_, err := store().CommitFenced(ctx, input, fence)
+			return err
+		}},
+		{"history", viaHistory},
+	} {
+		if path.name == "history" && !historyPath() {
+			continue
+		}
+		run := "run-cas-" + path.name
+		cas := k.open(run)
+		if err = path.commit(k.claim(run, cas.revision, "op-1", jobKitKey(110+10*i)), cas.fence); err != nil {
+			panic(err)
+		}
+		after := k.revision(run)
+		staleErr := path.commit(k.claim(run, cas.revision, "op-stale", jobKitKey(111+10*i)), cas.fence)
+		k.check("job.stale."+path.name, staleErr != nil && k.job(run, JobIdentity(run, "op-stale")) == nil && k.revision(run) == after)
+		repeat := k.claim(run, cas.revision, "op-2", jobKitKey(111+10*i))
+		repeat.CommitID = run + "-op-1"
+		repeatErr := path.commit(repeat, cas.fence)
+		all, exportErr := store().ExportJobs(ctx, run)
+		k.check("job.repeat."+path.name, repeatErr != nil && k.job(run, JobIdentity(run, "op-2")) == nil && exportErr == nil && len(all.Jobs) == 1)
+	}
 	// Owner: a job is looked up by its run and its identity together.
 	k.check("job.owner.read", k.job("run-b", first) == nil)
 	empty, err := store().ListJobs(ctx, "run-b", "", 10)
@@ -189,14 +275,28 @@ func (k *jobKit) properties() {
 	// The typed answer: the fence that admitted it, current or not. M2.
 	c := k.open("run-c")
 	late, _ := k.register("run-c", "op-1", jobKitKeys[1], c)
+	_ = k.job("run-c", late)
+	if _, err = store().ListJobs(ctx, "run-c", "", 10); err != nil {
+		panic(err)
+	}
 	otherC := c.fence
 	otherC.Owner = "worker-x"
 	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherC)
 	k.refuses("job.answer.other", err, "unauthenticated")
+	otherRun := c.fence
+	otherRun.Resource = "run-other"
+	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherRun)
+	k.refuses("job.answer.run", err, "unauthenticated")
+	_, err = store().AnswerJob(ctx, jobKitAnswer("run-other", late, "kit-handle"), c.fence)
+	k.refuses("job.answer.across", err, "no-job")
 	k.at = k.at.Add(2 * time.Hour)
 	answered, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), c.fence)
 	k.answers("job.answer.late", err)
 	k.check("job.answer.late", answered.State == "started" && answered.Handle != nil && *answered.Handle == "kit-handle" && answered.Started != nil && answered.Started.By == "answer")
+	freshRead := k.job("run-c", late)
+	k.check("job.read.fresh", freshRead != nil && k.sameJob(*freshRead, answered))
+	freshList, err := store().ListJobs(ctx, "run-c", "", 10)
+	k.check("job.list.fresh", err == nil && len(freshList.Jobs) == 1 && k.sameJob(freshList.Jobs[0], answered))
 	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-other"), c.fence)
 	k.refuses("job.answer.conflict", err, "conflict")
 	again, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), c.fence)
@@ -239,6 +339,8 @@ func (k *jobKit) properties() {
 	k.refuses("job.reconcile.conflict", err, "conflict")
 	contradicted, err := store().CompleteJob(ctx, jobKitComplete("run-d", closing, jobKitKeys[2], "done-1", "succeeded"))
 	k.answers("job.contradiction.completion", err)
+	_, conflictErr := store().CompleteJob(ctx, jobKitComplete("run-d", closing, jobKitKeys[2], "done-1", "failed"))
+	k.refuses("job.contradiction.conflict", conflictErr, "conflict")
 	k.check("job.contradiction.completion", contradicted.State == "not-started" && len(contradicted.Contradictions) == 1 && contradicted.Contradictions[0].Kind == "completed" && contradicted.Contradictions[0].Outcome != nil && *contradicted.Contradictions[0].Outcome == "succeeded")
 	lateHandle := "late"
 	startedAfter := jobKitReconcile("run-d", closing, jobKitKeys[2], "find-2", "started")
@@ -268,6 +370,24 @@ func (k *jobKit) properties() {
 	}
 	_, err = store().ReclaimJob(ctx, "run-e", reclaim, e.fence)
 	k.refuses("job.reclaim.settled", err, "job-settled")
+	// Under an expired and a stale fence of the same owner.
+	ex := k.open("run-expired")
+	lapsed, _ := k.register("run-expired", "op-1", jobKitKey(130), ex)
+	k.at = k.at.Add(2 * time.Hour)
+	_, err = store().ReclaimJob(ctx, "run-expired", lapsed, ex.fence)
+	k.refuses("job.reclaim.expired", err, "expired")
+	k.check("job.reclaim.expired", k.job("run-expired", lapsed) != nil && k.job("run-expired", lapsed).Reclaimed == nil)
+	st := k.open("run-stale")
+	staled, staledRevision := k.register("run-stale", "op-1", jobKitKey(131), st)
+	if _, err = store().ReleaseLease(ctx, st.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().AcquireLease(ctx, LeaseAcquire{Resource: "run-stale", Owner: "worker-a", ExpectedRevision: staledRevision, DurationMs: 3600000}); err != nil {
+		panic(err)
+	}
+	_, err = store().ReclaimJob(ctx, "run-stale", staled, st.fence)
+	k.refuses("job.reclaim.stale", err, "stale-epoch")
+	k.check("job.reclaim.stale", k.job("run-stale", staled) != nil && k.job("run-stale", staled).Reclaimed == nil)
 	// The answer follows the re-claim: the fence that re-sent it answers, and the first one no longer does.
 	f := k.open("run-f")
 	moved, movedRevision := k.register("run-f", "op-1", jobKitKeys[4], f)
@@ -316,6 +436,10 @@ func (k *jobKit) properties() {
 	if _, _, err = store().ParkWait(ctx, k.park("run-i", waited, jobKitWakes[2], nil), i.fence); err != nil {
 		panic(err)
 	}
+	otherPark := k.open("run-other-park")
+	_, _, err = store().ParkWait(ctx, k.park("run-other-park", waited, jobKitKey(132), nil), otherPark.fence)
+	k.refuses("job.park.other", err, "no-job")
+	k.check("job.park.other", k.waitOf("run-other-park") == nil)
 	// A digest a wait holds: refused, and the claim did not commit either.
 	headG := k.revision("run-g")
 	_, err = store().CommitFenced(ctx, k.claim("run-g", headG, "op-2", jobKitWakes[2]), g.fence)
@@ -324,11 +448,38 @@ func (k *jobKit) properties() {
 	_, err = store().WakeWait(ctx, WakeEvidence{Version: 1, Resource: "run-i", Wait: "wait-1", Evidence: "forged", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: JobWaitEvent, Subject: waited}, Key: jobKitWakes[2]})
 	k.refuses("job.wake.event", err, "mismatch")
 	k.check("job.wake.event", k.wait("run-i").State == "parked")
-	// A restart: everything after it is decided by what the store kept.
+	// A restart: everything after it is decided by what the store kept. It keeps every job and every wait as they were,
+	// all of each: a job completed before it is read after it.
+	type keptRun struct {
+		jobs  []RunJob
+		waits WaitExport
+	}
+	before := map[string]keptRun{}
+	for _, run := range k.touched {
+		waits, waitErr := store().ExportWaits(ctx, run)
+		if waitErr != nil {
+			panic(waitErr)
+		}
+		before[run] = keptRun{jobs: k.allJobs(run), waits: waits}
+	}
 	next := k.create(now, k.store)
 	k.check("job.restart.instance", next != k.store)
 	k.store = next
-	k.check("job.restart.job", k.job("run-i", waited) != nil && k.job("run-i", waited).State == "started" && k.job("run-a", first) != nil && k.job("run-a", first).KeyDigest == key0)
+	for run, held := range before {
+		for _, job := range held.jobs {
+			after := k.job(run, job.Job)
+			k.check("job.restart.job", after != nil)
+			a, _ := canonicalRaw(after.Contradictions)
+			b, _ := canonicalRaw(job.Contradictions)
+			k.check("job.restart.contradiction", string(a) == string(b))
+			k.check("job.restart.record", k.sameJob(*after, job))
+		}
+		waits, waitErr := store().ExportWaits(ctx, run)
+		x, _ := canonicalRaw(waits)
+		y, _ := canonicalRaw(held.waits)
+		k.check("job.restart.wait", waitErr == nil && string(x) == string(y))
+	}
+	_ = key0
 	kept := k.job("run-d", closing)
 	k.check("job.restart.contradiction", kept != nil && len(kept.Contradictions) == 2)
 	r := k.open("run-r")
@@ -405,6 +556,23 @@ func (k *jobKit) properties() {
 	k.check("job.wake.resumed", k.wait("run-m").State == "resumed")
 	wokenAgain, err := store().ReadWait(ctx, "run-m", "wait-2")
 	k.check("job.wake.again", err == nil && wokenAgain != nil && wokenAgain.State == "woken")
+	// From its deadline a job wait wakes for nothing either.
+	dl := k.open("run-deadline")
+	dated, _ := k.register("run-deadline", "op-1", jobKitKey(133), dl)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-deadline", dated, "kit-handle"), dl.fence); err != nil {
+		panic(err)
+	}
+	minute := int64(60000)
+	datedPark := k.park("run-deadline", dated, jobKitKey(134), nil)
+	datedPark.Limits = &WaitLimits{WaitMs: &minute}
+	if _, _, err = store().ParkWait(ctx, datedPark, dl.fence); err != nil {
+		panic(err)
+	}
+	k.at = k.at.Add(time.Minute)
+	if _, err = store().CompleteJob(ctx, jobKitComplete("run-deadline", dated, jobKitKey(133), "done-1", "succeeded")); err != nil {
+		panic(err)
+	}
+	k.check("job.wake.deadline", k.wait("run-deadline").State == "parked")
 	// The run's limit: its sixty-fifth job is refused, with its claim.
 	limit := k.open("run-k")
 	moving := limit.revision
@@ -422,6 +590,26 @@ func (k *jobKit) properties() {
 	page, err := store().ListJobs(ctx, "run-k", "", 10)
 	rest, err2 := store().ListJobs(ctx, "run-k", page.Next, 100)
 	k.check("job.list.page", err == nil && err2 == nil && len(page.Jobs) == 10 && page.Next == page.Jobs[9].Job && len(rest.Jobs) == 54)
+	if historyPath() {
+		limit := k.open("run-limit-history")
+		rolling := limit.revision
+		for n := range 64 {
+			if err = viaHistory(k.claim("run-limit-history", rolling, fmt.Sprintf("op-%d", n), jobKitKey(200+n)), limit.fence); err != nil {
+				panic(err)
+			}
+			rolling = k.revision("run-limit-history")
+		}
+		k.refuses("job.history.limit", viaHistory(k.claim("run-limit-history", rolling, "op-64", jobKitKey(264)), limit.fence), "jobs-exhausted")
+		all, exportErr := store().ExportJobs(ctx, "run-limit-history")
+		k.check("job.history.limit", exportErr == nil && k.revision("run-limit-history") == rolling && len(all.Jobs) == 64)
+	}
+	// What an export says is what the reads say, run by run.
+	for _, run := range k.touched {
+		exported, exportErr := store().ExportJobs(ctx, run)
+		x, _ := canonicalRaw(exported.Jobs)
+		y, _ := canonicalRaw(k.allJobs(run))
+		k.check("job.export.reads", exportErr == nil && string(x) == string(y))
+	}
 }
 
 // CheckRunStoreJobConformance certifies a store kind's job port (#229). It returns StorageConformanceFailure naming

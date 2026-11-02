@@ -461,6 +461,8 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}
 /** @internal The store and fence behind a fenced view; undefined for any other store. */
 export function leasedViewOf(store:RunStore):{fence:LeaseFence;store:RunStore}|undefined{const lease=leased.get(store);return lease?{fence:lease.fence,store:lease.store}:undefined}
+/** @internal The store and effect host behind a fenced view, as admitUnattended takes them. */
+export function leasedAdmission(store:RunStore):{store:RunStore;effectHost?:EffectHost}|undefined{const lease=leased.get(store);return lease?{store:lease.store,...(lease.effectHost?{effectHost:lease.effectHost}:{})}:undefined}
 /** @internal ADR-0029: a fenced store's lease holds the run's principals: a lease of others, a delegated run's without
  * them or an undelegated run's with them dispatches nothing. */
 export function holdLeasePrincipal(store:RunStore,record:PrincipalRecord|undefined):void{

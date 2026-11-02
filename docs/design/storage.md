@@ -724,8 +724,11 @@ claim otherwise). `mint(job)` returns `jobKeyDigest(key)` of a fresh completion 
 form, the host keeps it across its own restarts, and the store holds only its digest. `start({job, request, signal})` runs the
 row's own request bytes under the effect host's admission and answers `{started: true, handle, receipt?}` or `{started:
 false}`. `jobReadTool(view)` (Go `JobReadTool`) is the model's read, bound to the view's run. A run offered either needs a fenced
-view of a store whose jobs, leases and waits outlive its process (`admitJobs`, Go `AdmitJobs`), or it refuses by name before
-any request. A tool of a `gateway` source needs `gatewayKeyScope` (`job-host-unsupported`). No child is offered a job tool.
+view of a store whose jobs, leases and waits outlive its process, with an effect host proven for that store (`admitJobs`, Go
+`AdmitJobs`, which the session runs over the view's own store and host), or it refuses by name before any request. A tool of a
+`gateway` source needs `gatewayKeyScope` (`job-host-unsupported`). A sub-agent is offered no job tool: a declaration naming one is
+withheld, and a child session offered one refuses `child-unsupported`. A job with no row in the run's head means its rows were
+restored from an earlier moment than its jobs, and the run refuses `store-inconsistent` before any request.
 
 **The job port.** A store kind implements `JobStore` (Go `JobStore`): `jobVersion` 1, `jobLifetime`, and these, each atomic under
 the same serialization as its commits, with everything they decide by surviving the store's own restarts.
@@ -758,20 +761,26 @@ the history path), `job.key.*`, `job.wait.key`, `job.owner.*`, `job.answer.*`, `
 
 **Waiting.** After the model ends its turn, or at any checkpoint at rest (`running` or `complete`), the host calls `parkRun({...,
 job, condition: {event: {kind: 'job-completion', subject: job}}})`. A pending decision is `decision-required`, a stopped checkpoint
-`nothing-pending`, a chat binding `chat-store-unsupported` (Go has no chat binding). `wakeRun` refuses an event for a job wait
+`nothing-pending`, a run at its request limit `not-resumable`, and a chat binding, or a run whose history head holds a stored chat,
+`chat-store-unsupported` (Go has no chat binding). `wakeRun` refuses an event for a job wait
 (`mismatch`); it takes a timeout, which does not close the run, and a deadline. `resumeParked` needs the completion's or the
 timeout's evidence id and no decision, and returns `job`, read through the reader; the host passes it as `context.jobContinuation`
 (Go `Input.JobContinuation`), and the first request carries one fixed line and one data block built from the record.
 
 **What the model reads.** A start's row holds what the package composed (`jobStartResult`): the job's identity, its state and the
 words "started, not finished". `job_read` answers the state every time, with `changed` and, when nothing moved, a fixed instruction
-to end the turn. A handle, a receipt and host text never reach the model. Rows of job tools record no observation, so they are never
+to end the turn. A handle, a receipt and host text never reach the model. Once a start has run, nothing reads as refused input:
+what it answered that could not be recorded (not typed, or conflicting with what the job holds), and whatever it threw, leaves the
+row `unknown` with one fixed failure, `JobStartUnrecorded`, and the model is answered from the job as a repeat is. A handle or
+receipt the record cannot hold (over 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, and the job
+is `started`: it can complete, and the same bytes answer the same, but the host holds the means to reach it. Rows of job tools record no observation, so they are never
 plan evidence; a start cited in `complete_plan_step` is held to its job, read afresh: `completed` with `succeeded` proves it whatever
 the row says, and anything else refuses `unsuccessful-operation`.
 
-**A gateway.** `gatewayActionMembers(admission, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`. It carries
-no owner, subject or lease. `gatewayRefusalFinding(refusal)` reads a reconciling request's refusal: only
-`action-key-not-dispatched` is `not-started`. What the gateway must build is in ADR-0025's amendment, and it is filed on gateway #352.
+**A gateway.** `gatewayActionMembers(job, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`: it takes the job
+(`readJob`), which a `start` can read and a reconciliation holding no lease can too. It carries no owner, subject or lease. No
+gateway accepts these members until gateway #352 ships: each refuses them and sends nothing. `gatewayRefusalFinding(refusal)` reads
+a reconciling request's refusal: only `action-key-not-dispatched`, which no gateway sends yet, is `not-started`. What the gateway must build is in ADR-0025's amendment, and it is filed on gateway #352.
 
 ## Re-authorization waits (#226)
 

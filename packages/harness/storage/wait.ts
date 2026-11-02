@@ -1,6 +1,7 @@
 import {AIFailureError,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
+import type {HistoryRunStore} from './history'
 import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
@@ -743,6 +744,11 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
   if(input.question!==undefined||input.reauthorization!==undefined)return invalid()
   if(checkpoint.status==='paused'||checkpoint.approval?.state==='asked'||checkpoint.planState?.pending!==undefined)throw new WaitRefused('decision-required')
   if(checkpoint.status==='stopped')throw new WaitRefused('nothing-pending')
+  // M-4: at its request limit the continuation cannot make a request, so the claim would be spent and the model never told.
+  if(checkpoint.used>=checkpoint.limit)throw new WaitRefused('not-resumable')
+  // M-5: the turn of a stored chat is closed by now, and its continuation could not reach that chat.
+  const history=store as Partial<HistoryRunStore>
+  if(history.historyVersion===1&&(await history.readHistoryHead?.(fence.resource,input.signal))?.context!==undefined)throw new WaitCapabilityRefused('chat-store-unsupported')
   const held=await jobPortOfStore(input.store).readJob(fence.resource,digest(input.job),input.signal)
   if(held===undefined)throw new JobRefused('no-job')
   const job=readRunJob(copy(held))

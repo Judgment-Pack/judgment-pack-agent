@@ -227,7 +227,7 @@ var jobFaults = map[string]jobFault{
 		return s.durableJobStore.AnswerJob(ctx, input, fence)
 	}},
 	"job.answer.late": {answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
-		if fence.Owner == "worker-a" {
+		if fence.Owner == "worker-a" && fence.Resource == input.Resource {
 			if err := s.CheckFence(ctx, fence); err != nil {
 				return RunJob{}, err
 			}

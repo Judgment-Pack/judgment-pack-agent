@@ -20,7 +20,7 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
-import {JOB_PAGE_LIMIT,JobRefused,heldStartNotShown,jobIdentity,jobPortOfView,jobStartResult,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
+import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobIdentity,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -515,7 +515,13 @@ export class RunWriter {
  /** #229: this run's jobs by their start's dispatch id, where the host offers job tools: what plan evidence is held to. */
  private jobRecords?:Map<string,RunJob>
  /** #229: this run offers job tools. Nothing below is asked of a store otherwise. */
- async attachJobs(signal?:AbortSignal):Promise<void>{this.jobRecords??=new Map();await this.refreshJobs(signal)}
+ async attachJobs(signal?:AbortSignal):Promise<void>{
+  admitJobView(this.store)
+  this.jobRecords??=new Map();await this.refreshJobs(signal)
+  // M-6: a job and its claim commit together, so a job with no row of the head means its rows were restored from an earlier
+  // moment than its jobs: a repeat would get a new row and a second start.
+  for(const operation of this.jobRecords.keys())if(!this.book.dispatches.some(row=>row.id===operation))throw new JobCapabilityRefused('store-inconsistent')
+ }
  async refreshJobs(signal?:AbortSignal):Promise<void>{
   if(!this.jobRecords)return
   const port=jobPortOfView(this.store),next=new Map<string,RunJob>()
@@ -794,12 +800,13 @@ export class RunWriter {
    if(!read){
     const rows=this.book.dispatches.filter(row=>!row.read&&row.kind===kind&&row.fingerprint===fingerprint),decisions=rows.map(row=>compareDurableRequests(row.request,request))
     reused=rows[decisions.indexOf('same')]
-    // #229 (H2): a grant re-sends a start only while its job is unproven, by a transition under the fence. A job a
-    // reconciliation closed is refused here, the row stays as it is and the grant is not spent.
+    // #229 (H2, H-1): a grant re-sends a start only while its job is unproven, by a transition under the fence. A job a
+    // reconciliation closed or proved started is refused here: the row stays as it is, the grant is not spent, and the call is
+    // answered from the job as any repeat is.
     if(jobStart&&reused&&reused.state==='unknown'&&recordable&&digest(request)===reused.requestDigest&&reauthorizedDispatchOpen(this.store,{run:this.id,operation:reused.id,source,tool,requestDigest:reused.requestDigest},reused.failure)){
      const port=jobPortOfView(this.store)
      jobId=jobIdentity(this.id,reused.id)
-     try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;refusal=error;return}
+     try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;return}
     }
     // #226: a dispatch the run holds as unknown is never sent again, except the one operation a resumed re-authorization
     // wait granted on this fenced view, whose recorded failure is the typed never-admitted refusal: it is claimed again
@@ -855,7 +862,7 @@ export class RunWriter {
   // recorded; a result it refuses is recorded as the call's uncertain outcome with the refusal as its failure, never as a
   // result. Where the execution ended within its deadline, the check's own time is not the call's: what follows is
   // decided without the call's signal (`live`).
-  let live=signal
+  let live=signal,composed:T|undefined
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
    // #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with the fence; its
@@ -873,9 +880,17 @@ export class RunWriter {
    // #229 (M2, M15): after the receipt check, the host's typed answer goes to the job and the row holds what the package
    // composed. It is recorded whatever has become of the lease, the call's signal or the dispatch: a stale worker can only add
    // a fact about the start it admitted, and this may be the only copy of its handle. An untyped answer leaves the job unproven.
+   // H-1: from here the start has run, so nothing that goes wrong may read as refused input: the row holds the fixed unknown
+   // failure, and the model is answered from the job.
    if(jobStart){
-    const answer=readJobStartAnswer(value),port=jobPortOfView(this.store)
+    const port=jobPortOfView(this.store)
+    try{
+    const answer=readJobStartAnswer(value)
     value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
+    }catch{
+     try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
+     throw jobStartUnrecorded()
+    }
     if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
    }
   }catch(thrown){
@@ -888,6 +903,7 @@ export class RunWriter {
    const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
    try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
    if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
+   if(composed!==undefined)return composed
    if(kind==='model')this.dispatchClosed=true
    // #226: a trusted re-authorization refusal stops the run at the operation it refused: nothing after it is committed and
    // nothing more is dispatched, so the run's head holds it as the never-admitted dispatch a park binds.

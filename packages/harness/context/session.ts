@@ -1031,10 +1031,12 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const executeHost=async(tool:HostTool,args:Record<string,unknown>,signal:AbortSignal,callId?:string,admission?:ReceiptAdmission)=>{
   const binding=session.context?.[durableOwner]
   const source=declared.entries.get(tool.name)?.record
-  // #229: a job tool's rows are never plan evidence; a start runs the row's own bytes under its job's identity.
+  // #229: a job tool's rows are never plan evidence; a start runs the row's own bytes under its job's identity. What a start
+  // throws is no answer: its words reach neither the row nor the model. A refusal the package trusts is minted before anything
+  // is performed, so it never comes from here.
   const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded
   let started:string|undefined
-  if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');return job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}}
+  if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');try{return await job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}catch{return undefined as unknown as McpToolResult}}}
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
@@ -1061,7 +1063,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  try{
   if(session.hostTools.some(tool=>jobSeamOf(tool)!==undefined)){
    const binding=session.context?.[durableOwner]
-   if(!binding||session.childDefinition)throw new JobCapabilityRefused('store-unsupported')
+   if(session.childDefinition)throw new JobCapabilityRefused('child-unsupported')
+   if(!binding)throw new JobCapabilityRefused('store-unsupported')
    await binding.writer.attachJobs(session.signal)
    context.execution.refreshProof=signal=>binding.writer.refreshJobs(signal)
   }

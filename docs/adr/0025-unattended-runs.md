@@ -484,8 +484,10 @@ archive of a run with jobs needs the job export too, and a store backs its jobs 
 
 **Waiting.** `parkRun({job})` is the host's wait port; the model has no wait tool. A job park accepts a checkpoint at rest
 (`running` or `complete`), refuses a pending decision (`decision-required`) and a stopped checkpoint (`nothing-pending`). It
-waits for that job's completion only, with no `wakeAt`, and refuses a chat binding this release (`chat-store-unsupported`): a
-person's next message would make the resume `chat-changed`, and nothing ends such a wait short of a deadline. The store's
+waits for that job's completion only, with no `wakeAt`, and refuses a chat binding this release (`chat-store-unsupported`), whether
+the host passes `chat` or the run's history head holds a stored chat: a person's next message would make the resume `chat-changed`,
+and nothing ends such a wait short of a deadline. A run at its request limit is refused `not-resumable`: a claim would be spent
+and the continuation could make no request, so the model would never be told. The store's
 park transaction refuses a settled job (`job-settled`) and an unproven one (`job-unproven`), which closes the lost wake-up.
 `wakeWait` takes only a timeout, which does not close the run, and a deadline. `resumeParked` returns the job as its record
 says now; the host hands it to `context.jobContinuation`, and the run's first request carries one fixed line and one data
@@ -514,14 +516,15 @@ it, its key and reads hold, and a completion needs no lease. Under another subje
 (#363 as built), and an undelegated one stays `unproven` by the gateway's answer below.
 
 **Gateway #352 M6, undelegated.** Nothing such a run holds can be verified by a gateway: lease and epoch live in the run
-store. The agent presents no owner, subject or lease, only `gatewayActionMembers(admission)`: `{actionKey: <idempotency key
+store. The agent presents no owner, subject or lease, only `gatewayActionMembers(job)`: `{actionKey: <idempotency key
 without "sha256:">, keyScope: "authority"}`, plus `reconcile: true` when reconciling. A delegated run sends what #363 built,
-with no `keyScope`. The gateway's record of the key's first scope proves the same subject, which is safe because the key
+with no `keyScope`. The gateway's record of the key's first scope is to prove the same subject, which is safe because the key
 hashes the run and a random operation; anything else stays `unknown`. The writer never re-sends an unknown row, so
 reconciling is the only re-presentation. Findings: a retained answer is parsed by the host like the first answer (a `response`
 is not a commit; untyped is `unknown`); `action-key-not-dispatched` is `not-started`; anything else, `action-key-scope-conflict`
-included, is `unknown`. An older gateway refuses both members (a closed body), so nothing is sent: the host answers such a start
-`not-started` from that exact refusal. The host keeps `decision` and `cites` for its reconciling request: no record here holds
+included, is `unknown`. No gateway accepts either member until #352 ships: each refuses them (a closed body), so nothing is sent, and the
+host answers such a start `not-started` from that exact refusal. Nor does any gateway send `action-key-not-dispatched` yet, and it
+must not without the durable closure below. The host keeps `decision` and `cites` for its reconciling request: no record here holds
 them.
 
 The gateway builds, on `/act`:
@@ -546,11 +549,12 @@ The gateway builds, on `/act`:
 | Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`) | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, before any offer |
 | Decide every held start with `shownDigest` (`approvalShownDigest`), text kept or not: a new surface has no unmoved host | `ApprovalNotShown`, before the claim: no job, nothing runs, and the pause stands |
 | Declare `gatewayKeyScope` on a start tool of a `gateway` source | `job-host-unsupported` |
+| Declare no sub-agent with a job tool | The definition is withheld; a child session offered one refuses `child-unsupported` |
 | Mint a completion key per job, store only its digest here, and keep the key across its own restarts | `key-reused` or `invalid` before any row; a lost key means the job can never be completed |
-| Answer `start` in the typed form | The job stays unproven, and the row says it was not re-sent |
+| Answer `start` in the typed form, with a handle and a receipt of at most 256 bytes | Anything else leaves the job unproven, or keeps what it had. The row holds a fixed `unknown` failure that says it was not re-sent, and the model is answered from the job. A handle or receipt the record cannot hold is kept as the digest of its bytes, and the job is `started` |
 | Complete only through `completeJob`; hand the wake's evidence id to `resumeParked` | Event `wakeWait` is `mismatch`; `unacknowledged` |
 | Report `not-started` only when the authority has closed the start. A reference effect host cannot, its admitted set being process memory, so it answers `unknown` | A later completion is kept as a contradiction |
-| Keep `decision` and `cites`, and back up job and run records together | A takeover elsewhere gets `action-key-conflict`; an orphan is read as it is |
+| Keep `decision` and `cites`, and back up job and run records together | A takeover elsewhere gets `action-key-conflict`. A job with no row in the head refuses `store-inconsistent` before any offer; a row with its job lost is no evidence |
 | On `job-settled`, `job-unproven` or `no-job` at a park: continue or reconcile; none of them holds the run | The run stays leased until the host acts |
 
 **Published behaviour.** With nothing configured no byte moves: no tool, no store call, and `RunStore` and `WaitStore` keep
@@ -607,7 +611,7 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | M9 abandon's delivery | Next: a fresh fence and stable cancel identities |
 | M10, M11, M12 | Next: as stated under the objective; `replace` and one row per `inspect` cut |
 | M13 nothing identifies a start row | Start rows are package-composed and record no observation, so a lost job record leaves them no evidence. The upgrade guide says what an archive needs |
-| M14 the gateway mapping | Answers parsed as the first was; `decision` and `cites` are the host's; retention in the gateway's list; an older gateway's refusal mapped by the host |
+| M14 the gateway mapping | Answers parsed as the first was; `decision` and `cites` are the host's; retention in the gateway's list; a gateway's refusal of the members mapped by the host |
 | M15 the start's answer | Its own row in the paths; the package composes the row's result; `started` after `admit` |
 | M16, M17 | Next: as stated under the objective |
 | M18 host obligations | The table above; chat-bound waits refused rather than kept current |
@@ -619,6 +623,22 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | L6 | Job records hold ids and digests; a handle is the host's reference. No redaction in this release |
 | L7 | A delegated run sends no `keyScope` |
 | Scope | Three stacked changes; `rebindJob`, `job_list`, the renew and unfenced-commit refusals, `replace`, one row per `inspect` and chat-bound job waits cut |
+
+**The clean room's findings on the job core, in this amendment.** The record is on the first PR.
+
+| Finding | What changed |
+| --- | --- |
+| H-1 a start that ran was reported as invalid input, and a retry started a second job | After `perform` returns, nothing reads as refused input. The row holds one fixed failure (`unknown`, `tool`, `unknown`, `JobStartUnrecorded`, pinned in the job vectors), and the model is answered from the job, as a repeat is. A refused re-claim on a closed or started job is answered the same way, with its grant unspent. What `start` throws is no answer, so its text reaches neither the row nor the model. A handle or receipt the record cannot hold is kept as the digest of its bytes |
+| M-1 the kit passed fourteen stores that lose a job or a completion | It drives both commit paths, reads every job and wait whole across its restart, and holds re-claims, answers and parks across runs and fences. Each of those stores is a negative |
+| M-2 the session did not hold the effect host | `attachJobs` runs `admitJobs` over the view's own store and host, before any offer |
+| M-3 a contradicted job said nothing is running | Its own fixed note |
+| M-4 a run at its limit parked | `not-resumable` |
+| M-5 a run under a stored chat parked | `chat-store-unsupported`, read from the history head |
+| M-6 jobs and rows restored from different moments | `store-inconsistent`, before any offer |
+| M-7 Go's dispatch travelled in its context | Stripped where the receipt admission is |
+| M-8 a child and a job tool | The declaration is withheld in both languages; `child-unsupported` in both sessions |
+| M-9 statements only the unbuilt gateway makes true | Reworded. `gatewayActionMembers` takes the job, which a `start` and a leaseless reconciliation can both read |
+| L-1, L-7 | Host text as above; a repeated contradiction id with other content is `conflict`, and an answer under another run's fence is refused, each now held by the kit |
 
 ## Implementation split and acceptance
 

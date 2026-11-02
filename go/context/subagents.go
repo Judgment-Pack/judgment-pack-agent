@@ -73,7 +73,7 @@ func DeclareSubagents(declared []Subagent, tools []HostTool, skills []AdmittedSk
 			hold("A declaration cannot replace a built-in profile.")
 			continue
 		}
-		unknown, unsafe := false, false
+		unknown, unsafe, jobTool := false, false, false
 		for _, name := range s.Tools {
 			at := slices.IndexFunc(tools, func(t HostTool) bool { return t.Name == name })
 			if at < 0 {
@@ -81,12 +81,17 @@ func DeclareSubagents(declared []Subagent, tools []HostTool, skills []AdmittedSk
 				continue
 			}
 			t := tools[at]
+			jobTool = jobTool || t.job != nil
 			if t.Interaction != "" || !(t.Source != nil && t.EffectClass == "read" || t.Source == nil && (t.Effect == "read" || t.Effect == "" && t.Delegation == "read")) {
 				unsafe = true
 			}
 		}
 		if unknown {
 			hold("An undeclared tool was named; the definition was withheld.")
+			continue
+		}
+		if jobTool {
+			hold("A sub-agent is offered no job tool: a job belongs to the run that started it.")
 			continue
 		}
 		if unsafe {

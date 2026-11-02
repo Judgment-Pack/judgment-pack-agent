@@ -1910,6 +1910,9 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 	// #229: with job tools offered, the run must have the job port, and plan evidence is held to the job records.
 	// Refused by name before anything is offered.
 	if slices.ContainsFunc(session.HostTools, func(tool HostTool) bool { return tool.job != nil }) {
+		if session.ChildDefinition != nil {
+			return nil, &JobCapabilityRefused{Reason: "child-unsupported"}
+		}
 		binding := held.Persistence("author")
 		if binding == nil {
 			return nil, &JobCapabilityRefused{Reason: "store-unsupported"}

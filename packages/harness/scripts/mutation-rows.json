@@ -12909,7 +12909,7 @@
   {
    "name": "job J30 a delegated run presents a key scope",
    "file": "storage/job.ts",
-   "find": "...(held.fence.principal?{}:{keyScope:'authority' as const})",
+   "find": "...(held.principal?{}:{keyScope:'authority' as const})",
    "replace": "keyScope:'authority' as const",
    "tests": [
     "storage/jobRecords.test.ts"
@@ -13257,7 +13257,7 @@
   {
    "name": "job W17 a grant re-sends a closed job",
    "file": "storage/writer.ts",
-   "find": "     try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;refusal=error;return}\n",
+   "find": "     try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;return}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts"
@@ -13305,8 +13305,8 @@
   {
    "name": "job W20 an untyped answer is taken as a start",
    "file": "storage/writer.ts",
-   "find": "const answer=readJobStartAnswer(value),port=jobPortOfView(this.store)",
-   "replace": "const answer=(value??{started:true,handle:'unread'}) as unknown as import('./job').JobStartAnswer,port=jobPortOfView(this.store)",
+   "find": "    const answer=readJobStartAnswer(value)\n",
+   "replace": "    const answer=(value??{started:true,handle:'unread'}) as unknown as import('./job').JobStartAnswer\n",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -13353,7 +13353,7 @@
   {
    "name": "job S2 a job tool is offered with no durable run",
    "file": "context/session.ts",
-   "find": "   if(!binding||session.childDefinition)throw new JobCapabilityRefused('store-unsupported')\n   await binding.writer.attachJobs(session.signal)\n",
+   "find": "   if(!binding)throw new JobCapabilityRefused('store-unsupported')\n   await binding.writer.attachJobs(session.signal)\n",
    "replace": "   if(!binding)return\n   await binding.writer.attachJobs(session.signal)\n",
    "tests": [
     "storage/job.test.ts"
@@ -13445,6 +13445,222 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldStartGoesThroughTheOrdinaryApproval."
+  },
+  {
+   "name": "job H1 a start that ran is reported as refused input",
+   "file": "storage/writer.ts",
+   "find": "     throw jobStartUnrecorded()\n",
+   "replace": "     throw new JobRefused('invalid')\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartThatRanIsToldWhatItsJobSays."
+  },
+  {
+   "name": "job H2 a refused answer is not answered from its job",
+   "file": "storage/writer.ts",
+   "find": "   if(composed!==undefined)return composed\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartThatRanIsToldWhatItsJobSays."
+  },
+  {
+   "name": "job H3 what a start throws reaches the row and the model",
+   "file": "context/session.ts",
+   "find": "catch{return undefined as unknown as McpToolResult}}}\n",
+   "replace": "catch(error){throw error}}}\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartThatRanIsToldWhatItsJobSays."
+  },
+  {
+   "name": "job H4 a refused re-claim takes the grant all the same",
+   "file": "storage/writer.ts",
+   "find": "catch(error){if(!(error instanceof JobRefused))throw error;return}\n    }\n",
+   "replace": "catch(error){if(!(error instanceof JobRefused))throw error}\n    }\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAGrantResendsAStartOnlyWhileItsJobIsUnproven."
+  },
+  {
+   "name": "job H5 a handle the record cannot hold loses the start",
+   "file": "storage/job.ts",
+   "find": "storageId(v)?v:`sha256:${sha256(v)}`",
+   "replace": "storageId(v)?v:invalid()",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job H6 an empty handle is read",
+   "file": "storage/job.ts",
+   "find": "typeof v!=='string'||v===''?invalid():",
+   "replace": "typeof v!=='string'?invalid():",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job H7 a contradicted job says nothing is running",
+   "file": "storage/job.ts",
+   "find": "job.contradictions?JOB_CONTRADICTED:JOB_NOT_STARTED",
+   "replace": "JOB_NOT_STARTED",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job A1 a view is not held to its store before an offer",
+   "file": "storage/writer.ts",
+   "find": "  admitJobView(this.store)\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAViewNotHeldToItsStoreReachesNoOfferAndNoStart."
+  },
+  {
+   "name": "job A2 a run at its limit parks",
+   "file": "storage/wait.ts",
+   "find": "  if(checkpoint.used>=checkpoint.limit)throw new WaitRefused('not-resumable')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsARunAtItsRequestLimitDoesNotPark."
+  },
+  {
+   "name": "job A3 a run under a stored chat parks",
+   "file": "storage/wait.ts",
+   "find": "  if(history.historyVersion===1&&(await history.readHistoryHead?.(fence.resource,input.signal))?.context!==undefined)throw new WaitCapabilityRefused('chat-store-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job A4 a job with no row in the head is taken",
+   "file": "storage/writer.ts",
+   "find": "  for(const operation of this.jobRecords.keys())if(!this.book.dispatches.some(row=>row.id===operation))throw new JobCapabilityRefused('store-inconsistent')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAJobWithNoRowInTheHeadIsRefusedBeforeAnOffer."
+  },
+  {
+   "name": "job A5 a sub-agent is declared with a job tool",
+   "file": "subagents.ts",
+   "find": "    if(definition.tools.some(name=>tools.some(t=>t.name===name&&jobSeamOf(t)!==undefined))){hold('A sub-agent is offered no job tool: a job belongs to the run that started it.');continue}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in subagents.go): caught at TestJobToolsAreOfferedToNoSubAgent."
+  },
+  {
+   "name": "job A6 a child session takes a job tool",
+   "file": "context/session.ts",
+   "find": "   if(session.childDefinition)throw new JobCapabilityRefused('child-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobToolsAreOfferedToNoSubAgent."
+  },
+  {
+   "name": "job J37 the action key is not the one admitted",
+   "file": "storage/job.ts",
+   "find": "key=effectIdempotencyKey({run:held.resource,operation:held.operation,",
+   "replace": "key=effectIdempotencyKey({run:held.operation,operation:held.resource,",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J38 a repeated contradiction id with other content is taken",
+   "file": "storage/job.ts",
+   "find": "const same=[row.started,row.closed,row.completion,...(row.contradictions??[])].find(",
+   "replace": "const same=[row.started,row.closed,row.completion].find(",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
+  },
+  {
+   "name": "job J39 an answer ignores the run of its fence",
+   "file": "storage/job.ts",
+   "find": "  if(presented.resource!==row.resource||presented.owner!==admitter.owner",
+   "replace": "  if(presented.owner!==admitter.owner",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
+  },
+  {
+   "name": "job K1 the kit does not drive the history path",
+   "file": "storage/jobConformance.ts",
+   "find": " if(viaHistory){\n  await viaHistory(claim('run-history',",
+   "replace": " if(viaHistory&&at<0){\n  await viaHistory(claim('run-history',",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
+  },
+  {
+   "name": "job K2 the restart reads no record whole",
+   "file": "storage/jobConformance.ts",
+   "find": "   check('job.restart.record',same(after,job))\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsARestart."
   }
  ]
 }

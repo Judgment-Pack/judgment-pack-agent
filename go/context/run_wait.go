@@ -2400,6 +2400,11 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		if checkpoint.Status == "stopped" {
 			return RunWait{}, AttentionEvent{}, waitRefused("nothing-pending")
 		}
+		// M-4: at its request limit the continuation cannot make a request, so the claim would be spent and the model
+		// never told.
+		if checkpoint.Used >= checkpoint.Limit {
+			return RunWait{}, AttentionEvent{}, waitRefused("not-resumable")
+		}
 		port, err := jobPortOf(input.Store)
 		if err != nil {
 			return RunWait{}, AttentionEvent{}, &WaitCapabilityRefused{Reason: "store-unsupported"}

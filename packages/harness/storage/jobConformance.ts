@@ -1,6 +1,6 @@
 import {canonicalJSON} from '../context/chat'
 import {StorageConformanceFailure} from './conformance'
-import {JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence,type JobReconciliation,type JobStore} from './job'
+import {JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence,type JobPage,type JobReconciliation,type JobStore,type RunJob} from './job'
 import {LeaseRefused,fenceOf,type LeaseFence} from './lease'
 import {pinsDigest,type ResumePins} from './resume'
 import {WaitRefused,checkpointBytesDigest,wakeKeyDigest,type RunWait,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
@@ -37,7 +37,8 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  let store=await create(now)
  check('job.declared',store.jobVersion===1&&(store.jobLifetime==='durable'||store.jobLifetime==='process')&&store.waitVersion===1&&store.leaseVersion===1)
  const restart=async(property:string)=>{const next=await create(now,store);check(property,next!==store);store=next}
- const open=async(run:string)=>{const head=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint:bytes('{"kit":"job"}'),events:[]});return {revision:head.revision,fence:fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:head.revision,durationMs:HOUR}))}}
+ const touched=new Set<string>()
+ const open=async(run:string)=>{touched.add(run);const head=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint:bytes('{"kit":"job"}'),events:[]});return {revision:head.revision,fence:fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:head.revision,durationMs:HOUR}))}}
  /** A start's claim commit, carrying its job's registration. */
  const claim=(run:string,revision:string,operation:string,key:string,commitId=`${run}-${operation}`)=>({runId:run,expectedRevision:revision,commitId,checkpoint:bytes(`{"kit":"${operation}"}`),events:[],job:{job:jobIdentity(run,operation),operation,source:'kit-source',tool:'kit-start',requestDigest:REQUEST,keyDigest:jobKeyDigest(key)}})
  const register=async(run:string,operation:string,key:string,fence:LeaseFence,revision:string)=>{const receipt=await store.commitFenced(claim(run,revision,operation,key),fence);return {job:jobIdentity(run,operation),revision:receipt.revision}}
@@ -68,6 +69,33 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
   await history.commitHistoryFenced({run:claim('run-a',unfencedHead,'op-history',KEYS[8]),observations:[]},a.fence)
   check('job.register.history',(await store.readJob('run-a',jobIdentity('run-a','op-history')))?.state==='unproven')
  }
+ // The history path, where a store with that capability really commits its claims (the writer's path): every check holds there.
+ // Through the store of the moment: a restart replaces it.
+ const viaHistory=history.historyVersion===1&&history.commitHistoryFenced?(input:ReturnType<typeof claim>,fence:LeaseFence)=>(store as unknown as Required<typeof history>).commitHistoryFenced({run:input,observations:[]},fence):undefined
+ const hist=await open('run-history')
+ if(viaHistory){
+  await viaHistory(claim('run-history',hist.revision,'op-1',keyFor(100)),hist.fence)
+  const moved=(await store.load('run-history'))!.revision
+  check('job.history.head',moved!==hist.revision&&(await store.readJob('run-history',jobIdentity('run-history','op-1')))?.state==='unproven')
+  await refuses('job.history.fence',()=>viaHistory(claim('run-history',moved,'op-other',WRONG),{...hist.fence,owner:'worker-x'}),'other-owner')
+  check('job.history.fence',(await store.readJob('run-history',jobIdentity('run-history','op-other')))===undefined)
+  await refuses('job.history.identity',()=>viaHistory({...claim('run-history',moved,'op-bad',WRONG),job:{...claim('run-history',moved,'op-bad',WRONG).job,job:jobIdentity('run-history','op-other')}},hist.fence),'invalid')
+  await refuses('job.history.key',()=>viaHistory(claim('run-history',moved,'op-2',keyFor(100)),hist.fence),'key-reused')
+  check('job.history.key',(await store.load('run-history'))?.revision===moved&&(await store.readJob('run-history',jobIdentity('run-history','op-2')))===undefined)
+ }
+ // On both paths: a compare-and-set that fails registers nothing, and a repeated commit id must carry the same registration.
+ for(const [path,commit,n] of [['fenced',(input:ReturnType<typeof claim>,fence:LeaseFence)=>store.commitFenced(input,fence),110],['history',viaHistory,120]] as const){
+  if(!commit)continue
+  const run=`run-cas-${path}`,cas=await open(run),firstKey=keyFor(n),otherKey=keyFor(n+1)
+  await commit(claim(run,cas.revision,'op-1',firstKey),cas.fence)
+  const after=(await store.load(run))!.revision
+  let refusedStale=false
+  try{await commit(claim(run,cas.revision,'op-stale',otherKey),cas.fence)}catch{refusedStale=true}
+  check(`job.stale.${path}`,refusedStale&&(await store.readJob(run,jobIdentity(run,'op-stale')))===undefined&&(await store.load(run))?.revision===after)
+  let refusedOther=false
+  try{await commit(claim(run,cas.revision,'op-2',otherKey,`${run}-op-1`),cas.fence)}catch{refusedOther=true}
+  check(`job.repeat.${path}`,refusedOther&&(await store.readJob(run,jobIdentity(run,'op-2')))===undefined&&(await store.exportJobs(run)).jobs.length===1)
+ }
  // Owner: a job is looked up by its run and its identity together.
  check('job.owner.read',(await store.readJob('run-b',first.job))===undefined)
  check('job.owner.list',(await store.listJobs('run-b',null,10)).jobs.length===0&&(await store.listJobs('run-a',null,10)).jobs.some(row=>row.job===first.job))
@@ -76,10 +104,15 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  // The typed answer: the fence that admitted it, current or not. M2.
  const c=await open('run-c')
  const late=await register('run-c','op-1',KEYS[1],c.fence,c.revision)
+ await store.readJob('run-c',late.job);await store.listJobs('run-c',null,10)
  await refuses('job.answer.other',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,owner:'worker-x'}),'unauthenticated')
+ await refuses('job.answer.run',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,resource:'run-other'}),'unauthenticated')
+ await refuses('job.answer.across',()=>store.answerJob(answerOf('run-other',late.job),c.fence),'no-job')
  at+=2*HOUR
  const answered=await answers('job.answer.late',()=>store.answerJob(answerOf('run-c',late.job),c.fence))
  check('job.answer.late',answered.state==='started'&&answered.handle==='kit-handle'&&answered.started?.by==='answer')
+ check('job.read.fresh',same(await store.readJob('run-c',late.job),answered))
+ check('job.list.fresh',same((await store.listJobs('run-c',null,10)).jobs[0],answered))
  await refuses('job.answer.conflict',()=>store.answerJob(answerOf('run-c',late.job,'kit-other'),c.fence),'conflict')
  check('job.answer.same',same(await answers('job.answer.same',()=>store.answerJob(answerOf('run-c',late.job),c.fence)),answered))
  // Completion and its refusals, with no lease at all.
@@ -104,6 +137,7 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await refuses('job.reconcile.conflict',()=>store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{finding:'started',handle:'h'})),'conflict')
  const contradicted=await answers('job.contradiction.completion',()=>store.completeJob(complete('run-d',closing.job,KEYS[2])))
  check('job.contradiction.completion',contradicted.state==='not-started'&&contradicted.contradictions?.[0]?.kind==='completed'&&contradicted.contradictions[0].evidence==='done-1'&&contradicted.contradictions[0].outcome==='succeeded')
+ await refuses('job.contradiction.conflict',()=>store.completeJob(complete('run-d',closing.job,KEYS[2],{outcome:'failed'})),'conflict')
  const twice=await store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{evidence:'find-2',finding:'started',handle:'late'}))
  check('job.contradiction.start',twice.state==='not-started'&&twice.contradictions?.length===2&&twice.contradictions[1]?.handle==='late')
  // A key belongs to one job or one wait, whichever came first.
@@ -119,6 +153,18 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  check('job.reclaim.records',taken.reclaimed?.owner==='worker-a'&&taken.reclaimed.epoch===e.fence.epoch&&taken.state==='unproven')
  await store.reconcileJob(reconcile('run-e',reclaim.job,KEYS[3]))
  await refuses('job.reclaim.settled',()=>store.reclaimJob('run-e',reclaim.job,e.fence),'job-settled')
+ // Under an expired and a stale fence of the same owner.
+ const ex=await open('run-expired')
+ const lapsed=await register('run-expired','op-1',keyFor(130),ex.fence,ex.revision)
+ at+=2*HOUR
+ await refuses('job.reclaim.expired',()=>store.reclaimJob('run-expired',lapsed.job,ex.fence),'expired')
+ check('job.reclaim.expired',(await store.readJob('run-expired',lapsed.job))?.reclaimed===undefined)
+ const st=await open('run-stale')
+ const staled=await register('run-stale','op-1',keyFor(131),st.fence,st.revision)
+ await store.releaseLease(st.fence)
+ await store.acquireLease({resource:'run-stale',owner:'worker-a',expectedRevision:staled.revision,durationMs:HOUR})
+ await refuses('job.reclaim.stale',()=>store.reclaimJob('run-stale',staled.job,st.fence),'stale-epoch')
+ check('job.reclaim.stale',(await store.readJob('run-stale',staled.job))?.reclaimed===undefined)
  // The answer follows the re-claim: the fence that re-sent it answers, and the first one no longer does.
  const f=await open('run-f')
  const moved=await register('run-f','op-1',KEYS[4],f.fence,f.revision)
@@ -142,6 +188,9 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const waited=await register('run-i','op-1',KEYS[6],i.fence,i.revision)
  await store.answerJob(answerOf('run-i',waited.job),i.fence)
  await store.parkWait(await parkOf('run-i',waited.job,WAKES[2]),i.fence)
+ const other=await open('run-other-park')
+ await refuses('job.park.other',async()=>store.parkWait(await parkOf('run-other-park',waited.job,keyFor(132)),other.fence),'no-job')
+ check('job.park.other',(await store.readWait('run-other-park','wait-1'))===undefined)
  // A digest a wait holds: refused, and the claim did not commit either.
  const headG=(await store.load('run-g'))!.revision
  await refuses('job.key.wait',()=>store.commitFenced(claim('run-g',headG,'op-2',WAKES[2]),g.fence),'key-reused')
@@ -149,8 +198,20 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const event:WakeEvidence={version:1,resource:'run-i',wait:'wait-1',evidence:'forged',kind:'event',event:{kind:'job-completion',subject:waited.job},key:WAKES[2]}
  await refuses('job.wake.event',()=>store.wakeWait(event),'mismatch')
  check('job.wake.event',(await readWait('run-i')).state==='parked')
+ // A restart keeps every job and every wait as they were, all of each: a job completed before it is read after it.
+ const allJobs=async(run:string)=>{const out:RunJob[]=[];for(let after:string|null=null;;){const page:JobPage=await store.listJobs(run,after,100);out.push(...page.jobs);if(page.next===null)return out;after=page.next}}
+ const before=new Map<string,{jobs:RunJob[];waits:unknown}>()
+ for(const run of touched)before.set(run,{jobs:await allJobs(run),waits:await store.exportWaits(run)})
  await restart('job.restart.instance')
- check('job.restart.job',(await store.readJob('run-i',waited.job))?.state==='started'&&(await store.readJob('run-a',first.job))?.keyDigest===jobKeyDigest(KEYS[0]))
+ for(const [run,held] of before){
+  for(const job of held.jobs){
+   const after=await store.readJob(run,job.job)
+   check('job.restart.job',after!==undefined)
+   check('job.restart.contradiction',same(after?.contradictions,job.contradictions))
+   check('job.restart.record',same(after,job))
+  }
+  check('job.restart.wait',same(await store.exportWaits(run),held.waits))
+ }
  check('job.restart.contradiction',same((await store.readJob('run-d',closing.job))?.contradictions,twice.contradictions))
  const r=await open('run-r')
  await refuses('job.restart.key',()=>store.commitFenced(claim('run-r',r.revision,'op-after',KEYS[0]),r.fence),'key-reused')
@@ -191,14 +252,34 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await store.completeJob(complete('run-m',after.job,KEYS[9]))
  check('job.wake.resumed',(await readWait('run-m')).state==='resumed')
  check('job.wake.again',(await store.readWait('run-m','wait-2'))?.state==='woken')
+ // From its deadline a job wait wakes for nothing either.
+ const n=await open('run-deadline')
+ const dated=await register('run-deadline','op-1',keyFor(133),n.fence,n.revision)
+ await store.answerJob(answerOf('run-deadline',dated.job),n.fence)
+ await store.parkWait(await parkOf('run-deadline',dated.job,keyFor(134),{limits:{waitMs:MINUTE}}),n.fence)
+ at+=MINUTE
+ await store.completeJob(complete('run-deadline',dated.job,keyFor(133)))
+ check('job.wake.deadline',(await readWait('run-deadline')).state==='parked')
  // The run's limit: its sixty-fifth job is refused, with its claim.
  const k=await open('run-k')
  let moving=k.revision
  for(let n=0;n<64;n++)moving=(await store.commitFenced(claim('run-k',moving,`op-${n}`,keyFor(n)),k.fence)).revision
  await refuses('job.limit',()=>store.commitFenced(claim('run-k',moving,'op-64',keyFor(64)),k.fence),'jobs-exhausted')
  check('job.limit',(await store.load('run-k'))?.revision===moving&&(await store.exportJobs('run-k')).jobs.length===64)
+ if(viaHistory){
+  const l=await open('run-limit-history')
+  let rolling=l.revision
+  for(let n=0;n<64;n++){await viaHistory(claim('run-limit-history',rolling,`op-${n}`,keyFor(200+n)),l.fence);rolling=(await store.load('run-limit-history'))!.revision}
+  await refuses('job.history.limit',()=>viaHistory(claim('run-limit-history',rolling,'op-64',keyFor(264)),l.fence),'jobs-exhausted')
+  check('job.history.limit',(await store.load('run-limit-history'))?.revision===rolling&&(await store.exportJobs('run-limit-history')).jobs.length===64)
+ }
  const page=await store.listJobs('run-k',null,10)
  check('job.list.page',page.jobs.length===10&&page.next===page.jobs[9]!.job&&(await store.listJobs('run-k',page.next,100)).jobs.length===54)
+ // What an export says is what the reads say, run by run.
+ for(const run of touched){
+  const exported=(await store.exportJobs(run)).jobs
+  check('job.export.reads',same(exported,await allJobs(run)))
+ }
 }
 /** Sixty-five keys, each a fresh printable secret with at least sixteen distinct characters. */
 const keyFor=(n:number)=>`kit.limit.${String(n).padStart(3,'0')}.Q7z2Xm9LpV4cR8tNb3Yh6Df1`

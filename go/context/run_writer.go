@@ -1404,23 +1404,24 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				// compareDurableRequests): an exact variant is this write, and is answered HostOutcomeUnknown below;
 				// the same values written differently are refused; different numbers are another write, with a row
 				// and an identity of their own. So other bytes never run under the refused identity.
-				// #229 (H2): a grant re-sends a start only while its job is unproven, by a transition under the fence. A
-				// job a reconciliation closed is refused here, the row stays as it is and the grant is not spent.
+				// #229 (H2, H-1): a grant re-sends a start only while its job is unproven, by a transition under the fence.
+				// A job a reconciliation closed or proved started is refused here: the row stays as it is, the grant is not
+				// spent, and the call is answered from the job as any repeat is.
+				reclaimRefused := false
 				if jobStart != nil && row.State == "unknown" && durableDigest(request) == row.RequestDigest && reauthorizedDispatchOpen(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
 					port, err := jobPortOfView(w.Store)
 					if err == nil {
 						_, err = port.store.ReclaimJob(ctx, w.ID, JobIdentity(w.ID, row.ID), port.fence)
 					}
-					if err != nil {
-						if asJobRefusal(err) == nil {
-							w.fatal = err
-						}
+					if err != nil && asJobRefusal(err) == nil {
+						w.fatal = err
 						w.mu.Unlock()
 						return zero, err
 					}
+					reclaimRefused = err != nil
 					jobStart.job = JobIdentity(w.ID, row.ID)
 				}
-				if row.State == "unknown" && (kind == "host" || kind == "runtime") && durableDigest(request) == row.RequestDigest && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
+				if !reclaimRefused && row.State == "unknown" && (kind == "host" || kind == "runtime") && durableDigest(request) == row.RequestDigest && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
 					reclaimed = i
 					break
 				}
@@ -1624,10 +1625,15 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		ctx = context.WithoutCancel(ctx)
 		runErr = admit(value)
 	}
+	// #229 (H-1): from here the start has run, so nothing that goes wrong may read as refused input: the row holds the
+	// fixed unknown failure, and the model is answered from the job.
+	var answeredFromJob *ToolResult
 	if jobStart != nil && runErr == nil {
-		var composed ToolResult
-		if composed, runErr = w.finishJobStart(ctx, jobStart); runErr == nil {
+		composed, err := w.finishJobStart(ctx, jobStart)
+		if err == nil {
 			value = any(composed).(T)
+		} else {
+			runErr, answeredFromJob = jobStartUnrecorded(), w.jobStartAsRecorded(ctx, jobStart.job)
 		}
 	}
 	var admitted bool
@@ -1809,6 +1815,9 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		// dispatch a park binds.
 		w.closure = runErr
 		w.dispatchClosed.Store(true)
+	}
+	if answeredFromJob != nil {
+		return any(*answeredFromJob).(T), nil
 	}
 	return value, runErr
 }
@@ -2078,7 +2087,9 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		if jobStart != nil && jobStart.job != "" {
 			answer, err := tool.job.start(withoutReceiptAdmission(ctx), JobStartInput{Job: jobStart.job, Request: bytes.Clone(raw)})
 			if err != nil {
-				return ToolResult{}, err
+				// What a start returns as an error is no answer: its words reach neither the row nor the model. A refusal
+				// the package trusts is minted before anything is performed, so it never comes from here.
+				return ToolResult{}, nil
 			}
 			jobStart.answer = &answer
 			return ToolResult{}, nil
