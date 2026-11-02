@@ -32,6 +32,10 @@ describe('records (ADR #101)',()=>{
   }
  })
 
+ it('applies the output guard to the text an approval keeps, as to its args (#275)',()=>{
+  const record=writeRecord(CHECKPOINT_SCHEMA,{approval:{args:{p:localHomePath},request:`{ "p" : "${localHomePath}" }`}},policy,guard,now)
+  expect(JSON.stringify(record)).not.toContain(localHomePath)
+ })
  it('carries schema, version, digest and lifetime and applies the output guard on store',()=>{
   const record=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${localHomePath}`},policy,guard,now)
   expect(record).toMatchObject({schema:CRITIQUE_SCHEMA,version:1,retainUntil:'2027-01-19T12:00:00.000Z',text:'Read [redacted: local-home-path]'})

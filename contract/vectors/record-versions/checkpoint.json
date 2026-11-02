@@ -726,7 +726,7 @@
     {
       "name": "future before unfamiliar body",
       "input": {
-        "version": 5,
+        "version": 7,
         "future": true
       },
       "outcome": "UnsupportedRecordVersion"
@@ -734,7 +734,7 @@
     {
       "name": "future exponent before unknown body",
       "input": {
-        "version": 5,
+        "version": 7,
         "id": "compatibility",
         "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
         "phase": "work",
@@ -752,7 +752,7 @@
         },
         "unfamiliar": true
       },
-      "raw": "{\"version\":5e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
+      "raw": "{\"version\":7e0,\"id\":\"compatibility\",\"requestKey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"phase\":\"work\",\"status\":\"running\",\"unit\":\"model-requests\",\"used\":0,\"limit\":20,\"grants\":[],\"plan\":[],\"explanation\":\"\",\"operations\":[],\"context\":{\"scope\":\"compatibility\",\"entries\":[]},\"unfamiliar\":true}",
       "outcome": "UnsupportedRecordVersion"
     }
   ],

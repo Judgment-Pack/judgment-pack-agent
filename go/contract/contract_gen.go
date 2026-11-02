@@ -1895,16 +1895,16 @@ func (v CheckpointAcceptedPlanValidatedReferencesItem) MarshalJSON() ([]byte, er
 
 // From checkpoint.json#/$defs/approval. One act call paused for the person's decision (ADR-0008).
 // callId: the id of its approval_requested event; name: the wire name the model called; tool: the
-// tool's own name at its source; source: its record; args: the arguments the model sent, the ones
-// the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's
-// approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note:
-// the person's words with the decision, carried to the model only inside the continuation's data
-// block. result: the call's result once executed, or the refused result; marker: the run's framing
-// marker (the one that frames each description from outside the Runtime and each reading tool's
-// answer), written with the asked approval and reused by the continued run, so the tool list on
-// the wire is the same bytes across the pause. It is a drawn token, never taken from model output
-// and never shown in it; absent from a checkpoint written before it was carried, where the
-// continued run draws a fresh one. Closed.
+// tool's own name at its source; source: its record; args: the arguments the model sent, as
+// parsed; the call runs with these, unless request is present (#275). state: asked, approved,
+// refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's
+// decision reached the run, a time Date.parse reads. note: the person's words with the decision,
+// carried to the model only inside the continuation's data block. result: the call's result once
+// executed, or the refused result; marker: the run's framing marker (the one that frames each
+// description from outside the Runtime and each reading tool's answer), written with the asked
+// approval and reused by the continued run, so the tool list on the wire is the same bytes across
+// the pause. It is a drawn token, never taken from model output and never shown in it; absent from
+// a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.
 type CheckpointApproval struct {
 	CallID    string                            `json:"callId"`
 	Name      string                            `json:"name"`
@@ -1917,9 +1917,10 @@ type CheckpointApproval struct {
 	Result    *ToolResultMCPToolResult          `json:"result,omitzero"`
 	Marker    *string                           `json:"marker,omitzero"`
 	Runtime   *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
+	Request   *string                           `json:"request,omitzero"`
 }
 
-var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker", "runtime"}
+var checkpointApprovalMembers = []string{"callId", "name", "tool", "source", "args", "state", "decidedAt", "note", "result", "marker", "runtime", "request"}
 
 // UnmarshalJSON decodes a CheckpointApproval object and refuses a member the closed schema does not name.
 func (v *CheckpointApproval) UnmarshalJSON(data []byte) error {
@@ -1945,14 +1946,18 @@ func (v CheckpointApproval) MarshalJSON() ([]byte, error) {
 // the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the
 // pending approval's, or the run is refused before anything runs (stale-state); approved: whether
 // the call may run; note: the person's words, at most 2,000 characters, shown to the model as
-// data. Closed.
+// data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest).
+// Approving a call whose record keeps its text needs it, and it must match, or the run is refused
+// before anything runs and the pause stands; with no text kept it is optional and, where sent,
+// must match. It is input only, and no record holds it. Closed.
 type CheckpointApprovalDecision struct {
-	CallID   string  `json:"callId"`
-	Approved bool    `json:"approved"`
-	Note     *string `json:"note,omitzero"`
+	CallID      string  `json:"callId"`
+	Approved    bool    `json:"approved"`
+	Note        *string `json:"note,omitzero"`
+	ShownDigest *string `json:"shownDigest,omitzero"`
 }
 
-var checkpointApprovalDecisionMembers = []string{"callId", "approved", "note"}
+var checkpointApprovalDecisionMembers = []string{"callId", "approved", "note", "shownDigest"}
 
 // UnmarshalJSON decodes a CheckpointApprovalDecision object and refuses a member the closed schema does not name.
 func (v *CheckpointApprovalDecision) UnmarshalJSON(data []byte) error {
@@ -3642,6 +3647,8 @@ type CorpusCandidateReviewReport struct {
 	RunReport *RunReport
 	// RunReportV2 is set where version is 2.
 	RunReportV2 *RunReportV2
+	// RunReportV3 is set where version is 3.
+	RunReportV3 *RunReportV3
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -3660,6 +3667,9 @@ func (v *CorpusCandidateReviewReport) UnmarshalJSON(data []byte) error {
 		case 2:
 			v.RunReportV2 = new(RunReportV2)
 			return json.Unmarshal(view, v.RunReportV2)
+		case 3:
+			v.RunReportV3 = new(RunReportV3)
+			return json.Unmarshal(view, v.RunReportV3)
 		}
 		return errorf("CorpusCandidateReviewReport: no member has version %d", tag)
 	}
@@ -3674,6 +3684,9 @@ func (v CorpusCandidateReviewReport) MarshalJSON() ([]byte, error) {
 	}
 	if v.RunReportV2 != nil {
 		set = append(set, v.RunReportV2)
+	}
+	if v.RunReportV3 != nil {
+		set = append(set, v.RunReportV3)
 	}
 	if len(set) != 1 {
 		return nil, errorf("CorpusCandidateReviewReport: %d members are set; a union holds exactly one", len(set))
@@ -17933,12 +17946,13 @@ type RunEventApprovalRequested struct {
 	Source  *ToolOfferSourceRecord            `json:"source,omitzero"`
 	Args    map[string]json.RawMessage        `json:"args,omitzero"`
 	Version *int64                            `json:"version,omitzero"`
+	Request *string                           `json:"request,omitzero"`
 	Purpose *string                           `json:"purpose,omitzero"`
 	Plan    *RunEventApprovalRequestedPlan    `json:"plan,omitzero"`
 	Runtime *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
 }
 
-var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "purpose", "plan", "runtime"}
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "request", "purpose", "plan", "runtime"}
 
 // UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
 func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
@@ -21386,10 +21400,11 @@ func (v RunReportV2Totals) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-report-v3.json. Version 3 closed presentation of a delegated run's terminal checkpoint
-// 4 (ADR-0029): version 2's members, and the principal the run acted as and for, copied whole from
-// the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that
-// predates version 3 refuses it before reading the body.
+// From run-report-v3.json. Version 3 closed presentation of a terminal checkpoint 4, 5 or 6
+// (ADR-0029, #275), with its principal exactly on 4 and 6: version 2's members, and the principal
+// the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps
+// report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the
+// body.
 type RunReportV3 struct {
 	Version           int64                       `json:"version"`
 	CheckpointVersion int64                       `json:"checkpointVersion"`
@@ -21419,7 +21434,7 @@ type RunReportV3 struct {
 	Route             *TurnRoute                  `json:"route,omitzero"`
 	Feedback          []FeedbackView              `json:"feedback,omitzero"`
 	RepeatTools       *RunReportV3RepeatTools     `json:"repeatTools,omitzero"`
-	Principal         RunPrincipal                `json:"principal"`
+	Principal         *RunPrincipal               `json:"principal,omitzero"`
 }
 
 var runReportV3Members = []string{"version", "checkpointVersion", "id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState", "usageTotals", "route", "feedback", "repeatTools", "principal"}

@@ -36,6 +36,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter/wire"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -1404,12 +1405,32 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		if answer == "refuse" {
 			held.detail = name + " acts on " + id + ", and the host's approval policy refused this call; it was not run and nothing was changed"
 		}
+		// What the record cannot hold would be refused once it was approved, so nobody is asked (#275).
+		if answer == "ask" {
+			if _, err := readHistoryRequestJSON(nonEmptyArgs(args)); err != nil {
+				held = decision{answer: "closed", detail: (&DurableRequestUnrecordable{}).Error()}
+				answer = "closed"
+			} else if namesFoldTogether(nonEmptyArgs(args)) {
+				held = decision{answer: "closed", detail: "DurableRequestUnrecordable: this call's arguments cannot be shown for approval as written: two member names differ only in case, and a reader takes whichever comes last. Nothing was run. Write them again without one."}
+				answer = "closed"
+			}
+		}
 		if answer == "ask" {
 			var asked map[string]json.RawMessage
 			if json.Unmarshal(nonEmptyArgs(args), &asked) != nil || asked == nil {
 				asked = map[string]json.RawMessage{}
 			}
-			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked"}) {
+			// With no text kept, the record and the event hold args' canonical form at every depth, which the
+			// approved call runs: what the person is shown is what runs.
+			request := approvalRequestOf(nonEmptyArgs(args))
+			if request == nil {
+				for key, value := range asked {
+					if parsed, err := ParseJSON(value); err == nil {
+						asked[key] = json.RawMessage(CanonicalJSON(parsed))
+					}
+				}
+			}
+			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked", Request: request}) {
 				// The run is already ending at a handoff or a question: the call is refused, never run.
 				held = decision{answer: "closed", detail: name + " acts on " + id + ", and this run is already ending; the call was not run and nothing was changed"}
 			} else if firstServiceAct {
@@ -1526,9 +1547,13 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		return refusedWith(err)
 	}
 	id := entry.Record.ID
-	args, err := json.Marshal(record.Args)
-	if err != nil {
-		return ToolResult{}, false, err
+	args, held := approvedArguments(record)
+	if !held {
+		g.mu.Lock()
+		err := g.refused(entry, record.CallID, g.refuse(record.Name, record.Name+"'s approval holds only a form of the call that may not be what the person saw; the call was not run and nothing was changed. Call it again to be asked again.", "approval stale"))
+		g.publishLocked()
+		g.mu.Unlock()
+		return refusedWith(err)
 	}
 	g.mu.Lock()
 	if g.changed[id] {
@@ -1660,6 +1685,137 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 }
 
 // canonicalArgs is the canonical JSON of a call's arguments (canonicalJSON), what a decision is tied to.
+// approvalArgsSay reports whether a call's parsed form says exactly what its text does, so a checkpoint's
+// args can stand for it (#275). The parsed form holds numbers as float64s and folds a lone surrogate to a
+// replacement character, so what it may have changed is not said: a number that is zero (1e-400, -0), that is
+// not an integer (0.1000000000000000055) or that is past 2^53-1, a null (1e400), a replacement character, and
+// two names that fold together, whose order it does not keep. Which of these the text really held does not
+// matter: where it cannot be told, the text is kept beside args, or, on a record that holds none, refused.
+func approvalArgsSay(raw []byte) bool {
+	value, err := ParseJSON(raw)
+	if err != nil || !exactArguments(raw) {
+		return false
+	}
+	var says func(*Value) bool
+	says = func(held *Value) bool {
+		switch held.Kind() {
+		case KindNull:
+			return false
+		case KindNumber:
+			number := held.Num()
+			return number != 0 && number == math.Trunc(number) && math.Abs(number) <= maxExactFloatInteger
+		case KindString:
+			return !strings.ContainsRune(held.Str(), utf8.RuneError)
+		case KindArray:
+			for _, item := range held.Items() {
+				if !says(item) {
+					return false
+				}
+			}
+		case KindObject:
+			for _, name := range held.Keys() {
+				if strings.ContainsRune(name, utf8.RuneError) || !says(held.Get(name)) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	return says(value)
+}
+
+const maxExactFloatInteger = 1<<53 - 1
+
+// approvalRequestOf is what a call held for approval keeps beside its args (#275): its text, where its
+// args cannot say it; nothing, where they can, so an ordinary call's record is what a published release
+// wrote. Whitespace and the order of names that do not fold together are not kept: args hold the canonical form at
+// every depth, which approval_requested shows and an approved call runs.
+func approvalRequestOf(raw []byte) *string {
+	if approvalArgsSay(raw) {
+		return nil
+	}
+	text := string(raw)
+	return &text
+}
+
+// approvedArguments is the text an approved call runs with (#275), what the person was shown, and false
+// where the record cannot say it. A kept text must read back to the record's args: the two were
+// written together, and a store's redaction may have changed one. A record that keeps none, as a published
+// release wrote it, runs from args only where they cannot have changed what the model wrote.
+func approvedArguments(record contract.CheckpointApproval) (json.RawMessage, bool) {
+	stored, err := json.Marshal(record.Args)
+	if err != nil {
+		return nil, false
+	}
+	if record.Request == nil {
+		// The canonical form is what is shown and digested (ApprovalShownArguments), so it is what runs, not
+		// encoding/json's, which escapes & < > and orders names by UTF-8.
+		parsed, err := ParseJSON(stored)
+		if err != nil || !approvalArgsSay(stored) {
+			return nil, false
+		}
+		return json.RawMessage(CanonicalJSON(parsed)), true
+	}
+	kept := []byte(*record.Request)
+	text, err := ParseJSON(kept)
+	if err != nil {
+		return nil, false
+	}
+	parsed, err := ParseJSON(stored)
+	if err != nil || CanonicalJSON(text) != CanonicalJSON(parsed) {
+		return nil, false
+	}
+	return kept, true
+}
+
+// ApprovalShownArguments is the text a host renders for a call held for approval: what the approved call
+// runs (#275). A stored record's args are the parsed form, so where the record keeps the model's text, that
+// is what runs; otherwise it is args' canonical JSON. approvalShownArguments in toolSources.ts is its twin.
+func ApprovalShownArguments(asked contract.CheckpointApproval) string {
+	return shownArguments(asked.Request, asked.Args)
+}
+
+// ApprovalShownDigest is what a host binds an approval reference to: the SHA-256 of ApprovalShownArguments'
+// UTF-8 bytes (#275). A digest over args cannot tell 9007199254740992 from 9007199254740993.
+func ApprovalShownDigest(asked contract.CheckpointApproval) string {
+	return durableDigest([]byte(ApprovalShownArguments(asked)))
+}
+
+// ApprovalEventArguments is ApprovalShownArguments of an approval_requested event, live or stored.
+func ApprovalEventArguments(asked contract.RunEventApprovalRequested) string {
+	return shownArguments(asked.Request, asked.Args)
+}
+
+func shownArguments(request *string, args map[string]json.RawMessage) string {
+	if request != nil {
+		return *request
+	}
+	raw, err := json.Marshal(args)
+	if err != nil || args == nil {
+		return "{}"
+	}
+	value, err := ParseJSON(raw)
+	if err != nil {
+		return "{}"
+	}
+	return CanonicalJSON(value)
+}
+
+// approvalDecisionHolds is what a decision must prove (#275). The record's args are the parsed form, so a host that
+// shows them shows another number than the one that runs where a text is kept: approving such a call needs the digest
+// of the text the person was shown. A digest sent must match on any call. A refusal runs nothing and needs none.
+func approvalDecisionHolds(asked contract.CheckpointApproval, decision contract.CheckpointApprovalDecision) error {
+	if !decision.Approved || decision.ShownDigest == nil && asked.Request == nil {
+		return nil
+	}
+	if decision.ShownDigest == nil || *decision.ShownDigest != ApprovalShownDigest(asked) {
+		return failure.Authored("stale-state", approvalNotShownDetail, "context")
+	}
+	return nil
+}
+
+const approvalNotShownDetail = "ApprovalNotShown: this call runs exactly as the model wrote it, because its parsed form cannot say that text, so an approval must prove what the person was shown, and this decision does not. Nothing was decided or run, and the pause stands. Show the person approvalShownArguments, the text that runs, as a string and never parsed, and send approvalShownDigest as the decision's shownDigest."
+
 func canonicalArgs(args json.RawMessage) string {
 	value, err := ParseJSON(nonEmptyArgs(args))
 	if err != nil {

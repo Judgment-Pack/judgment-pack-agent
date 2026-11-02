@@ -11,7 +11,7 @@ import {exactArguments,readCacheKey,scalarValue,canonicalJSON as importCanonical
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
-import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,readApprovalDecision,readExecution,refusedResult,unknownOutcome,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,approvalNotShown,readApprovalDecision,readExecution,refusedResult,unknownOutcome,type ExecutionCheckpoint} from './state'
 import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
 export type PlanEvent=Extract<AssistantEvent,{type:'plan_revised'|'plan_departed'|'plan_completion_refused'|'plan_drift_decided'|'approval_requested'}>
@@ -111,6 +111,8 @@ export class ExecutionController {
    // A decision on an act call already decided (refused, executed, answered) is no decision this response waits for.
    if(decision!==undefined&&!asked)throw authoredFailure('stale-state','This response’s act call was already decided; nothing was decided or run. Continue it without a decision.','context')
    if(asked&&decision===undefined)throw authoredFailure('stale-state',`This response waits for the person’s decision on ${restored.approval!.name}; continue it with that decision.`,'context')
+   const notShown=asked&&decision!==undefined?approvalNotShown(restored.approval!,decision):undefined
+   if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
    if((restored.status==='paused'&&!asked)||restored.used>=restored.limit)throw new ExecutionPaused()
    if(restored.unit!==('model'in this.session?'model-requests':'provider-managed'))throw toolInputFailure('Continue this response with the same connection type, or start a new response.')
    await this.ledger.restore(restored.context)
@@ -370,7 +372,7 @@ export class ExecutionController {
   const pending=this.state.planState?.pending
   if(pending)return {type:'approval_requested',purpose:'plan-drift',callId:pending.callId,plan:{execution:this.state.id,revision:pending.revision,candidateRevision:pending.candidate.planState.revision,explanation:pending.explanation,departures:structuredClone(pending.departures)}}
   const asked=this.state.approval
-  if(asked?.state==='asked')return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:structuredClone(asked.source),args:structuredClone(asked.args),...(asked.runtime?{runtime:structuredClone(asked.runtime)}:{})}
+  if(asked?.state==='asked')return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:structuredClone(asked.source),args:structuredClone(asked.args),...(asked.runtime?{runtime:structuredClone(asked.runtime)}:{}),...(asked.request===undefined?{}:{request:asked.request})}
  }
  private async applyPlan(next:ReturnType<typeof identifyPlan>,explanation:string,event:PlanEvent){
   const before={plan:structuredClone(this.state.plan),planState:structuredClone(this.state.planState),explanation:this.state.explanation,status:this.state.status}

@@ -2,6 +2,7 @@ package wire
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,4 +61,159 @@ func mustParseValue(t *testing.T, text string) *Value {
 		t.Fatalf("%s: %v", text, err)
 	}
 	return value
+}
+
+// What is read keeps its own text, byte for byte, at any depth, and loses it once written to (#275).
+func TestArgumentTextIsTheTextThatWasRead(t *testing.T) {
+	for _, text := range []string{
+		`{"id":9007199254740993}`, `{"q":1e400}`, `{"q":1e-400}`, `{"q":1.0}`, `{"q":-0}`, `{"a":1,"a":2}`, `{"ID":1,"id":2}`, `{"b":2,"a":1}`,
+		`{ "c" : 3 }`, " {\n\t\"c\": 3\r\n} ", `{"q":"` + string(rune(0x5c)) + `u0041é"}`, `{"o":{"p":[{"id":9007199254740993}]}}`, `{}`,
+	} {
+		whole, err := Parse([]byte(text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := whole.ArgumentText(); got != text {
+			t.Errorf("as a whole text: %q, not %q", got, text)
+		}
+		body, err := Parse([]byte(`{ "before" : [1, "}"] , "input" :  ` + text + `  , "after": {"n":1.50} }`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := strings.TrimSpace(text)
+		if got := body.Get("input").ArgumentText(); got != want {
+			t.Errorf("as a member: %q, not %q", got, want)
+		}
+		if got := body.Clone().Get("input").ArgumentText(); got != want {
+			t.Errorf("a clone: %q, not %q", got, want)
+		}
+		if got := body.Get("after").ArgumentText(); got != `{"n":1.50}` {
+			t.Errorf("the next member: %q", got)
+		}
+	}
+	held, err := Parse([]byte(`{"id":9007199254740993}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held.Set("id", Num(7))
+	if got := held.ArgumentText(); got != `{"id":7}` {
+		t.Errorf("written to: %q", got)
+	}
+	if got := Obj().ArgumentText(); got != `{}` {
+		t.Errorf("never read: %q", got)
+	}
+}
+
+// A call is written back as the model wrote it only where its parsed form cannot say it (#275).
+func TestACallIsWrittenBackAsWrittenOnlyWhereItsParsedFormCannotSayIt(t *testing.T) {
+	for _, text := range []string{`{"id":9007199254740993}`, `{"amount":10.50}`, `{"q":1e-400}`, `{"q":-0}`, `{"o":{"p":[{"id":9007199254740993}]}}`, `{"a":[1.0]}`, `{ "id" : 9007199254740993 }`} {
+		if got := (ToolCall{Arguments: text}).Args().String(); got != text {
+			t.Errorf("%s written back as %s", text, got)
+		}
+	}
+	for text, want := range map[string]string{`{"id":7}`: `{"id":7}`, `{ "b" : 2 , "a" : 1 }`: `{"b":2,"a":1}`, `{"q":"x"}`: `{"q":"x"}`, `{"q":0.5}`: `{"q":0.5}`, `{}`: `{}`} {
+		if got := (ToolCall{Arguments: text}).Args().String(); got != want {
+			t.Errorf("%s written back as %s", text, got)
+		}
+	}
+	// What the record cannot hold goes back in its parsed form, as published: nothing can copy it to a row.
+	for text, want := range map[string]string{`{"q":1e400}`: `{"q":null}`, `{"a":1,"a":2}`: `{"a":2}`, `{"o":{"q":-1e400}}`: `{"o":{"q":null}}`, `{"a":1.0,"a":2}`: `{"a":2}`, `{"a":[1e400],"n":1.0}`: `{"a":[null],"n":1}`, `{"o":{"q":1e400},"n":1.0}`: `{"o":{"q":null},"n":1}`, `{"n":1.0,"q":"` + string(rune(0x5c)) + `ud800"}`: `{"n":1,"q":"` + string(rune(0xfffd)) + `"}`} {
+		if got := (ToolCall{Arguments: text}).Args().String(); got != want {
+			t.Errorf("%s written back as %s", text, got)
+		}
+	}
+	// Written to, it says what it now holds.
+	held := (ToolCall{Arguments: `{"id":9007199254740993}`}).Args()
+	held.Set("more", Num(1))
+	if got := held.String(); strings.Contains(got, "9007199254740993") == false && !strings.Contains(got, "more") {
+		t.Errorf("written to: %s", got)
+	}
+	if got := held.String(); !strings.Contains(got, "more") {
+		t.Errorf("written to, it lost the member: %s", got)
+	}
+}
+
+// A write under a marked object is not lost, at any depth, in an object or an array (#275).
+func TestAWriteUnderAMarkedObjectIsKept(t *testing.T) {
+	body, err := Parse([]byte(`{"contents":[{"args":{"id":9007199254740993}}],"generationConfig":{"maxOutputTokens":4096},"list":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body.Get("generationConfig").Set("maxOutputTokens", Int(8))
+	body.Get("list").Append(Int(1))
+	want := `{"contents":[{"args":{"id":9007199254740993}}],"generationConfig":{"maxOutputTokens":8},"list":[1]}`
+	if got := body.String(); got != want {
+		t.Fatalf("%s", got)
+	}
+	clone := body.Clone()
+	if got := clone.String(); got != want {
+		t.Fatalf("a clone: %s", got)
+	}
+}
+
+// Each kind of write is seen on its own: an append, and a write inside an array.
+func TestEachWriteUnderAMarkedObjectIsSeen(t *testing.T) {
+	appended, err := Parse([]byte(`{"n":1.0,"list":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	appended.Get("list").Append(Int(1))
+	if got := appended.String(); got != `{"n":1,"list":[1]}` {
+		t.Fatalf("%s", got)
+	}
+	inside, err := Parse([]byte(`{"n":1.0,"list":[{"a":1}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside.Get("list").Items()[0].Set("b", Int(2))
+	if got := inside.String(); got != `{"n":1,"list":[{"a":1,"b":2}]}` {
+		t.Fatalf("%s", got)
+	}
+}
+
+// The ceiling holds on a body something in which its parsed form cannot say.
+func TestTheOutputCeilingHoldsOnAMarkedBody(t *testing.T) {
+	for family, raw := range map[EndpointKind]string{
+		Gemini:           `{"contents":[{"role":"model","parts":[{"functionCall":{"name":"x","args":{"id":9007199254740993}}}]}],"generationConfig":{"maxOutputTokens":4096}}`,
+		Anthropic:        `{"messages":[{"role":"assistant","content":[{"type":"tool_use","input":{"id":9007199254740993}}]}],"max_tokens":4096}`,
+		OpenAICompatible: `{"tools":[{"parameters":{"minimum":1.0}}],"max_tokens":4096}`,
+	} {
+		out, err := EnforceOutputCeiling(family, []byte(raw), 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), "4096") {
+			t.Errorf("%v: %s", family, out)
+		}
+	}
+}
+
+// A call with no replay, from another family, is written back in each family as the model wrote it (LOW-10).
+func TestACallWithNoReplayIsWrittenBackAsWritten(t *testing.T) {
+	call := ToolCall{ID: "c", Name: "write", Arguments: `{"id":9007199254740993}`}
+	for _, family := range []EndpointKind{OpenAICompatible, Anthropic, Gemini} {
+		encoded := EncodeRequest(Request{Family: family, MaxOutputTokens: 8, Messages: []Message{{Role: RoleUser, Parts: []Part{TextPart("Do it.")}}, {Role: RoleAssistant, ToolCalls: []ToolCall{call}}}})
+		if !strings.Contains(string(encoded.Body), "9007199254740993") {
+			t.Errorf("%v: %s", family, encoded.Body)
+		}
+	}
+}
+
+// What the record can hold, by its surrogate escapes: a pair, and no other.
+func TestHeldText(t *testing.T) {
+	escape := string(rune(0x5c)) + "u"
+	for text, want := range map[string]bool{
+		`{"q":"x"}`: true,
+		`{"q":"` + escape + `d83d` + escape + `de00"}`:                 true,
+		`{"q":"` + escape + `0041"}`:                                   true,
+		`{"q":"` + string(rune(0x5c)) + string(rune(0x5c)) + `ud800"}`: true,
+		`{"q":"` + escape + `d800"}`:                                   false,
+		`{"q":"` + escape + `de00"}`:                                   false,
+		`{"q":"` + escape + `d83d` + escape + `0041"}`:                 false,
+		"{\"q\":\"\xff\"}":                                             false,
+	} {
+		if heldText(text) != want {
+			t.Errorf("%q: not %v", text, want)
+		}
+	}
 }

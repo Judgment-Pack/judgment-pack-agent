@@ -43,7 +43,7 @@ export * from '../storage/conformance'
 export {MemoryChatStore} from '../storage/chat'
 export type {ChatEntry,ChatListRequest,ChatPage,StoredChat,ChatPatch} from '../storage/chat'
 export type {DurableRunInput,DurableScope,ArtifactObservation,DurableObservation} from '../storage/writer'
-export {ContinuationNotRecoverable,ContinuationIdentityChanged,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
+export {ContinuationNotRecoverable,ContinuationIdentityChanged,DurableRequestConflict,DurableRequestUnrecordable,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
 
 export * from '../planning/references'
 export type {ChatPlan,PlanReference,CurrentPlanReference,LegacyPlanReference} from '../planning/model'
@@ -72,6 +72,7 @@ export {MemoryUsageBudgetStore,UsageBudgetExceeded,UsageBudgetUnknown,UsageBudge
 export type {UsageDimension,UsageAmounts,UsageBudgetScope,UsageReservation,UsageSettlement,UsageBudgetReceipt,UsageReserveResult,UsageReservationHead,UsageBudgetStore,UsageBudgetSeed,MemoryUsageBudgetOptions} from '../storage/usageBudget'
 export type {UsageBudgetInput,UsageBoundRequest,UsageTotals} from '../storage/usageJournal'
 
+export {approvalShownArguments,approvalShownDigest} from '../execution/state'
 export type {RuntimeExecutionOwner,RuntimeApprovalBinding,RuntimeApprovalRequest,RuntimeActionPort} from '../runtimeActions'
 
 // Host-only history, display archives and feedback metadata; none grants execution authority.

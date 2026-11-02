@@ -1297,8 +1297,8 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	}
 	marker := b.c.Marker
 	record.Marker = &marker
-	b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record})
-	return true
+	// What the record holds selects the checkpoint's format (#275, MutateCheckpoint).
+	return b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record}) == nil
 }
 
 func (b approvalBook) Closed() string {
@@ -1345,9 +1345,16 @@ func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
 	for key, value := range asked.Args {
 		args[key] = append(json.RawMessage(nil), value...)
 	}
+	// The person is shown what runs: asked again from a checkpoint, args are the parsed form (#275).
+	if asked.Request != nil {
+		var kept map[string]json.RawMessage
+		if json.Unmarshal([]byte(*asked.Request), &kept) == nil && kept != nil {
+			args = kept
+		}
+	}
 	source := copyRecord(asked.Source)
 	return &contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: asked.CallID,
-		Name: &asked.Name, Tool: &asked.Tool, Source: &source, Args: args, Runtime: asked.Runtime}}
+		Name: &asked.Name, Tool: &asked.Tool, Source: &source, Args: args, Runtime: asked.Runtime, Request: asked.Request}}
 }
 
 // ErrApprovalPaused is a request refused because an act call of the run waits for the person's

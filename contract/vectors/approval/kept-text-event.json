@@ -1,0 +1,76 @@
+{
+  "description": "The events that carry a kept approval text (#275), written by hand. approval_requested holds it in request, and args may hold the parsed form once the event has been stored, so a host renders request where it is present (approvalShownArguments in toolSources.ts, ApprovalShownArguments in go/context/sources.go). A checkpoint of version 5 or 6 goes out on event 3. Both are event 3, the current inventory; event 2 is frozen and does not hold request.",
+  "schema": "run-event.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/recordReader.ts (writeRunEvent)",
+      "packages/harness/toolSources.ts (approvalShownArguments)"
+    ]
+  },
+  "items": [
+    {
+      "version": 3,
+      "type": "approval_requested",
+      "callId": "call-kept",
+      "name": "tracker__write",
+      "tool": "write",
+      "source": {
+        "kind": "custom",
+        "id": "tracker",
+        "trust": "person",
+        "version": "1",
+        "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "tool": "write"
+      },
+      "args": {
+        "id": 9007199254740992
+      },
+      "request": "{\"id\":9007199254740993}"
+    },
+    {
+      "version": 3,
+      "type": "execution_checkpoint",
+      "durable": true,
+      "checkpoint": {
+        "version": 5,
+        "id": "kept-text",
+        "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+        "phase": "work",
+        "status": "paused",
+        "unit": "model-requests",
+        "used": 0,
+        "limit": 20,
+        "grants": [],
+        "plan": [],
+        "explanation": "",
+        "operations": [],
+        "context": {
+          "scope": "compatibility",
+          "entries": []
+        },
+        "approval": {
+          "callId": "call-kept",
+          "name": "tracker__write",
+          "tool": "write",
+          "source": {
+            "kind": "custom",
+            "id": "tracker",
+            "trust": "person",
+            "version": "1",
+            "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "tool": "write"
+          },
+          "args": {
+            "id": 9007199254740992
+          },
+          "state": "asked",
+          "request": "{\"id\":9007199254740993}"
+        }
+      }
+    }
+  ]
+}

@@ -18,7 +18,7 @@ export type RunReportFacts=Pick<ExecutionCheckpoint,typeof RUN_REPORT_SOURCES[nu
 export type RunReport={version:1;checkpointVersion:1|2}&RunReportFacts
 export type RunReportV2={version:2;checkpointVersion:1|2|3;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport}&RunReportFacts
 /** ADR-0029: a delegated run's report, of its checkpoint 4: report 2's members and the principal it acted as and for. */
-export type RunReportV3={version:3;checkpointVersion:4;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport;principal:import('./principal').PrincipalRecord}&RunReportFacts
+export type RunReportV3={version:3;checkpointVersion:4|5|6;feedback?:import('./history/report').HistoryFeedbackView[];usageTotals?:UsageTotals;route?:ExecutionCheckpoint['turnRoute'];repeatTools?:RepeatToolsReport;principal:import('./principal').PrincipalRecord}&RunReportFacts
 export interface RepeatToolsReport {executions:Omit<RepeatTools['executions'][number],'seen'>[];policy:Pick<PolicyMembers,'repeatTools.mode'|'repeatTools.remindAt'|'repeatTools.stopAt'>}
 /** Only admitted state and its actual three policy members reach the presentation. */
 export function projectRepeatTools(checkpoint:Pick<ExecutionCheckpoint,'version'|'repeatTools'|'policy'>):RepeatToolsReport|undefined {
@@ -40,8 +40,8 @@ function terminal(value:unknown):ExecutionCheckpoint {
 export function projectRunReport(value:ExecutionCheckpoint):RetainedRunReport {
  const checkpoint=terminal(value)
  const feature=checkpoint.version>=3
- // ADR-0029: checkpoint 4 (a delegated run's) is reported as version 3, with its principal.
- const out:Record<string,unknown>={version:checkpoint.version===4?3:feature?2:1,checkpointVersion:checkpoint.version,...(checkpoint.version===4?{principal:structuredClone(checkpoint.principal)}:{}),...(feature&&checkpoint.usageBudget?{usageTotals:usageTotals(checkpoint.usageBudget)}:{}),...(feature&&checkpoint.turnRoute?{route:structuredClone(checkpoint.turnRoute)}:{})}
+ // ADR-0029, #275: checkpoints 4 to 6 are reported as version 3, with a principal where they hold one.
+ const out:Record<string,unknown>={version:checkpoint.version>=4?3:feature?2:1,checkpointVersion:checkpoint.version,...(checkpoint.version===4||checkpoint.version===6?{principal:structuredClone(checkpoint.principal)}:{}),...(feature&&checkpoint.usageBudget?{usageTotals:usageTotals(checkpoint.usageBudget)}:{}),...(feature&&checkpoint.turnRoute?{route:structuredClone(checkpoint.turnRoute)}:{})}
  for(const name of RUN_REPORT_SOURCES)if(Object.hasOwn(checkpoint,name))out[name]=structuredClone(checkpoint[name])
  const repeatTools=projectRepeatTools(checkpoint);if(repeatTools)out.repeatTools=repeatTools
  const report=out as RetainedRunReport

@@ -353,7 +353,7 @@ type AssistantEventBody =
    * ADR-0008: an act call paused for the person's decision, in place of its `tool_call`: never run,
    * written into the checkpoint's `approval`; the run then ends paused. Carried on the host's stream.
    */
-  | { type: 'approval_requested'; purpose?:'tool-call'; runtime?:import('./runtimeActions').RuntimeApprovalBinding; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown> }
+  | { type: 'approval_requested'; purpose?:'tool-call'; runtime?:import('./runtimeActions').RuntimeApprovalBinding; callId: string; name: string; tool: string; source: import('./toolSources').SourceRecord; args: Record<string, unknown>; /** The text that runs, where args cannot say it (#275): a host renders `approvalShownArguments`. */ request?: string }
   /**
    * ADR-0009: a skill loaded by the model's `load_skill` call, between that call and its result: the
    * skill as a load names it (never its instructions) and its bytes. Carried on the host's stream.

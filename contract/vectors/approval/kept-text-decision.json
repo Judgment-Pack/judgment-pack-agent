@@ -1,0 +1,23 @@
+{
+  "description": "What a host sends when a person approves a call whose text is kept (#275), written by hand: the decision of checkpoint.json#/$defs/approvalDecision, with shownDigest the digest of text, the text the person was shown and the text that runs (approvalShownArguments, approvalShownDigest). The member is input only: no checkpoint, event or report holds it, so it asks for no new checkpoint format. Whether a decision holds, for each case, is the decisions rows of kept-text.json; this vector is the record itself, read by the schema, Go and TypeScript.",
+  "schema": "checkpoint.json#/$defs/approvalDecision",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/state.ts (readApprovalDecision, approvalNotShown, approvalShownDigest)",
+      "packages/harness/execution/controller.ts (the check before anything runs)"
+    ]
+  },
+  "text": "{\"id\":9007199254740993}",
+  "args": "{\"id\":9007199254740992}",
+  "items": [
+    {
+      "callId": "call_kept_1",
+      "approved": true,
+      "shownDigest": "sha256:2185812179ffd2b19c8154d2d409599d231fb75ef4968df59b7f02b435c094fa"
+    }
+  ]
+}

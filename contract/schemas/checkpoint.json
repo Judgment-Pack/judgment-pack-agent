@@ -28,9 +28,11 @@
         1,
         2,
         3,
-        4
+        4,
+        5,
+        6
       ],
-      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029)."
+      "description": "Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029). Version 5 carries approval.request and no principal, version 6 carries both (#275): each version states exactly which of the two it holds, and a reader refuses any other combination."
     },
     "digest": {
       "$ref": "provenance.json#/$defs/recordDigest"
@@ -370,7 +372,7 @@
       "$ref": "#/$defs/repeatTools"
     },
     "principal": {
-      "description": "ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential.",
+      "description": "ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoints 4 and 6: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential.",
       "$ref": "run-principal.json"
     }
   },
@@ -640,7 +642,7 @@
       "additionalProperties": false
     },
     "approval": {
-      "description": "One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, the ones the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result; marker: the run's framing marker (the one that frames each description from outside the Runtime and each reading tool's answer), written with the asked approval and reused by the continued run, so the tool list on the wire is the same bytes across the pause. It is a drawn token, never taken from model output and never shown in it; absent from a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.",
+      "description": "One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, as parsed; the call runs with these, unless request is present (#275). state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result; marker: the run's framing marker (the one that frames each description from outside the Runtime and each reading tool's answer), written with the asked approval and reused by the continued run, so the tool list on the wire is the same bytes across the pause. It is a drawn token, never taken from model output and never shown in it; absent from a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.",
       "type": "object",
       "required": [
         "callId",
@@ -695,12 +697,17 @@
         },
         "runtime": {
           "$ref": "#/$defs/runtimeApprovalBinding"
+        },
+        "request": {
+          "description": "The call's arguments as the model wrote them, byte for byte, where args cannot say them (#275): args is the parsed form, so a number past what a float64 holds, a spelling, a zero, a decimal, a null, a replacement character or two names that fold together may be lost in it. The approved call runs with these bytes, after they are read back to args. Absent where args says what the model wrote, whitespace and member order aside, as in a record a published release wrote. An approval that holds neither is refused as stale rather than run with what its args may have changed. Present exactly on checkpoints 5 and 6.",
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false
     },
     "approvalDecision": {
-      "description": "The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data. Closed.",
+      "description": "The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest). Approving a call whose record keeps its text needs it, and it must match, or the run is refused before anything runs and the pause stands; with no text kept it is optional and, where sent, must match. It is input only, and no record holds it. Closed.",
       "type": "object",
       "required": [
         "callId",
@@ -718,6 +725,10 @@
         "note": {
           "type": "string",
           "maxLength": 2000
+        },
+        "shownDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       },
       "additionalProperties": false

@@ -27,7 +27,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` |  | const (see schema) |  |
-| `version` | yes | enum `1`, `2`, `3`, `4` | Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029). |
+| `version` | yes | enum `1`, `2`, `3`, `4`, `5`, `6` | Feature-free producers retain published defaults; feature-bearing usage budget records select checkpoint 3 / event 2; a delegated run's checkpoint is version 4 and carries its principal (ADR-0029). Version 5 carries approval.request and no principal, version 6 carries both (#275): each version states exactly which of the two it holds, and a reader refuses any other combination. |
 | `digest` |  | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` |  | `provenance.json $defs/retainUntil` |  |
 | `id` | yes | string (min length 1, max length 100) |  |
@@ -86,7 +86,7 @@ Closed: a member the schema does not name is refused.
 | `usageBudget` |  | `usage-budget.json` |  |
 | `turnRoute` |  | `turn-route.json` |  |
 | `repeatTools` |  | `$defs/repeatTools` |  |
-| `principal` |  | `run-principal.json` | ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoint 4: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential. |
+| `principal` |  | `run-principal.json` | ADR-0029: the principal a delegated run acts as and for, present exactly on checkpoints 4 and 6: the agent principal, the root actor, the subject, the leaf link and the chain's digests. A resume under another subject or root actor is refused (principal-changed); a chain re-issued or narrowed for them replaces it. Never a credential. |
 
 Conditions beyond the members (allOf) are in the schema file.
 
@@ -166,7 +166,7 @@ Closed: a member the schema does not name is refused.
 
 ### `checkpoint.json $defs/approval`
 
-One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, the ones the call runs with. state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result; marker: the run's framing marker (the one that frames each description from outside the Runtime and each reading tool's answer), written with the asked approval and reused by the continued run, so the tool list on the wire is the same bytes across the pause. It is a drawn token, never taken from model output and never shown in it; absent from a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.
+One act call paused for the person's decision (ADR-0008). callId: the id of its approval_requested event; name: the wire name the model called; tool: the tool's own name at its source; source: its record; args: the arguments the model sent, as parsed; the call runs with these, unless request is present (#275). state: asked, approved, refused, executed or answered (see checkpoint.json's approval). decidedAt: when the person's decision reached the run, a time Date.parse reads. note: the person's words with the decision, carried to the model only inside the continuation's data block. result: the call's result once executed, or the refused result; marker: the run's framing marker (the one that frames each description from outside the Runtime and each reading tool's answer), written with the asked approval and reused by the continued run, so the tool list on the wire is the same bytes across the pause. It is a drawn token, never taken from model output and never shown in it; absent from a checkpoint written before it was carried, where the continued run draws a fresh one. Closed.
 
 Closed: a member the schema does not name is refused.
 
@@ -183,10 +183,11 @@ Closed: a member the schema does not name is refused.
 | `result` |  | `tool-result.json $defs/mcpToolResult` |  |
 | `marker` |  | string (pattern `^[0-9a-f]{32}$`) |  |
 | `runtime` |  | `$defs/runtimeApprovalBinding` |  |
+| `request` |  | string (min length 1) | The call's arguments as the model wrote them, byte for byte, where args cannot say them (#275): args is the parsed form, so a number past what a float64 holds, a spelling, a zero, a decimal, a null, a replacement character or two names that fold together may be lost in it. The approved call runs with these bytes, after they are read back to args. Absent where args says what the model wrote, whitespace and member order aside, as in a record a published release wrote. An approval that holds neither is refused as stale rather than run with what its args may have changed. Present exactly on checkpoints 5 and 6. |
 
 ### `checkpoint.json $defs/approvalDecision`
 
-The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data. Closed.
+The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest). Approving a call whose record keeps its text needs it, and it must match, or the run is refused before anything runs and the pause stands; with no text kept it is optional and, where sent, must match. It is input only, and no record holds it. Closed.
 
 Closed: a member the schema does not name is refused.
 
@@ -195,6 +196,7 @@ Closed: a member the schema does not name is refused.
 | `callId` | yes | string (min length 1, max length 256) |  |
 | `approved` | yes | boolean |  |
 | `note` |  | string (max length 2000) |  |
+| `shownDigest` |  | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
 
 ### `checkpoint.json $defs/approvalContinuation`
 

@@ -104,7 +104,7 @@
     },
     {
       "name": "unknown",
-      "token": "3",
+      "token": "4",
       "checkpointVersion": 1,
       "version": 0
     },
@@ -130,6 +130,36 @@
       "name": "zero huge exponent",
       "token": "0e9999999999999999999999999",
       "checkpointVersion": 1,
+      "version": 0
+    },
+    {
+      "name": "exact 3",
+      "token": "3",
+      "checkpointVersion": 5,
+      "version": 3
+    },
+    {
+      "name": "exact 3.0",
+      "token": "3.0",
+      "checkpointVersion": 5,
+      "version": 3
+    },
+    {
+      "name": "exact 3e0",
+      "token": "3e0",
+      "checkpointVersion": 5,
+      "version": 3
+    },
+    {
+      "name": "exact 30e-1",
+      "token": "30e-1",
+      "checkpointVersion": 5,
+      "version": 3
+    },
+    {
+      "name": "near three rounding",
+      "token": "3.00000000000000001",
+      "checkpointVersion": 4,
       "version": 0
     }
   ]
