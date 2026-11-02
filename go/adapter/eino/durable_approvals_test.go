@@ -342,6 +342,9 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				{"an amount", `{"amount":10.50}`, `{"amount":10.50}`},
 				{"a nested object", `{"sort":{"name":1,"created":-1}}`, `{"sort":{"created":-1,"name":1}}`},
 			} {
+				if engine == "native" && row.call != big { // The record is the same on both adapters.
+					continue
+				}
 				t.Run("a host's card from its checkpoint: "+row.name, func(t *testing.T) {
 					s := scene()
 					s.answers = []string{"ask"}

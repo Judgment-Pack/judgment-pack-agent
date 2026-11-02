@@ -370,7 +370,11 @@ func lastCallIn(body string) string {
 // 9007199254740992 after 9007199254740993 ran: the writer took that for another write, and it ran.
 func TestAModelThatCopiesItsHistoryMakesOneWrite(t *testing.T) {
 	for _, way := range durableAPIWays {
-		for _, first := range []string{`{"id":9007199254740993}`, `{"id":12345678901234567}`, `{"amount":10.50}`, `{"o":[{"id":9007199254740993}]}`, `{"id":7}`} {
+		rows := []string{`{"id":9007199254740993}`, `{"amount":10.50}`}
+		if way == "api" { // These run in the race job, and the reader is the same past these two.
+			rows = append(rows, `{"id":12345678901234567}`, `{"o":[{"id":9007199254740993}]}`, `{"id":7}`)
+		}
+		for _, first := range rows {
 			t.Run(way+"/"+first, func(t *testing.T) {
 				executed, answered, failures := durableRunWith(t, way, true, true, nil, func(n int, body string) string {
 					switch n {
