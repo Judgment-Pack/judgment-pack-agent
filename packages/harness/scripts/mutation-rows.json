@@ -12340,7 +12340,18 @@
    ],
    "status": "caught",
    "origin": "agent#275",
-   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so only the test at the session itself can tell them apart."
+  },
+  {
+   "name": "a decision with no run store proves nothing",
+   "file": "execution/controller.ts",
+   "find": "   if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297"
   },
   {
    "name": "report 3 with repeat tools reads only checkpoint 4",
