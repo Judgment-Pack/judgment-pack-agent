@@ -1749,6 +1749,39 @@ func approvedArguments(record contract.CheckpointApproval) (json.RawMessage, boo
 	return kept, true
 }
 
+// ApprovalShownArguments is the text a host renders for a call held for approval: what the approved call
+// runs (#275). A stored record's args are the parsed form, so where the record keeps the model's text, that
+// is what runs; otherwise it is args' canonical JSON. approvalShownArguments in toolSources.ts is its twin.
+func ApprovalShownArguments(asked contract.CheckpointApproval) string {
+	return shownArguments(asked.Request, asked.Args)
+}
+
+// ApprovalShownDigest is what a host binds an approval reference to: the SHA-256 of ApprovalShownArguments'
+// UTF-8 bytes (#275). A digest over args cannot tell 9007199254740992 from 9007199254740993.
+func ApprovalShownDigest(asked contract.CheckpointApproval) string {
+	return durableDigest([]byte(ApprovalShownArguments(asked)))
+}
+
+// ApprovalEventArguments is ApprovalShownArguments of an approval_requested event, live or stored.
+func ApprovalEventArguments(asked contract.RunEventApprovalRequested) string {
+	return shownArguments(asked.Request, asked.Args)
+}
+
+func shownArguments(request *string, args map[string]json.RawMessage) string {
+	if request != nil {
+		return *request
+	}
+	raw, err := json.Marshal(args)
+	if err != nil || args == nil {
+		return "{}"
+	}
+	value, err := ParseJSON(raw)
+	if err != nil {
+		return "{}"
+	}
+	return CanonicalJSON(value)
+}
+
 func canonicalArgs(args json.RawMessage) string {
 	value, err := ParseJSON(nonEmptyArgs(args))
 	if err != nil {

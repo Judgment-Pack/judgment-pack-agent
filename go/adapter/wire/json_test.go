@@ -103,3 +103,26 @@ func TestArgumentTextIsTheTextThatWasRead(t *testing.T) {
 		t.Errorf("never read: %q", got)
 	}
 }
+
+// A call is written back as the model wrote it only where its parsed form cannot say it (#275).
+func TestACallIsWrittenBackAsWrittenOnlyWhereItsParsedFormCannotSayIt(t *testing.T) {
+	for _, text := range []string{`{"id":9007199254740993}`, `{"amount":10.50}`, `{"q":1e400}`, `{"q":1e-400}`, `{"q":-0}`, `{"a":1,"a":2}`, `{"o":{"p":[{"id":9007199254740993}]}}`, `{"a":[1.0]}`, `{ "id" : 9007199254740993 }`} {
+		if got := (ToolCall{Arguments: text}).Args().String(); got != text {
+			t.Errorf("%s written back as %s", text, got)
+		}
+	}
+	for text, want := range map[string]string{`{"id":7}`: `{"id":7}`, `{ "b" : 2 , "a" : 1 }`: `{"b":2,"a":1}`, `{"q":"x"}`: `{"q":"x"}`, `{"q":0.5}`: `{"q":0.5}`, `{}`: `{}`} {
+		if got := (ToolCall{Arguments: text}).Args().String(); got != want {
+			t.Errorf("%s written back as %s", text, got)
+		}
+	}
+	// Written to, it says what it now holds.
+	held := (ToolCall{Arguments: `{"id":9007199254740993}`}).Args()
+	held.Set("more", Num(1))
+	if got := held.String(); strings.Contains(got, "9007199254740993") == false && !strings.Contains(got, "more") {
+		t.Errorf("written to: %s", got)
+	}
+	if got := held.String(); !strings.Contains(got, "more") {
+		t.Errorf("written to, it lost the member: %s", got)
+	}
+}

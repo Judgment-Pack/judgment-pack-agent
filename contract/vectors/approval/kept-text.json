@@ -1,5 +1,5 @@
 {
-  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a version 3 checkpoint. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: approval_requested shows the person args, in the form the approved call then runs. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text.",
+  "description": "What a call held for approval keeps beside its parsed form, and what the approved call runs with (#275), written by hand. approval.args is the parsed form, which holds numbers as float64s and reads a lone surrogate as a replacement character, so args cannot say every text: the person is shown the text and the approved call runs it. items are approvals as a Go writer keeps them, always in a checkpoint of version 5 or 6. keeps: whether a Go writer keeps a call's text, which it does wherever args cannot say it. It keeps none where args cannot have changed it, so an ordinary call's record is what a published release wrote, and whitespace, member order and a string's escapes are not kept: args are the canonical form at every depth, which approval_requested shows and the approved call runs. Two names that fold together are refused before anyone is asked, so they are not here. approved: what an approved record runs with: go is the bytes that run or refused, and typescript the value that runs or refused. A record with no request is what a published release wrote, so Go runs its args only where they cannot have changed the call, and otherwise refuses it as stale. TypeScript runs what JSON.parse read, so it takes a kept text only where that reading says it exactly and reads back to args, and its writer refuses what JSON.parse rounded after that. Go's parsed form cannot show every change: 7.0000000000000000001 reads as 7. go/context/durable_writes_test.go and toolSources.test.ts read these, and tests/test_contract.py derives each from its text. shown: the text a host renders for a call and shows as a string, never through a parsed value, and the digest an approval reference binds to: the SHA-256 of that text's UTF-8 bytes, approvalShownArguments and approvalShownDigest in toolSources.ts, ApprovalShownArguments and ApprovalShownDigest in go/context/sources.go. A digest over args cannot tell 9007199254740992 from 9007199254740993. bindings: the digest of the call the package's own approval wait binds to, which covers the kept text, so another spelling of one parsed form is another call.",
   "schema": "checkpoint.json#/$defs/approval",
   "source": {
     "harness": {
@@ -127,10 +127,6 @@
     },
     {
       "text": "{\"a\":{\"b\":null}}",
-      "keeps": true
-    },
-    {
-      "text": "{\"ID\":1,\"id\":2}",
       "keeps": true
     },
     {
@@ -264,6 +260,53 @@
       "request": "{bad",
       "go": "refused",
       "typescript": "refused"
+    }
+  ],
+  "shown": [
+    {
+      "label": "an integer past 2^53",
+      "args": "{\"id\":9007199254740992}",
+      "request": "{\"id\":9007199254740993}",
+      "text": "{\"id\":9007199254740993}",
+      "digest": "sha256:2185812179ffd2b19c8154d2d409599d231fb75ef4968df59b7f02b435c094fa"
+    },
+    {
+      "label": "a spelling of an amount",
+      "args": "{\"amount\":10.5}",
+      "request": "{\"amount\":10.50}",
+      "text": "{\"amount\":10.50}",
+      "digest": "sha256:0046bb36282b891dc2400d5a0eeb81f35d944894239110ac1868107ef3d78dd2"
+    },
+    {
+      "label": "a nested object, no text kept",
+      "args": "{\"b\":{\"d\":1,\"c\":2},\"a\":1}",
+      "text": "{\"a\":1,\"b\":{\"c\":2,\"d\":1}}",
+      "digest": "sha256:0372c09046efb505e3dea21aff53286f19f693aebe8caea1e66781674cce3c8e"
+    },
+    {
+      "label": "nothing but a string",
+      "args": "{\"q\":\"x\"}",
+      "text": "{\"q\":\"x\"}",
+      "digest": "sha256:a69fbbcf7209c6f659a75067c9fa03037c2ae23f55a6f854d5994209129bbbf6"
+    }
+  ],
+  "bindings": [
+    {
+      "args": "{\"q\":1}",
+      "request": "{\"q\":1.0}",
+      "canonical": "{\"args\":{\"q\":1},\"name\":\"tracker__create_issue\",\"request\":\"{\\\"q\\\":1.0}\",\"tool\":\"create_issue\"}",
+      "callDigest": "sha256:49b1f4fbcedf08a769a9ba1455e7b2992c91c171e52462452ad610bc8473be0b"
+    },
+    {
+      "args": "{\"q\":1}",
+      "request": "{\"q\":1e0}",
+      "canonical": "{\"args\":{\"q\":1},\"name\":\"tracker__create_issue\",\"request\":\"{\\\"q\\\":1e0}\",\"tool\":\"create_issue\"}",
+      "callDigest": "sha256:51087c84c67c8f6c038c9f3bf6d421334ff3b02713d1547716aee5539f7a2ecc"
+    },
+    {
+      "args": "{\"q\":1}",
+      "canonical": "{\"args\":{\"q\":1},\"name\":\"tracker__create_issue\",\"tool\":\"create_issue\"}",
+      "callDigest": "sha256:9413b93bb7c2b4e579d49279f1b2c3dd843c65b66ff1d24ec9f53c2caf8ba055"
     }
   ]
 }

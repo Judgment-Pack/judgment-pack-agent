@@ -12,11 +12,14 @@ import { describe, expect, it } from 'vitest'
 import { DurableRequestConflict, DurableRequestUnrecordable, HostOutcomeUnknown, RunWriter, compareDurableRequests, exactlyHeld, type DurableBinding } from './writer'
 import { MemoryRunStore } from './run'
 import { validDurable } from './durable'
-import { RECORD_DEFAULTS, sha256 } from '../records'
+import { CHECKPOINT_SCHEMA, RECORD_DEFAULTS, sha256, validRecord, writeRecord } from '../records'
 import { canonicalJSON, exactArgumentsText } from '../context/chat'
 import { readHistoryRequestJSON } from '../history/codec'
 import { readExecution, type ExecutionCheckpoint } from '../execution/state'
-import { UnknownRecordMember } from '../recordReader'
+import { UnknownRecordMember, readRunEvent, writeRunEvent } from '../recordReader'
+import { mutateCheckpoint } from '../execution/mutation'
+import { projectRunReport } from '../runReport'
+import { readRunReport } from '../runReportReader'
 
 const vector = JSON.parse(readFileSync('../../contract/vectors/storage/durable-repeats.json', 'utf8')) as {
   cases: { label: string; recorded: string; request: string; decision: 'same' | 'different' | 'conflict' }[]
@@ -25,6 +28,8 @@ const vector = JSON.parse(readFileSync('../../contract/vectors/storage/durable-r
   resume: Record<string, { call: string; outcome: string; answer?: string }[]>
   items: { kind: string; scope: unknown; source: string; tool: string; fingerprint: string; request: string; requestDigest: string }[]
 }
+const formats = JSON.parse(readFileSync('../../contract/vectors/approval/kept-text-checkpoint.json', 'utf8')) as { items: unknown[]; cases: { version: number; request: boolean; principal: boolean; reads: boolean }[] }
+const eventVector = JSON.parse(readFileSync('../../contract/vectors/approval/kept-text-event.json', 'utf8')) as { items: Record<string, unknown>[] }
 const published = (JSON.parse(readFileSync('../../contract/testdata/durable-writes/published-checkpoints.json', 'utf8')) as { checkpoints: Record<string, string> }).checkpoints
 const exactCases = (JSON.parse(readFileSync('../../contract/vectors/chat/read-arguments.json', 'utf8')) as { cases: { label: string; text: string; go: { key?: string } }[] }).cases
 
@@ -102,12 +107,59 @@ describe('the decision over two requests that read alike (#275)', () => {
     expect(canonicalJSON(JSON.parse(recorded)), 'JSON.parse keeps them apart').not.toBe(canonicalJSON(JSON.parse(request)))
   })
 
-  it('reads a kept approval text only at version 3, as Go does', () => {
+  it.each(formats.cases)('reads each checkpoint format exactly: $version, request $request, principal $principal', ({ version, request, principal, reads }) => {
+    const { request: kept, ...approval } = (formats.items[1] as unknown as { approval: { request: string } }).approval
+    const { principal: held, ...item } = formats.items[1] as unknown as { principal: unknown; version: number }
+    const read = () => readExecution({ ...item, version, approval: { ...approval, ...(request ? { request: kept } : {}) }, ...(principal ? { principal: held } : {}) })
+    if (reads) expect(read()).toBeDefined()
+    else expect(read).toThrow()
+  })
+
+  it('stamps what a checkpoint holds, whatever a feature writer stamps, and keeps the version of a run that keeps no text', () => {
+    const { request: kept, ...plain } = (formats.items[1] as unknown as { approval: { request: string } }).approval
+    const { principal, ...base } = formats.items[1] as unknown as { principal: never; version: number }
+    const state = { ...base, version: 2, approval: undefined } as unknown as ExecutionCheckpoint
+    const step = (patch: object, want: number) => { mutateCheckpoint(state, patch as never); expect(state.version).toBe(want) }
+    step({ approval: plain }, 2)
+    step({ approval: { ...plain, request: kept } }, 5)
+    step({ version: 3 }, 5)
+    step({ approval: plain }, 3)
+    step({ principal }, 4)
+    step({ approval: { ...plain, request: kept } }, 6)
+    step({ version: 3 }, 6)
+    step({ approval: plain }, 4)
+    for (const version of [4, 6]) expect(() => mutateCheckpoint({ ...base, version } as never, { status: 'running' } as never)).toThrow()
+  })
+
+  it('reports a terminal checkpoint of either format, with its principal exactly where it has one', () => {
+    for (const [at, delegated] of [[0, false], [1, true]] as [number, boolean][]) {
+      const report = projectRunReport({ ...(formats.items[at] as object), status: 'complete' } as never) as unknown as Record<string, unknown>
+      expect(report.version).toBe(3)
+      expect(report.checkpointVersion).toBe((formats.items[at] as { version: number }).version)
+      expect('principal' in report).toBe(delegated)
+      expect(() => readRunReport(report)).not.toThrow()
+    }
+  })
+
+  it('writes a record and an event in the format they hold', () => {
+    for (const [at, want] of [[0, 5], [1, 6]] as [number, number][]) {
+      const written = writeRecord(CHECKPOINT_SCHEMA, structuredClone(formats.items[at]) as Record<string, unknown>, RECORD_DEFAULTS)
+      expect((written as unknown as { version: number }).version).toBe(want)
+      expect(validRecord(written)).toBe(true)
+      expect((writeRunEvent({ type: 'execution_checkpoint', durable: true, checkpoint: formats.items[at] } as never) as { version?: number }).version).toBe(3)
+    }
+    expect((writeRunEvent({ type: 'approval_requested', callId: 'held', request: '{"id":9007199254740993}' } as never) as { version?: number }).version).toBe(3)
+    for (const item of eventVector.items) expect(() => readRunEvent(item)).not.toThrow()
+    expect(() => readRunEvent({ ...eventVector.items[0], version: 2 })).toThrow()
+  })
+
+  it('reads a kept approval text only at version 5 or 6, as Go does', () => {
     const approval = { callId: 'held', name: 'tracker__write', tool: 'write', source: { kind: 'custom', id: 'tracker', trust: 'person' }, args: { id: 9007199254740992 }, state: 'asked', request: '{"id":9007199254740993}' }
     const saved = JSON.parse(published['v0.12.0']!) as object
     const read = (version: number, member: object) => readExecution({ ...saved, version, ...member })
     expect(read(3, {}), 'the fixture reads').toBeDefined()
-    expect(read(3, { approval })).toBeDefined()
+    expect(read(5, { approval })).toBeDefined()
+    expect(() => read(3, { approval })).toThrow(UnknownRecordMember)
     expect(() => read(2, { approval })).toThrow(UnknownRecordMember)
     const { request: _request, ...none } = approval
     expect(read(2, { approval: none })).toBeDefined()
@@ -121,6 +173,12 @@ describe('the decision over two requests that read alike (#275)', () => {
     expect(validDurable(book)).toBe(false)
     row.fingerprint = honest
     expect(validDurable(book)).toBe(true)
+  })
+
+  it('tells a model what it can do about a conflict', () => {
+    const text = new DurableRequestConflict().message
+    expect(text).toContain('exactly as your earlier call shows')
+    expect(text).toContain('tell the person')
   })
 
   it('reads the exactness of text as Go does: every row of the read-argument vector', () => {

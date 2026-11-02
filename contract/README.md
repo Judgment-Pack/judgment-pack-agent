@@ -180,7 +180,8 @@ files they were rendered from.
   capabilities resolve to. This harness's (agent#9); `engines/vercel/prefix.test.ts` checks every
   item against a run.
 - `approval/kept-text.json`: what a call held for approval keeps beside its parsed form and what the approved
-  call then runs with (#275).
+  call then runs with (#275). `approval/kept-text-checkpoint.json` states which checkpoint format holds a kept
+  text and a principal, and `approval/kept-text-event.json` the events that carry the text.
 - `storage/durable-repeats.json`: what a write that reads alike a recorded one is to that record, what
   the durable record can hold, and what each call gets on a run resumed from
   `contract/testdata/durable-writes/published-checkpoints.json`, which holds checkpoints the v0.12.0 and

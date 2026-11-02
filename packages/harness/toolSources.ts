@@ -49,6 +49,7 @@ import type { SourceIdentityState } from './execution/state'
 import { admitCall, refusalDetail, type OpenedPrincipal, type PrincipalRefusal } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON, exactArgumentsText, exactlyHeld } from './context/chat'
+import { sha256 } from './records'
 import { readHistoryRequestJSON } from './history/codec'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
@@ -681,6 +682,22 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
   return { catalogue: kept > 0, hostTools: offered, withheld: [...schemaNotes, ...withheld] }
 }
 
+/**
+ * The text a host renders for a call held for approval: what the approved call runs (#275). A stored record's
+ * args are the parsed form, so where the record keeps the model's text, that is what runs; otherwise it is args'
+ * canonical JSON. Takes the checkpoint's approval or an approval_requested event, live or stored.
+ * `ApprovalShownArguments` in go/context/sources.go is its twin.
+ */
+export function approvalShownArguments(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return asked.request ?? canonicalJSON(asked.args ?? {})
+}
+/**
+ * What a host binds an approval reference to: the SHA-256 of `approvalShownArguments`' UTF-8 bytes (#275). A digest
+ * over args cannot tell 9007199254740992 from 9007199254740993. `ApprovalShownDigest` in go/context/sources.go is its twin.
+ */
+export function approvalShownDigest(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return `sha256:${sha256(approvalShownArguments(asked))}`
+}
 /** Whether a call read here can be held for the person: what JSON.parse read is what the model wrote, as far as can be seen, and the record can hold it. */
 function heldForApproval(args: unknown): boolean {
   if (!exactlyHeld(args)) return false

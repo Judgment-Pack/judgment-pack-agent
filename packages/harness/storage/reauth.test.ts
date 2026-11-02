@@ -9,7 +9,7 @@ import {MemoryRunStore,type RunStore} from './run'
 import {AIFailureError,failure} from '../failures'
 import {ReauthorizationRequired,ReferenceEffectHost,certifyEffectHost,effectAdmission,fenceOf,fencedRunStore,reauthorizationOf,reauthorizationRequired,unattendedRunStore,type CredentialRefusal,type EffectAdmission,type EffectHost,type LeaseFence,type LeaseLifetime} from './lease'
 import {ResumeRefused} from './resume'
-import {DurableRequestConflict,DurableRequestUnrecordable,HostOutcomeUnknown,RunWriter,hostSucceeded,type DurableBinding} from './writer'
+import {DurableRequestConflict,HostOutcomeUnknown,RunWriter,hostSucceeded,type DurableBinding} from './writer'
 import {RECORD_DEFAULTS} from '../records'
 import {REAUTH_REFUSAL_REASONS,ReauthorizationRefused,readReauthAction,readReauthDisposition,readReauthRefusal,readReauthorized,reauthActionDigest,reauthDispositionDigest,reauthorize} from './reauth'
 import {exportWaits,holdsNeverAdmitted,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,waitReport,type WaitClaim,type WaitLifetime,type WakeEvidence} from './wait'
@@ -643,7 +643,7 @@ describe('#275: a re-send over a row a Go writer wrote: the grant is for the byt
  const MAX='{"id":9007199254740992}',PAST='{"id":9007199254740993}'
  // Each is what this writer would hand over for the model's call: a rounded number is not recordable, whatever else it is.
  it.each([
-  ['a number JSON.parse rounded, beside the row of what the model wrote',PAST,MAX,false,DurableRequestUnrecordable],
+  ['a number JSON.parse rounded, beside the row of what the model wrote',PAST,MAX,false,DurableRequestConflict],
   ['another spelling of the row\'s value',  '{"q":1.0}','{"q":1}',true,DurableRequestConflict],
   ['negative zero',  '{"q":-0}','{"q":0}',true,DurableRequestConflict],
   ['the row\'s own bytes, from a number JSON.parse rounded',MAX,MAX,false,HostOutcomeUnknown],
@@ -658,11 +658,11 @@ describe('#275: a re-send over a row a Go writer wrote: the grant is for the byt
   expect((await hostRows(store)).map(held=>held.state)).toEqual(['result'])
  })
  it('different numbers are another write: its own row and identity, and the grant stands',async()=>{
-  const {store,continued}=await refusedAs('{"q":1e-400}'),{ran,write}=await writerOn(continued,true)
-  expect(answered(await write('{"q":0}'))).toBe('ran {"q":0}')
-  expect((await hostRows(store)).map(held=>held.state)).toEqual(['unknown','result'])
+  const {store,continued}=await refusedAs('{"q":0}'),{ran,write}=await writerOn(continued,true)
   expect(answered(await write('{"q":1e-400}'))).toBe('ran {"q":1e-400}')
-  expect(ran).toEqual(['{"q":0}','{"q":1e-400}'])
+  expect((await hostRows(store)).map(held=>held.state)).toEqual(['unknown','result'])
+  expect(answered(await write('{"q":0}'))).toBe('ran {"q":0}')
+  expect(ran).toEqual(['{"q":1e-400}','{"q":0}'])
   expect((await hostRows(store)).map(held=>held.state)).toEqual(['result','result'])
  })
 })

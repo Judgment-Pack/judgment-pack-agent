@@ -248,7 +248,7 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				s.approve(t)
 				check(t, s, []string{`{"q":1}`}, "DurableRequestConflict", []string{`{"q":1}`})
 			})
-			kept := []string{`{"q":0}`, `{"ID":1,"id":2}`, `{"q":null}`, `{"r":0.1000000000000000055}`}
+			kept := []string{`{"q":0}`, `{"q":null}`, `{"r":0.1000000000000000055}`}
 			if engine == "native" { // These run in the race job, and the record is the same on both adapters.
 				kept = kept[:1]
 			}
@@ -258,7 +258,7 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 					s.answers = []string{"ask"}
 					s.run(t, false, nil, []string{call})
 					approval, version, _ := s.head(t)
-					if approval.Get("request") == nil || approval.Get("request").Str() != call || version != 3 {
+					if approval.Get("request") == nil || approval.Get("request").Str() != call || version != 5 {
 						t.Fatalf("the record does not hold the text: version %v, %s", version, approval.Text())
 					}
 					s.approve(t)
@@ -276,6 +276,94 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				s.approve(t)
 				check(t, s, []string{`{"id":7}`}, `ran {"id":7}`, []string{`{"id":7}`})
 			})
+			t.Run("what is shown at every depth is what runs", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{`{"sort":{"name":1,"created":-1},"list":[{"b":2,"a":1}]}`})
+				want := `{"list":[{"a":1,"b":2}],"sort":{"created":-1,"name":1}}`
+				shown := ""
+				for _, event := range s.events {
+					if event.ApprovalRequested != nil {
+						raw, _ := json.Marshal(event.ApprovalRequested.Args)
+						shown = string(raw)
+						if got := runcontext.ApprovalEventArguments(*event.ApprovalRequested); got != want {
+							t.Fatalf("a host renders %s", got)
+						}
+					}
+				}
+				if shown != want {
+					t.Fatalf("the person was shown %s", shown)
+				}
+				s.approve(t)
+				check(t, s, []string{want}, "ran "+want, []string{want})
+			})
+			t.Run("a host renders the text that runs, from a stored event or a stored record", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{big})
+				page, err := s.store.ReadEvents(context.Background(), "run-approval", "", 100)
+				if err != nil {
+					t.Fatal(err)
+				}
+				stored := false
+				for _, item := range page.Items {
+					var event contract.RunEvent
+					if json.Unmarshal(item.Bytes, &event) == nil && event.ApprovalRequested != nil {
+						stored = true
+						if got := runcontext.ApprovalEventArguments(*event.ApprovalRequested); got != big {
+							t.Fatalf("a host renders %s from a stored event", got)
+						}
+						if err := contract.CheckRecord("event", item.Bytes); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+				if !stored {
+					t.Fatal("no stored event")
+				}
+				head, err := s.store.Load(context.Background(), "run-approval")
+				if err != nil {
+					t.Fatal(err)
+				}
+				var saved contract.Checkpoint
+				if err = json.Unmarshal(head.Checkpoint, &saved); err != nil {
+					t.Fatal(err)
+				}
+				if got := runcontext.ApprovalShownArguments(*saved.Approval); got != big {
+					t.Fatalf("a host renders %s from the stored record", got)
+				}
+			})
+			// A host that builds its card and its approval reference from the checkpoint it stored.
+			for _, row := range []struct{ name, call, shown string }{
+				{"an integer past 2^53", big, big},
+				{"an amount", `{"amount":10.50}`, `{"amount":10.50}`},
+				{"a nested object", `{"sort":{"name":1,"created":-1}}`, `{"sort":{"created":-1,"name":1}}`},
+			} {
+				t.Run("a host's card from its checkpoint: "+row.name, func(t *testing.T) {
+					s := scene()
+					s.answers = []string{"ask"}
+					s.run(t, false, nil, []string{row.call})
+					head, err := s.store.Load(context.Background(), "run-approval")
+					if err != nil {
+						t.Fatal(err)
+					}
+					var saved contract.Checkpoint
+					if err = json.Unmarshal(head.Checkpoint, &saved); err != nil {
+						t.Fatal(err)
+					}
+					card, reference := runcontext.ApprovalShownArguments(*saved.Approval), runcontext.ApprovalShownDigest(*saved.Approval)
+					if card != row.shown {
+						t.Fatalf("the card shows %s", card)
+					}
+					s.approve(t)
+					if len(s.ran) != 1 || s.ran[0] != card {
+						t.Fatalf("the card shows %s, the tool received %q", card, s.ran)
+					}
+					if got := fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(s.ran[0]))); got != reference {
+						t.Fatalf("the reference is %s, what ran digests as %s", reference, got)
+					}
+				})
+			}
 			t.Run("whitespace and member order run as the person was shown them", func(t *testing.T) {
 				s := scene()
 				s.answers = []string{"ask"}
@@ -287,7 +375,7 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				s.approve(t)
 				check(t, s, []string{`{"a":1,"b":2}`}, `ran {"a":1,"b":2}`, []string{`{"a":1,"b":2}`})
 			})
-			refused := []string{`{"q":1e400}`, `{"a":1,"a":2}`, `{"q":"` + string(rune(0x5c)) + `ud800"}`}
+			refused := []string{`{"q":1e400}`, `{"a":1,"a":2}`, `{"q":"` + string(rune(0x5c)) + `ud800"}`, `{"ID":1,"id":2}`, `{"o":[{"id":2,"ID":1}]}`}
 			if engine == "native" {
 				refused = refused[:1]
 			}
@@ -344,6 +432,8 @@ func TestAnApprovalAPublishedReleaseWroteRefusesRatherThanRunAnotherNumber(t *te
 		{"out of range", "api", nil, stale, nil},
 		{"zero", "api", nil, stale, nil},
 		{"a spelling a row recorded", "api", nil, "DurableRequestConflict", []string{`{"q":1.0}`}},
+		{"a repeat past a float64's precision", "api", nil, "DurableRequestConflict", []string{`{"id":7.0000000000000000001}`}},
+		{"a repeat past a float64's precision, with an exponent", "api", nil, "DurableRequestConflict", []string{`{"n":1.00000000000000000001e2}`}},
 		{"ordinary", "api", []string{`{"id":7}`}, `ran {"id":7}`, []string{`{"id":7}`}},
 		{"ordinary, native", "native", []string{`{"id":7}`}, `ran {"id":7}`, []string{`{"id":7}`}},
 	} {

@@ -46,7 +46,8 @@ import { toolFailureResult, AIFailureError, failureEvent } from './failures'
 import { GateViolation } from './toolGate'
 import { readApprovalDecision, readExecution, refusedResult, validApproval, validSourceFigures, type ApprovalRecord, type ExecutionCheckpoint, type SourceFigures } from './execution/state'
 import { contextDigest } from './context/ledger'
-import {
+import {approvalShownArguments,
+  approvalShownDigest,
   APPROVAL_CONTINUATION,
   APPROVAL_DEFAULT,
   ApprovalHeld,
@@ -1039,7 +1040,13 @@ describe('the approval pause (ADR-0008)', () => {
     }
   })
   it('takes each row of the kept-text vector as the vector says (#275)', async () => {
-    const vector = keptTextVector as unknown as { items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[] }
+    const vector = keptTextVector as unknown as { items: unknown[]; approved: { label: string; args: string; request?: string; typescript: unknown }[]; shown: { label: string; args: string; request?: string; text: string; digest: string }[] }
+    // A host reads the card as a string, and binds to its digest: JSON.parse of args would show another number.
+    for (const row of vector.shown) {
+      const asked = { args: JSON.parse(row.args) as Record<string, unknown>, ...(row.request === undefined ? {} : { request: row.request }) }
+      expect(approvalShownArguments(asked), row.label).toBe(row.text)
+      expect(approvalShownDigest(asked), row.label).toBe(row.digest)
+    }
     for (const item of vector.items) expect(validApproval(item)).toBe(true)
     const tools = declared(declarations.items).map((tool) => ({ ...tool, approve: () => 'allow' as const }))
     for (const row of vector.approved) {
@@ -1049,7 +1056,18 @@ describe('the approval pause (ADR-0008)', () => {
       const answer = await gate.approved({ callId: 'held', name: 'ado__update_work_item', tool: entry.record.tool!, source: entry.record, args: JSON.parse(row.args) as Record<string, unknown>, state: 'approved', ...(row.request === undefined ? {} : { request: row.request }) }, signal(), async (args) => { seen.push(args); return { content: [] } })
       expect(answer.ran, row.label).toBe(row.typescript !== 'refused')
       expect(seen, row.label).toEqual(row.typescript === 'refused' ? [] : [row.typescript])
+      // With no text kept, what a host shows is what the tool receives, as text.
+      if (row.request === undefined) expect(approvalShownArguments({ args: JSON.parse(row.args) as Record<string, unknown> }), row.label).toBe(canonicalJSON(seen[0]))
     }
+  })
+  it('gives a host the text that runs, from a stored record or event (#275)', () => {
+    const record = { callId: 'held', name: 'ado__update_work_item', tool: 'update_work_item', source: { kind: 'mcp' as const, id: 'ado', trust: 'public' as const }, args: { id: 9007199254740992 }, state: 'asked' as const }
+    expect(approvalShownArguments({ ...record, request: '{"id":9007199254740993}' })).toBe('{"id":9007199254740993}')
+    const event = { type: 'approval_requested', callId: 'held', args: record.args, request: '{"id":9007199254740993}' }
+    expect(approvalShownArguments(event)).toBe('{"id":9007199254740993}')
+    expect(approvalShownArguments({ ...record, args: { b: { d: 1, c: 2 }, a: 1 } })).toBe('{"a":1,"b":{"c":2,"d":1}}')
+    const none: { request?: string } = {}
+    expect(approvalShownArguments(none)).toBe('{}')
   })
   it('reads a kept request closed: a string, only beside its parsed form, never on a Runtime call (#275)', () => {
     const record = { callId: 'held', name: 'ado__update_work_item', tool: 'update_work_item', source: { kind: 'mcp', id: 'ado', trust: 'public' }, args: {}, state: 'asked' }

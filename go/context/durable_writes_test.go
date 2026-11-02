@@ -186,6 +186,9 @@ func TestTheDurableRecordableVector(t *testing.T) {
 
 // Both refusals read as the model reads a mistake in its input, and say nothing ran.
 func TestTheDurableRefusalsAreNamed(t *testing.T) {
+	if text := (&DurableRequestConflict{}).Error(); !strings.Contains(text, "exactly as your earlier call shows") || !strings.Contains(text, "tell the person") {
+		t.Fatalf("the advice is %s", text)
+	}
 	for name, err := range map[string]error{"DurableRequestConflict": &DurableRequestConflict{}, "DurableRequestUnrecordable": &DurableRequestUnrecordable{}} {
 		held := failure.Normalize(err, "tool", time.Now())
 		if held.Code != "invalid-tool-input" || held.Source != "tool" || held.Outcome != "not-started" || held.Detail == nil || !strings.HasPrefix(*held.Detail, name+": ") {
@@ -329,7 +332,7 @@ func TestTwoWritesThatReadAlikeKeepTheirOwnRows(t *testing.T) {
 	store := NewMemoryRunStore(MemoryRunStoreOptions{})
 	binding := durableWriter(t, store, "neighbours", false)
 	ran := []string{}
-	calls := []string{`{"id":9007199254740993}`, `{"id":9007199254740992}`}
+	calls := []string{`{"id":9007199254740992}`, `{"id":9007199254740993}`}
 	for _, call := range calls {
 		if _, err := InvokeDurable(ctx, binding, "host", "source", "write", []byte(call), false, runs(&ran), nil, nil); err != nil {
 			t.Fatal(err)
@@ -418,36 +421,186 @@ func TestAnApprovalBindingCoversTheKeptText(t *testing.T) {
 	}
 }
 
-// A kept approval text is a member a published reader does not know (ADR-0024): version 3 only, and a
-// string that is never empty, and never on a Runtime call, which its binding holds.
-func TestAKeptApprovalTextIsReadClosed(t *testing.T) {
-	read := func(version int, request string, kind string) error {
-		var checkpoint map[string]any
-		if err := json.Unmarshal([]byte(readPublishedCheckpoints(t)["v0.12.0"]), &checkpoint); err != nil {
+// Each checkpoint format holds exactly what it says (#275, ADR-0029). TypeScript reads the same cases in
+// storage/durableWrites.test.ts.
+func TestTheCheckpointFormatsHoldExactlyWhatTheySay(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-checkpoint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []map[string]any `json:"items"`
+		Cases []struct {
+			Version   int  `json:"version"`
+			Request   bool `json:"request"`
+			Principal bool `json:"principal"`
+			Reads     bool `json:"reads"`
+		} `json:"cases"`
+	}
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range vector.Cases {
+		t.Run(fmt.Sprintf("%d/request=%v/principal=%v", row.Version, row.Request, row.Principal), func(t *testing.T) {
+			item := map[string]any{}
+			for key, value := range vector.Items[1] {
+				item[key] = value
+			}
+			approval := map[string]any{}
+			for key, value := range item["approval"].(map[string]any) {
+				approval[key] = value
+			}
+			if !row.Request {
+				delete(approval, "request")
+			}
+			item["approval"], item["version"] = approval, row.Version
+			if !row.Principal {
+				delete(item, "principal")
+			}
+			text, err := json.Marshal(item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = ReadExecution(MustParseJSON(string(text)))
+			if row.Reads && err != nil {
+				t.Fatalf("does not read: %v", err)
+			}
+			if !row.Reads && err == nil {
+				t.Fatal("reads")
+			}
+		})
+	}
+}
+
+// The members decide the format, whatever a feature writer stamps, and a run that keeps no text keeps its version.
+func TestTheVersionFollowsWhatTheCheckpointHolds(t *testing.T) {
+	text := `{"id":9007199254740993}`
+	kept := &contract.CheckpointApproval{CallID: "held", Name: "tracker__write", Tool: "write", Args: map[string]json.RawMessage{"id": json.RawMessage(`9007199254740992`)}, State: "asked", Request: &text}
+	plain := &contract.CheckpointApproval{CallID: "held", Name: "tracker__write", Tool: "write", Args: map[string]json.RawMessage{"id": json.RawMessage(`7`)}, State: "asked"}
+	principal := &contract.RunPrincipal{}
+	steps := []struct {
+		name  string
+		patch CheckpointPatch
+		want  int
+	}{
+		{"a plain approval keeps the version", CheckpointPatch{"Approval": plain}, 2},
+		{"a kept text selects 5", CheckpointPatch{"Approval": kept}, 5},
+		{"a feature writer's stamp does not lower it", CheckpointPatch{"Version": 3}, 5},
+		{"without the text it is the frozen 3", CheckpointPatch{"Approval": plain}, 3},
+		{"a principal selects 4", CheckpointPatch{"Principal": principal}, 4},
+		{"both select 6", CheckpointPatch{"Approval": kept}, 6},
+		{"a feature writer's stamp does not lower that", CheckpointPatch{"Version": 3}, 6},
+		{"without the text it is 4", CheckpointPatch{"Approval": plain}, 4},
+	}
+	state := &Execution{Version: 2}
+	for _, step := range steps {
+		next, _, err := MutateCheckpoint(state, step.patch)
+		if err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		if next.Version != step.want {
+			t.Fatalf("%s: version %d", step.name, next.Version)
+		}
+		state = next
+	}
+	for _, version := range []int{4, 6} {
+		if _, _, err := MutateCheckpoint(&Execution{Version: version}, CheckpointPatch{"Status": "running"}); err == nil {
+			t.Fatalf("version %d with no principal", version)
+		}
+	}
+}
+
+// A terminal checkpoint of either new format is reported, with its principal exactly where it has one.
+func TestAKeptTextsCheckpointIsReported(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-checkpoint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for at, want := range []bool{false, true} {
+		var checkpoint contract.Checkpoint
+		if err = json.Unmarshal(vector.Items[at], &checkpoint); err != nil {
 			t.Fatal(err)
 		}
-		checkpoint["version"] = version
-		approval := map[string]any{"callId": "held", "name": "tracker__write", "tool": "write", "source": map[string]any{"kind": kind, "id": "tracker", "trust": "person"}, "args": map[string]any{"id": 9007199254740992}, "state": "asked"}
-		if request != "absent" {
-			approval["request"] = request
-		}
-		checkpoint["approval"] = approval
-		raw, err := json.Marshal(checkpoint)
+		checkpoint.Status = "complete"
+		report, err := ProjectRunReport(checkpoint)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = ReadExecution(MustParseJSON(string(raw)))
-		return err
+		if report.Get("version").Num() != 3 || report.Get("checkpointVersion").Num() != float64(checkpoint.Version) || report.Has("principal") != want {
+			t.Fatalf("%s", report.Text())
+		}
+		if _, err = ReadRunReport(report); err != nil {
+			t.Fatal(err)
+		}
 	}
-	text := `{"id":9007199254740993}`
-	if err := read(3, text, "custom"); err != nil {
-		t.Fatalf("version 3 with a text: %v", err)
+}
+
+// A record's writer stamps what the record holds, and the event that carries it is event 3.
+func TestARecordAndAnEventCarryTheirFormat(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-checkpoint.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := read(2, "absent", "custom"); err != nil {
-		t.Fatalf("version 2 with none: %v", err)
+	var vector struct {
+		Items []map[string]any `json:"items"`
 	}
-	if read(2, text, "custom") == nil || read(3, "", "custom") == nil || read(3, text, "runtime") == nil {
-		t.Fatal("a kept text reads where it should not")
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for at, want := range []float64{5, 6} {
+		text, _ := json.Marshal(vector.Items[at])
+		written, err := WriteRecord(CheckpointSchema, MustParseJSON(string(text)), RecordDefaults, nil, time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if written.Get("version").Num() != want || !ValidRecord(written) {
+			t.Fatalf("%s", written.Text())
+		}
+		var checkpoint contract.Checkpoint
+		if err = json.Unmarshal(text, &checkpoint); err != nil {
+			t.Fatal(err)
+		}
+		event := contract.StampEvent(contract.RunEvent{ExecutionCheckpoint: &contract.RunEventExecutionCheckpoint{Type: "execution_checkpoint", Checkpoint: checkpoint}})
+		if event.ExecutionCheckpoint.Version == nil || *event.ExecutionCheckpoint.Version != 3 {
+			t.Fatalf("a checkpoint of version %v goes out on event %v", want, event.ExecutionCheckpoint.Version)
+		}
+	}
+	request := `{"id":9007199254740993}`
+	event := contract.StampEvent(contract.RunEvent{ApprovalRequested: &contract.RunEventApprovalRequested{Type: "approval_requested", CallID: "held", Request: &request}})
+	if event.ApprovalRequested.Version == nil || *event.ApprovalRequested.Version != 3 {
+		t.Fatal("a kept text goes out on another event than 3")
+	}
+}
+
+// The events vector reads, each at event 3, and event 2 does not hold request.
+func TestTheKeptTextEventVector(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repositoryRoot(t), "contract", "vectors", "approval", "kept-text-event.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err = json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range vector.Items {
+		text, _ := json.Marshal(item)
+		if err := contract.CheckRecord("event", text); err != nil {
+			t.Fatalf("%s: %v", item["type"], err)
+		}
+	}
+	item := vector.Items[0]
+	item["version"] = 2
+	text, _ := json.Marshal(item)
+	if contract.CheckRecord("event", text) == nil {
+		t.Fatal("event 2 holds request")
 	}
 }
 
@@ -553,6 +706,19 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 			Request *string `json:"request"`
 			Go      string  `json:"go"`
 		} `json:"approved"`
+		Shown []struct {
+			Label   string  `json:"label"`
+			Args    string  `json:"args"`
+			Request *string `json:"request"`
+			Text    string  `json:"text"`
+			Digest  string  `json:"digest"`
+		} `json:"shown"`
+		Bindings []struct {
+			Args       string  `json:"args"`
+			Request    *string `json:"request"`
+			Canonical  string  `json:"canonical"`
+			CallDigest string  `json:"callDigest"`
+		} `json:"bindings"`
 	}
 	if err = json.Unmarshal(raw, &vector); err != nil {
 		t.Fatal(err)
@@ -566,6 +732,29 @@ func TestTheKeptApprovalTextVector(t *testing.T) {
 		}
 		if _, ok := approvedArguments(item); !ok {
 			t.Fatalf("%s does not read back to its args", *item.Request)
+		}
+	}
+	for _, row := range vector.Shown {
+		var args map[string]json.RawMessage
+		if err = json.Unmarshal([]byte(row.Args), &args); err != nil {
+			t.Fatal(err)
+		}
+		asked := contract.CheckpointApproval{Args: args, Request: row.Request}
+		if got := ApprovalShownArguments(asked); got != row.Text {
+			t.Errorf("%s: a host renders %s", row.Label, got)
+		}
+		if got := ApprovalShownDigest(asked); got != row.Digest {
+			t.Errorf("%s: a host binds to %s", row.Label, got)
+		}
+	}
+	for _, row := range vector.Bindings {
+		var args map[string]json.RawMessage
+		if err = json.Unmarshal([]byte(row.Args), &args); err != nil {
+			t.Fatal(err)
+		}
+		binding, err := ApprovalBindingOf(contract.CheckpointApproval{CallID: "held", Name: "tracker__create_issue", Tool: "create_issue", Source: contract.ToolOfferSourceRecord{Kind: "custom", ID: "tracker", Trust: "person"}, Args: args, Request: row.Request})
+		if err != nil || binding.CallDigest != row.CallDigest {
+			t.Errorf("%s binds as %+v, %v", row.Canonical, binding, err)
 		}
 	}
 	for _, row := range vector.Keeps {

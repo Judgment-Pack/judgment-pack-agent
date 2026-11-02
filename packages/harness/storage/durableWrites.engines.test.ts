@@ -10,7 +10,7 @@ import { MemoryRunStore } from './run'
 import { deepagents } from '../engines/deepagents'
 import { vercel } from '../engines/vercel'
 import { ofType, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
-import { toolListDigest } from '../toolSources'
+import { approvalShownArguments, toolListDigest } from '../toolSources'
 import type { HostTool } from '../engine'
 
 /** One streamed turn whose call carries exactly the argument text given. */
@@ -95,12 +95,21 @@ describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('a call
   it.each([
     ['a number out of range', '{"q":1e400}'],
     ['past 2^53', '{"id":9007199254740993}'],
-    ['a lone surrogate', '{"q":"\\ud800"}']
+    ['a lone surrogate', '{"q":"\\ud800"}'],
+    ['names that fold together', '{"ID":1,"id":2}'],
+    ['names that fold together, in an array', '{"o":[{"id":2,"ID":1}]}']
   ])('refuses before anyone is asked: %s', async (_label, text) => {
     const out = await heldForApproval(engine, text)
     expect(out.asked).toEqual([])
     expect(out.executed).toEqual([])
     expect(out.answers[0]).toContain('DurableRequestUnrecordable')
+  })
+
+  it('shows the canonical form at every depth, which is what runs', async () => {
+    const out = await heldForApproval(engine, '{"sort":{"name":1,"created":-1},"list":[{"b":2,"a":1}]}')
+    const asked = out.asked[0] as { args: Record<string, unknown> }
+    expect(JSON.stringify(asked.args)).toBe('{"list":[{"a":1,"b":2}],"sort":{"created":-1,"name":1}}')
+    expect(approvalShownArguments(asked)).toBe('{"list":[{"a":1,"b":2}],"sort":{"created":-1,"name":1}}')
   })
 
   it('still asks for what it holds exactly', async () => {

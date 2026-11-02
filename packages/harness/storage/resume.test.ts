@@ -1,3 +1,4 @@
+import keptTextVector from '../../../contract/vectors/approval/kept-text.json'
 import {describe,it,expect,vi} from 'vitest'
 import type {AssistantEvent,EngineSession,HostTool} from '../engine'
 import {vercel} from '../engines/vercel'
@@ -365,6 +366,7 @@ describe('#266 fix round: the approval binds the run until its call settles',()=
   const rewrite=(change:(c:{approval:Record<string,unknown>})=>void)=>{const copy=structuredClone(checkpoint);change(copy);return store.commitFenced({runId:'run-a',expectedRevision:head.revision,commitId:'rewrite',checkpoint:new TextEncoder().encode(canonicalJSON(copy)),events:[]},resumed.fence)}
   await expect(rewrite(c=>{c.approval.args={title:'Something else entirely'}})).rejects.toEqual(resumeRefusal('approval-changed'))
   await expect(rewrite(c=>{c.approval.callId='call-other'})).rejects.toEqual(resumeRefusal('approval-changed'))
+  await expect(rewrite(c=>{(c as {version?:number}).version=5;c.approval.request=JSON.stringify(c.approval.args)})).rejects.toEqual(resumeRefusal('approval-changed'))
   await expect(rewrite(c=>{(c.approval.source as {id:string}).id='ledger'})).rejects.toEqual(resumeRefusal('approval-changed'))
   await expect(rewrite(c=>{delete (c as {approval?:unknown}).approval})).rejects.toEqual(resumeRefusal('approval-changed'))
   expect((await store.load('run-a'))!.revision).toBe(head.revision)
@@ -399,6 +401,9 @@ describe('#266 fix round: the approval binds the run until its call settles',()=
 
 describe('#275: the binding of a call held for approval covers what the person was shown',()=>{
  const approval={callId:'held',name:'tracker__create_issue',tool:'create_issue',source:{kind:'custom',id:'tracker',trust:'person'},args:{id:9007199254740992},state:'asked'} as never
+ it('binds to the kept text, so another spelling of one parsed form is another call',()=>{
+  for(const row of (keptTextVector as unknown as {bindings:{args:string;request?:string;callDigest:string}[]}).bindings)expect(approvalBinding({...(approval as object),args:JSON.parse(row.args),...(row.request===undefined?{}:{request:row.request})} as never).callDigest,row.request).toBe(row.callDigest)
+ })
  it('names the kept text, and a call that keeps none binds as it always has',()=>{
   expect(approvalBinding({...(approval as object),request:'{"id":9007199254740993}'} as never).callDigest).toBe('sha256:54a95b12cb74b5e1d6634512ec56ca79018b17db2ea2c6551ed165f440d19ce2')
   expect(approvalBinding(approval).callDigest).not.toBe('sha256:54a95b12cb74b5e1d6634512ec56ca79018b17db2ea2c6551ed165f440d19ce2')

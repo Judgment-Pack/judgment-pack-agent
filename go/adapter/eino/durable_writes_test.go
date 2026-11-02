@@ -46,7 +46,8 @@ var durableTableWires = []string{"native", "api"}
 // durableFamilyWires are one way of each other family, for the pairs a reader that rewrites gets wrong.
 var durableFamilyWires = []string{"api/anthropic/sse", "api/gemini/whole", "api/text"}
 
-var durableFamilyRows = map[string]bool{"an integer past 2^53, then its neighbour": true, "1.0 then 1": true, "a consumer's nested limit: zero, then an underflow its decoder must see": true}
+var durableFamilyRows = map[string]bool{"an integer past 2^53, its neighbour first": true, "1.0 then 1": true, "a consumer's nested limit: zero, then an underflow its decoder must see": true,
+	"a number out of range, twice": true, "a repeated name, then the name it reads as": true}
 
 // wireReply is one answer of the wire named: a call with exactly the argument text given, or, with none, the
 // final answer. Anthropic's stream splits the text in two, as a provider does.
@@ -111,6 +112,13 @@ func wireReply(wire, id, name, arguments string) *http.Response {
 // durableRunOn is durableRun on the wire named, with a run store or without one.
 func durableRunOn(t *testing.T, engine string, write, stored bool, calls []string) (executed, answered, failures []string) {
 	t.Helper()
+	return durableRunWith(t, engine, write, stored, calls, nil)
+}
+
+// durableRunWith is durableRunOn, with what the next call writes decided from the request the model reads:
+// next is given the request number and body and answers the call's text, or "" for the final answer.
+func durableRunWith(t *testing.T, engine string, write, stored bool, calls []string, next func(int, string) string) (executed, answered, failures []string) {
+	t.Helper()
 	tool := runcontext.HostTool{
 		Name: "change_record", Description: "change_record: change one record", Effect: "workflow",
 		InputSchema: json.RawMessage(`{"type":"object"}`),
@@ -173,8 +181,14 @@ func durableRunOn(t *testing.T, engine string, write, stored bool, calls []strin
 	} else {
 		implementation = eino.New()
 		requests := 0
-		r.Model = func(_ context.Context, _ string, _ relay.Request) (*http.Response, error) {
+		r.Model = func(_ context.Context, _ string, request relay.Request) (*http.Response, error) {
 			requests++
+			if next != nil {
+				if text := next(requests, string(request.Body)); text != "" {
+					return wireReply(engine, fmt.Sprintf("call-%d", requests), tool.Name, text), nil
+				}
+				return wireReply(engine, "", "", ""), nil
+			}
 			if requests > len(calls) {
 				return wireReply(engine, "", "", ""), nil
 			}
@@ -232,10 +246,14 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		ran, answers []string
 	}{
 		// Different numbers: each is its own write, a legitimate integer past 2^53 among them.
-		{"an integer past 2^53, then its neighbour", []string{big, near}, []string{big, near}, []string{ran(big), ran(near)}},
 		{"an integer past 2^53, its neighbour first", []string{near, big}, []string{near, big}, []string{ran(near), ran(big)}},
-		{"an underflow, then zero", []string{`{"q":1e-400}`, `{"q":0}`}, []string{`{"q":1e-400}`, `{"q":0}`}, []string{ran(`{"q":1e-400}`), ran(`{"q":0}`)}},
+		{"zero, then an underflow", []string{`{"q":0}`, `{"q":1e-400}`}, []string{`{"q":0}`, `{"q":1e-400}`}, []string{ran(`{"q":0}`), ran(`{"q":1e-400}`)}},
 		{"a consumer's nested limit: zero, then an underflow its decoder must see", []string{`{"limits":{"searches":0}}`, `{"limits":{"searches":1e-400}}`}, []string{`{"limits":{"searches":0}}`, `{"limits":{"searches":1e-400}}`}, []string{ran(`{"limits":{"searches":0}}`), ran(`{"limits":{"searches":1e-400}}`)}},
+		// What a text the parsed form does not say reads as: it may be a copy from the model's history, so it is
+		// refused, and a write run for it would be a second write on another id.
+		{"an integer past 2^53, then its neighbour", []string{big, near}, []string{big}, []string{ran(big), conflictRefusal}},
+		{"an underflow, then zero", []string{`{"q":1e-400}`, `{"q":0}`}, []string{`{"q":1e-400}`}, []string{ran(`{"q":1e-400}`), conflictRefusal}},
+		{"past a float64's precision, then what it reads as", []string{`{"id":7.0000000000000000001}`, `{"id":7}`}, []string{`{"id":7.0000000000000000001}`}, []string{ran(`{"id":7.0000000000000000001}`), conflictRefusal}},
 		// The same value written differently: it may be that write and may not be. Neither run nor answered.
 		{"1.0 then 1", []string{`{"q":1.0}`, `{"q":1}`}, []string{`{"q":1.0}`}, []string{ran(`{"q":1.0}`), conflictRefusal}},
 		{"1 then 1.0", []string{`{"q":1}`, `{"q":1.0}`}, []string{`{"q":1}`}, []string{ran(`{"q":1}`), conflictRefusal}},
@@ -254,7 +272,7 @@ func TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord(t *testing.T) {
 		{"the same bytes, names that fold together", []string{`{"ID":1,"id":2}`, `{"ID":1,"id":2}`}, []string{`{"ID":1,"id":2}`}, []string{ran(`{"ID":1,"id":2}`), ran(`{"ID":1,"id":2}`)}},
 		{"another order and whitespace, which the fingerprint leaves out", []string{`{"a":1,"b":2}`, ` { "b" : 2 , "a" : 1 } `}, []string{`{"a":1,"b":2}`}, []string{ran(`{"a":1,"b":2}`), ran(`{"a":1,"b":2}`)}},
 		// Each row is looked at: the record that is this write is found past one that only reads alike.
-		{"the first of two neighbours again", []string{big, near, big, near}, []string{big, near}, []string{ran(big), ran(near), ran(big), ran(near)}},
+		{"the first of two neighbours again", []string{near, big, near, big}, []string{near, big}, []string{ran(near), ran(big), ran(near), ran(big)}},
 	} {
 		wires := durableTableWires
 		if durableFamilyRows[row.name] {
@@ -306,5 +324,153 @@ func TestEveryWireHandsTheToolTheModelsText(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// durableAPIWays are the ways an API family writes a call back to the model on its next request.
+var durableAPIWays = []string{"api", "api/openai-compatible/whole", "api/anthropic/sse", "api/anthropic/whole", "api/gemini/sse", "api/gemini/whole"}
+
+// lastCallIn is the last call in a request body, as the model reads it: the text it has to copy.
+func lastCallIn(body string) string {
+	last := ""
+	for _, key := range []string{`"arguments":"`, `"input":`, `"args":`} {
+		at := strings.LastIndex(body, key)
+		if at < 0 {
+			continue
+		}
+		rest := body[at+len(key):]
+		if key == `"arguments":"` {
+			if end := strings.Index(rest, `"}`); end > 0 {
+				var text string
+				if json.Unmarshal([]byte(`"`+rest[:end]+`"`), &text) == nil {
+					last = text
+				}
+			}
+			continue
+		}
+		depth := 0
+		for i, c := range rest {
+			if c == '{' {
+				depth++
+			}
+			if c == '}' {
+				depth--
+				if depth == 0 {
+					last = rest[:i+1]
+					break
+				}
+			}
+		}
+	}
+	return last
+}
+
+// A model that repeats its last call exactly as its own request shows it makes one write, and is answered
+// from the record. Every family used to write a call back from its parsed form, so the model read
+// 9007199254740992 after 9007199254740993 ran: the writer took that for another write, and it ran.
+func TestAModelThatCopiesItsHistoryMakesOneWrite(t *testing.T) {
+	for _, way := range durableAPIWays {
+		for _, first := range []string{`{"id":9007199254740993}`, `{"id":12345678901234567}`, `{"amount":10.50}`, `{"o":[{"id":9007199254740993}]}`, `{"id":7}`} {
+			t.Run(way+"/"+first, func(t *testing.T) {
+				executed, answered, failures := durableRunWith(t, way, true, true, nil, func(n int, body string) string {
+					switch n {
+					case 1:
+						return first
+					case 2, 3:
+						return lastCallIn(body)
+					}
+					return ""
+				})
+				if len(failures) != 0 || fmt.Sprint(executed) != fmt.Sprint([]string{first}) {
+					t.Fatalf("the tool ran %q, failures %q", executed, failures)
+				}
+				for _, text := range answered {
+					if text != "ran "+first {
+						t.Fatalf("answered %q", answered)
+					}
+				}
+				if len(answered) != 3 {
+					t.Fatalf("answered %q", answered)
+				}
+			})
+		}
+	}
+}
+
+// What the parsed form says is written back as it always was, so every other call's body is unchanged.
+func TestWhatTheParsedFormSaysIsWrittenBackAsItWas(t *testing.T) {
+	for _, way := range durableAPIWays {
+		t.Run(way, func(t *testing.T) {
+			var second string
+			durableRunWith(t, way, true, true, nil, func(n int, body string) string {
+				if n == 1 {
+					return ` { "b" : 2 , "a" : 1 } `
+				}
+				second = body
+				return ""
+			})
+			if strings.Contains(second, `"b" : 2`) || !strings.Contains(strings.ReplaceAll(second, `\"`, `"`), `{"b":2,"a":1}`) {
+				t.Fatalf("the next request holds %s", second)
+			}
+		})
+	}
+}
+
+// A resumed run's first request tells the model what it wrote, and a copy of that is answered from the record.
+func TestAResumedRunsFirstRequestHoldsTheModelsText(t *testing.T) {
+	big := `{"id":9007199254740993}`
+	for _, way := range durableAPIWays {
+		t.Run(way, func(t *testing.T) {
+			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			ran := []string{}
+			family := "openai-compatible"
+			for _, name := range []string{"anthropic", "gemini"} {
+				if strings.Contains(way, name) {
+					family = name
+				}
+			}
+			once := func(resume bool, model func(int, string) (*http.Response, error)) {
+				tool := runcontext.HostTool{Name: "change_record", Description: "change_record: change one record", Effect: "workflow", InputSchema: json.RawMessage(`{"type":"object"}`), Taxonomy: &runcontext.ToolTaxonomy{Operation: "own-state", Effect: "pure"},
+					Execute: func(_ context.Context, raw json.RawMessage) (runcontext.ToolResult, error) {
+						ran = append(ran, string(raw))
+						return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("ran " + string(raw))}, nil), nil
+					}}
+				g := gate.New(gate.Options{})
+				g.SetOffer(contract.ToolOffer{})
+				input := &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Change it.", Input: "Change it."}, Connection: "provider", ConnectionRevisions: map[string]string{"provider": "one"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: "resume", Resume: resume}}
+				n := 0
+				r := &adapter.Run{Prompt: "Change it.", Wire: family, ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Interactive: true, Gate: g.Calls(), HostTools: []runcontext.HostTool{tool}, Context: input,
+					Emit: func(contract.RunEvent) {},
+					EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+						return g.EnrollContext(offer.ID, offer.HostTools)
+					},
+					Model: func(_ context.Context, _ string, request relay.Request) (*http.Response, error) {
+						n++
+						return model(n, string(request.Body))
+					}}
+				_ = eino.New().Run(context.Background(), r)
+			}
+			once(false, func(n int, _ string) (*http.Response, error) {
+				if n == 1 {
+					return wireReply(way, "call-1", "change_record", big), nil
+				}
+				return nil, fmt.Errorf("the connection was lost")
+			})
+			var resumed string
+			once(true, func(n int, body string) (*http.Response, error) {
+				switch n {
+				case 1:
+					resumed = body
+					return wireReply(way, "call-2", "change_record", lastCallIn(body)), nil
+				}
+				return wireReply(way, "", "", ""), nil
+			})
+			if !strings.Contains(resumed, "9007199254740993") || strings.Contains(resumed, "9007199254740992") {
+				t.Fatalf("the resumed request holds %s", resumed)
+			}
+			if fmt.Sprint(ran) != fmt.Sprint([]string{big}) {
+				t.Fatalf("the tool ran %q", ran)
+			}
+		})
 	}
 }

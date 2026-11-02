@@ -17931,12 +17931,13 @@ type RunEventApprovalRequested struct {
 	Source  *ToolOfferSourceRecord            `json:"source,omitzero"`
 	Args    map[string]json.RawMessage        `json:"args,omitzero"`
 	Version *int64                            `json:"version,omitzero"`
+	Request *string                           `json:"request,omitzero"`
 	Purpose *string                           `json:"purpose,omitzero"`
 	Plan    *RunEventApprovalRequestedPlan    `json:"plan,omitzero"`
 	Runtime *CheckpointRuntimeApprovalBinding `json:"runtime,omitzero"`
 }
 
-var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "purpose", "plan", "runtime"}
+var runEventApprovalRequestedMembers = []string{"type", "callId", "name", "tool", "source", "args", "version", "request", "purpose", "plan", "runtime"}
 
 // UnmarshalJSON decodes a RunEventApprovalRequested object and refuses a member the closed schema does not name.
 func (v *RunEventApprovalRequested) UnmarshalJSON(data []byte) error {
@@ -21150,10 +21151,11 @@ func (v RunReportV2Totals) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-report-v3.json. Version 3 closed presentation of a delegated run's terminal checkpoint
-// 4 (ADR-0029): version 2's members, and the principal the run acted as and for, copied whole from
-// the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that
-// predates version 3 refuses it before reading the body.
+// From run-report-v3.json. Version 3 closed presentation of a terminal checkpoint 4, 5 or 6
+// (ADR-0029, #275), with its principal exactly on 4 and 6: version 2's members, and the principal
+// the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps
+// report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the
+// body.
 type RunReportV3 struct {
 	Version           int64                       `json:"version"`
 	CheckpointVersion int64                       `json:"checkpointVersion"`
@@ -21183,7 +21185,7 @@ type RunReportV3 struct {
 	Route             *TurnRoute                  `json:"route,omitzero"`
 	Feedback          []FeedbackView              `json:"feedback,omitzero"`
 	RepeatTools       *RunReportV3RepeatTools     `json:"repeatTools,omitzero"`
-	Principal         RunPrincipal                `json:"principal"`
+	Principal         *RunPrincipal               `json:"principal,omitzero"`
 }
 
 var runReportV3Members = []string{"version", "checkpointVersion", "id", "phase", "status", "unit", "used", "limit", "requestCap", "grants", "reason", "explanation", "prompts", "sources", "sourceIdentities", "skills", "critic", "delegation", "usage", "childUsage", "failover", "completions", "plan", "planState", "usageTotals", "route", "feedback", "repeatTools", "principal"}

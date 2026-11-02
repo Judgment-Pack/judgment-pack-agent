@@ -808,7 +808,7 @@ class VectorTests(unittest.TestCase):
             if isinstance(held, list):
                 return all(says(item) for item in held)
             return all(says(name) and says(item) for name, item in held.items())
-        said = {"ordinary", "ordinary, native", "a spelling a row recorded"}
+        said = {"ordinary", "ordinary, native", "a spelling a row recorded", "a repeat past a float64's precision", "a repeat past a float64's precision, with an exponent"}
         for name, text in doc["checkpoints"].items():
             with self.subTest(checkpoint=name):
                 checkpoint = json.loads(text)
@@ -820,6 +820,19 @@ class VectorTests(unittest.TestCase):
                 # The rows are what ran before the pause, and the text the call held is in no member of the record.
                 rows = [row for row in checkpoint.get("durable", {}).get("dispatches", []) if row["kind"] == "host"]
                 self.assertEqual([row["request"] for row in rows], doc["calls"][name]["allowed"])
+
+    def test_each_checkpoint_format_holds_exactly_what_it_says(self):
+        # #275, ADR-0029: principal on 4 and 6, approval.request on 5 and 6, and nothing past 6.
+        vector = self.vectors["approval/kept-text-checkpoint.json"]
+        for row in vector["cases"]:
+            with self.subTest(row=row):
+                holds_text = row["version"] in (5, 6)
+                holds_principal = row["version"] in (4, 6)
+                self.assertEqual(row["reads"], row["version"] <= 6 and row["request"] == holds_text and row["principal"] == holds_principal)
+        for item in vector["items"]:
+            self.assertIn("request", item["approval"])
+            self.assertEqual("principal" in item, item["version"] == 6)
+        self.assertEqual({item["type"] for item in self.vectors["approval/kept-text-event.json"]["items"]}, {"approval_requested", "execution_checkpoint"})
 
     def test_the_kept_approval_text_follows_from_each_text(self):
         # #275: a third reading. A text is kept unless args cannot have changed it.
@@ -1108,6 +1121,9 @@ class VectorTests(unittest.TestCase):
                 self.assertEqual(reading(recorded), reading(request))
                 if recorded == request or exact(recorded) and exact(request):
                     decision = "same"
+                elif exact(request):
+                    # What a text the parsed form does not say reads as: it may be a copy from history.
+                    decision = "conflict"
                 elif values(recorded) != values(request):
                     decision = "different"
                 else:
