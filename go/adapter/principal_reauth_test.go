@@ -39,7 +39,9 @@ func delegatedReauthSetup(t *testing.T, engine string, port *runtimePrincipalPor
 		}
 		return nil, nil
 	}})
-	a, err := s.store.AcquireLease(s.ctx, runcontext.LeaseAcquire{Resource: "run-r", Owner: "worker-a", DurationMs: hostHour})
+	hostDelegation = runtimePrincipal(t, 0, runtimeNow, port, func(runcontext.PrincipalAdmissionRead) string { return runtimeAdmit })
+	t.Cleanup(func() { hostDelegation = nil })
+	a, err := s.store.AcquireLease(s.ctx, runcontext.LeaseAcquire{Resource: "run-r", Owner: "worker-a", DurationMs: hostHour, Principal: bindingOf(t, hostDelegation)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +50,18 @@ func delegatedReauthSetup(t *testing.T, engine string, port *runtimePrincipalPor
 		t.Fatal(err)
 	}
 	s.tool = delegatedWriteTool(s.executed)
-	hostDelegation = runtimePrincipal(t, 0, runtimeNow, port, func(runcontext.PrincipalAdmissionRead) string { return runtimeAdmit })
-	t.Cleanup(func() { hostDelegation = nil })
 	s.first = runHostTool(t, s.view, "run-r", engine, false, nil, s.tool, []string{hostArgs})
 	return s
+}
+
+// bindingOf is the principals a delegated run's lease, fence and wait hold.
+func bindingOf(t *testing.T, given *runcontext.RunPrincipal) *runcontext.PrincipalBinding {
+	t.Helper()
+	opened, err := runcontext.OpenPrincipal(given)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return opened.Record.Binding()
 }
 
 func countedReads(port *runtimePrincipalPort) int {
@@ -164,7 +174,11 @@ func TestRuntimeActionReauthorizationUnderADelegation(t *testing.T) {
 				}
 				return &runcontext.CredentialRefusal{Cause: "revoked", Connection: "runtime-conn", Principal: principal, Permissions: []string{"evaluate:write"}, Requires: []string{"evaluate:write"}}, nil
 			}})
-			a, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-a", DurationMs: 3_600_000})
+			port := &runtimePrincipalPort{}
+			f := newRuntimeActionFixture(t)
+			f.approve = func(gate.RuntimeApprovalRequest) string { return "allow" }
+			f.principal = runtimePrincipal(t, runtimeScoped, runtimeNow, port, admit)
+			a, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "runtime-action-run", Owner: "worker-a", DurationMs: 3_600_000, Principal: bindingOf(t, f.principal)})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,10 +186,6 @@ func TestRuntimeActionReauthorizationUnderADelegation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			port := &runtimePrincipalPort{}
-			f := newRuntimeActionFixture(t)
-			f.approve = func(gate.RuntimeApprovalRequest) string { return "allow" }
-			f.principal = runtimePrincipal(t, runtimeScoped, runtimeNow, port, admit)
 			var requests atomic.Int32
 			events, _ := reauthRun(t, f, view, engine, false, &requests)
 			if len(f.calls) != 0 || countedReads(port) != 0 || len(runtimeRefusals(events)) != 0 {
@@ -194,7 +204,7 @@ func TestRuntimeActionReauthorizationUnderADelegation(t *testing.T) {
 			if _, err := runcontext.WakeRun(ctx, store, runcontext.WakeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-r", Evidence: "refreshed-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "reauthorized", Subject: "runtime-conn"}, Key: key}); err != nil {
 				t.Fatal(err)
 			}
-			evidence := runcontext.ResumeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-r", Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: wait.Pins.Policy}, Plan: wait.Pins.Plan, Sources: wait.Pins.Sources, Artifacts: wait.Pins.Artifacts}
+			evidence := runcontext.ResumeEvidence{Version: 1, Resource: "runtime-action-run", Wait: "wait-r", Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: wait.Pins.Policy}, Plan: wait.Pins.Plan, Sources: wait.Pins.Sources, Artifacts: wait.Pins.Artifacts, Principal: wait.Pins.Principal}
 			action := runcontext.ReauthAction{Version: 1, Resource: "runtime-action-run", Wait: "wait-r", Connection: "runtime-conn", Action: "refresh", Principal: principal, Permissions: []string{"evaluate:write"}, Actor: "person-owner", At: "2026-01-01T00:00:30.000Z"}
 			resumed, err := runcontext.ResumeParked(ctx, runcontext.ResumeInput{Store: store, Resource: "runtime-action-run", Wait: "wait-r", Evidence: "refreshed-1", Owner: "worker-b", DurationMs: 3_600_000, Current: &evidence, Reauthorization: &action})
 			if err != nil {
@@ -215,5 +225,109 @@ func TestRuntimeActionReauthorizationUnderADelegation(t *testing.T) {
 				t.Fatalf("calls %d, counts %v", len(fresh.calls), port.counts())
 			}
 		})
+	}
+}
+
+func TestReauthorizationWaitResumeUnderADelegation(t *testing.T) {
+	for _, engine := range hostEngines {
+		setup := func(t *testing.T) (*hostSetup, runcontext.RunWait, runcontext.ResumeInput, *runtimePrincipalPort) {
+			t.Helper()
+			port := &runtimePrincipalPort{}
+			s := delegatedReauthSetup(t, engine, port)
+			held, err := s.park(runcontext.ReauthorizationOf(s.view), "wait-r", hostKey, s.fence)
+			if err != nil {
+				t.Fatal(refusalReason(err))
+			}
+			return s, held, s.wakeInput(t, "wait-r", hostKey, held, s.store), port
+		}
+		t.Run(engine+"/the wait pins the principals, and its proof keeps the version 2 fence it was parked under", func(t *testing.T) {
+			s, held, _, _ := setup(t)
+			want := bindingOf(t, hostDelegation)
+			if !runcontext.SamePrincipalBinding(held.Pins.Principal, want) || held.Reauthorization.Fence.Version != 2 || !runcontext.SamePrincipalBinding(held.Reauthorization.Fence.Principal, want) {
+				t.Fatalf("pins %+v, fence %+v", held.Pins.Principal, held.Reauthorization.Fence)
+			}
+			_ = s
+		})
+		t.Run(engine+"/evidence of other principals is principal-changed, of none is evidence-missing, and neither claims anything", func(t *testing.T) {
+			s, _, input, _ := setup(t)
+			good := *input.Current
+			other := *good.Principal
+			other.RootActor = strings.Repeat("d1", 16)
+			changed := good
+			changed.Principal = &other
+			input.Current = &changed
+			if _, err := runcontext.ResumeParked(s.ctx, input); refusalReason(err) != "resume:principal-changed" {
+				t.Fatalf("other: %v", err)
+			}
+			none := good
+			none.Principal = nil
+			input.Current = &none
+			if _, err := runcontext.ResumeParked(s.ctx, input); refusalReason(err) != "resume:evidence-missing" {
+				t.Fatalf("none: %v", err)
+			}
+			lease, err := s.store.ReadLease(s.ctx, "run-r")
+			if err != nil || lease.State != "released" || lease.Epoch != "1" {
+				t.Fatalf("a refused resume took a lease: %+v %v", lease, err)
+			}
+		})
+		t.Run(engine+"/a changed credential identity stays identity-changed, and the delegation's refusal comes first when both changed", func(t *testing.T) {
+			s, _, input, _ := setup(t)
+			replacement := *input.Reauthorization
+			replacement.Action = "replacement"
+			input.Reauthorization = &replacement
+			if _, err := runcontext.ResumeParked(s.ctx, input); refusalReason(err) != "resume:identity-changed" {
+				t.Fatalf("replacement: %v", err)
+			}
+			other := *input.Current.Principal
+			other.RootActor = strings.Repeat("d1", 16)
+			changed := *input.Current
+			changed.Principal = &other
+			input.Current = &changed
+			if _, err := runcontext.ResumeParked(s.ctx, input); refusalReason(err) != "resume:principal-changed" {
+				t.Fatalf("both: %v", err)
+			}
+		})
+		t.Run(engine+"/the claim's lease and fence keep the principals, and the re-send's view accepts them", func(t *testing.T) {
+			s, _, input, _ := setup(t)
+			resumed, err := runcontext.ResumeParked(s.ctx, input)
+			if err != nil {
+				t.Fatal(refusalReason(err))
+			}
+			want := bindingOf(t, hostDelegation)
+			if resumed.Lease.Version != 2 || resumed.Lease.Epoch != "2" || !runcontext.SamePrincipalBinding(resumed.Fence.Principal, want) {
+				t.Fatalf("resumed %+v", resumed.Lease)
+			}
+			s.refuse.Store(false)
+			runHostTool(t, s.viewOf(t, resumed, s.host), "run-r", engine, true, nil, s.tool, []string{hostArgs})
+			if s.executed.Load() != 1 {
+				t.Fatalf("executed %d", s.executed.Load())
+			}
+		})
+		for label, chain := range map[string]int{"another subject": 4, "no delegation at all": -1} {
+			t.Run(engine+"/a continuation under "+label+" sends nothing, though the claim was held", func(t *testing.T) {
+				s, _, input, port := setup(t)
+				resumed, err := runcontext.ResumeParked(s.ctx, input)
+				if err != nil {
+					t.Fatal(refusalReason(err))
+				}
+				s.refuse.Store(false)
+				hostDelegation = nil
+				if chain >= 0 {
+					hostDelegation = runtimePrincipal(t, chain, runtimeNow, port, func(runcontext.PrincipalAdmissionRead) string { return runtimeAdmit })
+				}
+				run := runHostTool(t, s.viewOf(t, resumed, s.host), "run-r", engine, true, nil, s.tool, []string{hostArgs})
+				if s.executed.Load() != 0 {
+					t.Fatalf("executed %d", s.executed.Load())
+				}
+				named := false
+				for _, event := range run.events {
+					named = named || event.Error != nil && strings.Contains(event.Error.Message, "principal-changed")
+				}
+				if !named && (run.err == nil || !strings.Contains(run.err.Error(), "principal-changed")) {
+					raw, _ := json.Marshal(run.events)
+					t.Fatalf("not named: %v %.800s", run.err, raw)
+				}
+			})
+		}
 	}
 }

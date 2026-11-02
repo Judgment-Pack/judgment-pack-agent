@@ -1,0 +1,276 @@
+{
+ "description": "Handwritten delegated children (ADR-0029; RFC 0030 §3): one child of a parent over the chains of chains.json, named by link. answer is the child port's: chain names the links of the child's whole chain, refusal the host's, \"none\" no port, \"throw\" a port that fails, other a form the package refuses. expect is the actor and digests of the child's record, or the refusal; asked says whether the port was asked. items are the request each asked port is handed.",
+ "schema": "run-principal.json#/$defs/childLinkRequest",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (narrowChild, openChildPrincipal)",
+   "packages/harness/principalChild.test.ts"
+  ]
+ },
+ "items": [
+  {
+   "readVersion": "1",
+   "host": "desk",
+   "chain": [
+    "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+   ],
+   "task": "task-1",
+   "profile": "review",
+   "tools": [
+    {
+     "source": "notes",
+     "tool": "read_note"
+    }
+   ]
+  }
+ ],
+ "answers": [
+  {
+   "chain": "[]"
+  },
+  {
+   "refusal": "delegation-not-permitted"
+  },
+  {
+   "refusal": "not-parent-actor"
+  }
+ ],
+ "cases": [
+  {
+   "name": "a narrowed link below a parent that permits one",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "child"
+    ]
+   },
+   "expect": {
+    "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+    "links": 2
+   },
+   "asked": true
+  },
+  {
+   "name": "a link wider than its parent",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "widened"
+    ]
+   },
+   "expect": "widened",
+   "asked": true
+  },
+  {
+   "name": "two links below the parent, the second below a link that permits none",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "child",
+     "grandchild"
+    ]
+   },
+   "expect": "widened",
+   "asked": true
+  },
+  {
+   "name": "the parent's own chain, with no link below it",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "another root's chain",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "otherActor"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "a parent whose link permits no child",
+   "parent": [
+    "root",
+    "child"
+   ],
+   "answer": "never",
+   "expect": "delegation-not-permitted",
+   "asked": false
+  },
+  {
+   "name": "no child port",
+   "parent": [
+    "root"
+   ],
+   "answer": "none",
+   "expect": "delegation-not-permitted",
+   "asked": false
+  },
+  {
+   "name": "the host's refusal of the requester",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "refusal": "not-parent-actor"
+   },
+   "expect": "not-parent-actor",
+   "asked": true
+  },
+  {
+   "name": "the host's refusal of the child",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "refusal": "delegation-not-permitted"
+   },
+   "expect": "delegation-not-permitted",
+   "asked": true
+  },
+  {
+   "name": "a port that fails",
+   "parent": [
+    "root"
+   ],
+   "answer": "throw",
+   "expect": "admission-unknown",
+   "asked": true
+  },
+  {
+   "name": "an answer of another form",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": 5
+   },
+   "expect": "admission-unknown",
+   "asked": true
+  },
+  {
+   "name": "an empty answer chain",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": ""
+   },
+   "expect": "malformed",
+   "asked": true
+  },
+  {
+   "name": "an answer chain of no links",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": "[]"
+   },
+   "expect": "malformed",
+   "asked": true
+  },
+  {
+   "name": "an answer with a member beside the chain",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "child"
+    ],
+    "note": "ok"
+   },
+   "expect": "admission-unknown",
+   "asked": true
+  },
+  {
+   "name": "a narrowed link that may itself delegate",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "relay"
+    ]
+   },
+   "expect": {
+    "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+    "links": 2
+   },
+   "asked": true
+  },
+  {
+   "name": "the parent's chain and two valid links below it",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "root",
+     "relay",
+     "relayLeaf"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "another root's chain at the right length",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "otherActor",
+     "otherActorChild"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  },
+  {
+   "name": "another subject's chain at the right length",
+   "parent": [
+    "root"
+   ],
+   "answer": {
+    "chain": [
+     "otherSubject",
+     "otherSubjectChild"
+    ]
+   },
+   "expect": "chain-broken",
+   "asked": true
+  }
+ ]
+}

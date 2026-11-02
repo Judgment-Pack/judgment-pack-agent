@@ -275,6 +275,10 @@
           "items": {
             "$ref": "#/$defs/artifactPin"
           }
+        },
+        "principal": {
+          "description": "ADR-0029: a delegated run's subject, root actor and issuing host. A resume keeps them: another is refused principal-changed, and evidence of none for a delegated run is evidence-missing.",
+          "$ref": "run-principal.json#/$defs/binding"
         }
       },
       "additionalProperties": false
@@ -407,6 +411,10 @@
           "items": {
             "$ref": "#/$defs/admission"
           }
+        },
+        "principal": {
+          "description": "ADR-0029: a delegated run's subject, root actor and issuing host. A resume keeps them: another is refused principal-changed, and evidence of none for a delegated run is evidence-missing.",
+          "$ref": "run-principal.json#/$defs/binding"
         }
       },
       "additionalProperties": false
@@ -471,7 +479,8 @@
             "reference-changed",
             "policy-changed",
             "approval-changed",
-            "admission-invalid"
+            "admission-invalid",
+            "principal-changed"
           ]
         }
       },

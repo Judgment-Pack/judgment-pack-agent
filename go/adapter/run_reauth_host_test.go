@@ -241,7 +241,7 @@ func (s *hostSetup) park(proof *runcontext.ReauthorizationRequired, wait, key st
 	return held, err
 }
 func hostEvidence(wait string, held runcontext.RunWait) runcontext.ResumeEvidence {
-	return runcontext.ResumeEvidence{Version: 1, Resource: "run-r", Wait: wait, Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: held.Pins.Policy}, Plan: held.Pins.Plan, Sources: held.Pins.Sources, Artifacts: held.Pins.Artifacts}
+	return runcontext.ResumeEvidence{Version: 1, Resource: "run-r", Wait: wait, Model: contract.RunResumeCurrentModel{Provider: "openai", Model: "fixture", Status: "available"}, Policy: contract.RunResumeCurrentPolicy{Digest: held.Pins.Policy}, Plan: held.Pins.Plan, Sources: held.Pins.Sources, Artifacts: held.Pins.Artifacts, Principal: held.Pins.Principal}
 }
 func (s *hostSetup) wakeInput(t *testing.T, wait, key string, held runcontext.RunWait, store runcontext.RunStore) runcontext.ResumeInput {
 	t.Helper()

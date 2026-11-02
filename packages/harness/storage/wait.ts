@@ -5,7 +5,8 @@ import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
 import {storageId,STORAGE_PAGE_LIMIT} from './common'
-import {LeaseRefused,attachReauthorizedDispatch,validConnectionReference,readLeaseFence,readRunLease,reauthDispositionOf,trustedReauthorization,unattendedRunStore,useReauthorization,validLeaseEpoch,type EffectHost,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease,type ReauthDisposition,type ReauthorizationRequired} from './lease'
+import {sameBinding} from '../principal'
+import {LeaseRefused,attachReauthorizedDispatch,fenceOf,validConnectionReference,readLeaseFence,readRunLease,reauthDispositionOf,trustedReauthorization,unattendedRunStore,useReauthorization,validLeaseEpoch,type EffectHost,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease,type ReauthDisposition,type ReauthorizationRequired} from './lease'
 import {ReauthorizationRefused,permitted,readReauthDisposition,readReauthorized,reauthorize,type Reauthorized} from './reauth'
 import type {StorageRevision} from './common'
 import type {RunStore} from './run'
@@ -817,9 +818,10 @@ export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
  const revalidation=revalidateResume(wait,input.current)
  // #226: the identity, the action's time and the permissions, before anything is claimed.
  const reauthorized=wait.reason==='reauthorization'?reauthorize(wait,input.reauthorization):undefined
- const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs}
+ // ADR-0029: the claim's lease holds the principals the wait pinned, so a takeover by resume keeps them.
+ const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs,...(wait.pins.principal?{principal:copy(wait.pins.principal)}:{})}
  const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation,...(reauthorized?{reauthorized}:{})},input.signal),wait,lease,revalidation,reauthorized)
- const fence={version:1 as const,resource:claimed.lease.resource,owner:claimed.lease.owner,epoch:claimed.lease.epoch}
+ const fence=fenceOf(claimed.lease)
  return {lease:claimed.lease,fence,wait:claimed.wait,revalidation:copy(claimed.wait.revalidation!),...decision,...(claimed.wait.resolution?{resolution:copy(claimed.wait.resolution)}:{}),...(claimed.wait.reauthorized?{reauthorized:copy(claimed.wait.reauthorized)}:{})}
 }
 /** #226: the fenced view a resumed reauthorization wait's continuation runs on: unattended admission of the store and
@@ -850,7 +852,7 @@ function readClaimed(value:unknown,wait:RunWait,request:LeaseAcquire,revalidatio
  try{lease=readRunLease(copy(value.lease))}catch{return invalid()}
  const expiry=at(lease.expiry),bound=[held.deadline?.run,held.reason==='approval'?held.deadline?.approval:undefined].filter((t):t is string=>t!==undefined)
  if(held.resource!==wait.resource||held.wait!==wait.wait||held.state!=='resumed'||held.resumed?.owner!==lease.owner||held.resumed.epoch!==lease.epoch||canonicalJSON(held.revalidation)!==canonicalJSON(revalidation)||canonicalJSON(held.checkpoint)!==canonicalJSON(wait.checkpoint)
-  ||lease.resource!==wait.resource||lease.owner!==request.owner||lease.state!=='held'||held.reason==='approval'&&held.deadline?.approval===undefined||bound.some(t=>expiry>at(t))
+  ||lease.resource!==wait.resource||lease.owner!==request.owner||lease.state!=='held'||!sameBinding(lease.principal,request.principal)||held.reason==='approval'&&held.deadline?.approval===undefined||bound.some(t=>expiry>at(t))
   ||canonicalJSON(held.reauthorized??null)!==canonicalJSON(reauthorized??null)||held.reason==='reauthorization'&&held.deadline?.approval!==undefined&&expiry>at(held.deadline.approval))return invalid()
  return {wait:held,lease}
 }

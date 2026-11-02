@@ -1,0 +1,99 @@
+{
+ "description": "Handwritten principal bindings (ADR-0029; RFC 0030 §7 rule 2): what a delegated run's lease, fence and wait hold, in the form of the reference gateway's reservation scope. Two are the same principals only when every member is equal, the subject's kind among them.",
+ "schema": "run-principal.json#/$defs/binding",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (principalBinding, validPrincipalBinding, sameBinding)",
+   "packages/harness/principalChild.test.ts"
+  ]
+ },
+ "items": [
+  {
+   "sub": {
+    "kind": "person",
+    "issuer": "https://login.example.com/",
+    "subject": "approver@example.com"
+   },
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+   "host": "desk"
+  },
+  {
+   "sub": {
+    "kind": "person",
+    "issuer": "https://login.example.com/",
+    "subject": "approver@example.com"
+   },
+   "rootActor": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+   "host": "desk"
+  },
+  {
+   "sub": {
+    "kind": "person",
+    "issuer": "https://login.example.com/",
+    "subject": "other@example.com"
+   },
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+   "host": "desk"
+  },
+  {
+   "sub": {
+    "kind": "service",
+    "issuer": "https://login.example.com/",
+    "subject": "approver@example.com"
+   },
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+   "host": "desk"
+  },
+  {
+   "sub": {
+    "kind": "person",
+    "issuer": "https://login.example.com/",
+    "subject": "approver@example.com"
+   },
+   "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+   "host": "other-host"
+  }
+ ],
+ "refused": [
+  {
+   "problem": "a binding names its host",
+   "binding": {
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "problem": "a root actor is an opaque identifier",
+   "binding": {
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "rootActor": "agent-1",
+    "host": "desk"
+   }
+  },
+  {
+   "problem": "a binding carries no token",
+   "binding": {
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+    "host": "desk",
+    "token": "never"
+   }
+  }
+ ]
+}
