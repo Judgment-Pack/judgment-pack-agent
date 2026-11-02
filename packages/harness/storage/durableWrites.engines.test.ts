@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { MemoryRunStore } from './run'
+import { durableSession } from './writer'
 import { deepagents } from '../engines/deepagents'
 import { vercel } from '../engines/vercel'
 import { ofType, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
@@ -94,7 +95,7 @@ describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('every 
 
 // A pause a Go writer kept its text in, approved here: the decision must prove what the person was shown.
 describe('a kept text from a Go writer, approved here (#275)', () => {
-  const resume = async (shownDigest?: string) => {
+  const resume = async (shownDigest?: string, withoutStore = false) => {
     const store = new MemoryRunStore(), executed: unknown[] = []
     const declared = { name: 'change_record', description: 'Change one record', inputSchema: { type: 'object' }, taxonomy: { operation: 'act', effect: 'act' } as const }
     const tool = {
@@ -102,10 +103,10 @@ describe('a kept text from a Go writer, approved here (#275)', () => {
       source: { kind: 'custom', id: 'tracker', trust: 'person', version: '1', toolListDigest: await toolListDigest([declared] as never), identity: { kind: 'connection', label: 'tracker' } },
       execute: async (args: unknown) => { executed.push(args); return { content: [{ type: 'text' as const, text: 'ran' }] } }
     } as unknown as HostTool
-    const turn = (decision?: object, resumed = false) => vercelTurn({
+    const turn = (decision?: object, resumed = false, execution?: object) => vercelTurn({
       engine: vercel, hostTools: [tool],
       answer: (request: EndpointRequest) => streamed(!resumed && request.number === 1 ? callFrame('call_1', 'tracker__change_record', '{"id":7}') : sseTurn({ text: 'Done.' })),
-      session: { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, runStore: { store, id: 'kept', ...(resumed ? { resume: true } : {}) }, ...(decision ? { approval: decision } : {}) } } as never
+      session: { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, ...(execution ? { execution } : { runStore: { store, id: 'kept', ...(resumed ? { resume: true } : {}) } }), ...(decision ? { approval: decision } : {}) } } as never
     })
     await turn()
     // What a Go writer would have kept: the text, at the version that holds it.
@@ -114,11 +115,25 @@ describe('a kept text from a Go writer, approved here (#275)', () => {
     saved.approval.request = '{ "id" : 7 }'
     saved.digest = recordDigest(saved as never)
     await store.commit({ runId: 'kept', expectedRevision: head.revision, commitId: 'go-writer', checkpoint: new TextEncoder().encode(canonicalJSON(saved)), events: [] })
-    const record = await turn({ callId: saved.approval.callId, approved: true, ...(shownDigest ? { shownDigest } : {}) }, true)
-    return { executed, errors: ofType(record.events, 'error') as unknown as { message: string }[] }
+    const decision = { callId: saved.approval.callId, approved: true, ...(shownDigest ? { shownDigest } : {}) }
+    // With no store the record is the host's own checkpoint, so it carries nothing durable.
+    const { durable: _durable, ...plain } = saved
+    const record = await turn(decision, true, withoutStore ? { ...plain, digest: recordDigest(plain as never) } : undefined)
+    return { store, decision, executed, errors: ofType(record.events, 'error') as unknown as { message: string }[] }
   }
   it('refuses by name where the decision proves nothing, and nothing runs', async () => {
     const out = await resume()
+    expect(out.executed).toEqual([])
+    expect(out.errors[0]?.message).toContain('ApprovalNotShown')
+  })
+  // Each holds the refusal alone on its own path: the session before a writer opens, the controller with no store at all.
+  it('refuses at the session itself, before a writer opens', async () => {
+    const { store, decision } = await resume()
+    const session = { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, runStore: { store, id: 'kept', resume: true }, approval: decision } }
+    await expect(durableSession(session as never)).rejects.toThrow('ApprovalNotShown')
+  })
+  it('refuses by name with no run store too, and nothing runs', async () => {
+    const out = await resume(undefined, true)
     expect(out.executed).toEqual([])
     expect(out.errors[0]?.message).toContain('ApprovalNotShown')
   })

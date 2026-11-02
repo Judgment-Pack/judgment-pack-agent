@@ -12111,7 +12111,7 @@
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "Go twin (by hand): skip only the hold in PrepareDurableInput, with the chain still opened; caught at ^TestAFenceOfOtherPrincipalsIsRefusedBeforeTheStoreIsTouched$, which counts 1 Load and two errors instead of none and one (#283). Skipping the whole block with the chain's opening leaves the writer to refuse a bad chain, and is what ^TestARefusedChainIsRefusedBeforeTheStoreIsTouched$ catches."
+   "note": "Caught at principalChild.test.ts > a fence of other principals is refused before the store is touched. The session's later hold still refuses by name, so only the count of the store's reads holds this row; until #296 the storage stop that lost the name caught it by accident (#297). Go twin (by hand): skip only the hold in PrepareDurableInput, with the chain still opened; caught at ^TestAFenceOfOtherPrincipalsIsRefusedBeforeTheStoreIsTouched$, which counts 1 Load and two errors instead of none and one (#283). Skipping the whole block with the chain's opening leaves the writer to refuse a bad chain, and is what ^TestARefusedChainIsRefusedBeforeTheStoreIsTouched$ catches."
   },
   {
    "name": "principal P71 a resume reads its wait before its principals",
@@ -12340,7 +12340,18 @@
    ],
    "status": "caught",
    "origin": "agent#275",
-   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so only the test at the session itself can tell them apart."
+  },
+  {
+   "name": "a decision with no run store proves nothing",
+   "file": "execution/controller.ts",
+   "find": "   if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297"
   },
   {
    "name": "report 3 with repeat tools reads only checkpoint 4",
@@ -12583,9 +12594,9 @@
    "note": "#293 F2, the #290 review's D4. Go twin (by hand): decision.Approved added to the ShownDigest clause of waitDecision; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
   },
   {
-   "name": "start refusal the writer records a refusal it has no root for",
+   "name": "start refusal the writer records a refusal it has no bind for",
    "file": "storage/writer.ts",
-   "find": "if(binding.root&&!this.root&&!this.latest&&(event.type==='error'||event.type==='usage'||event.type==='end'))return writeRunEvent(event);",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
    "replace": "",
    "tests": [
     "storage/startRefusal.test.ts"
@@ -12597,8 +12608,8 @@
   {
    "name": "start refusal the pass-through leaves the end out",
    "file": "storage/writer.ts",
-   "find": "(event.type==='error'||event.type==='usage'||event.type==='end'))return writeRunEvent(event);",
-   "replace": "(event.type==='error'||event.type==='usage'))return writeRunEvent(event);",
+   "find": "||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "replace": "||event.type==='guardrail'))return writeRunEvent(event);",
    "tests": [
     "storage/startRefusal.test.ts"
    ],
@@ -12607,9 +12618,9 @@
    "note": "#293 F3: a second error from the end. TypeScript only."
   },
   {
-   "name": "start refusal the pass-through takes a run with a head",
+   "name": "start refusal the pass-through takes a bound run",
    "file": "storage/writer.ts",
-   "find": "if(binding.root&&!this.root&&!this.latest&&(event.type==='error'",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'",
    "replace": "if(binding.root&&(event.type==='error'",
    "tests": [
     "storage/writer.test.ts",
@@ -12619,6 +12630,66 @@
    "status": "caught",
    "origin": "agent#293",
    "note": "#293 F3: an ordinary run's end would not be recorded. TypeScript only."
+  },
+  {
+   "name": "start refusal the pass-through leaves the error out",
+   "file": "storage/writer.ts",
+   "find": "(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "replace": "(event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297",
+   "note": "#297 G4. TypeScript only: Go reports the refusal under a store."
+  },
+  {
+   "name": "start refusal the pass-through leaves the usage out",
+   "file": "storage/writer.ts",
+   "find": "(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "replace": "(event.type==='error'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297",
+   "note": "#297 G4. TypeScript only: Go reports the refusal under a store."
+  },
+  {
+   "name": "start refusal the pass-through leaves the guardrail out",
+   "file": "storage/writer.ts",
+   "find": "(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);",
+   "replace": "(event.type==='error'||event.type==='usage'||event.type==='end'))return writeRunEvent(event);",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297",
+   "note": "#297 G4. TypeScript only: Go reports the refusal under a store."
+  },
+  {
+   "name": "start refusal the pass-through takes any event",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return",
+   "replace": "if(binding.root&&!this.policy)return",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297",
+   "note": "#297 G4. TypeScript only."
+  },
+  {
+   "name": "start refusal the pass-through takes a child's scope",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'",
+   "replace": "if(!this.policy&&(event.type==='error'",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#297",
+   "note": "#297 G2. TypeScript only."
   },
   {
    "name": "job J1 a reader takes any generation",

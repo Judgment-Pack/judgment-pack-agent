@@ -406,10 +406,12 @@ class Workflows(unittest.TestCase):
         self.assertIn('mutation-rows', config()['workflows']['ci']['jobs']['check']['checks'])
 
     def test_no_other_run_can_cancel_or_replace_a_candidates_table(self):
-        """A run at another commit is in another group, nothing but a pull request cancels, and each
-        trigger has its own group, so a nightly run cannot replace a dispatch waiting at the same commit."""
-        self.assertIn("concurrency:\n  group: mutation-${{ github.event_name }}-"
-                      "${{ github.event_name == 'pull_request' && github.ref || github.sha }}\n"
+        """A run at another commit or from another ref is in another group, nothing but a pull request
+        cancels (a new push replaces its own older run, so its group has no commit), and each trigger has its
+        own group, so neither a nightly run nor a dispatch from a branch at the candidate's commit can hold or
+        replace a dispatch from main waiting at the same commit."""
+        self.assertIn("concurrency:\n  group: mutation-${{ github.event_name }}-${{ github.ref }}"
+                      "${{ github.event_name != 'pull_request' && format('-{0}', github.sha) || '' }}\n"
                       "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
                       read('.github/workflows/mutation.yml'))
 
