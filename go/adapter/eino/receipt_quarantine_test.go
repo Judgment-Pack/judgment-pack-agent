@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	native "github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
@@ -154,7 +155,7 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 			if through[engine] != nil && !through[engine][held.Name] {
 				continue
 			}
-			t.Run(engine+"/"+held.Name, func(t *testing.T) {
+			check := func(t *testing.T) {
 				ctx := context.Background()
 				var executions, verifications atomic.Int32
 				tool := quarantineDeclaration(t, v, held.Result, held.Receipt, held.Verifier, &executions, &verifications)
@@ -323,6 +324,17 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 				if executions.Load() != 1 {
 					t.Fatal("the source was called again")
 				}
+			}
+			t.Run(engine+"/"+held.Name, func(t *testing.T) {
+				// #254: the budget is the case's point only at the verifier, which outlasts it. On the
+				// clock of a synctest bubble no time passes while anything runs, so a slow runner cannot
+				// spend it on the durable claim first (timeout, storage, unknown), and it ends only
+				// when the verifier is all that is left waiting.
+				if held.Name == "expired-receipt" {
+					synctest.Test(t, check)
+					return
+				}
+				check(t)
 			})
 		}
 	}

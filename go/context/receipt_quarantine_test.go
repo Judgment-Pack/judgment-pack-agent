@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -218,7 +219,7 @@ func TestAnUnverifiedReceiptLeavesNothingAReaderCanReach(t *testing.T) {
 	fixture, items := vector.Get("fixture"), vector.Get("items").Items()
 	sentinel, wire := fixture.Get("sentinel").Str(), fixture.Get("wireName").Str()
 	for _, held := range fixture.Get("cases").Items() {
-		t.Run(held.Get("name").Str(), func(t *testing.T) {
+		check := func(t *testing.T) {
 			ctx := context.Background()
 			chat := NewChatContext(fixture.Get("scope").Str())
 			store := NewMemoryRunStore(MemoryRunStoreOptions{})
@@ -264,6 +265,16 @@ func TestAnUnverifiedReceiptLeavesNothingAReaderCanReach(t *testing.T) {
 			if index := next.Index(Defaults.TurnIndexEntries, Defaults.TurnIndexBytes, testMarker, IndexNoRoomBound); strings.Contains(index, sentinel) || strings.Contains(index, retained) {
 				t.Fatalf("the next run's index carries it: %q", index)
 			}
+		}
+		t.Run(held.Get("name").Str(), func(t *testing.T) {
+			// #254: the budget is the case's point only at the verifier, which outlasts it. On the clock
+			// of a synctest bubble no time passes while anything runs, so a slow runner cannot spend it
+			// first, and it ends only when the verifier is all that is left waiting.
+			if held.Get("name").Str() == "expired-receipt" {
+				synctest.Test(t, check)
+				return
+			}
+			check(t)
 		})
 	}
 }
