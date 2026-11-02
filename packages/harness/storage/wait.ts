@@ -1,6 +1,7 @@
 import {AIFailureError,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
+import type {HistoryRunStore} from './history'
 import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
@@ -10,6 +11,7 @@ import {LeaseRefused,attachReauthorizedDispatch,fenceOf,validConnectionReference
 import {ReauthorizationRefused,permitted,readReauthDisposition,readReauthorized,reauthorize,type Reauthorized} from './reauth'
 import type {StorageRevision} from './common'
 import type {RunStore} from './run'
+import {JobRefused,jobPortOfStore,readRunJob,type JobTable,type RunJob} from './job'
 import type {ChatStore} from './chat'
 import {ResumeRefused,approvalBinding,pinsDigest,pinsFrom,readApprovalBinding,readResumePins,readRevalidation,readRunLimit,readWaitDeadline,readWaitLimits,revalidateResume,stampDeadline,type ApprovalBinding,type PinnedModel,type ResumePins,type Revalidation,type RunLimit,type WaitDeadline,type WaitLimits} from './resume'
 /* Durable waits, attention and the park/wake report (ADR-0025 decisions 2 and 6, #224 and #228;
@@ -21,14 +23,16 @@ import {ResumeRefused,approvalBinding,pinsDigest,pinsFrom,readApprovalBinding,re
  * notifications and processes; nothing here polls, schedules or sends. A wake is never an approval, a budget grant or an
  * answer of another reason. The Go twin is go/context/run_wait.go. */
 export const WAIT_RECORD_VERSION=1 as const
-export type WaitReason='approval'|'budget'|'question'|'reauthorization'
+export type WaitReason='approval'|'budget'|'question'|'reauthorization'|'job'
 export type WaitState='parked'|'woken'|'timed-out'|'resumed'|'expired'
 export type WaitLifetime='durable'|'process'
 export type WaitRefusalReason='invalid'|'nothing-pending'|'wait-pending'|'conflict'|'checkpoint-changed'|'no-wait'|'unauthenticated'|'mismatch'|'not-due'|'stale'|'unacknowledged'|'already-resumed'|'decision-required'|'timed-out'|'release-uncertain'|'chat-changed'|'deadline-passed'|'closed'|'approval-ttl-required'|'key-reused'|'not-resumable'
 export type WaitCapabilityReason='store-unsupported'|'store-lifetime'|'chat-store-unsupported'
 export const WAIT_REFUSAL_REASONS:readonly WaitRefusalReason[]=['invalid','nothing-pending','wait-pending','conflict','checkpoint-changed','no-wait','unauthenticated','mismatch','not-due','stale','unacknowledged','already-resumed','decision-required','timed-out','release-uncertain','chat-changed','deadline-passed','closed','approval-ttl-required','key-reused','not-resumable']
 export const WAIT_CAPABILITY_REASONS:readonly WaitCapabilityReason[]=['store-unsupported','store-lifetime','chat-store-unsupported']
-const REASONS=['approval','budget','question','reauthorization'] as const
+const REASONS=['approval','budget','question','reauthorization','job'] as const
+/** A timeout ends these waits unanswered and the run goes on; any other reason's timeout closes its run. */
+const timeoutContinues=(reason:WaitReason)=>reason==='question'||reason==='job'
 /** At most this many release entries per park, and waits per export page. */
 export const WAIT_RELEASE_LIMIT=16
 export const WAIT_EXPORT_LIMIT=1024
@@ -41,6 +45,8 @@ export type PendingDecision=
  |{kind:'question';event:string;questionDigest:string;question?:UserQuestion}
  /** #226: the never-admitted operation of a trusted disposition: its dispatch claim id, source and tool, and the connection. */
  |{kind:'reauthorization';operation:string;source:string;tool:string;connection:string;cause:'expired'|'revoked'}
+ /** #229: the started job a job wait waits for. */
+ |{kind:'job';job:string;generation:1}
 export interface ReleaseEvidence {resource:string;outcome:'released'|'not-held'|'uncertain'}
 export interface WaitActor {owner:string;epoch:string;at:string}
 export interface WakeDisposition {evidence:string;kind:'event'|'time'|'timeout'|'deadline';at:string;digest:string}
@@ -59,7 +65,7 @@ export interface RunWait {
  * attention. */
 export type WaitPark=Omit<RunWait,'parked'|'attention'|'state'|'deadline'|'disposition'|'expired'|'resolution'|'resumed'|'revalidation'|'reconciled'|'redacted'|'reauthorized'>
 export interface WakeEvidence {version:1;resource:string;wait:string;evidence:string;kind:'event'|'time'|'timeout'|'deadline';event?:EventCondition;answer?:QuestionDraft;actor?:string;key:string}
-export interface AttentionEvent {version:1;type:'needs_attention';id:string;resource:string;wait:string;reason:WaitReason;needs:'approval-decision'|'budget-grant'|'question-answer'|'reauthorization';subject?:string;condition:WaitCondition;timeoutAt?:string;deadline?:string;releaseUncertain:boolean;at:string}
+export interface AttentionEvent {version:1;type:'needs_attention';id:string;resource:string;wait:string;reason:WaitReason;needs:'approval-decision'|'budget-grant'|'question-answer'|'reauthorization'|'job-completion';subject?:string;condition:WaitCondition;timeoutAt?:string;deadline?:string;releaseUncertain:boolean;at:string}
 export interface AttentionDelivery {version:1;attention:string;delivery:string;outcome:'sent'|'failed';at:string}
 export interface ReportContent {state:'available'|'redacted'|'expired';digest:string;question?:UserQuestion;answer?:QuestionDraft}
 export interface WaitReportEntry {wait:string;decision:'park'|'wake'|'timeout'|'answer'|'unanswered'|'resume'|'deadline';reason:WaitReason;at:string;owner?:string;epoch?:string;evidence?:string;wake?:'event'|'time'|'timeout'|'deadline';actor?:string;subject?:string;condition?:WaitCondition;timeoutAt?:string;deadline?:string;release?:'clean'|'uncertain';content?:ReportContent}
@@ -132,6 +138,7 @@ function readPending(v:unknown,reason:WaitReason,redacted:boolean):PendingDecisi
  if(reason==='approval'){const held=shape(v,['kind','callId','name','tool']);return {kind:'approval',callId:text(held.callId,1,256),name:text(held.name,1,256),tool:text(held.tool,1,128)}}
  // #265 M3: a provider-managed allowance takes no grant, so no wait carries one.
  if(reason==='budget'){const held=shape(v,['kind','unit','used','limit']);const limit=integer(held.limit,1,100);return {kind:'budget',unit:one(held.unit,['model-requests'] as const),used:integer(held.used,0,limit),limit}}
+ if(reason==='job'){const held=shape(v,['kind','job','generation']);if(held.generation!==1)return invalid();return {kind:'job',job:digest(held.job),generation:1}}
  if(reason==='reauthorization'){const held=shape(v,['kind','operation','source','tool','connection','cause']);return {kind:'reauthorization',operation:id(held.operation),source:id(held.source),tool:id(held.tool),connection:validConnectionReference(held.connection)?held.connection:invalid(),cause:one(held.cause,['expired','revoked'] as const)}}
  const held=shape(v,['kind','event','questionDigest'],['question'])
  // A question is carried until the wait is redacted, and never after; its digest is always kept.
@@ -170,7 +177,7 @@ function readParkMembers(held:Record<string,unknown>,redacted:boolean,stored:boo
  const reason=one(held.reason,REASONS),condition=readWaitCondition(held.condition)
  // A question waits for its answer event, and a reauthorization for the host's or the person's action; a wake time would
  // end either with neither.
- if((reason==='question'||reason==='reauthorization')&&(condition.event===undefined||condition.wakeAt!==undefined))return invalid()
+ if((reason==='question'||reason==='reauthorization'||reason==='job')&&(condition.event===undefined||condition.wakeAt!==undefined))return invalid()
  const checkpoint=shape(held.checkpoint,['revision','digest'])
  const park:WaitPark={version:1,resource:id(held.resource),wait:id(held.wait),reason,pending:readPending(held.pending,reason,redacted),condition,
   ...(held.timeoutAt===undefined?{}:{timeoutAt:time(held.timeoutAt)}),continuation:id(held.continuation),checkpoint:{revision:id(checkpoint.revision),digest:digest(checkpoint.digest)},
@@ -191,6 +198,8 @@ function readParkMembers(held:Record<string,unknown>,redacted:boolean,stored:boo
   if(park.limits?.approvalTtlMs!==undefined||park.approval!==undefined&&(!stored||!park.pins.sources.some(s=>s.source===park.approval!.source)))return invalid()
  }else if(park.approval!==undefined||park.limits?.approvalTtlMs!==undefined)return invalid()
  if(reason!=='reauthorization'&&park.reauthorization!==undefined)return invalid()
+ // #229: a job wait waits for this job's completion and nothing else, and no chat binding can stay current that long.
+ if(reason==='job'&&(condition.event!.kind!==JOB_WAIT_EVENT||condition.event!.subject!==(park.pending as {job:string}).job||park.chat!==undefined))return invalid()
  return park
 }
 /** Reads the store's input: a park before the store stamps it. */
@@ -225,7 +234,7 @@ export function readRunWait(v:unknown):RunWait{
   wait.disposition=readDisposition(held.disposition)
   // A timeout ends the wait timed-out; a resumed wait keeps the disposition it was resumed after (a timed-out
   // approval or budget wait is never resumed).
-  if(wait.disposition.kind==='deadline'||state==='woken'&&wait.disposition.kind==='timeout'||state==='timed-out'&&wait.disposition.kind!=='timeout'||state==='resumed'&&wait.disposition.kind==='timeout'&&wait.reason!=='question')return invalid()
+  if(wait.disposition.kind==='deadline'||state==='woken'&&wait.disposition.kind==='timeout'||state==='timed-out'&&wait.disposition.kind!=='timeout'||state==='resumed'&&wait.disposition.kind==='timeout'&&!timeoutContinues(wait.reason))return invalid()
   if(state==='resumed'){wait.resumed=readActor(held.resumed);if(at(wait.resumed.at)<at(wait.disposition.at))return invalid()}else if(held.resumed!==undefined)return invalid()
   if(at(wait.disposition.at)<at(wait.parked.at))return invalid()
  }
@@ -270,7 +279,7 @@ export function readAttentionEvent(v:unknown):AttentionEvent{
  const held=shape(v,['version','type','id','resource','wait','reason','needs','condition','releaseUncertain','at'],['subject','timeoutAt','deadline'])
  version(held)
  if(held.type!=='needs_attention'||typeof held.releaseUncertain!=='boolean')return invalid()
- const event:AttentionEvent={version:1,type:'needs_attention',id:digest(held.id),resource:id(held.resource),wait:id(held.wait),reason:one(held.reason,REASONS),needs:one(held.needs,['approval-decision','budget-grant','question-answer','reauthorization'] as const),
+ const event:AttentionEvent={version:1,type:'needs_attention',id:digest(held.id),resource:id(held.resource),wait:id(held.wait),reason:one(held.reason,REASONS),needs:one(held.needs,['approval-decision','budget-grant','question-answer','reauthorization','job-completion'] as const),
   ...(held.subject===undefined?{}:{subject:id(held.subject)}),condition:readWaitCondition(held.condition),...(held.timeoutAt===undefined?{}:{timeoutAt:time(held.timeoutAt)}),...(held.deadline===undefined?{}:{deadline:time(held.deadline)}),releaseUncertain:held.releaseUncertain,at:time(held.at)}
  if(event.deadline!==undefined&&at(event.deadline)<=at(event.at))return invalid()
  if(event.id!==attentionId(event.resource,event.wait)||event.needs!==NEEDS[event.reason]||(event.reason==='budget')!==(event.subject===undefined))return invalid()
@@ -333,7 +342,9 @@ export function readWaitExport(v:unknown):WaitExport{
 export function readWaitRefusal(v:unknown):{version:1;reason:WaitRefusalReason}{const held=shape(v,['version','reason']);version(held);return {version:1,reason:one(held.reason,WAIT_REFUSAL_REASONS)}}
 export function readWaitCapabilityRefusal(v:unknown):{version:1;reason:WaitCapabilityReason}{const held=shape(v,['version','reason']);version(held);return {version:1,reason:one(held.reason,WAIT_CAPABILITY_REASONS)}}
 
-const NEEDS={approval:'approval-decision',budget:'budget-grant',question:'question-answer',reauthorization:'reauthorization'} as const
+const NEEDS={approval:'approval-decision',budget:'budget-grant',question:'question-answer',reauthorization:'reauthorization',job:'job-completion'} as const
+/** The one event a job wait waits for; its subject is the job. */
+export const JOB_WAIT_EVENT='job-completion'
 /** The attention event's identity: the SHA-256 of the canonical JSON of {resource, wait}. A notifier deduplicates by it. */
 export const attentionId=(resource:string,wait:string)=>`sha256:${sha256(canonicalJSON({resource,wait}))}`
 export const questionDigest=(prompt:UserQuestion)=>`sha256:${sha256(canonicalJSON(prompt))}`
@@ -344,7 +355,7 @@ export const wakeKeyDigest=(key:string)=>{if(!validWakeKey(key))return invalid()
 export const checkpointBytesDigest=(bytes:Uint8Array)=>`sha256:${sha256(new TextDecoder('utf-8',{fatal:true}).decode(bytes))}`
 /** The one needs_attention event of a committed park. */
 export function attentionFor(wait:RunWait):AttentionEvent{
- const subject=wait.pending.kind==='approval'?wait.pending.callId:wait.pending.kind==='question'?wait.pending.event:wait.pending.kind==='reauthorization'?wait.pending.connection:undefined
+ const subject=wait.pending.kind==='approval'?wait.pending.callId:wait.pending.kind==='question'?wait.pending.event:wait.pending.kind==='reauthorization'?wait.pending.connection:wait.pending.kind==='job'?wait.pending.job:undefined
  return {version:1,type:'needs_attention',id:wait.attention,resource:wait.resource,wait:wait.wait,reason:wait.reason,needs:NEEDS[wait.reason],...(subject===undefined?{}:{subject}),condition:structuredClone(wait.condition),...(wait.timeoutAt===undefined?{}:{timeoutAt:wait.timeoutAt}),...(wait.deadline===undefined?{}:{deadline:wait.deadline.at}),releaseUncertain:wait.release.some(r=>r.outcome==='uncertain'),at:wait.parked.at}
 }
 
@@ -411,7 +422,7 @@ export interface WaitRunStore extends LeaseRunStore,WaitStore {}
 
 const copy=<T,>(v:T):T=>structuredClone(v)
 /** A terminal wait ends its run: a timed-out approval or budget wait, or one past its deadline. */
-const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'
+const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&!timeoutContinues(row.reason)
 function readClaim(v:unknown):WaitClaim{
  const held=shape(v,['resource','wait','evidence','lease','reconciled','revalidation'],['reauthorized'])
  if(!object(held.lease))return invalid()
@@ -440,6 +451,8 @@ export class WaitTable {
  constructor(private readonly clock:()=>Date=()=>new Date()){}
  private now():string{const t=this.clock();const ms=t instanceof Date?t.getTime():NaN;if(!Number.isSafeInteger(ms))return invalid();return new Date(ms).toISOString()}
  private find(resource:string,wait:string):RunWait|undefined{return this.rows.get(resource)?.find(row=>row.wait===wait)}
+ /** #229: whether any wait of the store holds this key digest: a key belongs to one wait or one job. */
+ keyHeld(keyDigest:string):boolean{for(const list of this.rows.values())if(list.some(row=>row.wakeKeyDigest===keyDigest))return true;return false}
  read(resource:string,wait:string):RunWait|undefined{const row=this.find(id(resource),id(wait));return row?copy(row):undefined}
  /** The latest any lease of the run may expire: its deadline and, until the approved call settles, the approval's expiry
   * (#225 H1: every lease, not only the claim's, so neither a takeover nor a re-acquired lease outlives the approval). */
@@ -484,7 +497,7 @@ export class WaitTable {
   }
   return {version:1,resource:limit.resource,run:new Date(next).toISOString()}
  }
- park(input:WaitPark,fence:LeaseFence,head:{revision:StorageRevision;checkpoint:Uint8Array|null}|undefined,leases:LeaseTable):{wait:RunWait;attention:AttentionEvent}{
+ park(input:WaitPark,fence:LeaseFence,head:{revision:StorageRevision;checkpoint:Uint8Array|null}|undefined,leases:LeaseTable,jobs?:JobTable):{wait:RunWait;attention:AttentionEvent}{
   const park=readWaitPark(input),held=readLeaseFence(fence)
   if(held.resource!==park.resource)throw new LeaseRefused('resource-mismatch')
   const existing=this.find(park.resource,park.wait)
@@ -502,7 +515,7 @@ export class WaitTable {
   if(rows.some(terminal))throw new WaitRefused('closed')
   if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')
   // #265 M1: a wake key belongs to one wait. A park whose key digest any other wait of the store holds is refused.
-  for(const list of this.rows.values())if(list.some(row=>row.wakeKeyDigest===park.wakeKeyDigest))throw new WaitRefused('key-reused')
+  if(this.keyHeld(park.wakeKeyDigest)||jobs?.keyHeld(park.wakeKeyDigest))throw new WaitRefused('key-reused')
   if(!head||head.checkpoint===null||head.revision!==park.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==park.checkpoint.digest)throw new WaitRefused('checkpoint-changed')
   // #226: a reauthorization park presents the disposition minted under its own lease (the lease this park releases, so
   // the disposition parks once), for the never-admitted dispatch its head holds. The binding of an approved call not yet
@@ -514,6 +527,9 @@ export class WaitTable {
    if(!holdsNeverAdmitted(head.checkpoint,disposition))throw new ReauthorizationRefused('unbound')
    unsettled=this.approvals.get(park.resource)
   }
+  // #229: the lost wake-up: a job that settled before this transaction has nothing to wait for, and one not proven to have
+  // started may have none coming. Only a store with the job port holds a job wait.
+  if(park.pending.kind==='job'){if(!jobs)throw new WaitCapabilityRefused('store-unsupported');jobs.admitPark(park.resource,park.pending.job)}
   const now=this.now()
   // #225: the earliest applicable deadline wins, and this park's run limit never extends the one the store holds.
   const deadline=stampDeadline(park.limits,at(now),this.ceilings.get(park.resource),unsettled?.at)
@@ -574,6 +590,8 @@ export class WaitTable {
   if(evidence.kind==='event'){
    const expected=row.condition.event
    if(!expected||expected.kind!==evidence.event!.kind||expected.subject!==evidence.event!.subject)throw new WaitRefused('mismatch')
+   // #229: only the job's own authenticated completion satisfies a job wait, through the store's completeJob.
+   if(row.reason==='job')throw new WaitRefused('mismatch')
    // An answer belongs to a question wait only, and must be a real answer to the retained question.
    if(row.reason==='question'){if(!prompt||!evidence.answer||!validQuestionDraft(prompt,evidence.answer)||!realAnswer(evidence.answer))throw new WaitRefused('mismatch')}
    else if(evidence.answer)throw new WaitRefused('mismatch')
@@ -587,6 +605,15 @@ export class WaitTable {
   if(row.reason==='question')row.resolution=evidence.kind==='timeout'?{kind:'unanswered',at:now}:{kind:'answered',at:now,actor:evidence.actor!,answerDigest:answerDigest(evidence.answer!),answer:copy(evidence.answer!)}
   return copy(disposition)
  }
+ /** #229: a job's completion, in its own transaction, wakes the wait parked on that job. Late evidence wakes nothing: from
+  * the wait's timeout or deadline, or the run's, only those end it; a wait already woken or resumed is left as it is. */
+ wakeJob(resource:string,job:string,evidence:{evidence:string;digest:string}):void{
+  const row=this.rows.get(resource)?.find(row=>row.state==='parked'&&row.pending.kind==='job'&&row.pending.job===job)
+  if(!row)return
+  const now=this.now()
+  if(this.passed(row.resource,now)||row.deadline&&at(now)>=at(row.deadline.at)||row.timeoutAt!==undefined&&at(now)>=at(row.timeoutAt))return
+  row.disposition={evidence:evidence.evidence,kind:'event',at:now,digest:evidence.digest};row.state='woken'
+ }
  resume(input:WaitClaim,head:{revision:StorageRevision;checkpoint:Uint8Array|null}|undefined,leases:LeaseTable):{wait:RunWait;lease:RunLease}{
   const claim=readClaim(input),row=this.find(claim.resource,claim.wait),settled=claim.reconciled,now=this.now()
   if(!row)throw new WaitRefused('no-wait')
@@ -594,7 +621,7 @@ export class WaitTable {
   if(!row.disposition||row.disposition.evidence!==claim.evidence)throw new WaitRefused('unacknowledged')
   if(row.state==='resumed')throw new WaitRefused('already-resumed')
   if(claim.lease.resource!==row.resource)throw new LeaseRefused('resource-mismatch')
-  if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')
+  if(row.state==='timed-out'&&!timeoutContinues(row.reason))throw new WaitRefused('timed-out')
   // #225: nothing continues past the wait's deadline, an approval's expiry or the run's deadline; equal time is past.
   if(row.state==='expired'||row.deadline&&at(now)>=at(row.deadline.at))throw new WaitRefused('deadline-passed')
   if(!head||head.checkpoint===null||head.revision!==row.checkpoint.revision||checkpointBytesDigest(head.checkpoint)!==row.checkpoint.digest)throw new WaitRefused('checkpoint-changed')
@@ -680,6 +707,8 @@ export interface ParkInput {
  release:ReleaseEvidence[]
  /** The retained user_question event a question wait is for. */
  question?:string
+ /** #229: the started job of this run the wait waits for. Only its authenticated completion satisfies the wait. */
+ job?:string
  /** #226: the trusted re-authorization refusal the run's dispatch ended in (reauthorizationOf on the fenced view the run
   * used). It parks one reauthorization wait, under the same lease it was minted under. */
  reauthorization?:ReauthorizationRequired
@@ -701,6 +730,8 @@ async function retainedQuestion(store:RunStore,run:string,event:string,signal?:A
 export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:AttentionEvent}>{
  const store=waitStoreOf(input.store),fence=readLeaseFence(input.fence)
  const chat=input.chat?{store:chatStoreOf(input.chat.store),id:id(input.chat.id)}:undefined
+ // #229: a chat's next message would make the resume chat-changed, and nothing ends such a wait short of a deadline.
+ if(input.job!==undefined&&input.chat!==undefined)throw new WaitCapabilityRefused('chat-store-unsupported')
  const head=await store.load(fence.resource,input.signal)
  if(!head||head.checkpoint===null)throw new WaitRefused('nothing-pending')
  let checkpoint
@@ -708,7 +739,23 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
  if(!checkpoint)throw new WaitRefused('nothing-pending')
  let pending:PendingDecision,approval:ApprovalBinding|undefined,disposition:ReauthDisposition|undefined
  let limits=input.limits===undefined?undefined:within(()=>readWaitLimits(input.limits))
- if(input.reauthorization!==undefined){
+ if(input.job!==undefined){
+  // #229: a job wait parks a checkpoint at rest. A pending decision is parked as that decision: its claim would carry none here.
+  if(input.question!==undefined||input.reauthorization!==undefined)return invalid()
+  if(checkpoint.status==='paused'||checkpoint.approval?.state==='asked'||checkpoint.planState?.pending!==undefined)throw new WaitRefused('decision-required')
+  if(checkpoint.status==='stopped')throw new WaitRefused('nothing-pending')
+  // M-4: at its request limit the continuation cannot make a request, so the claim would be spent and the model never told.
+  if(checkpoint.used>=checkpoint.limit)throw new WaitRefused('not-resumable')
+  // M-5: the turn of a stored chat is closed by now, and its continuation could not reach that chat.
+  const history=store as Partial<HistoryRunStore>
+  if(history.historyVersion===1&&(await history.readHistoryHead?.(fence.resource,input.signal))?.context!==undefined)throw new WaitCapabilityRefused('chat-store-unsupported')
+  const held=await jobPortOfStore(input.store).readJob(fence.resource,digest(input.job),input.signal)
+  if(held===undefined)throw new JobRefused('no-job')
+  const job=readRunJob(copy(held))
+  if(job.state==='completed'||job.state==='not-started')throw new JobRefused('job-settled')
+  if(job.state==='unproven')throw new JobRefused('job-unproven')
+  pending={kind:'job',job:job.job,generation:1}
+ }else if(input.reauthorization!==undefined){
   // #226: only a trusted, invocation-bound disposition parks a run for re-authorization: one the package minted from the
   // run's proven effect host during that live dispatch, not yet used, under this park's own lease, for the never-admitted
   // dispatch the head holds. Anything else keeps the operation's unknown outcome and is reconciled.
@@ -768,7 +815,9 @@ export interface ResumeInput {
  reauthorization?:unknown
  chat?:ChatStore;signal?:AbortSignal
 }
-export interface ResumedWait {lease:RunLease;fence:LeaseFence;wait:RunWait;revalidation:Revalidation;approval?:ApprovalDecisionInput;grant?:BudgetGrantInput;resolution?:QuestionResolution;reauthorized?:Reauthorized}
+export interface ResumedWait {lease:RunLease;fence:LeaseFence;wait:RunWait;revalidation:Revalidation;approval?:ApprovalDecisionInput;grant?:BudgetGrantInput;resolution?:QuestionResolution;reauthorized?:Reauthorized
+ /** #229: a job wait's job as its record says now; the host hands it to the continuation (context.jobContinuation). */
+ job?:RunJob}
 function decisionFor(wait:RunWait,input:ResumeInput):{approval?:ApprovalDecisionInput;grant?:BudgetGrantInput}{
  if(wait.reason==='approval'){
   if(input.grant!==undefined||input.reauthorization!==undefined)throw new WaitRefused('decision-required')
@@ -805,7 +854,7 @@ export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
  if(wait.resource!==resource||wait.wait!==waitId)return invalid()
  if(!wait.disposition||wait.disposition.evidence!==input.evidence)throw new WaitRefused('unacknowledged')
  if(wait.state==='resumed')throw new WaitRefused('already-resumed')
- if(wait.state==='timed-out'&&wait.reason!=='question')throw new WaitRefused('timed-out')
+ if(wait.state==='timed-out'&&!timeoutContinues(wait.reason))throw new WaitRefused('timed-out')
  if(wait.state==='expired')throw new WaitRefused('deadline-passed')
  const decision=decisionFor(wait,input)
  if(wait.chat){
@@ -822,7 +871,10 @@ export async function resumeParked(input:ResumeInput):Promise<ResumedWait>{
  const lease:LeaseAcquire={resource:wait.resource,owner:input.owner,expectedRevision:wait.checkpoint.revision,durationMs:input.durationMs,...(wait.pins.principal?{principal:copy(wait.pins.principal)}:{})}
  const claimed=readClaimed(await store.resumeWait({resource:wait.resource,wait:wait.wait,evidence:input.evidence,lease,reconciled:input.reconciled??[],revalidation,...(reauthorized?{reauthorized}:{})},input.signal),wait,lease,revalidation,reauthorized)
  const fence=fenceOf(claimed.lease)
- return {lease:claimed.lease,fence,wait:claimed.wait,revalidation:copy(claimed.wait.revalidation!),...decision,...(claimed.wait.resolution?{resolution:copy(claimed.wait.resolution)}:{}),...(claimed.wait.reauthorized?{reauthorized:copy(claimed.wait.reauthorized)}:{})}
+ // #229: read through the reader and held to the job asked for.
+ let job:RunJob|undefined
+ if(claimed.wait.pending.kind==='job'){const held=await jobPortOfStore(input.store).readJob(wait.resource,claimed.wait.pending.job,input.signal);if(held===undefined)throw new JobRefused('no-job');job=readRunJob(copy(held));if(job.resource!==wait.resource||job.job!==claimed.wait.pending.job)return invalid()}
+ return {lease:claimed.lease,fence,wait:claimed.wait,revalidation:copy(claimed.wait.revalidation!),...(job?{job}:{}),...decision,...(claimed.wait.resolution?{resolution:copy(claimed.wait.resolution)}:{}),...(claimed.wait.reauthorized?{reauthorized:copy(claimed.wait.reauthorized)}:{})}
 }
 /** #226: the fenced view a resumed reauthorization wait's continuation runs on: unattended admission of the store and
  * effect host, the claim's fence, and the one grant the claim gives: the never-admitted operation may be dispatched again,
@@ -867,7 +919,7 @@ export function reportFromExport(source:WaitExport,now?:Date):WaitReport{
   const content=(available:{question?:UserQuestion;answer?:QuestionDraft},digest:string):ReportContent=>expired?{state:'expired',digest}:wait.redacted?{state:'redacted',digest}:{state:'available',digest,...copy(available)}
   const pending=wait.pending
   entries.push({wait:wait.wait,decision:'park',reason:wait.reason,at:wait.parked.at,owner:wait.parked.owner,epoch:wait.parked.epoch,
-   ...(pending.kind==='approval'?{subject:pending.callId}:pending.kind==='question'?{subject:pending.event}:pending.kind==='reauthorization'?{subject:pending.connection}:{}),condition:copy(wait.condition),...(wait.timeoutAt===undefined?{}:{timeoutAt:wait.timeoutAt}),
+   ...(pending.kind==='approval'?{subject:pending.callId}:pending.kind==='question'?{subject:pending.event}:pending.kind==='reauthorization'?{subject:pending.connection}:pending.kind==='job'?{subject:pending.job}:{}),condition:copy(wait.condition),...(wait.timeoutAt===undefined?{}:{timeoutAt:wait.timeoutAt}),
    ...(wait.deadline===undefined?{}:{deadline:wait.deadline.at}),release:wait.release.some(r=>r.outcome==='uncertain')?'uncertain':'clean',...(pending.kind==='question'?{content:content({question:pending.question},pending.questionDigest)}:{})})
   if(wait.disposition)entries.push({wait:wait.wait,decision:wait.disposition.kind==='timeout'?'timeout':'wake',reason:wait.reason,at:wait.disposition.at,evidence:wait.disposition.evidence,wake:wait.disposition.kind})
   const resolution=()=>{

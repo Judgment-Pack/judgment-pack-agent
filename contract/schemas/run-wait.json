@@ -167,16 +167,17 @@
       "pattern": "^[1-9][0-9]{0,17}$"
     },
     "reason": {
-      "description": "Why the run waits. approval: an act call's approval is asked (ADR-0008). budget: the run paused at its request allowance. question: ask_user put a question to the person. reauthorization (#226): the run's effect host refused an operation, never admitted, because the connection's credentials expired or were revoked. They stay distinct: a wake is never an approval, a grant, an answer or a re-authorization of another reason.",
+      "description": "Why the run waits. approval: an act call's approval is asked (ADR-0008). budget: the run paused at its request allowance. question: ask_user put a question to the person. reauthorization (#226): the run's effect host refused an operation, never admitted, because the connection's credentials expired or were revoked. They stay distinct: a wake is never an approval, a grant, an answer or a re-authorization of another reason. job: the run waits for a started background job of its own (#229): only that job's authenticated completion satisfies it.",
       "enum": [
         "approval",
         "budget",
         "question",
-        "reauthorization"
+        "reauthorization",
+        "job"
       ]
     },
     "pending": {
-      "description": "The decision the wait is for, read from the retained record, never from the caller: the asked approval's call, the paused allowance, the retained user_question event and its question, or the never-admitted operation of a trusted re-authorization disposition.",
+      "description": "The decision the wait is for, read from the retained record, never from the caller: the asked approval's call, the paused allowance, the retained user_question event and its question, or the never-admitted operation of a trusted re-authorization disposition, or the started job a job wait waits for.",
       "oneOf": [
         {
           "$ref": "#/$defs/pendingApproval"
@@ -189,6 +190,9 @@
         },
         {
           "$ref": "#/$defs/pendingReauthorization"
+        },
+        {
+          "$ref": "#/$defs/pendingJob"
         }
       ]
     },
@@ -311,6 +315,27 @@
             "expired",
             "revoked"
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "pendingJob": {
+      "description": "The started job of this run a job wait waits for (#229; run-job.json).",
+      "type": "object",
+      "required": [
+        "kind",
+        "job",
+        "generation"
+      ],
+      "properties": {
+        "kind": {
+          "const": "job"
+        },
+        "job": {
+          "$ref": "#/$defs/digest"
+        },
+        "generation": {
+          "const": 1
         }
       },
       "additionalProperties": false
@@ -573,7 +598,8 @@
             "approval-decision",
             "budget-grant",
             "question-answer",
-            "reauthorization"
+            "reauthorization",
+            "job-completion"
           ]
         },
         "subject": {

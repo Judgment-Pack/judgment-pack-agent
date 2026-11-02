@@ -93,7 +93,7 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
   const rawOperational=(base:ts.Expression,name:string):boolean=>{
    const operational:Record<string,string[]>={
     AssistantSession:['input','record','corpus','tools','childDefinition','route','routeFacts','prompt','testPrompt','purpose','replyLanguage','allowConversation','interactive','callTool','signal','context'],
-    ContextInput:['currentRequest','currentState','phase','objective','artifactProposals','authorize','checkpoint','execution','approval','chat','runtime','memory','documents','acceptedDocuments','plan','link','delegationReuse']
+    ContextInput:['currentRequest','currentState','phase','objective','artifactProposals','authorize','checkpoint','execution','approval','chat','runtime','memory','documents','acceptedDocuments','plan','link','delegationReuse','jobContinuation']
    }
    const type=checker.getTypeAtLocation(base),symbol=type&&checker.getPropertyOfType(type,name)
    return symbol?.declarations.every(reference=>{
@@ -117,6 +117,8 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
    }
    // ADR-0029: a durable root opens its delegation, refused by name, before its store is touched. That one read is admitted there, and nothing else of the raw input is.
    if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return
+   // #229: a decision on a held start is refused by name there too, and only which tool is a job start is read.
+   if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='hostTools')return
    const allowed=admission[relative]?.includes(fn)&&(!['effort','thinking','criticReasoning'].includes(name)||relative==='context/session.ts'&&['resolveSessionPolicy','requestSession'].includes(fn))
    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
   }

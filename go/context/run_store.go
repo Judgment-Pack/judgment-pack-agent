@@ -67,6 +67,10 @@ type RunCommit struct {
 	RunID, ExpectedRevision, CommitID string
 	Checkpoint                        []byte
 	Events                            [][]byte
+	// Job (#229) is a job start's registration, committed in this transaction or not at all. Only a store with
+	// the job port is handed one, and only through CommitFenced or CommitHistoryFenced; a commit carrying one
+	// with no fence is invalid.
+	Job *JobRegistration
 }
 type RunReceipt struct{ Revision, Cursor, CommitID string }
 type RunHead struct {
@@ -120,10 +124,11 @@ type MemoryRunStore struct {
 	history     *memoryHistoryJournal
 	leases      *LeaseTable
 	waits       *WaitTable
+	jobs        *JobTable
 }
 
 func NewMemoryRunStore(options MemoryRunStoreOptions) *MemoryRunStore {
-	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now)}
+	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now), jobs: NewJobTable(options.Now)}
 }
 func (m *MemoryRunStore) Durability() string { return m.durability }
 func validStorageID(id string) bool {
@@ -171,6 +176,9 @@ func freezeRunCommit(input RunCommit) (RunCommit, error) {
 	return out, nil
 }
 func identicalRunCommit(a, b RunCommit) bool {
+	if (a.Job == nil) != (b.Job == nil) || a.Job != nil && *a.Job != *b.Job {
+		return false
+	}
 	if a.ExpectedRevision != b.ExpectedRevision || (a.Checkpoint == nil) != (b.Checkpoint == nil) || !bytes.Equal(a.Checkpoint, b.Checkpoint) || len(a.Events) != len(b.Events) {
 		return false
 	}
@@ -245,6 +253,18 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	if err != nil {
 		return RunReceipt{}, RunHistoryReceipt{}, err
 	}
+	// #229: a registration commits with its claim or not at all, and only under a fence.
+	var registration *JobRegistration
+	if frozen.Job != nil {
+		if fence == nil {
+			return RunReceipt{}, RunHistoryReceipt{}, jobInvalid()
+		}
+		held, err := m.jobs.Admit(frozen.RunID, *frozen.Job, m.waits.KeyHeld(frozen.Job.KeyDigest))
+		if err != nil {
+			return RunReceipt{}, RunHistoryReceipt{}, err
+		}
+		registration = &held
+	}
 	receipt := RunReceipt{Revision: rand.Text(), CommitID: frozen.CommitID}
 	checkpoint := frozen.Checkpoint
 	if checkpoint == nil {
@@ -291,6 +311,9 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	m.history.publish(prepared)
 	if settles {
 		m.waits.SettleApproval(frozen.RunID)
+	}
+	if registration != nil {
+		m.jobs.Register(frozen.RunID, *registration, *fence)
 	}
 	if m.options.AfterCommit != nil {
 		if err = m.options.AfterCommit(); err != nil {

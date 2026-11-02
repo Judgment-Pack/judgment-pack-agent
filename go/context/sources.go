@@ -2232,6 +2232,10 @@ func receiptAdmissionOf(ctx context.Context) *receiptAdmission {
 
 // withoutReceiptAdmission is ctx for the host's own execute: a call it makes is not this one.
 func withoutReceiptAdmission(ctx context.Context) context.Context {
+	// #229 (M-7): nor a start's dispatch: a nested run on this context is no start itself.
+	if jobStartDispatchOf(ctx) != nil {
+		ctx = context.WithValue(ctx, jobStartKey{}, (*jobStartDispatch)(nil))
+	}
 	if receiptAdmissionOf(ctx) == nil {
 		return ctx
 	}

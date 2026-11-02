@@ -892,6 +892,14 @@ host's new layer, and an approval under a changed identity, before anything is c
 
 ### Re-authorization waits (#226)
 
+`storage/job.ts` implements the job core of ADR-0025 decision 7 (#229). `jobStartTool` is an ordinary sourced act tool
+whose job is registered in its dispatch claim's own commit, before the effect host admits it, and whose row holds what the
+package composed. A job is `unproven` until the host's typed answer, `reconcileJob` or `completeJob` says otherwise, the last two
+by a completion key with no lease. `parkRun({job})` waits for one started job, a completion wakes it in its own transaction, and
+`job_read` (`jobReadTool`) reaches only the view's run. Nothing polls or synthesizes a completion, and a job's rows are never plan
+evidence. A store kind is certified by `runStoreJobConformance` (`storage/jobConformance`). With no job tool offered, no store call
+is made and no byte moves. `gatewayActionMembers` gives what a host adds to a gateway `/act`.
+
 `storage/reauth.ts` implements ADR-0025 decision 4 with `storage/lease.ts` and `storage/wait.ts`. The
 reference effect host takes an optional credential check (`new ReferenceEffectHost(store,
 {credentials})`); a refusal at its admission boundary (`reauthorizationRequired(admission, refusal)`:

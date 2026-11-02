@@ -704,6 +704,84 @@ claims nothing and the wait keeps holding the run. The host resolves a new polic
 Pins other than the approval's source carry no descriptor: each later call still passes the existing
 per-call source pins (ADR-0006, ADR-0027), and in-run model failover keeps its own rules (ADR-0020).
 
+## Run-owned jobs (#229)
+
+This section is for the implementer of a host store kind's job port (beside its lease and wait ports) and for a host that
+starts, completes and reconciles background jobs. It implements the job core of ADR-0025 decision 7, as its amendment fixes it.
+The records are `contract/schemas/run-job.json`, version 1, with handwritten shared vectors in `contract/vectors/job/`.
+TypeScript is `packages/harness/storage/job.ts`; Go is `go/context/run_job.go`. Nothing here adds a member to a checkpoint,
+event, lease or report, and with no job tool offered the store is not asked about jobs at all.
+
+**What the package does and what the host does.** The package registers, reads back and records. The host owns the external
+job and its process, the completion key, scheduling, the clock (the store's), wake delivery, credentials and notifications.
+Nothing here polls, schedules, retries or synthesizes a completion. Registration proves nothing: a job is `unproven` until a
+typed answer, a host's reconciliation or a completion says otherwise.
+
+**Offering job tools.** `jobStartTool({name, description, inputSchema, source, approve?, approval?, mint, start,
+gatewayKeyScope?})` (Go `JobStartTool`) is an ordinary sourced `act` tool, under the ordinary approval, dispatch, idempotency
+identity and fence. A decision approving a held start must carry `shownDigest`, a text kept or not (`ApprovalNotShown` before the
+claim otherwise). `mint(job)` returns `jobKeyDigest(key)` of a fresh completion key for that job: a key has a wake key's
+form, the host keeps it across its own restarts, and the store holds only its digest. `start({job, request, signal})` runs the
+row's own request bytes under the effect host's admission and answers `{started: true, handle, receipt?}` or `{started:
+false}`. `jobReadTool(view)` (Go `JobReadTool`) is the model's read, bound to the view's run. A run offered either needs a fenced
+view of a store whose jobs, leases and waits outlive its process, with an effect host proven for that store (`admitJobs`, Go
+`AdmitJobs`, which the session runs over the view's own store and host), or it refuses by name before any request. A tool of a
+`gateway` source needs `gatewayKeyScope` (`job-host-unsupported`). A sub-agent is offered no job tool: a declaration naming one is
+withheld, and a child session offered one refuses `child-unsupported`. A job with no row in the run's head means its rows were
+restored from an earlier moment than its jobs, and the run refuses `store-inconsistent` before any request.
+
+**The job port.** A store kind implements `JobStore` (Go `JobStore`): `jobVersion` 1, `jobLifetime`, and these, each atomic under
+the same serialization as its commits, with everything they decide by surviving the store's own restarts.
+
+- A registration travels as `RunCommit.job` through `commitFenced` or `commitHistoryFenced` and commits in that transaction or
+  not at all. The fence is the commit's. Its identity must be the SHA-256 of `{resource, operation}` (`invalid`), a key digest any
+  job or wait of the store holds refuses `key-reused`, a run's sixty-fifth job `jobs-exhausted`, and an unfenced commit carrying
+  one `invalid`. A repeated commit id must carry the same registration.
+- `answerJob(answer, fence)`: the typed answer, from the fence that registered or re-claimed the start, current or not
+  (`unauthenticated` otherwise). The first start wins: another handle is `conflict`. A negative after a proof is `conflict`.
+- `reconcileJob(evidence)`: the completion key (`unauthenticated`) and no lease. `unknown` changes nothing. `not-started` must mean
+  the authority that would run it has closed it. The same evidence id with other content is `conflict`.
+- `completeJob(evidence)`: the completion key and no lease. In one transaction it settles the job and wakes a `parked` wait on it,
+  unless that wait's timeout or deadline, or the run's, has come: then only those end it. A duplicate returns the job and wakes
+  nothing; other evidence on a completed job is `stale`.
+- A start or a completion on a closed job is kept as a contradiction, at most eight, reported, and it moves nothing.
+- `reclaimJob(resource, job, fence)`: a re-authorization grant's re-send, under a current fence, only from `unproven`
+  (`job-settled` otherwise, and the writer leaves the row and the grant as they were).
+- `parkWait` of a job wait refuses a settled job (`job-settled`) and an unproven one (`job-unproven`) in the park's own
+  transaction, and refuses a key digest a job holds (`key-reused`).
+- `readJob(resource, job)` and `listJobs(resource, after, limit)` look up by run: another run's job does not exist here. `exportJobs`
+  is the report's source.
+
+**The job conformance kit.** `runStoreJobConformance(create)` (`storage/jobConformance`; Go `CheckRunStoreJobConformance`)
+certifies the port, as the wait kit does its own: the factory receives the kit's clock and, to restart, the store it built. It
+names the first property broken: `job.register.*` (the commit and the job together, the fence, an unfenced commit, the identity,
+the history path), `job.key.*`, `job.wait.key`, `job.owner.*`, `job.answer.*`, `job.complete.*`, `job.reconcile.*`,
+`job.contradiction.*`, `job.reclaim.*`, `job.park.*`, `job.wake.*`, `job.timeout.*`, `job.limit`, `job.list.page` and
+`job.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+
+**Waiting.** After the model ends its turn, or at any checkpoint at rest (`running` or `complete`), the host calls `parkRun({...,
+job, condition: {event: {kind: 'job-completion', subject: job}}})`. A pending decision is `decision-required`, a stopped checkpoint
+`nothing-pending`, a run at its request limit `not-resumable`, and a chat binding, or a run whose history head holds a stored chat,
+`chat-store-unsupported` (Go has no chat binding). `wakeRun` refuses an event for a job wait
+(`mismatch`); it takes a timeout, which does not close the run, and a deadline. `resumeParked` needs the completion's or the
+timeout's evidence id and no decision, and returns `job`, read through the reader; the host passes it as `context.jobContinuation`
+(Go `Input.JobContinuation`), and the first request carries one fixed line and one data block built from the record.
+
+**What the model reads.** A start's row holds what the package composed (`jobStartResult`): the job's identity, its state and the
+words "started, not finished". `job_read` answers the state every time, with `changed` and, when nothing moved, a fixed instruction
+to end the turn. A handle, a receipt and host text never reach the model. Once a start has run, nothing reads as refused input:
+what it answered that could not be recorded (not typed, or conflicting with what the job holds), and whatever it threw, leaves the
+row `unknown` with one fixed failure, `JobStartUnrecorded`, and the model is answered from the job as a repeat is. A handle or
+receipt the record cannot hold (over 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, and the job
+is `started`: it can complete, and the same bytes answer the same, but the host holds the means to reach it. Rows of job tools record no observation, so they are never
+plan evidence; a start cited in `complete_plan_step` is held to its job, read afresh: `completed` with `succeeded` proves it whatever
+the row says, and anything else refuses `unsuccessful-operation`.
+
+**A gateway.** `gatewayActionMembers(job, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`: it takes the job
+(`readJob`), which a `start` can read and a reconciliation holding no lease can too. It carries no owner, subject or lease. No
+gateway accepts these members until gateway #352 ships: each refuses them and sends nothing. `gatewayRefusalFinding(refusal)` reads
+a reconciling request's refusal: only `action-key-not-dispatched`, which no gateway sends yet, is `not-started`. What the gateway must build is in ADR-0025's amendment, and it is filed on gateway #352.
+
 ## Re-authorization waits (#226)
 
 This section is for the same implementers. It implements ADR-0025 decision 4 as its amendment fixes

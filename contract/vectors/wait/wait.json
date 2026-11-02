@@ -992,6 +992,53 @@
         "permissions": [],
         "requires": []
       }
+    },
+    {
+      "version": 1,
+      "resource": "run-job",
+      "wait": "wait-1",
+      "reason": "job",
+      "pending": {
+        "kind": "job",
+        "job": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+        "generation": 1
+      },
+      "condition": {
+        "event": {
+          "kind": "job-completion",
+          "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb"
+        }
+      },
+      "timeoutAt": "2026-01-01T06:00:00.000Z",
+      "continuation": "continue-job-1",
+      "checkpoint": {
+        "revision": "rev-job",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "pins": {
+        "model": {
+          "provider": "openai",
+          "model": "model-a"
+        },
+        "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "sources": [],
+        "artifacts": []
+      },
+      "wakeKeyDigest": "sha256:6eafcedc71ef195d220aa30b25f2241182c2796967ef8561adfdb437ace60ad6",
+      "release": [],
+      "parked": {
+        "owner": "worker-a",
+        "epoch": "1",
+        "at": "2026-01-01T00:00:00.000Z"
+      },
+      "attention": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+      "state": "woken",
+      "disposition": {
+        "evidence": "done-1",
+        "kind": "event",
+        "at": "2026-01-01T01:00:00.000Z",
+        "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
     }
   ],
   "refused": [
@@ -8837,6 +8884,211 @@
           "principal": "sha256:48f725e67e5d654ee25a6de06472f2155d69c7aa690ba63fec9023e794c1efeb",
           "permissions": [],
           "requires": []
+        }
+      }
+    },
+    {
+      "problem": "a job wait for another event",
+      "record": {
+        "version": 1,
+        "resource": "run-job",
+        "wait": "wait-1",
+        "reason": "job",
+        "pending": {
+          "kind": "job",
+          "job": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+          "generation": 1
+        },
+        "condition": {
+          "event": {
+            "kind": "anything",
+            "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb"
+          }
+        },
+        "timeoutAt": "2026-01-01T06:00:00.000Z",
+        "continuation": "continue-job-1",
+        "checkpoint": {
+          "revision": "rev-job",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:6eafcedc71ef195d220aa30b25f2241182c2796967ef8561adfdb437ace60ad6",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+        "state": "woken",
+        "disposition": {
+          "evidence": "done-1",
+          "kind": "event",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "problem": "a job wait for another job's completion",
+      "record": {
+        "version": 1,
+        "resource": "run-job",
+        "wait": "wait-1",
+        "reason": "job",
+        "pending": {
+          "kind": "job",
+          "job": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+          "generation": 1
+        },
+        "condition": {
+          "event": {
+            "kind": "job-completion",
+            "subject": "another"
+          }
+        },
+        "timeoutAt": "2026-01-01T06:00:00.000Z",
+        "continuation": "continue-job-1",
+        "checkpoint": {
+          "revision": "rev-job",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:6eafcedc71ef195d220aa30b25f2241182c2796967ef8561adfdb437ace60ad6",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+        "state": "woken",
+        "disposition": {
+          "evidence": "done-1",
+          "kind": "event",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "problem": "a job wait with a wake time",
+      "record": {
+        "version": 1,
+        "resource": "run-job",
+        "wait": "wait-1",
+        "reason": "job",
+        "pending": {
+          "kind": "job",
+          "job": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+          "generation": 1
+        },
+        "condition": {
+          "event": {
+            "kind": "job-completion",
+            "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb"
+          },
+          "wakeAt": "2026-01-01T06:00:00.000Z"
+        },
+        "timeoutAt": "2026-01-01T06:00:00.000Z",
+        "continuation": "continue-job-1",
+        "checkpoint": {
+          "revision": "rev-job",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:6eafcedc71ef195d220aa30b25f2241182c2796967ef8561adfdb437ace60ad6",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+        "state": "woken",
+        "disposition": {
+          "evidence": "done-1",
+          "kind": "event",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "problem": "a job wait bound to a chat",
+      "record": {
+        "version": 1,
+        "resource": "run-job",
+        "wait": "wait-1",
+        "reason": "job",
+        "pending": {
+          "kind": "job",
+          "job": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+          "generation": 1
+        },
+        "condition": {
+          "event": {
+            "kind": "job-completion",
+            "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb"
+          }
+        },
+        "timeoutAt": "2026-01-01T06:00:00.000Z",
+        "continuation": "continue-job-1",
+        "checkpoint": {
+          "revision": "rev-job",
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "pins": {
+          "model": {
+            "provider": "openai",
+            "model": "model-a"
+          },
+          "policy": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "sources": [],
+          "artifacts": []
+        },
+        "wakeKeyDigest": "sha256:6eafcedc71ef195d220aa30b25f2241182c2796967ef8561adfdb437ace60ad6",
+        "release": [],
+        "parked": {
+          "owner": "worker-a",
+          "epoch": "1",
+          "at": "2026-01-01T00:00:00.000Z"
+        },
+        "attention": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+        "state": "woken",
+        "disposition": {
+          "evidence": "done-1",
+          "kind": "event",
+          "at": "2026-01-01T01:00:00.000Z",
+          "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "chat": {
+          "id": "chat-1",
+          "revision": "r"
         }
       }
     }

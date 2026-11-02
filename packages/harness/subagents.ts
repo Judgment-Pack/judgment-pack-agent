@@ -5,6 +5,7 @@ import {prefix,utf8Bytes,type ContextPolicy} from './context/policy'
 import {frameBlock} from './framing'
 import {authoredFailure} from './failures'
 import {sourceProblem,type SkillDeclaration} from './skills'
+import {jobSeamOf} from './storage/job'
 import type {HostTool} from './engine'
 import type {SourceRecord} from './toolSources'
 import {TASK_PROFILES,type TaskProfile} from './delegationContract'
@@ -52,6 +53,7 @@ export async function declareSubagents(declared:readonly unknown[]|undefined,too
     if(TASK_PROFILES.some(p=>p.id===definition.id)){hold('A declaration cannot replace a built-in profile.');continue}
     const unknown=definition.tools.find(name=>!tools.some(t=>t.name===name))
     if(unknown!==undefined){hold(`Undeclared tool ${unknown}; the definition was withheld.`);continue}
+    if(definition.tools.some(name=>tools.some(t=>t.name===name&&jobSeamOf(t)!==undefined))){hold('A sub-agent is offered no job tool: a job belongs to the run that started it.');continue}
     if(definition.tools.some(name=>!tools.some(t=>t.name===name&&!t.interaction&&(t.source?t.effectClass==='read':t.effect==='read'||!t.effect&&t.delegation==='read')))){hold('A sub-agent admits declared reads only; effects cannot be raised.');continue}
     if(definition.skills.some(name=>!skills.some(s=>s.id===name))){hold('An undeclared skill was named; the definition was withheld.');continue}
     if(Object.entries(definition.bounds).some(([key,value])=>value>ceilings[key as keyof SubagentBounds])){hold('The definition exceeds the turn or child bounds ceiling.');continue}
