@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -666,16 +667,22 @@ func NewReferenceEffectHostWith(authority LeaseAuthority, options ReferenceEffec
 	return host
 }
 
-// CheckEffectHostConformance (#223 review, #253) is the effect-host conformance. The kit owns the lease
-// authority it hands the factory and moves its clock. The host must refuse, without performing, while the
-// authority is unavailable; admit a current fence once; and refuse, without performing, an identity it
-// admitted before (also under a takeover's fence), another owner, a stale or forged epoch, a fence for
-// another run than the operation's, a key that is not its operation's, an expired lease and a released one.
-// The TypeScript twin is effectHostConformance.
+// CheckEffectHostConformance (#223 review, #253, #258) is the effect-host conformance. The kit owns the lease
+// authority it hands the factory and moves its clock. The host must refuse, without performing, every time
+// the authority is unavailable, which the kit makes it several times in a row before the first dispatch,
+// after a success and between dispatches; admit a current fence once, also once the authority is back; and
+// refuse, without performing, an identity it admitted before (also under a takeover's fence), another owner,
+// a stale or forged epoch, a fence for another run than the operation's, a key that is not its operation's,
+// an expired lease and a released one. The TypeScript twin is effectHostConformance.
 func CheckEffectHostConformance(ctx context.Context, create func(LeaseAuthority) EffectHost) error {
 	kit := newKitAuthority()
 	return exerciseEffectHost(ctx, create(kit), kit)
 }
+
+// authorityFailures (#258) is how many times in a row the kit fails the authority for one operation retried,
+// and then for as many new ones, at each point it fails it. No finite count proves a host never degrades;
+// this one fails a breaker of the usual sizes.
+const authorityFailures = 5
 
 // kitAuthority is the conformance kit's lease authority: its own table, clock and failure switch.
 type kitAuthority struct {
@@ -741,15 +748,31 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	if err != nil {
 		return fail("host.operation")
 	}
-	// Unavailable ownership evidence closes dispatch: an authority that errors is never a pass.
-	kit.do(func() { kit.failing = true })
-	unavailable := refuses(admission(a, op("op-0", "host-run")), "")
-	kit.do(func() { kit.failing = false })
-	if !unavailable {
+	// #258: unavailable ownership evidence closes dispatch every time, however often and whenever the
+	// authority errors.
+	unavailable := func(point string) bool {
+		kit.do(func() { kit.failing = true })
+		defer kit.do(func() { kit.failing = false })
+		for n := 0; n < authorityFailures; n++ {
+			if !refuses(admission(a, op(point+"-retried", "host-run")), "") {
+				return false
+			}
+		}
+		for n := 0; n < authorityFailures; n++ {
+			if !refuses(admission(a, op(point+"-"+strconv.Itoa(n), "host-run")), "") {
+				return false
+			}
+		}
+		return true
+	}
+	if !unavailable("before-any-dispatch") {
 		return fail("host.authority-unavailable")
 	}
 	if err := host.Dispatch(ctx, admission(a, op("op-1", "host-run")), perform); err != nil || performed != 1 {
 		return fail("host.admit.current")
+	}
+	if !unavailable("after-success") {
+		return fail("host.authority-unavailable.after-success")
 	}
 	if !refuses(admission(a, op("op-1", "host-run")), "already-admitted") {
 		return fail("host.already-admitted")
@@ -772,6 +795,12 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	if !refuses(mismatched, "invalid") {
 		return fail("host.invalid")
 	}
+	if !unavailable("between-dispatches") {
+		return fail("host.authority-unavailable.between-dispatches")
+	}
+	if err := host.Dispatch(ctx, admission(a, op("op-10", "host-run")), perform); err != nil || performed != 2 {
+		return fail("host.admit.recovered")
+	}
 	kit.do(func() { kit.at = kit.at.Add(time.Second) })
 	if !refuses(admission(a, op("op-7", "host-run")), "expired") {
 		return fail("host.expired")
@@ -790,7 +819,7 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	if err != nil || !refuses(admission(b, op("op-9", "host-run")), "released") {
 		return fail("host.released")
 	}
-	if performed != 1 {
+	if performed != 2 {
 		return fail("host.performed-once")
 	}
 	// ADR-0029: the host hands the whole fence to its authority, so a delegated run's lease holds its
@@ -805,7 +834,7 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	if err != nil {
 		return fail("host.operation")
 	}
-	if err := host.Dispatch(ctx, admission(held, op("op-10", "host-delegated")), perform); err != nil || performed != 2 {
+	if err := host.Dispatch(ctx, admission(held, op("op-11", "host-delegated")), perform); err != nil || performed != 3 {
 		return fail("host.principal.admit")
 	}
 	otherActor, otherSubject := principal, principal
@@ -814,16 +843,16 @@ func exerciseEffectHost(ctx context.Context, host EffectHost, kit *kitAuthority)
 	forgedActor, forgedSubject, none := held, held, held
 	forgedActor.Principal, forgedSubject.Principal = &otherActor, &otherSubject
 	none.Version, none.Principal = LeaseRecordVersion, nil
-	if !refuses(admission(forgedActor, op("op-11", "host-delegated")), "principal-changed") {
+	if !refuses(admission(forgedActor, op("op-12", "host-delegated")), "principal-changed") {
 		return fail("host.principal.other-actor")
 	}
-	if !refuses(admission(forgedSubject, op("op-12", "host-delegated")), "principal-changed") {
+	if !refuses(admission(forgedSubject, op("op-13", "host-delegated")), "principal-changed") {
 		return fail("host.principal.other-subject")
 	}
-	if !refuses(admission(none, op("op-13", "host-delegated")), "principal-changed") {
+	if !refuses(admission(none, op("op-14", "host-delegated")), "principal-changed") {
 		return fail("host.principal.none")
 	}
-	if performed != 2 {
+	if performed != 3 {
 		return fail("host.principal.performed-once")
 	}
 	return nil
