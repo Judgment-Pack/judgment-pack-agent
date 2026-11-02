@@ -117,7 +117,7 @@ func TestACallIsWrittenBackAsWrittenOnlyWhereItsParsedFormCannotSayIt(t *testing
 		}
 	}
 	// What the record cannot hold goes back in its parsed form, as published: nothing can copy it to a row.
-	for text, want := range map[string]string{`{"q":1e400}`: `{"q":null}`, `{"a":1,"a":2}`: `{"a":2}`, `{"o":{"q":-1e400}}`: `{"o":{"q":null}}`, `{"n":1.0,"q":"` + string(rune(0x5c)) + `ud800"}`: `{"n":1,"q":"` + string(rune(0xfffd)) + `"}`} {
+	for text, want := range map[string]string{`{"q":1e400}`: `{"q":null}`, `{"a":1,"a":2}`: `{"a":2}`, `{"o":{"q":-1e400}}`: `{"o":{"q":null}}`, `{"a":1.0,"a":2}`: `{"a":2}`, `{"a":[1e400],"n":1.0}`: `{"a":[null],"n":1}`, `{"o":{"q":1e400},"n":1.0}`: `{"o":{"q":null},"n":1}`, `{"n":1.0,"q":"` + string(rune(0x5c)) + `ud800"}`: `{"n":1,"q":"` + string(rune(0xfffd)) + `"}`} {
 		if got := (ToolCall{Arguments: text}).Args().String(); got != want {
 			t.Errorf("%s written back as %s", text, got)
 		}
@@ -148,6 +148,26 @@ func TestAWriteUnderAMarkedObjectIsKept(t *testing.T) {
 	clone := body.Clone()
 	if got := clone.String(); got != want {
 		t.Fatalf("a clone: %s", got)
+	}
+}
+
+// Each kind of write is seen on its own: an append, and a write inside an array.
+func TestEachWriteUnderAMarkedObjectIsSeen(t *testing.T) {
+	appended, err := Parse([]byte(`{"n":1.0,"list":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	appended.Get("list").Append(Int(1))
+	if got := appended.String(); got != `{"n":1,"list":[1]}` {
+		t.Fatalf("%s", got)
+	}
+	inside, err := Parse([]byte(`{"n":1.0,"list":[{"a":1}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inside.Get("list").Items()[0].Set("b", Int(2))
+	if got := inside.String(); got != `{"n":1,"list":[{"a":1,"b":2}]}` {
+		t.Fatalf("%s", got)
 	}
 }
 
