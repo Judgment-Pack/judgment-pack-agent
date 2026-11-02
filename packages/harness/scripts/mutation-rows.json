@@ -5862,7 +5862,8 @@
     "recordReader.test.ts",
     "certification/records.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: the stamp now also selects checkpoints 5 and 6; the row 'record versions stamp checkpoints before their digest, with 5 and 6' holds it.",
    "origin": "agent#165"
   },
   {
@@ -10009,6 +10010,222 @@
   "origin": "agent#271",
   "note": "Go twin: none; Go folds by unicode.SimpleFold, one rune to one (^TestFoldNameIsWhatEncodingJSONMatches$)."
 },
+{
+  "name": "a durable write is answered from the first row with its fingerprint",
+  "file": "storage/writer.ts",
+  "find": "reused=rows[decisions.indexOf('same')]",
+  "replace": "reused=rows[0]",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): compareDurableRequests' switch dropped from go/context/run_writer.go invokeDurable, the published behaviour; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and, through both adapters, ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "a durable write that cannot be told from a recorded one runs",
+  "file": "storage/writer.ts",
+  "find": "    if(decisions.includes('conflict')){refusal=new DurableRequestConflict();return}\n",
+  "replace": "",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): case durableConflict: continue, with no refusal; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "a durable repeat of the same bytes is not the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): bytes.Equal dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "two exact durable requests that read alike are not the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(recorded===request)return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the exactArguments clause dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$ (a resumed repeat in another order would be performed twice)."
+},
+{
+  "name": "one exact durable request is enough to be the same write",
+  "file": "storage/writer.ts",
+  "find": "if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'",
+  "replace": "if(recorded===request||exactArgumentsText(request))return 'same'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): exactArguments(recorded) dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "durable numbers that differ cannot run",
+  "file": "storage/writer.ts",
+  "find": "try{return canonicalRepeatArgs(recorded)!==canonicalRepeatArgs(request)?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "return 'conflict'",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): compareDurableRequests returns durableConflict at once; caught at ^TestTheDurableRepeatVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$ (the integer past 2^53 and its neighbour)."
+},
+{
+  "name": "durable values written differently are different writes",
+  "file": "storage/writer.ts",
+  "find": "?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "?'different':'different'}catch{return 'conflict'}",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): left != right dropped from the different branch; caught at ^TestTheDurableRepeatVector$ and ^TestADurableWriteIsNeverAnsweredFromAnotherWritesRecord$."
+},
+{
+  "name": "durable text that cannot be read is a different write",
+  "file": "storage/writer.ts",
+  "find": "?'different':'conflict'}catch{return 'conflict'}",
+  "replace": "?'different':'conflict'}catch{return 'different'}",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none reachable; a recorded and a current request have both read before they get here. By hand, leftErr and rightErr dropped from the different branch fails no test, since canonicalRepeatArgs errors only past the durable bounds safeDurableRequest and ValidDurable already hold."
+},
+{
+  "name": "a durable call the record cannot hold is claimed",
+  "file": "storage/writer.ts",
+  "find": "&&(!recordable||!recordableRequest(request)))",
+  "replace": "&&!recordable)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the readHistoryRequestJSON check dropped from invokeDurable; the run then ends with HistoryInputInvalid; caught at ^TestTheDurableRecordableVector$, ^TestAResumeOverAPublishedCheckpoint$ and ^TestADurableReadIsRefusedOnlyWhereItCannotBeRecorded$."
+},
+{
+  "name": "a durable call the record cannot hold is refused before its record answers",
+  "file": "storage/writer.ts",
+  "find": "   if(!read){\n    const rows=this.book.dispatches.filter(",
+  "replace": "   if((kind==='host'||kind==='runtime')&&!recordableRequest(request)){refusal=new DurableRequestUnrecordable();return}\n   if(!read){\n    const rows=this.book.dispatches.filter(",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the readHistoryRequestJSON check moved ahead of the row scan in invokeDurable; caught at ^TestAResumeOverAPublishedCheckpoint$ (v0.10.0's repeated name and out-of-range rows)."
+},
+{
+  "name": "a host write JSON.parse rounded is run",
+  "file": "context/session.ts",
+  "find": ",durableReadingTool(tool)||exactlyHeld(args),job?.kind",
+  "replace": ")",
+  "tests": [
+    "storage/durableWrites.engines.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go runs the bytes the model wrote, so it has nothing rounded to refuse."
+},
+{
+  "name": "a host read is held to what a write is",
+  "file": "context/session.ts",
+  "find": ",durableReadingTool(tool)||exactlyHeld(args),job?.kind",
+  "replace": ",exactlyHeld(args),job?.kind",
+  "tests": [
+    "storage/durableWrites.engines.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; the same."
+},
+{
+  "name": "a number JSON.parse read as an infinity counts as held",
+  "file": "context/chat.ts",
+  "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
+  "replace": "return !Number.isInteger(value)||Number.isSafeInteger(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go refuses these from their text (^TestTheDurableRecordableVector$)."
+},
+{
+  "name": "an integer JSON.parse rounded counts as held",
+  "file": "context/chat.ts",
+  "find": "return Number.isFinite(value)&&(!Number.isInteger(value)||Number.isSafeInteger(value))",
+  "replace": "return Number.isFinite(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; Go runs the bytes the model wrote."
+},
+{
+  "name": "arrays and objects are not looked inside for what JSON.parse lost",
+  "file": "context/chat.ts",
+  "find": "return value===null||typeof value!=='object'||Object.values(value).every(exactlyHeld)",
+  "replace": "return true",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin: none; the same."
+},
+{
+  "name": "arguments in their text may repeat a name",
+  "file": "context/chat.ts",
+  "find": "return members(value)===names&&(rest.match(",
+  "replace": "return (rest.match(",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the repeated-name check in go/context/chat.go exactValue dropped; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "arguments in their text may spell a number another way",
+  "file": "context/chat.ts",
+  "find": ".every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)",
+  "replace": "&&exactArguments(value)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): the written-form comparison in go/context/chat.go exactValue dropped; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
+},
+{
+  "name": "arguments in their text may hold names that fold together",
+  "file": "context/chat.ts",
+  "find": ".every(number=>JSON.stringify(Number(number))===number)&&exactArguments(value)",
+  "replace": ".every(number=>JSON.stringify(Number(number))===number)",
+  "tests": [
+    "storage/durableWrites.test.ts"
+  ],
+  "status": "caught",
+  "origin": "agent#275",
+  "note": "Go twin (by hand): folded := name in go/context/chat.go exactValue; caught at ^TestTheReadArgumentsVectorKeys$ and ^TestTheDurableRepeatVector$."
+},
   {
    "name": "reauth A1 a refusal minted and then performed is trusted",
    "file": "storage/lease.ts",
@@ -10565,7 +10782,7 @@
    "name": "reauth K1b the store's claim takes a timed-out reauthorization wait",
    "file": "storage/wait.ts",
    "find": "  if(row.state==='timed-out'&&!timeoutContinues(row.reason))throw new WaitRefused('timed-out')\n",
-   "replace": "  if(row.state==='timed-out'&&!timeoutContinues(row.reason)&&row.reason!=='reauthorization')throw new WaitRefused('timed-out')\n",
+   "replace": "  if(row.state==='timed-out'&&row.reason!=='question'&&row.reason!=='reauthorization')throw new WaitRefused('timed-out')\n",
    "tests": [
     "storage/waitConformance.test.ts"
    ],
@@ -10584,6 +10801,210 @@
    "status": "caught",
    "origin": "agent#226",
    "note": "Go twin (by hand): the same mutant as reauth M1b, the one ctx.Err after the check; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$."
+  },
+  {
+   "name": "a lone surrogate in text counts as exact",
+   "file": "context/chat.ts",
+   "find": "===number)&&exactArguments(value)&&scalarValue(value)",
+   "replace": "===number)&&exactArguments(value)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): validReportUnicode dropped from compareDurableRequests, both sides and each side alone; caught at ^TestTheDurableRepeatVector$, ^TestRawBytesThatAreNotUTF8AreExactOnNeitherSide$."
+  },
+  {
+   "name": "the text twin does not count names inside an array",
+   "file": "context/chat.ts",
+   "find": "Array.isArray(held)?held.reduce((sum:number,item)=>sum+members(item),0):",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go's reader walks its tokens. A false refusal only: an object in an array stops being exact."
+  },
+  {
+   "name": "a re-send takes its row by fingerprint, not by the comparison",
+   "file": "storage/writer.ts",
+   "find": "reused=rows[decisions.indexOf('same')]",
+   "replace": "reused=rows[0]",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the switch on compareDurableRequests dropped from invokeDurable; caught at ^TestReauthorizationTheGrantIsForTheBytesThatWereRefused$."
+  },
+  {
+   "name": "a re-send of an exact variant takes the grant",
+   "file": "storage/writer.ts",
+   "find": "&&recordable&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "replace": "&&recordable&&takeReauthorizedDispatch",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): durableDigest(request) == row.RequestDigest dropped from invokeDurable; caught at ^TestReauthorizationTheGrantIsForTheBytesThatWereRefused$ (whitespace, member order)."
+  },
+  {
+   "name": "a re-send of a number JSON.parse rounded takes the grant",
+   "file": "storage/writer.ts",
+   "find": "&&recordable&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "replace": "&&digest(request)===reused.requestDigest&&takeReauthorizedDispatch",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go runs the bytes the model wrote."
+  },
+  {
+   "name": "a durable Runtime call is not held to what the record can hold",
+   "file": "storage/writer.ts",
+   "find": "if((kind==='host'||kind==='runtime')&&(!recordable||!recordableRequest(request)))",
+   "replace": "if(kind==='host'&&(!recordable||!recordableRequest(request)))",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): kind == \"runtime\" dropped from the readHistoryRequestJSON check in invokeDurable; caught at ^TestTheDurableRecordableVector$."
+  },
+  {
+   "name": "a book's fingerprint is not compared with its request",
+   "file": "storage/durable.ts",
+   "find": "&&d.fingerprint===`sha256:${sha256(canonicalJSON({kind:d.kind,scope:d.scope,source:d.source,tool:d.tool,request:JSON.parse(d.request)}))}`",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the fingerprint comparison dropped from ValidDurable; caught at ^TestABookWithAForgedFingerprintDoesNotRead$."
+  },
+  {
+   "name": "a call held for approval is not checked at all",
+   "file": "toolSources.ts",
+   "find": "if (answer === 'ask' && !heldForApproval(args)) {",
+   "replace": "if (false) {",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the readHistoryRequestJSON check dropped from SourceGate.Decide; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a call held for approval may hold what JSON.parse rounded",
+   "file": "toolSources.ts",
+   "find": "  if (!exactlyHeld(args)) return false\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go keeps the model's text."
+  },
+  {
+   "name": "a call held for approval may hold what the record cannot",
+   "file": "toolSources.ts",
+   "find": "  try { readHistoryRequestJSON(canonicalJSON(args)); return true } catch { return false }\n",
+   "replace": "  return true\n",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): as above."
+  },
+  {
+   "name": "an approved call ignores the text a Go writer kept",
+   "file": "toolSources.ts",
+   "find": "  if (record.request === undefined) return record.args\n",
+   "replace": "  return record.args\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approvedArguments runs args whatever the record keeps; caught at ^TestApprovedArgumentsAreWhatThePersonWasShown$, ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "an approved text need not be what JSON.parse says exactly",
+   "file": "toolSources.ts",
+   "find": "return exactArgumentsText(record.request) && exactlyHeld(kept) && canonicalJSON(kept)",
+   "replace": "return exactlyHeld(kept) && canonicalJSON(kept)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; Go runs the text itself."
+  },
+  {
+   "name": "an approved text may hold what JSON.parse rounded",
+   "file": "toolSources.ts",
+   "find": "return exactArgumentsText(record.request) && exactlyHeld(kept) && canonicalJSON(kept)",
+   "replace": "return exactArgumentsText(record.request) && canonicalJSON(kept)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin: none; the same."
+  },
+  {
+   "name": "an approved text need not read back to its args",
+   "file": "toolSources.ts",
+   "find": " && canonicalJSON(kept) === canonicalJSON(record.args) ? kept",
+   "replace": " ? kept",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the CanonicalJSON comparison dropped from approvedArguments; caught at ^TestApprovedArgumentsAreWhatThePersonWasShown$."
+  },
+  {
+   "name": "a kept approval text is not read closed",
+   "file": "execution/state.ts",
+   "find": "(v.request===undefined||typeof v.request==='string'&&v.request.length>0&&object(v.source)&&v.source.kind!=='runtime')&&",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the request clause dropped from ValidApproval; caught at ^TestAKeptApprovalTextIsReadClosed$."
+  },
+  {
+   "name": "an approval's binding does not cover the kept text",
+   "file": "storage/resume.ts",
+   "find": "...(approval.request===undefined?{}:{request:approval.request}),",
+   "replace": "",
+   "tests": [
+    "storage/resume.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the request member dropped from ApprovalBindingOf; caught at ^TestAnApprovalBindingCoversTheKeptText$."
+  },
+  {
+   "name": "the store's guard does not read a kept approval text",
+   "file": "records.ts",
+   "find": ",'approval.request',",
+   "replace": ",",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approval.request dropped from recordTextPaths; caught at ^TestARecordGuardReadsAKeptApprovalText$."
   },
   {
    "name": "principal P1 a child that widens its parent is admitted",
@@ -10816,7 +11237,8 @@
    "tests": [
     "principalSession.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: the rule now also holds version 6; the row 'principal P19 a checkpoint of 4 or 6 without its principal is read' holds it.",
    "origin": "agent#260",
    "note": "Go twin (by hand): drop the version 4 coupling in ReadExecution; caught at ^TestPrincipalSessionRecordsAndResume$/a_delegated_run's_tool_events,_refusal_and_checkpoint_4_carry_its_principal."
   },
@@ -10840,7 +11262,8 @@
    "tests": [
     "principal.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "#275: report 3 also reports checkpoints 5 and 6, under validReportThree; the row 'principal P21 a report 3 is read whatever its principal' holds it.",
    "origin": "agent#260",
    "note": "Go twin (by hand): drop the version 3 check in validReportSemantics; caught at ^TestPrincipalRecordVectors$ (a report whose chain does not end with its leaf)."
   },
@@ -11084,6 +11507,283 @@
    "status": "caught",
    "origin": "agent#260",
    "note": "Go twin (by hand): make the counted admission before invokeDurable in ExecuteDurableHost; caught at ^TestReauthorizationUnderADelegation$."
+  },
+  {
+   "name": "an exact durable request beside a text that is not is a different write",
+   "file": "storage/writer.ts",
+   "find": " if(exactArgumentsText(request))return 'conflict'\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the said clause dropped from compareDurableRequests; caught at ^TestTheDurableRepeatVector$, ^TestAModelThatCopiesItsHistoryMakesOneWrite$."
+  },
+  {
+   "name": "a delegated checkpoint that keeps a text stays at 4",
+   "file": "execution/mutation.ts",
+   "find": "candidate.version=kept?6:4",
+   "replace": "candidate.version=4",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the 6 case in MutateCheckpoint; caught at ^TestTheVersionFollowsWhatTheCheckpointHolds$, ^TestAHeldCallKeepsItsTextWithoutLoweringADelegatedRun$."
+  },
+  {
+   "name": "a kept text does not select its format",
+   "file": "execution/mutation.ts",
+   "find": " else if(kept)candidate.version=5\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the 5 case in MutateCheckpoint; caught at ^TestTheVersionFollowsWhatTheCheckpointHolds$."
+  },
+  {
+   "name": "a checkpoint whose text went stays at 5",
+   "file": "execution/mutation.ts",
+   "find": " else if(candidate.version===5)candidate.version=3\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the 3 case in MutateCheckpoint; caught at ^TestTheVersionFollowsWhatTheCheckpointHolds$."
+  },
+  {
+   "name": "version 6 need not hold its principal",
+   "file": "execution/state.ts",
+   "find": "if((value.version===4||value.version===6)!==(value.principal!==undefined)",
+   "replace": "if((value.version===4)!==(value.version!==6&&value.principal!==undefined)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): CheckpointHoldsPrincipal takes only 4; caught at ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$, ^TestAHeldCallKeepsItsTextWithoutLoweringADelegatedRun$."
+  },
+  {
+   "name": "versions 5 and 6 need not hold a text",
+   "file": "execution/state.ts",
+   "find": " if((value.version===5||value.version===6)!==((value.approval as {request?:unknown}|undefined)?.request!==undefined))return fail()\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the CheckpointHoldsRequest clause dropped from ReadExecution; caught at ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$."
+  },
+  {
+   "name": "checkpoints 5 and 6 are not read",
+   "file": "recordReader.ts",
+   "find": "const READ_VERSIONS={checkpoint:6,",
+   "replace": "const READ_VERSIONS={checkpoint:4,",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): current = 4 in recordVersion; caught at ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$."
+  },
+  {
+   "name": "checkpoints 5 and 6 read the frozen inventory",
+   "file": "recordReader.ts",
+   "find": "kind==='checkpoint'&&version>=4||kind==='event'",
+   "replace": "kind==='checkpoint'&&version===4||kind==='event'",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): version == 4 in checkRecord's generation; caught at ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$."
+  },
+  {
+   "name": "a checkpoint past 4 goes out on an earlier event",
+   "file": "recordReader.ts",
+   "find": "&&event.checkpoint.version>=4||",
+   "replace": "&&event.checkpoint.version===4||",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): Version == 4 in delegatedEvent; caught at ^TestARecordAndAnEventCarryTheirFormat$."
+  },
+  {
+   "name": "a kept text goes out on an earlier event",
+   "file": "recordReader.ts",
+   "find": "||event.type==='approval_requested'&&'request'in event&&event.request!==undefined)return",
+   "replace": ")return",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the Request clause dropped from delegatedEvent; caught at ^TestARecordAndAnEventCarryTheirFormat$."
+  },
+  {
+   "name": "a record with both is stamped 4",
+   "file": "records.ts",
+   "find": "approval?.request!==undefined?6:4)",
+   "replace": "approval?.request!==undefined?4:4)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): version = 6 in WriteRecord; caught at ^TestARecordAndAnEventCarryTheirFormat$."
+  },
+  {
+   "name": "a record with a text is not stamped 5",
+   "file": "records.ts",
+   "find": ":(value as {approval?:{request?:unknown}}).approval?.request!==undefined?5:(",
+   "replace": ":(",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): version = 5 in WriteRecord; caught at ^TestARecordAndAnEventCarryTheirFormat$."
+  },
+  {
+   "name": "a checkpoint past 4 is reported as version 2",
+   "file": "runReport.ts",
+   "find": "version:checkpoint.version>=4?3:feature",
+   "replace": "version:checkpoint.version===4?3:feature",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): Version >= 4 in ProjectRunReport; caught at ^TestAKeptTextsCheckpointIsReported$."
+  },
+  {
+   "name": "checkpoint 6's report loses its principal",
+   "file": "runReport.ts",
+   "find": "...(checkpoint.version===4||checkpoint.version===6?{principal",
+   "replace": "...(checkpoint.version===4?{principal",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): CheckpointHoldsPrincipal takes only 4; caught at ^TestAKeptTextsCheckpointIsReported$."
+  },
+  {
+   "name": "report 3 reads only checkpoint 4",
+   "file": "runReportReader.ts",
+   "find": "if(version!==4&&version!==5&&version!==6)return false",
+   "replace": "if(version!==4)return false",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): validReportThree's range; caught at ^TestAKeptTextsCheckpointIsReported$."
+  },
+  {
+   "name": "names that fold together are put to a person",
+   "file": "toolSources.ts",
+   "find": "} else if (answer === 'ask' && namesFoldTogether(args)) {",
+   "replace": "} else if (false) {",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the namesFoldTogether branch dropped from Decide; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "names nested in an array are not looked at for folding",
+   "file": "context/chat.ts",
+   "find": "||Object.values(value).some(namesFoldTogether)",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): walk returns after the first level; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a held call is shown in the model's member order",
+   "file": "toolSources.ts",
+   "find": "args: JSON.parse(canonicalJSON(args)) as Record<string, unknown>, state: 'asked'",
+   "replace": "args: structuredClone(args), state: 'asked'",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the canonicalising loop dropped from Decide; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a host is given args where a text is kept",
+   "file": "execution/state.ts",
+   "find": "return asked.request ?? canonicalJSON(asked.args ?? {})",
+   "replace": "return canonicalJSON(asked.args ?? {})",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the request branch dropped from shownArguments; caught at ^TestTheKeptApprovalTextVector$, ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a host's digest is over args",
+   "file": "execution/state.ts",
+   "find": "return `sha256:${sha256(approvalShownArguments(asked))}`",
+   "replace": "return `sha256:${sha256(canonicalJSON(asked.args ?? {}))}`",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): ApprovalShownDigest over args; caught at ^TestTheKeptApprovalTextVector$, ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "record versions stamp checkpoints before their digest, with 5 and 6",
+   "file": "records.ts",
+   "find": "version:(schema===CHECKPOINT_SCHEMA?((value as {principal?:unknown}).principal!==undefined?((value as {approval?:{request?:unknown}}).approval?.request!==undefined?6:4):(value as {approval?:{request?:unknown}}).approval?.request!==undefined?5:((value as {version?:number}).version===3||(value as {repeatTools?:unknown}).repeatTools!==undefined||(value as {usageBudget?:unknown;turnRoute?:unknown}).usageBudget!==undefined||(value as {turnRoute?:unknown}).turnRoute!==undefined||(value as {approval?:{runtime?:unknown}}).approval?.runtime!==undefined||taskRecordFields(value)||nativePlanRecordFields(value))?3:2):1)",
+   "replace": "version:1",
+   "tests": [
+    "recordReader.test.ts",
+    "certification/records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Replaces the row of the same safeguard; Go twin as that row's."
+  },
+  {
+   "name": "principal P19 a checkpoint of 4 or 6 without its principal is read",
+   "file": "execution/state.ts",
+   "find": " if((value.version===4||value.version===6)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "replace": " if(value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()",
+   "tests": [
+    "principalSession.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): CheckpointHoldsPrincipal's clause dropped from ReadExecution; caught at ^TestPrincipalSessionRecordsAndResume$, ^TestTheCheckpointFormatsHoldExactlyWhatTheySay$."
+  },
+  {
+   "name": "principal P21 a report 3 is read whatever its principal",
+   "file": "runReportReader.ts",
+   "find": "  if(v3&&object(held)&&!validReportThree(held))return invalid()",
+   "replace": "  void v3",
+   "tests": [
+    "principal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): validReportThree's principal clause; caught at ^TestAKeptTextsCheckpointIsReported$."
   },
   {
    "name": "principal P22 a lease is taken under other principals",
@@ -11581,6 +12281,90 @@
    "status": "caught",
    "origin": "agent#258",
    "note": "#258. Caught at lease.test.ts > a host that stays closed once the authority failed repeatedly fails the kit. Go twin (by hand, performed++ in place of the host.admit.recovered dispatch): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/stays-closed."
+  },
+  {
+   "name": "an approval need not prove what the person was shown",
+   "file": "execution/state.ts",
+   "find": " if(!decision.approved||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined\n",
+   "replace": " return undefined\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approvalDecisionHolds returns nil; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a digest sent on a call with no text need not match",
+   "file": "execution/state.ts",
+   "find": "||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined",
+   "replace": "||asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the same clause; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a person's refusal needs a digest",
+   "file": "execution/state.ts",
+   "find": " if(!decision.approved||decision.shownDigest===undefined&&asked.request",
+   "replace": " if(decision.shownDigest===undefined&&asked.request",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): !decision.Approved dropped; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a decision's digest is not read closed",
+   "file": "execution/state.ts",
+   "find": "||v.shownDigest!==undefined&&(typeof v.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.shownDigest)))return\n",
+   "replace": ")return\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the ShownDigest clause dropped from the decision's check in controller.go; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a decision under a run store proves nothing",
+   "file": "storage/writer.ts",
+   "find": " if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "report 3 with repeat tools reads only checkpoint 4",
+   "file": "runReportReader.ts",
+   "find": "v.version===3&&Number(v.checkpointVersion)>=4)||",
+   "replace": "v.version===3&&v.checkpointVersion===4)||",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): >= 4 in validRepeatReport; caught at ^TestAKeptTextsRunWithRepeatToolsIsReported$."
+  },
+  {
+   "name": "the corpus view stops at checkpoint 4",
+   "file": "history/corpusCheckpointView.ts",
+   "find": "![1,2,3,4,5,6].includes(cp.version)",
+   "replace": "![1,2,3,4].includes(cp.version)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): version > 6 in newCorpusCheckpointView; caught at ^TestTheCorpusViewReadsEveryCheckpointFormat$."
   },
   {
    "name": "job J1 a reader takes any generation",
@@ -12281,7 +13065,7 @@
   {
    "name": "job W16 a key of another form is registered",
    "file": "storage/writer.ts",
-   "find": "    if(typeof keyDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(keyDigest)){jobRefusal=new JobRefused('invalid');return}\n",
+   "find": "    if(typeof keyDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(keyDigest)){refusal=new JobRefused('invalid');return}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts"
@@ -12293,7 +13077,7 @@
   {
    "name": "job W17 a grant re-sends a closed job",
    "file": "storage/writer.ts",
-   "find": "    try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;jobRefusal=error;return}\n",
+   "find": "     try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;refusal=error;return}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts"
@@ -12341,8 +13125,8 @@
   {
    "name": "job W21 a refused registration leaves its row",
    "file": "storage/writer.ts",
-   "find": "catch(error){if(!(error instanceof JobRefused))throw error;this.book.dispatches.pop();jobRefusal=error}finally",
-   "replace": "catch(error){if(!(error instanceof JobRefused))throw error;jobRefusal=error}finally",
+   "find": "catch(error){if(!(error instanceof JobRefused))throw error;this.book.dispatches.pop();refusal=error}finally",
+   "replace": "catch(error){if(!(error instanceof JobRefused))throw error;refusal=error}finally",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -12457,6 +13241,18 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_reauth.go): caught at TestJobsAThrowLeaves."
+  },
+  {
+   "name": "job C2 a held start is approved with no proof of what was shown",
+   "file": "execution/controller.ts",
+   "find": "   if(unproven!==undefined)throw authoredFailure('stale-state',unproven,'context')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldStart."
   }
  ]
 }

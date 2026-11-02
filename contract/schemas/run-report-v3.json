@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-report-v3.json",
   "title": "Run report v3",
-  "description": "Version 3 closed presentation of a delegated run's terminal checkpoint 4 (ADR-0029): version 2's members, and the principal the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the body.",
+  "description": "Version 3 closed presentation of a terminal checkpoint 4, 5 or 6 (ADR-0029, #275), with its principal exactly on 4 and 6: version 2's members, and the principal the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the body.",
   "type": "object",
   "required": [
     "version",
@@ -15,15 +15,18 @@
     "limit",
     "grants",
     "plan",
-    "explanation",
-    "principal"
+    "explanation"
   ],
   "properties": {
     "version": {
       "const": 3
     },
     "checkpointVersion": {
-      "const": 4
+      "enum": [
+        4,
+        5,
+        6
+      ]
     },
     "id": {
       "$ref": "checkpoint.json#/properties/id"
@@ -319,6 +322,34 @@
     }
   },
   "allOf": [
+    {
+      "description": "A principal exactly where the reported checkpoint's version holds one.",
+      "if": {
+        "required": [
+          "checkpointVersion"
+        ],
+        "properties": {
+          "checkpointVersion": {
+            "enum": [
+              4,
+              6
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "principal"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "principal"
+          ]
+        }
+      }
+    },
     {
       "if": {
         "properties": {

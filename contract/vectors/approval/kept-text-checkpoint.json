@@ -1,0 +1,239 @@
+{
+  "description": "Which checkpoint format holds what (#275, ADR-0024, ADR-0029), written by hand. approval.request and principal are each present exactly on the versions that say so: principal on 4 and 6, approval.request on 5 and 6. So dropping either from a checkpoint that has it is refused on read, and neither can be added to a version that does not name it. Published checkpoint 3 is frozen and a run that keeps no text stays at the version it was. items are the two new formats. cases are reader inputs: the version, whether approval.request is there, whether principal is there, and whether it reads. A release before these versions refuses them (run at the v0.12.0 tag). go/context/durable_writes_test.go and storage/durableWrites.test.ts read every case, and tests/test_contract.py derives each from the rule.",
+  "schema": "checkpoint.json",
+  "source": {
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/execution/mutation.ts (the version a checkpoint's members select)",
+      "packages/harness/execution/state.ts (readExecution)"
+    ]
+  },
+  "items": [
+    {
+      "version": 5,
+      "id": "kept-text",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "paused",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "compatibility",
+        "entries": []
+      },
+      "approval": {
+        "callId": "call-kept",
+        "name": "tracker__write",
+        "tool": "write",
+        "source": {
+          "kind": "custom",
+          "id": "tracker",
+          "trust": "person",
+          "version": "1",
+          "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "tool": "write"
+        },
+        "args": {
+          "id": 9007199254740992
+        },
+        "state": "asked",
+        "request": "{\"id\":9007199254740993}"
+      }
+    },
+    {
+      "version": 6,
+      "id": "kept-text",
+      "requestKey": "0000000000000000000000000000000000000000000000000000000000000000",
+      "phase": "work",
+      "status": "paused",
+      "unit": "model-requests",
+      "used": 0,
+      "limit": 20,
+      "grants": [],
+      "plan": [],
+      "explanation": "",
+      "operations": [],
+      "context": {
+        "scope": "compatibility",
+        "entries": []
+      },
+      "approval": {
+        "callId": "call-kept",
+        "name": "tracker__write",
+        "tool": "write",
+        "source": {
+          "kind": "custom",
+          "id": "tracker",
+          "trust": "person",
+          "version": "1",
+          "toolListDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "tool": "write"
+        },
+        "args": {
+          "id": 9007199254740992
+        },
+        "state": "asked",
+        "request": "{\"id\":9007199254740993}"
+      },
+      "principal": {
+        "actor": {
+          "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk",
+          "software": {
+            "package": "@judgment-pack/harness",
+            "version": "0.13.0"
+          }
+        },
+        "subject": {
+          "kind": "person",
+          "issuer": "https://login.example.com/",
+          "subject": "approver@example.com"
+        },
+        "delegation": {
+          "id": "33333333333333333333333333333333",
+          "digest": "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+        },
+        "chain": [
+          "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a"
+        ],
+        "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "version": 2,
+      "request": false,
+      "principal": false,
+      "reads": true
+    },
+    {
+      "version": 2,
+      "request": true,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 2,
+      "request": false,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 3,
+      "request": false,
+      "principal": false,
+      "reads": true
+    },
+    {
+      "version": 3,
+      "request": true,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 3,
+      "request": false,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 3,
+      "request": true,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 4,
+      "request": false,
+      "principal": true,
+      "reads": true
+    },
+    {
+      "version": 4,
+      "request": false,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 4,
+      "request": true,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 4,
+      "request": true,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 5,
+      "request": true,
+      "principal": false,
+      "reads": true
+    },
+    {
+      "version": 5,
+      "request": false,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 5,
+      "request": true,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 5,
+      "request": false,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 6,
+      "request": true,
+      "principal": true,
+      "reads": true
+    },
+    {
+      "version": 6,
+      "request": true,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 6,
+      "request": false,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 6,
+      "request": false,
+      "principal": false,
+      "reads": false
+    },
+    {
+      "version": 7,
+      "request": true,
+      "principal": true,
+      "reads": false
+    },
+    {
+      "version": 7,
+      "request": false,
+      "principal": false,
+      "reads": false
+    }
+  ]
+}

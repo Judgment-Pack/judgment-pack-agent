@@ -61,7 +61,7 @@ export interface ExecutionCheckpoint {
  /** ADR-0029: the principal a delegated run acts as and for (checkpoint 4 only). */
  principal?:PrincipalRecord;
  handoff?:import('../storage/handoff').DurableHandoff;
- version:1|2|3|4;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
+ version:1|2|3|4|5|6;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];planState?:PlanState;explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
@@ -112,9 +112,9 @@ export function validSkillLoads(value:unknown):value is SkillLoad[]{
  * result, written and acknowledged before anything else; `answered` once the continuation request
  * carrying the result has been sent.
  */
-export interface ApprovalRecord {runtime?:import('../runtimeActions').RuntimeApprovalBinding;callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
+export interface ApprovalRecord {runtime?:import('../runtimeActions').RuntimeApprovalBinding;/** The model's text, where a Go writer's args cannot say it (#275). */request?:string;callId:string;name:string;tool:string;source:import('../toolSources').SourceRecord;args:Record<string,unknown>;state:'asked'|'approved'|'refused'|'executed'|'answered';decidedAt?:string;note?:string;result?:McpToolResult;marker?:string}
 /** The person's decision on a paused act call (ADR-0008; `checkpoint.json#/$defs/approvalDecision`), handed to the run as `context.approval`. */
-export interface ApprovalDecision {callId:string;approved:boolean;note?:string}
+export interface ApprovalDecision {callId:string;approved:boolean;note?:string;/** The digest of the text the person was shown (#275, `approvalShownDigest`). */shownDigest?:string}
 const APPROVAL_STATES=['asked','approved','refused','executed','answered']
 const WIRE_NAME=/^[A-Za-z0-9_-]{1,64}$/
 /** A source record as an approval carries it, read closed (`tool-offer.json#/$defs/sourceRecord`). */
@@ -123,12 +123,38 @@ function validRecord(v:unknown):boolean{
 }
 /** The checkpoint's approval, read closed (ADR-0008). */
 export function validApproval(v:unknown):v is ApprovalRecord{
- return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result','marker','runtime'])&&(v.runtime===undefined||validRuntimeBinding(v.runtime)&&object(v.source)&&v.source.kind==='runtime')&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))&&(v.marker===undefined||typeof v.marker==='string'&&/^[0-9a-f]{32}$/.test(v.marker))
+ return object(v)&&exact(v,['callId','name','tool','source','args','state','decidedAt','note','result','marker','runtime','request'])&&(v.request===undefined||typeof v.request==='string'&&v.request.length>0&&object(v.source)&&v.source.kind!=='runtime')&&(v.runtime===undefined||validRuntimeBinding(v.runtime)&&object(v.source)&&v.source.kind==='runtime')&&text(v.callId,256)&&v.callId.length>=1&&typeof v.name==='string'&&WIRE_NAME.test(v.name)&&text(v.tool,128)&&v.tool.length>=1&&validRecord(v.source)&&object(v.args)&&APPROVAL_STATES.includes(String(v.state))&&(v.decidedAt===undefined||typeof v.decidedAt==='string'&&Number.isFinite(Date.parse(v.decidedAt)))&&(v.note===undefined||text(v.note,2000))&&(v.result===undefined||object(v.result))&&(v.marker===undefined||typeof v.marker==='string'&&/^[0-9a-f]{32}$/.test(v.marker))
 }
 /** The person's decision, read closed (ADR-0008), or undefined where it is not one. */
 export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{
- if(!object(v)||!exact(v,['callId','approved','note'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000))return
- return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string})}
+ if(!object(v)||!exact(v,['callId','approved','note','shownDigest'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000)||v.shownDigest!==undefined&&(typeof v.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.shownDigest)))return
+ return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string}),...(v.shownDigest===undefined?{}:{shownDigest:v.shownDigest as string})}
+}
+/**
+ * The text a host renders for a call held for approval: what the approved call runs (#275). A stored record's
+ * args are the parsed form, so where the record keeps the model's text, that is what runs; otherwise it is args'
+ * canonical JSON. Takes the checkpoint's approval or an approval_requested event, live or stored.
+ * `ApprovalShownArguments` in go/context/sources.go is its twin.
+ */
+export function approvalShownArguments(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return asked.request ?? canonicalJSON(asked.args ?? {})
+}
+/**
+ * What a host binds an approval reference to: the SHA-256 of `approvalShownArguments`' UTF-8 bytes (#275). A digest
+ * over args cannot tell 9007199254740992 from 9007199254740993. `ApprovalShownDigest` in go/context/sources.go is its twin.
+ */
+export function approvalShownDigest(asked: { request?: string; args?: Record<string, unknown> }): string {
+  return `sha256:${sha256(approvalShownArguments(asked))}`
+}
+/**
+ * What a decision must prove (#275), or the refusal's words where it does not. A stored record's args are the parsed
+ * form, so a host that shows them shows another number than the one that runs where a text is kept: approving such a
+ * call needs the digest of the text the person was shown. A digest sent must match on any call. A refusal runs nothing
+ * and needs none. `approvalDecisionHolds` in go/context/sources.go is its twin.
+ */
+export function approvalNotShown(asked:{request?:string;args?:Record<string,unknown>},decision:{approved:boolean;shownDigest?:string}):string|undefined{
+ if(!decision.approved||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined
+ return 'ApprovalNotShown: this call runs exactly as the model wrote it, because its parsed form cannot say that text, so an approval must prove what the person was shown, and this decision does not. Nothing was decided or run, and the pause stands. Show the person approvalShownArguments, the text that runs, as a string and never parsed, and send approvalShownDigest as the decision\'s shownDigest.'
 }
 /** The refused result an act call the person refused carries (ADR-0008): never run. */
 export function refusedResult(name:string):McpToolResult{
@@ -203,7 +229,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  checkRecord('checkpoint',value)
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
- if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3,4].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3,4,5,6].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(value.repeatTools!==undefined&&(Number(value.version)<3||!validRepeatTools(value.repeatTools)))return fail()
@@ -243,8 +269,9 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.turnRoute!==undefined&&(Number(value.version)<3||!validTurnRoute(value.turnRoute)))return fail()
  if(value.usageBudget!==undefined&&(Number(value.version)<3||!validUsageJournal(value.usageBudget)))return fail()
  if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
- // ADR-0029: version 4 is a delegated run's, and carries exactly its principal.
- if((value.version===4)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()
+ // ADR-0029, #275: each version holds exactly what it says: principal on 4 and 6, approval.request on 5 and 6.
+ if((value.version===4||value.version===6)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()
+ if((value.version===5||value.version===6)!==((value.approval as {request?:unknown}|undefined)?.request!==undefined))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

@@ -767,6 +767,12 @@ func TestResumeACommitThatRewritesTheReviewedCallIsRefused(t *testing.T) {
 			c["approval"].(map[string]any)["args"] = map[string]any{"title": "Something else entirely"}
 		},
 		"call id": func(c map[string]any) { c["approval"].(map[string]any)["callId"] = "call-other" },
+		"another spelling kept beside the same arguments": func(c map[string]any) {
+			approval := c["approval"].(map[string]any)
+			raw, _ := json.Marshal(approval["args"])
+			approval["request"] = " " + string(raw)
+			c["version"] = 5
+		},
 		"source": func(c map[string]any) {
 			c["approval"].(map[string]any)["source"].(map[string]any)["id"] = "ledger"
 		},

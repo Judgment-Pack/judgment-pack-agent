@@ -500,7 +500,7 @@ unrelated successful row remains #181's published limit.
 
 | Crossing, from | Parsed | Recorded; shown to a person | Effect host gets | Repeat, resume | Bytes differ? |
 | --- | --- | --- | --- | --- | --- |
-| Start, model | `args`, for policy and the card only | Row `request` and digest; the job copies them from the claim. Card: as any held call | Admission over the digest; `start` gets the row's bytes | From the row, or from the job where the row cannot say. Unknown is never re-sent | Next, with #277's member: refused at the gate when a held call's digest is not the row's |
+| Start, model | `args`, for policy and the card only | Row `request` and digest; the job copies them from the claim. Card: `approvalShownArguments` | Admission over the digest; `start` gets the row's bytes | From the row, or from the job where the row cannot say. Unknown is never re-sent | Refused: a held start needs `shownDigest`, text kept or not, before the claim (`ApprovalNotShown`). What was shown is the row's bytes |
 | Start's answer, host | Typed, or the job stays unproven | Handle and receipt on the job; the row holds the composed result | Nothing | The first start wins; another handle is `conflict` | No: nothing of it reaches the row or the model |
 | Job id, model | Strict: only `job`, a digest | Read row. Shown: the projection | Nothing | Never cached; an unchanged read says so. The run comes from the view's fence | Spelling only: the lookup is (run, job) |
 | Completion, reconciliation, host | Closed: ids, enums, digests; no number or free text | Canonical form without the key; its digest; report | Nothing | Retained answer; a replay wakes nothing | No: only the canonical form survives |
@@ -541,6 +541,7 @@ The gateway builds, on `/act`:
 | Host must | Otherwise |
 | --- | --- |
 | Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`) | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, before any offer |
+| Decide every held start with `shownDigest` (`approvalShownDigest`), text kept or not: a new surface has no unmoved host | `ApprovalNotShown`, before the claim: no job, nothing runs, and the pause stands |
 | Declare `gatewayKeyScope` on a start tool of a `gateway` source | `job-host-unsupported` |
 | Mint a completion key per job, store only its digest here, and keep the key across its own restarts | `key-reused` or `invalid` before any row; a lost key means the job can never be completed |
 | Answer `start` in the typed form | The job stays unproven, and the row says it was not re-sent |
@@ -579,10 +580,9 @@ expiry, so paused is not read as stopped. An objective requires a leased run, ch
 wait, budget or approval. A pause longer than an approval's TTL ends that wait and closes the run for good. `inspect` is a read
 with a count and a last row; capacity is reserved so a state-changing command is never refused for size (M12).
 
-**What depends on #277.** It is not merged at this writing. Its `shownDigest` on the decision is carried through a parked
-approval here (`decisionFor`, and `resumeParked`'s answer; Go passes the decision whole). The check that every held start or
-cancel carries it, text kept or not, in the gate before the claim, and its equality with the row's digest, land with #277: a
-decision here cannot carry the member until then. Until #277 merges, a held call here runs its parsed form as published.
+**A held start and #277.** `shownDigest` on the decision is carried through a parked approval (`decisionFor`, and
+`resumeParked`'s answer; Go passes the decision whole), and a start's decision must carry it, text kept or not, at the
+continuation's opening, before the claim. With #277's one canonical form the digest it proves is the row's `requestDigest`.
 
 **How the design review was answered.**
 
@@ -597,7 +597,7 @@ decision here cannot carry the member until then. Until #277 merges, a held call
 | M2 a late answer is lost | The answer is taken from the fence that admitted the start, current or not, and whatever the call's signal says |
 | M3 evidence at the wrong time | The proof reads the job: `completed`, `succeeded` proves it whatever the row says; anything else `unsuccessful-operation` |
 | M4 a cancel's row and card | Next: `{job, generation}`, a card reader, refused before the card |
-| M5 refusals strand a row | Registration is in the claim's own transaction: no window, no `unbound`, no store parse of the head. A key is checked before the claim. #277's check goes in the gate |
+| M5 refusals strand a row | Registration is in the claim's own transaction: no window, no `unbound`, no store parse of the head. A key is checked before the claim, and `shownDigest` at the continuation's opening, before the claim |
 | M6 `poll-refused` does not stop polling | Cut: it always answers, says unchanged and says not to poll |
 | M7 a leg's end and a resume | Statuses, the pending-decision refusal, the job on the resume, the fixed continuation block; chat-bound job waits refused |
 | M8 pause goes too far | Next: only `acquireLease` and `resumeWait`, and the answer reports the held lease |

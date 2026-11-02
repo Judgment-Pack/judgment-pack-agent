@@ -833,7 +833,17 @@ func TestJobsAHeldStartGoesThroughTheOrdinaryApproval(t *testing.T) {
 			if page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10); len(page.Jobs) != 0 {
 				t.Fatal(page.Jobs)
 			}
-			next := drive(t, l.view, engine, []runcontext.HostTool{tool}, nil, options{resume: true, decision: heldProof(callID)})
+			// ApprovalNotShown: no digest, or another one, is refused before the claim; the pause stands and nothing
+			// has run.
+			wrong := "sha256:" + strings.Repeat("0", 64)
+			for _, decision := range []*contract.CheckpointApprovalDecision{{CallID: callID, Approved: true}, {CallID: callID, Approved: true, ShownDigest: &wrong}} {
+				refused := drive(t, l.view, engine, []runcontext.HostTool{tool}, nil, options{resume: true, decision: decision})
+				if calls.count() != 0 || !strings.Contains(fmt.Sprint(refused.err)+toolAnswer(refused), "ApprovalNotShown") {
+					t.Fatal(calls.count(), refused.err, toolAnswer(refused))
+				}
+			}
+			proof := heldProof(t, l.store, callID)
+			next := drive(t, l.view, engine, []runcontext.HostTool{tool}, nil, options{resume: true, decision: proof})
 			if next.err != nil || calls.count() != 1 {
 				t.Fatal(next.err, calls.count())
 			}
@@ -842,13 +852,29 @@ func TestJobsAHeldStartGoesThroughTheOrdinaryApproval(t *testing.T) {
 			if job.State != "started" || rows.row(job.Operation).Request != calls.requests[0] {
 				t.Fatalf("%+v %+v", job, rows.row(job.Operation))
 			}
+			// What was shown is what the row holds: the digest the person's decision proved is the job's.
+			if job.RequestDigest != *proof.ShownDigest {
+				t.Fatal(job.RequestDigest, *proof.ShownDigest)
+			}
 		})
 	}
 }
 
-// heldProof is a decision on a held start. It is a separate function because what it must carry is #277's.
-func heldProof(callID string) *contract.CheckpointApprovalDecision {
-	return &contract.CheckpointApprovalDecision{CallID: callID, Approved: true}
+// heldProof is a decision on a held start: the digest of what the person was shown, read from the stored pause.
+func heldProof(t *testing.T, store runcontext.RunStore, callID string) *contract.CheckpointApprovalDecision {
+	t.Helper()
+	head, err := store.Load(context.Background(), jobRun)
+	if err != nil || head == nil {
+		t.Fatal(head, err)
+	}
+	var saved struct {
+		Approval contract.CheckpointApproval `json:"approval"`
+	}
+	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	digest := runcontext.ApprovalShownDigest(saved.Approval)
+	return &contract.CheckpointApprovalDecision{CallID: callID, Approved: true, ShownDigest: &digest}
 }
 
 func TestJobsTheRowsOfJobToolsAreNeverPlanEvidence(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // A wire body is the value JSON.parse makes of what arrived and the text JSON.stringify writes of
@@ -40,6 +41,13 @@ type Value struct {
 	text    string
 	items   []*Value
 	members []member
+	// source is an object's JSON text as Parse read it, byte for byte, until it is written to.
+	source string
+	// lossy says the parsed form cannot say that text: it holds a number not written as a float64 writes it. Such an
+	// object is written back as its source, so the model reads what it wrote (#275). unheld says the record could not
+	// hold that text (a number out of range, a repeated name), so nothing can copy it to a row, and it goes back in its
+	// parsed form as published. written says this value was written to after it was read.
+	lossy, unheld, written bool
 }
 
 type member struct {
@@ -93,21 +101,90 @@ func Obj(fields ...Field) *Value {
 
 // Parse reads one JSON text, as JSON.parse does.
 func Parse(data []byte) (*Value, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	text := string(data)
+	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.UseNumber()
-	value, err := readJSONValue(decoder)
+	value, err := readJSONValue(decoder, text)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		return nil, errTrailingJSON
 	}
+	if value.kind == KindObject {
+		value.source = text
+	}
 	return value, nil
+}
+
+// unwritten reports that neither this value nor anything under it was written to since it was read, so its source
+// still says it. A write to a member of a parsed body is not lost under a marked ancestor.
+func (v *Value) unwritten() bool {
+	if v.written {
+		return false
+	}
+	for _, item := range v.items {
+		if !item.unwritten() {
+			return false
+		}
+	}
+	for _, held := range v.members {
+		if !held.value.unwritten() {
+			return false
+		}
+	}
+	return true
+}
+
+// heldText reports text the record could hold: valid UTF-8 with no lone surrogate escape.
+func heldText(text string) bool {
+	if !utf8.ValidString(text) {
+		return false
+	}
+	for at := 0; at < len(text); at++ {
+		if text[at] != '\\' {
+			continue
+		}
+		at++
+		if at >= len(text) || text[at] != 'u' || at+4 >= len(text) {
+			continue
+		}
+		unit, err := strconv.ParseUint(text[at+1:at+5], 16, 16)
+		if err != nil {
+			continue
+		}
+		at += 4
+		switch {
+		case unit >= 0xDC00 && unit <= 0xDFFF:
+			return false
+		case unit >= 0xD800 && unit <= 0xDBFF:
+			if at+6 >= len(text) || text[at+1] != '\\' || text[at+2] != 'u' {
+				return false
+			}
+			low, err := strconv.ParseUint(text[at+3:at+7], 16, 16)
+			if err != nil || low < 0xDC00 || low > 0xDFFF {
+				return false
+			}
+			at += 6
+		}
+	}
+	return true
+}
+
+// ArgumentText is a call's arguments as the model wrote them: the text Parse read this object from, or
+// its JSON where it was never read or has been written to since. A Value holds numbers as float64s and
+// keeps the last of a repeated name, so its JSON can be another call: 9007199254740993 reads as
+// 9007199254740992, 1e400 as null, 1e-400 as 0 (#275). The tool runs these bytes and the record keeps them.
+func (v *Value) ArgumentText() string {
+	if v.source != "" {
+		return v.source
+	}
+	return v.String()
 }
 
 var errTrailingJSON = errors.New("data after the JSON value")
 
-func readJSONValue(decoder *json.Decoder) (*Value, error) {
+func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
@@ -122,7 +199,10 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 		if err != nil && !errors.Is(err, strconv.ErrRange) {
 			return nil, err
 		}
-		return Num(f), nil
+		number := Num(f)
+		number.unheld = err != nil
+		number.lossy = err == nil && jsNumber(f) != string(t)
+		return number, nil
 	case string:
 		return Str(t), nil
 	case json.Delim:
@@ -130,10 +210,11 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 		case '[':
 			value := &Value{kind: KindArray}
 			for decoder.More() {
-				item, err := readJSONValue(decoder)
+				item, err := readJSONValue(decoder, text)
 				if err != nil {
 					return nil, err
 				}
+				value.lossy, value.unheld = value.lossy || item.lossy, value.unheld || item.unheld
 				value.items = append(value.items, item)
 			}
 			if _, err := decoder.Token(); err != nil {
@@ -142,6 +223,7 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 			return value, nil
 		case '{':
 			value := &Value{kind: KindObject}
+			start := decoder.InputOffset() - 1
 			for decoder.More() {
 				name, err := decoder.Token()
 				if err != nil {
@@ -151,15 +233,17 @@ func readJSONValue(decoder *json.Decoder) (*Value, error) {
 				if !ok {
 					return nil, errTrailingJSON
 				}
-				item, err := readJSONValue(decoder)
+				item, err := readJSONValue(decoder, text)
 				if err != nil {
 					return nil, err
 				}
+				value.lossy, value.unheld = value.lossy || item.lossy, value.unheld || item.unheld || value.Get(key) != nil
 				value.Set(key, item)
 			}
 			if _, err := decoder.Token(); err != nil {
 				return nil, err
 			}
+			value.source, value.written = text[start:decoder.InputOffset()], false
 			return value, nil
 		}
 	}
@@ -257,6 +341,7 @@ func (v *Value) Set(name string, value *Value) {
 	if v.kind != KindObject {
 		return
 	}
+	v.source, v.written = "", true
 	for i := range v.members {
 		if v.members[i].name == name {
 			v.members[i].value = value
@@ -279,6 +364,7 @@ func (v *Value) Append(items ...*Value) {
 	if v.kind != KindArray {
 		return
 	}
+	v.written = true
 	v.items = append(v.items, items...)
 }
 
@@ -349,6 +435,10 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 func (v *Value) write(b *bytes.Buffer) {
 	if v == nil {
 		b.WriteString("null")
+		return
+	}
+	if v.kind == KindObject && v.lossy && !v.unheld && v.source != "" && v.unwritten() && heldText(v.source) {
+		b.WriteString(v.source)
 		return
 	}
 	switch v.kind {

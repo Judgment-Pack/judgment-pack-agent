@@ -6,7 +6,7 @@ import {toolListDigest} from '../toolSources'
 import {canonicalJSON} from '../context/chat'
 import {evidenceFailure,availablePlanEvidence} from '../execution/planActions'
 import {planDigest} from '../execution/plan'
-import {readExecution} from '../execution/state'
+import {approvalShownDigest,readExecution} from '../execution/state'
 import {MemoryRunStore,type RunStore} from './run'
 import {LeaseCapabilityRefused,ReferenceEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type LeaseLifetime} from './lease'
 import {admitJobs,completeJob,exportJobs,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob} from './job'
@@ -31,7 +31,7 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0,bodies:[] as string[]}
  return {state,call:async(_path?:unknown,init?:{body?:unknown})=>{state.bodies.push(String(init?.body??''));const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
-async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;approval?:{callId:string;approved:boolean};jobContinuation?:RunJob;signal?:AbortSignal}={}):Promise<AssistantEvent[]>{
+async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;approval?:{callId:string;approved:boolean;shownDigest?:string};jobContinuation?:RunJob;signal?:AbortSignal}={}):Promise<AssistantEvent[]>{
  const session:EngineSession={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:extra.signal??new AbortController().signal,allowConversation:true,critic:'off',
   context:{currentRequest:{message:'Run the job.',input:'job'},runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})},...(extra.approval?{approval:extra.approval}:{}),...(extra.jobContinuation?{jobContinuation:extra.jobContinuation}:{})},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
@@ -59,8 +59,8 @@ async function oneJob(answer:()=>Promise<JobStartAnswer>=started,make?:(now:()=>
  const job=(await listJobs(held.store,RUN)).jobs[0]!
  return {...held,start,first,tool,events,job}
 }
-/** What a decision on a held start must carry: nothing while #277's member is not on this branch. */
-const HELD_PROOF=(_asked:unknown):Record<string,never>=>({})
+/** What a decision on a held start must carry. */
+const HELD_PROOF=(asked:{request?:string;args?:Record<string,unknown>})=>({shownDigest:approvalShownDigest(asked)})
 vi.setConfig({testTimeout:120_000})
 
 describe('a start is registered with its claim, before it is admitted (#229)',()=>{
@@ -454,15 +454,20 @@ describe('a held start goes through the ordinary approval (#229)',()=>{
  it('a start the person is asked about registers nothing until it is decided, then runs once with its row\'s bytes',async()=>{
   const held=await leased(),start=vi.fn(async(_:{job:string;request:string}):Promise<JobStartAnswer>=>started()),tool=await startTool(start,{approve:'ask'}),first=provider([CALL])
   const events=await drive(held.view,[tool],first.call)
-  const asked=events.find(e=>e.type==='approval_requested') as Extract<AssistantEvent,{type:'approval_requested'}>
+  const asked=events.find(e=>e.type==='approval_requested') as Extract<AssistantEvent,{type:'approval_requested'}>&{request?:string;args?:Record<string,unknown>}
   expect(asked).toBeDefined();expect(start).not.toHaveBeenCalled();expect((await exportJobs(held.store,RUN)).jobs).toEqual([])
   const next=provider([{say:'Running.'}])
+  // ApprovalNotShown: no digest, or another one, is refused before the claim; the pause stands and nothing has run.
+  const unproven=async(approval:Record<string,unknown>)=>{const out=await drive(held.view,[tool],provider([{say:'never'}]).call,{resume:true,approval:{callId:asked.callId,approved:true,...approval}});expect(JSON.stringify(out)).toContain('ApprovalNotShown');expect(start).not.toHaveBeenCalled();expect((await exportJobs(held.store,RUN)).jobs).toEqual([])}
+  await unproven({});await unproven({shownDigest:`sha256:${'0'.repeat(64)}`})
   const continued=await drive(held.view,[tool],next.call,{resume:true,approval:{callId:asked.callId,approved:true,...HELD_PROOF(asked)}})
   expect(continued.at(-1)?.type).toBe('end')
   expect(start).toHaveBeenCalledTimes(1)
   const job=(await listJobs(held.store,RUN)).jobs[0]!
   expect(job.state).toBe('started')
   expect(start.mock.calls[0]![0].request).toBe((await headRows(held.store)).dispatches.find(d=>d.id===job.operation)!.request)
+  // What was shown is what the row holds: the digest the person's decision proved is the job's.
+  expect(job.requestDigest).toBe(HELD_PROOF(asked).shownDigest)
   expect(next.state.bodies[0]).toContain('started, not finished')
  })
  it('a person who refuses leaves no job',async()=>{

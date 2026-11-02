@@ -337,11 +337,17 @@
           "type": "object"
         },
         "version": {
-          "description": "Event wire format version. Absent only on historical records; current writers emit 1.",
+          "description": "Event wire format version. Absent only on historical records; current writers emit 1, and 3 where the event carries request.",
           "enum": [
             1,
-            2
+            2,
+            3
           ]
+        },
+        "request": {
+          "description": "The call's arguments as the model wrote them, byte for byte, where args cannot say them (#275, checkpoint.json#/$defs/approval): the text the approved call runs. A host renders this where it is present: args is the parsed form once a record has been stored, so it can hold another number. Run event 3 only.",
+          "type": "string",
+          "minLength": 1
         },
         "purpose": {
           "enum": [

@@ -72,3 +72,9 @@ both runtime mirrors. Published report1 keeps its separate complete frozen graph
 Changing current nested definitions cannot widen any of these released readers. New structural
 members require an explicitly selected next enclosing format; map-valued resolved policy entries
 do not by themselves change the policy-layer structural version.
+
+Checkpoints 5 and 6 are such a format (#275). A kept approval text, `approval.request`, is present exactly on those
+two, 6 also holding a principal, which stays present exactly on 4 and 6 (ADR-0029), so taking either away from a
+checkpoint that holds it is refused on read. They read the current schemas, go out on event 3 with `approval_requested`'s
+`request`, and are reported by report 3. Published checkpoint 3 stays frozen, a run that keeps no text keeps its version
+and bytes, and a release before these versions refuses them by this decision's named error.

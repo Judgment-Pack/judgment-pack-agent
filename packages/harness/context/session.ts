@@ -12,7 +12,7 @@ import {runtimeTaxonomyProblem, taxonomyAnnotations} from '../toolTaxonomy'
 import {ContinuationNotRecoverable,ContinuationIdentityChanged} from '../storage/writer'
 import {JobCapabilityRefused,JobRefused,jobSeamOf,readRunJob,type RunJob} from '../storage/job'
 import {quarantineModelResponse} from '../storage/model'
-import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded as resultSucceeded,durableReadingTool,type DurableBinding,type DurableRunInput} from '../storage/writer'
+import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded as resultSucceeded,durableReadingTool,exactlyHeld,type DurableBinding,type DurableRunInput} from '../storage/writer'
 import {sha256} from '../records'
 import {RequestValues} from './requestValues'
 import {CheckpointIncrement} from '../execution/mutation'
@@ -1038,7 +1038,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
-  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined)
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined)
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})

@@ -72,6 +72,10 @@ var notTheGates = map[string]string{
 	"approval/continue-approved.json":        "the continuation of an approved act call: the boundary's (go/context, ContextualSession, SourceGate.Approved)",
 	"approval/wrong-call-id.json":            "a decision for another call, refused before the run: the execution's (go/context, ExecutionController.Initialize)",
 	"approval/policy.json":                   "the host's approval policy's three answers: the source gate's (go/context, askPolicy, SourceGate.Decide)",
+	"approval/kept-text-checkpoint.json":     "which checkpoint format holds a kept text and a principal: the record readers' (go/context, ReadExecution)",
+	"approval/kept-text-decision.json":       "the decision on a call whose text is kept: the execution's (go/context, approvalDecisionHolds)",
+	"approval/kept-text-event.json":          "the events that carry a kept approval text: the writer's (go/contract, StampEvent)",
+	"approval/kept-text.json":                "what a call held for approval keeps and what the approved call runs with: the source gate's (go/context, approvalRequestOf, approvedArguments)",
 	"approval/stale-decision.json":           "an act call whose decision no longer holds for it, refused: the source gate's (go/context, SourceGate.Call, SourceGate.Approved)",
 }
 

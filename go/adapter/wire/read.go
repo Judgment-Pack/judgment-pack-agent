@@ -652,7 +652,7 @@ func anthropicAnswer(events *sseReader, whole *Value, listener Listener) (Answer
 				carried = block.Clone()
 				carried.Set("input", Obj())
 			case held.IsObject():
-				call.Arguments = held.String()
+				call.Arguments = held.ArgumentText()
 			}
 			toolCalls = append(toolCalls, call)
 		}
@@ -865,7 +865,7 @@ func geminiAnswer(events *sseReader, whole *Value, listener Listener, ids func()
 			held.ID = ids()
 		}
 		if args := call.Get("args"); args.IsObject() {
-			held.Arguments = args.String()
+			held.Arguments = args.ArgumentText()
 		}
 		toolCalls = append(toolCalls, held)
 	}

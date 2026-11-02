@@ -295,3 +295,28 @@ func TestWithDeadline(t *testing.T) {
 		t.Errorf("the work's own failure: %v", err)
 	}
 }
+
+// A call on the text path keeps the model's arguments, byte for byte (#275). Elsewhere a parsed value still
+// writes as JSON.stringify writes it.
+func TestAFencedCallKeepsTheModelsText(t *testing.T) {
+	for _, text := range []string{`{"id":9007199254740993}`, `{"q":1e400}`, `{"q":1e-400}`, `{"q":1.0}`, `{"a":1,"a":2}`, `{"b":2,"a":1}`, `{ "c" : 3 }`, `{"o":{"p":[1.50]}}`} {
+		call, problem := ExtractToolCall("```json\n{ \"tool\" : \"lookup\" , \"arguments\" :  " + text + "  }\n```")
+		if problem != "" || call == nil {
+			t.Fatalf("%s: %s", text, problem)
+		}
+		if string(call.Arguments) != text {
+			t.Errorf("%q, not %q", call.Arguments, text)
+		}
+	}
+	parsed, err := parseJSON([]byte(`{"q":1.0}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw(parsed)) != `{"q":1}` {
+		t.Errorf("raw wrote %s", raw(parsed))
+	}
+	parsed.set("q", &jvalue{kind: jnumber, n: 2})
+	if string(written(parsed)) != `{"q":2}` {
+		t.Errorf("written to, it wrote %s", written(parsed))
+	}
+}

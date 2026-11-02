@@ -548,7 +548,7 @@ func validRepeatReport(v *Value) bool {
 	if r == nil {
 		return true
 	}
-	if !(v.Get("version").Num() == 2 && v.Get("checkpointVersion").Num() == 3 || v.Get("version").Num() == 3 && v.Get("checkpointVersion").Num() == 4) {
+	if !(v.Get("version").Num() == 2 && v.Get("checkpointVersion").Num() == 3 || v.Get("version").Num() == 3 && v.Get("checkpointVersion").Num() >= 4) {
 		return false
 	}
 	p := r.Get("policy")
@@ -569,15 +569,25 @@ func validRepeatReport(v *Value) bool {
 	return r.Get("executions").Len() > 0
 }
 
+// validReportThree is report 3's own rule: it reports a checkpoint of version 4 to 6, with a principal exactly
+// where that version holds one (ADR-0029, #275).
+func validReportThree(v *Value) bool {
+	version := int(v.Get("checkpointVersion").Num())
+	if version < 4 || version > 6 || CheckpointHoldsPrincipal(version) != v.Has("principal") {
+		return false
+	}
+	return !v.Has("principal") || validPrincipalValue(v.Get("principal"))
+}
+
 func validReportSemantics(v *Value) bool {
 	if !oldSourceTaskFacts(v) || !validRepeatReport(v) {
 		return false
 	}
-	if v.Get("version").Num() == 3 && (v.Get("checkpointVersion").Num() != 4 || !validPrincipalValue(v.Get("principal"))) {
+	if v.Get("version").Num() == 3 && !validReportThree(v) {
 		return false
 	}
 	if v.Get("version").Num() == 2 || v.Get("version").Num() == 3 {
-		if v.Get("checkpointVersion").Num() != 3 && v.Get("checkpointVersion").Num() != 4 && (v.Has("usageTotals") || v.Has("route") || !v.Get("feedback").IsArray() || v.Get("feedback").Len() == 0) {
+		if v.Get("checkpointVersion").Num() < 3 && (v.Has("usageTotals") || v.Has("route") || !v.Get("feedback").IsArray() || v.Get("feedback").Len() == 0) {
 			return false
 		}
 		if rows := v.Get("feedback"); rows != nil {
@@ -738,7 +748,7 @@ func readRunReportDisplay(value *Value) (*Value, error) {
 	if !reportSchemaMatches(graph.Get("root"), value, graph) || !oldSourceTaskFacts(value) || !validRepeatReport(value) {
 		return nil, &RunReportInvalid{}
 	}
-	if value.Get("version").Num() == 3 && (value.Get("checkpointVersion").Num() != 4 || !validPrincipalValue(value.Get("principal"))) {
+	if value.Get("version").Num() == 3 && !validReportThree(value) {
 		return nil, &RunReportInvalid{}
 	}
 	return value.Clone(), nil

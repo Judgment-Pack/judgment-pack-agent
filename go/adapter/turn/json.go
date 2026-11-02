@@ -10,7 +10,6 @@ package turn
 // rules and neither package may import the other's.
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -39,6 +38,8 @@ type jvalue struct {
 	s    string
 	a    []*jvalue
 	o    []jmember
+	// src is an object's JSON text as parseJSON read it, byte for byte, until it is written to.
+	src string
 }
 
 type jmember struct {
@@ -58,9 +59,10 @@ func trimEndJS(s string) string   { return strings.TrimRight(s, jsSpace) }
 
 // parseJSON reads one JSON text, as JSON.parse does; nil and an error where it would throw.
 func parseJSON(data []byte) (*jvalue, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
+	text := string(data)
+	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.UseNumber()
-	value, err := readJSON(decoder)
+	value, err := readJSON(decoder, text)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +78,7 @@ type errorString string
 
 func (e errorString) Error() string { return string(e) }
 
-func readJSON(decoder *json.Decoder) (*jvalue, error) {
+func readJSON(decoder *json.Decoder, text string) (*jvalue, error) {
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
@@ -99,7 +101,7 @@ func readJSON(decoder *json.Decoder) (*jvalue, error) {
 		case '[':
 			out := &jvalue{kind: jarray, a: []*jvalue{}}
 			for decoder.More() {
-				item, err := readJSON(decoder)
+				item, err := readJSON(decoder, text)
 				if err != nil {
 					return nil, err
 				}
@@ -109,20 +111,24 @@ func readJSON(decoder *json.Decoder) (*jvalue, error) {
 			return out, err
 		case '{':
 			out := &jvalue{kind: jobject, o: []jmember{}}
+			start := decoder.InputOffset() - 1
 			for decoder.More() {
 				keyToken, err := decoder.Token()
 				if err != nil {
 					return nil, err
 				}
 				key, _ := keyToken.(string)
-				item, err := readJSON(decoder)
+				item, err := readJSON(decoder, text)
 				if err != nil {
 					return nil, err
 				}
 				out.set(key, item)
 			}
-			_, err := decoder.Token()
-			return out, err
+			if _, err := decoder.Token(); err != nil {
+				return nil, err
+			}
+			out.src = text[start:decoder.InputOffset()]
+			return out, nil
 		}
 	}
 	return nil, errorString("not a JSON value")
@@ -171,6 +177,7 @@ func (v *jvalue) has(key string) bool {
 
 // set writes a member where it is, or adds it in the place a JavaScript object gives it.
 func (v *jvalue) set(key string, val *jvalue) {
+	v.src = ""
 	for i := range v.o {
 		if v.o[i].key == key {
 			v.o[i].val = val
@@ -491,6 +498,15 @@ func cutUTF16(s string, n int) string {
 
 // raw is a value as the bytes of its JSON text.
 func raw(v *jvalue) json.RawMessage { return json.RawMessage(v.stringify()) }
+
+// written is an object as the model wrote it, byte for byte, where raw is what a reader makes of it: a
+// number past what a float64 holds, a spelling or a repeated name is lost in raw (#275).
+func written(v *jvalue) json.RawMessage {
+	if v.src != "" {
+		return json.RawMessage(v.src)
+	}
+	return raw(v)
+}
 
 // value is the parsed form of a JSON text, or nil where it is not JSON (parsed in refutation.ts).
 func value(data json.RawMessage) *jvalue {

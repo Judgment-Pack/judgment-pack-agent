@@ -160,6 +160,13 @@ func checkpointWriter(state *Execution, write []func(CheckpointPatch)) func(Chec
 	}
 }
 
+// CheckpointHoldsPrincipal is whether a checkpoint of this version holds a principal; a reader refuses one that
+// does not hold what its version says (ADR-0029).
+func CheckpointHoldsPrincipal(version int) bool { return version == 4 || version == 6 }
+
+// CheckpointHoldsRequest is the same of a kept approval text (#275).
+func CheckpointHoldsRequest(version int) bool { return version == 5 || version == 6 }
+
 // MutateCheckpoint applies a patch to a detached Execution or contract.Checkpoint projection.
 // The live controller serializes this operation and increments its revision once on change.
 type checkpointValue interface {
@@ -214,14 +221,26 @@ func MutateCheckpoint[T checkpointValue](current T, patch CheckpointPatch, valid
 		}
 		field.Set(cloneCheckpointValue(incoming))
 	}
-	// ADR-0029: a delegated run's checkpoint is version 4 whatever a feature writer stamps; an
-	// undelegated one is never 4.
+	// ADR-0029, #275: what a checkpoint holds selects its format, whatever a feature writer stamps. A principal is
+	// version 4, a kept approval text 5, both 6, and one that keeps neither stays at the version it was; a text that
+	// goes leaves published 3, whose inventory holds everything else a version 5 can.
 	if principal := target.FieldByName("Principal"); principal.IsValid() {
 		version := target.FieldByName("Version")
-		if !principal.IsNil() {
+		kept := false
+		if approval := target.FieldByName("Approval"); approval.IsValid() && !approval.IsNil() {
+			kept = !approval.Elem().FieldByName("Request").IsNil()
+		}
+		switch {
+		case !principal.IsNil() && kept:
+			version.SetInt(6)
+		case !principal.IsNil():
 			version.SetInt(4)
-		} else if version.Int() == 4 {
-			return current, false, fmt.Errorf("a checkpoint of version 4 carries its principal")
+		case CheckpointHoldsPrincipal(int(version.Int())):
+			return current, false, fmt.Errorf("a checkpoint of version %d carries its principal", version.Int())
+		case kept:
+			version.SetInt(5)
+		case version.Int() == 5:
+			version.SetInt(3)
 		}
 	}
 	for _, check := range validate {

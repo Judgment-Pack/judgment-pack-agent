@@ -218,6 +218,11 @@ func TestRepeat204SharedExactCustodyRecord(t *testing.T) {
 			t.Fatal("invalid exact custody accepted", change)
 		}
 	}
+	// #275: the custody holds on a checkpoint that keeps an approval's text too.
+	kept := cp.Clone().Set("version", Number(5)).Set("approval", MustParseJSON(`{"callId":"held","name":"tracker__write","tool":"write","source":{"kind":"custom","id":"tracker","trust":"person"},"args":{"id":9007199254740992},"state":"asked","request":"{\"id\":9007199254740993}"}`))
+	if _, err := ReadExecution(kept); err != nil {
+		t.Fatal(err)
+	}
 	historical := cp.Clone().Set("version", Number(2))
 	if err := contract.CheckRecord("checkpoint", historical.JSON()); err == nil {
 		t.Fatal("historical version admitted nested custody")

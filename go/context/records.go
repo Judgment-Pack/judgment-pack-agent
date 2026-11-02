@@ -78,7 +78,7 @@ func RecordRetainUntil(policy RecordsPolicy, now time.Time) string {
 var recordTextPaths = []string{
 	"durable.dispatches.*.repeatResultJson", "durable.dispatches.*.request", "durable.dispatches.*.result", "durable.children.*.checkpoint", "handoff.continuation",
 	"text", "explanation", "reason", "plan.*.step", "plan.*.detail",
-	"operations.*.name", "operations.*.args", "approval.name", "approval.tool", "approval.args",
+	"operations.*.name", "operations.*.args", "approval.name", "approval.tool", "approval.args", "approval.request",
 	"memories.proposed.*.text", "compaction.summaries.*.summary",
 	"context.entries.*.value.@assistant.content.@text.text",
 	"context.entries.*.value.@assistant.content.@call.toolName", "context.entries.*.value.@assistant.content.@call.input",
@@ -151,8 +151,13 @@ func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard Record
 	version := 1
 	if schema == CheckpointSchema {
 		version = contract.CheckpointVersion
-		if out.Has("principal") {
+		kept := out.Get("approval").Has("request")
+		if out.Has("principal") && kept {
+			version = 6
+		} else if out.Has("principal") {
 			version = 4
+		} else if kept {
+			version = 5
 		} else if out.Get("version") != nil && out.Get("version").Num() == 3 || out.Has("repeatTools") || out.Has("turnRoute") || out.Has("usageBudget") || out.Get("approval").Has("runtime") || taskRecordFields(out) || nativePlanRecordFields(out) {
 			version = 3
 		}
@@ -294,7 +299,7 @@ func supportedRecordVersion(v *Value) bool {
 	if n == nil || n.Kind() != KindNumber {
 		return false
 	}
-	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && (n.Num() == 2 || n.Num() == 3 || n.Num() == 4)
+	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && n.Num() >= 2 && n.Num() <= 6 && n.Num() == float64(int(n.Num()))
 }
 
 func nativePlanRecordFields(value *Value) bool {
