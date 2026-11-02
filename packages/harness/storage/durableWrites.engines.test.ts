@@ -10,7 +10,9 @@ import { MemoryRunStore } from './run'
 import { deepagents } from '../engines/deepagents'
 import { vercel } from '../engines/vercel'
 import { ofType, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
-import { approvalShownArguments, toolListDigest } from '../toolSources'
+import { approvalShownArguments, approvalShownDigest, toolListDigest } from '../toolSources'
+import { recordDigest } from '../records'
+import { canonicalJSON } from '../context/chat'
 import type { HostTool } from '../engine'
 
 /** One streamed turn whose call carries exactly the argument text given. */
@@ -87,6 +89,43 @@ describe.each([['vercel', vercel], ['deepagents', deepagents]] as const)('every 
     if (written) expect(answers[1]).toBe('ran')
     else expect(answers[1]).toContain('DurableRequestUnrecordable')
     expect(answers[2]).toBe('ran')
+  })
+})
+
+// A pause a Go writer kept its text in, approved here: the decision must prove what the person was shown.
+describe('a kept text from a Go writer, approved here (#275)', () => {
+  const resume = async (shownDigest?: string) => {
+    const store = new MemoryRunStore(), executed: unknown[] = []
+    const declared = { name: 'change_record', description: 'Change one record', inputSchema: { type: 'object' }, taxonomy: { operation: 'act', effect: 'act' } as const }
+    const tool = {
+      ...declared, effectClass: 'act', approve: () => 'ask',
+      source: { kind: 'custom', id: 'tracker', trust: 'person', version: '1', toolListDigest: await toolListDigest([declared] as never), identity: { kind: 'connection', label: 'tracker' } },
+      execute: async (args: unknown) => { executed.push(args); return { content: [{ type: 'text' as const, text: 'ran' }] } }
+    } as unknown as HostTool
+    const turn = (decision?: object, resumed = false) => vercelTurn({
+      engine: vercel, hostTools: [tool],
+      answer: (request: EndpointRequest) => streamed(!resumed && request.number === 1 ? callFrame('call_1', 'tracker__change_record', '{"id":7}') : sseTurn({ text: 'Done.' })),
+      session: { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, runStore: { store, id: 'kept', ...(resumed ? { resume: true } : {}) }, ...(decision ? { approval: decision } : {}) } } as never
+    })
+    await turn()
+    // What a Go writer would have kept: the text, at the version that holds it.
+    const head = (await store.load('kept'))!, saved = JSON.parse(new TextDecoder().decode(head.checkpoint!)) as Record<string, unknown> & { approval: { callId: string; request?: string } }
+    saved.version = 5
+    saved.approval.request = '{ "id" : 7 }'
+    saved.digest = recordDigest(saved as never)
+    await store.commit({ runId: 'kept', expectedRevision: head.revision, commitId: 'go-writer', checkpoint: new TextEncoder().encode(canonicalJSON(saved)), events: [] })
+    const record = await turn({ callId: saved.approval.callId, approved: true, ...(shownDigest ? { shownDigest } : {}) }, true)
+    return { executed, errors: ofType(record.events, 'error') as unknown as { message: string }[] }
+  }
+  it('refuses by name where the decision proves nothing, and nothing runs', async () => {
+    const out = await resume()
+    expect(out.executed).toEqual([])
+    expect(out.errors[0]?.message).toContain('ApprovalNotShown')
+  })
+  it('runs what the person was shown where it does', async () => {
+    const out = await resume(approvalShownDigest({ request: '{ "id" : 7 }' }))
+    expect(out.errors).toEqual([])
+    expect(out.executed).toEqual([{ id: 7 }])
   })
 })
 

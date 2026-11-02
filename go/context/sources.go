@@ -1748,7 +1748,13 @@ func approvedArguments(record contract.CheckpointApproval) (json.RawMessage, boo
 		return nil, false
 	}
 	if record.Request == nil {
-		return stored, approvalArgsSay(stored)
+		// The canonical form is what is shown and digested (ApprovalShownArguments), so it is what runs, not
+		// encoding/json's, which escapes & < > and orders names by UTF-8.
+		parsed, err := ParseJSON(stored)
+		if err != nil || !approvalArgsSay(stored) {
+			return nil, false
+		}
+		return json.RawMessage(CanonicalJSON(parsed)), true
 	}
 	kept := []byte(*record.Request)
 	text, err := ParseJSON(kept)
@@ -1795,10 +1801,20 @@ func shownArguments(request *string, args map[string]json.RawMessage) string {
 	return CanonicalJSON(value)
 }
 
-// approvalDecisionHolds STUB
-func approvalDecisionHolds(contract.CheckpointApproval, contract.CheckpointApprovalDecision) error {
+// approvalDecisionHolds is what a decision must prove (#275). The record's args are the parsed form, so a host that
+// shows them shows another number than the one that runs where a text is kept: approving such a call needs the digest
+// of the text the person was shown. A digest sent must match on any call. A refusal runs nothing and needs none.
+func approvalDecisionHolds(asked contract.CheckpointApproval, decision contract.CheckpointApprovalDecision) error {
+	if !decision.Approved || decision.ShownDigest == nil && asked.Request == nil {
+		return nil
+	}
+	if decision.ShownDigest == nil || *decision.ShownDigest != ApprovalShownDigest(asked) {
+		return failure.Authored("stale-state", approvalNotShownDetail, "context")
+	}
 	return nil
 }
+
+const approvalNotShownDetail = "ApprovalNotShown: this call runs exactly as the model wrote it, because its parsed form cannot say that text, so an approval must prove what the person was shown, and this decision does not. Nothing was decided or run, and the pause stands. Show the person approvalShownArguments, the text that runs, as a string and never parsed, and send approvalShownDigest as the decision's shownDigest."
 
 func canonicalArgs(args json.RawMessage) string {
 	value, err := ParseJSON(nonEmptyArgs(args))

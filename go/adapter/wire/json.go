@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // A wire body is the value JSON.parse makes of what arrived and the text JSON.stringify writes of
@@ -42,9 +43,11 @@ type Value struct {
 	members []member
 	// source is an object's JSON text as Parse read it, byte for byte, until it is written to.
 	source string
-	// lossy says the parsed form cannot say that text: it holds a number not written as a float64 writes it, or a
-	// repeated name. Such an object is written back as its source, so the model reads what it wrote (#275).
-	lossy bool
+	// lossy says the parsed form cannot say that text: it holds a number not written as a float64 writes it. Such an
+	// object is written back as its source, so the model reads what it wrote (#275). unheld says the record could not
+	// hold that text (a number out of range, a repeated name), so nothing can copy it to a row, and it goes back in its
+	// parsed form as published. written says this value was written to after it was read.
+	lossy, unheld, written bool
 }
 
 type member struct {
@@ -114,6 +117,60 @@ func Parse(data []byte) (*Value, error) {
 	return value, nil
 }
 
+// unwritten reports that neither this value nor anything under it was written to since it was read, so its source
+// still says it. A write to a member of a parsed body is not lost under a marked ancestor.
+func (v *Value) unwritten() bool {
+	if v.written {
+		return false
+	}
+	for _, item := range v.items {
+		if !item.unwritten() {
+			return false
+		}
+	}
+	for _, held := range v.members {
+		if !held.value.unwritten() {
+			return false
+		}
+	}
+	return true
+}
+
+// heldText reports text the record could hold: valid UTF-8 with no lone surrogate escape.
+func heldText(text string) bool {
+	if !utf8.ValidString(text) {
+		return false
+	}
+	for at := 0; at < len(text); at++ {
+		if text[at] != '\\' {
+			continue
+		}
+		at++
+		if at >= len(text) || text[at] != 'u' || at+4 >= len(text) {
+			continue
+		}
+		unit, err := strconv.ParseUint(text[at+1:at+5], 16, 16)
+		if err != nil {
+			continue
+		}
+		at += 4
+		switch {
+		case unit >= 0xDC00 && unit <= 0xDFFF:
+			return false
+		case unit >= 0xD800 && unit <= 0xDBFF:
+			if at+6 >= len(text) || text[at+1] != '\\' || text[at+2] != 'u' {
+				return false
+			}
+			low, err := strconv.ParseUint(text[at+3:at+7], 16, 16)
+			if err != nil || low < 0xDC00 || low > 0xDFFF {
+				return false
+			}
+			at += 6
+		}
+	}
+	return true
+}
+
 // ArgumentText is a call's arguments as the model wrote them: the text Parse read this object from, or
 // its JSON where it was never read or has been written to since. A Value holds numbers as float64s and
 // keeps the last of a repeated name, so its JSON can be another call: 9007199254740993 reads as
@@ -143,7 +200,8 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 			return nil, err
 		}
 		number := Num(f)
-		number.lossy = err != nil || jsNumber(f) != string(t)
+		number.unheld = err != nil
+		number.lossy = err == nil && jsNumber(f) != string(t)
 		return number, nil
 	case string:
 		return Str(t), nil
@@ -156,7 +214,7 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 				if err != nil {
 					return nil, err
 				}
-				value.lossy = value.lossy || item.lossy
+				value.lossy, value.unheld = value.lossy || item.lossy, value.unheld || item.unheld
 				value.items = append(value.items, item)
 			}
 			if _, err := decoder.Token(); err != nil {
@@ -179,13 +237,13 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 				if err != nil {
 					return nil, err
 				}
-				value.lossy = value.lossy || item.lossy || value.Get(key) != nil
+				value.lossy, value.unheld = value.lossy || item.lossy, value.unheld || item.unheld || value.Get(key) != nil
 				value.Set(key, item)
 			}
 			if _, err := decoder.Token(); err != nil {
 				return nil, err
 			}
-			value.source = text[start:decoder.InputOffset()]
+			value.source, value.written = text[start:decoder.InputOffset()], false
 			return value, nil
 		}
 	}
@@ -283,7 +341,7 @@ func (v *Value) Set(name string, value *Value) {
 	if v.kind != KindObject {
 		return
 	}
-	v.source = ""
+	v.source, v.written = "", true
 	for i := range v.members {
 		if v.members[i].name == name {
 			v.members[i].value = value
@@ -306,6 +364,7 @@ func (v *Value) Append(items ...*Value) {
 	if v.kind != KindArray {
 		return
 	}
+	v.written = true
 	v.items = append(v.items, items...)
 }
 
@@ -378,7 +437,7 @@ func (v *Value) write(b *bytes.Buffer) {
 		b.WriteString("null")
 		return
 	}
-	if v.kind == KindObject && v.lossy && v.source != "" {
+	if v.kind == KindObject && v.lossy && !v.unheld && v.source != "" && v.unwritten() && heldText(v.source) {
 		b.WriteString(v.source)
 		return
 	}

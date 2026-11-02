@@ -548,7 +548,7 @@ func validRepeatReport(v *Value) bool {
 	if r == nil {
 		return true
 	}
-	if !(v.Get("version").Num() == 2 && v.Get("checkpointVersion").Num() == 3 || v.Get("version").Num() == 3 && v.Get("checkpointVersion").Num() == 4) {
+	if !(v.Get("version").Num() == 2 && v.Get("checkpointVersion").Num() == 3 || v.Get("version").Num() == 3 && v.Get("checkpointVersion").Num() >= 4) {
 		return false
 	}
 	p := r.Get("policy")

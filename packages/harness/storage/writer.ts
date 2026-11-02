@@ -25,7 +25,7 @@ import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
 import {authoredFailure} from '../failures'
 import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,failure,normalizeFailure} from '../failures'
-import {readExecution,type ExecutionCheckpoint} from '../execution/state'
+import {approvalNotShown,readApprovalDecision,readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
 import {CHECKPOINT_SCHEMA,recordDigest,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
@@ -903,6 +903,9 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
  if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
+ // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
+ const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given):undefined
+ if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()

@@ -60,6 +60,9 @@
             },
             {
               "$ref": "run-report-v2.json"
+            },
+            {
+              "$ref": "run-report-v3.json"
             }
           ]
         },

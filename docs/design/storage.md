@@ -124,13 +124,16 @@ Every Go wire reader hands on the model's argument text: the parsed value of an 
 keeps the source text it was read from, so the bytes that run and that a row records are the model's on
 every wire. An API family writes a call back to the model from its parsed form, except where that form cannot
 say the text (`wire.Value`'s `lossy`): there it writes the text, so a model that copies its history copies the
-bytes that ran, on the next request and on a resumed run's first request. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
-where it cannot say the model's text (`approval.request`, version 3) the approved call runs that text once it
+bytes that ran, on the next request and on a resumed run's first request, in a run this release started. What the
+record cannot hold goes back in its parsed form, as published: a call holding it is refused, so no copy reaches a row. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
+where it cannot say the model's text (`approval.request`, checkpoint 5 or 6) the approved call runs that text once it
 reads back to `args`, and it goes through the same decision over the record as any other call. Whitespace and
 member order are not kept: `args` hold the canonical form at every depth, which the person is shown and the
 approved call runs. A host that renders or binds a stored approval reads `approvalShownArguments` and
 `approvalShownDigest` (`ApprovalShownArguments` and `ApprovalShownDigest` in Go): the text as a string, since a
-browser that parses and writes it again shows another number, and the digest of its bytes. The checkpoint's
+browser that parses and writes it again shows another number, and the digest of its bytes. Approving a call that
+keeps its text needs that digest as the decision's `shownDigest`, so a host that has not moved is refused by name and
+nothing runs; a call with no text kept runs the canonical form that is shown and digested, and needs none. The checkpoint's
 format says what it holds (ADR-0024, ADR-0029): `principal` on 4 and 6, `approval.request` on 5 and 6, and a
 reader refuses any other combination. A record with no
 `request` runs from `args` only where the parsed form cannot have changed what the model wrote; otherwise

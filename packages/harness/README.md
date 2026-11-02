@@ -423,9 +423,10 @@ host's approval policy (ADR-0008), handed the wire name, the tool's own name, it
 arguments and answering at once `'allow'`, `'refuse'` or `'ask'` (no policy asks); on `'ask'` the run pauses
 (`approval_requested`, the call in the checkpoint's `approval`, `end`). Render the call with `approvalShownArguments`
 from `@judgment-pack/harness/contract`: the text that runs, as a string, which is not to be parsed for display, because
-a stored `args` is the parsed form and JavaScript rounds past 2^53. Bind an approval reference to `approvalShownDigest`.
+a stored `args` is the parsed form and JavaScript rounds past 2^53. Bind an approval reference to `approvalShownDigest`,
+and send it as the decision's `shownDigest`: approving a call whose record keeps its text is refused without it.
 The host continues the paused checkpoint
-with the person's decision, `context.approval` (`{callId, approved, note?}`), the continued run's first request
+with the person's decision, `context.approval` (`{callId, approved, note?, shownDigest?}`), the continued run's first request
 carrying the result as one data block;
 `execute(args, signal, callId)` is handed the id of the call's events, where the run's events carry one. The host executes every call; `toolSources.ts` holds them at the boundary
 (`contextualSession`): each is offered under its wire name (`wireName`: the source's id, `__`, the

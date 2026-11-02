@@ -3647,6 +3647,8 @@ type CorpusCandidateReviewReport struct {
 	RunReport *RunReport
 	// RunReportV2 is set where version is 2.
 	RunReportV2 *RunReportV2
+	// RunReportV3 is set where version is 3.
+	RunReportV3 *RunReportV3
 }
 
 // UnmarshalJSON sets the one member the value decodes as.
@@ -3665,6 +3667,9 @@ func (v *CorpusCandidateReviewReport) UnmarshalJSON(data []byte) error {
 		case 2:
 			v.RunReportV2 = new(RunReportV2)
 			return json.Unmarshal(view, v.RunReportV2)
+		case 3:
+			v.RunReportV3 = new(RunReportV3)
+			return json.Unmarshal(view, v.RunReportV3)
 		}
 		return errorf("CorpusCandidateReviewReport: no member has version %d", tag)
 	}
@@ -3679,6 +3684,9 @@ func (v CorpusCandidateReviewReport) MarshalJSON() ([]byte, error) {
 	}
 	if v.RunReportV2 != nil {
 		set = append(set, v.RunReportV2)
+	}
+	if v.RunReportV3 != nil {
+		set = append(set, v.RunReportV3)
 	}
 	if len(set) != 1 {
 		return nil, errorf("CorpusCandidateReviewReport: %d members are set; a union holds exactly one", len(set))

@@ -96,7 +96,8 @@ and a copy of the arguments) and answers at once `allow`, `refuse` or `ask`
 ([ADR-0006](../docs/adr/0006-tool-sources.md), [ADR-0008](../docs/adr/0008-the-approval-pause.md)). On
 `ask` the run pauses (`approval_requested`, the call in the checkpoint's `approval`, `end`). Render the call with
 `runcontext.ApprovalShownArguments`, or `ApprovalEventArguments` for an event: the text that runs, as a string, because
-a stored `args` is the parsed form and can hold another number. Bind an approval reference to `ApprovalShownDigest`.
+a stored `args` is the parsed form and can hold another number. Bind an approval reference to `ApprovalShownDigest`, and
+send it as the decision's `ShownDigest`: approving a call whose record keeps its text is refused without it.
 The host
 continues the paused checkpoint with the person's decision in `runcontext.Input.Approval`, its durable
 callback (required for an approved continuation: without it nothing runs) acknowledging the approved

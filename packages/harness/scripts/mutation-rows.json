@@ -11726,7 +11726,7 @@
   },
   {
    "name": "a host is given args where a text is kept",
-   "file": "toolSources.ts",
+   "file": "execution/state.ts",
    "find": "return asked.request ?? canonicalJSON(asked.args ?? {})",
    "replace": "return canonicalJSON(asked.args ?? {})",
    "tests": [
@@ -11738,7 +11738,7 @@
   },
   {
    "name": "a host's digest is over args",
-   "file": "toolSources.ts",
+   "file": "execution/state.ts",
    "find": "return `sha256:${sha256(approvalShownArguments(asked))}`",
    "replace": "return `sha256:${sha256(canonicalJSON(asked.args ?? {}))}`",
    "tests": [
@@ -12220,6 +12220,90 @@
    "status": "caught",
    "origin": "agent#258",
    "note": "#258. Caught at lease.test.ts > a host that stays closed once the authority failed repeatedly fails the kit. Go twin (by hand, performed++ in place of the host.admit.recovered dispatch): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/stays-closed."
+  },
+  {
+   "name": "an approval need not prove what the person was shown",
+   "file": "execution/state.ts",
+   "find": " if(!decision.approved||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined\n",
+   "replace": " return undefined\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): approvalDecisionHolds returns nil; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a digest sent on a call with no text need not match",
+   "file": "execution/state.ts",
+   "find": "||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined",
+   "replace": "||asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the same clause; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a person's refusal needs a digest",
+   "file": "execution/state.ts",
+   "find": " if(!decision.approved||decision.shownDigest===undefined&&asked.request",
+   "replace": " if(decision.shownDigest===undefined&&asked.request",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): !decision.Approved dropped; caught at ^TestTheKeptApprovalTextVector$."
+  },
+  {
+   "name": "a decision's digest is not read closed",
+   "file": "execution/state.ts",
+   "find": "||v.shownDigest!==undefined&&(typeof v.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.shownDigest)))return\n",
+   "replace": ")return\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the ShownDigest clause dropped from the decision's check in controller.go; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "a decision under a run store proves nothing",
+   "file": "storage/writer.ts",
+   "find": " if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')\n",
+   "replace": "",
+   "tests": [
+    "storage/durableWrites.engines.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$."
+  },
+  {
+   "name": "report 3 with repeat tools reads only checkpoint 4",
+   "file": "runReportReader.ts",
+   "find": "v.version===3&&Number(v.checkpointVersion)>=4)||",
+   "replace": "v.version===3&&v.checkpointVersion===4)||",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): >= 4 in validRepeatReport; caught at ^TestAKeptTextsRunWithRepeatToolsIsReported$."
+  },
+  {
+   "name": "the corpus view stops at checkpoint 4",
+   "file": "history/corpusCheckpointView.ts",
+   "find": "![1,2,3,4,5,6].includes(cp.version)",
+   "replace": "![1,2,3,4].includes(cp.version)",
+   "tests": [
+    "storage/durableWrites.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#275",
+   "note": "Go twin (by hand): version > 6 in newCorpusCheckpointView; caught at ^TestTheCorpusViewReadsEveryCheckpointFormat$."
   }
  ]
 }

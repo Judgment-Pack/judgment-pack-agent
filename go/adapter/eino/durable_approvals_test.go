@@ -423,6 +423,24 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 					}
 				})
 			}
+			t.Run("a digest that is not one is not read", func(t *testing.T) {
+				s := scene()
+				s.answers = []string{"ask"}
+				s.run(t, false, nil, []string{big})
+				approval, _, _ := s.head(t)
+				bad := "not a digest"
+				s.events = nil
+				s.run(t, true, &contract.CheckpointApprovalDecision{CallID: approval.Get("callId").Str(), Approved: true, ShownDigest: &bad}, nil)
+				named := false
+				for _, event := range s.events {
+					if event.Error != nil && strings.Contains(event.Error.Message, "not one this package reads") {
+						named = true
+					}
+				}
+				if !named || len(s.ran) != 0 {
+					t.Fatalf("ran %q, %+v", s.ran, s.events)
+				}
+			})
 			t.Run("a person's refusal needs no digest", func(t *testing.T) {
 				s := scene()
 				s.answers = []string{"ask"}

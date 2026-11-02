@@ -406,7 +406,8 @@ so the person is never asked about a call that could not run.
   place of the `tool_call`; the call never handed to the host; the checkpoint's `approval`
   (`checkpoint.json#/$defs/approval`, closed) written `asked` with the call, keeping the model's text in `request`
   where `args` cannot say it (#275). A host renders `approvalShownArguments` (`ApprovalShownArguments` in Go), the
-  text that runs, as a string, and binds to `approvalShownDigest`; `args` alone can hold another number. Then, at the shared
+  text that runs, as a string, binds to `approvalShownDigest`, and sends it as the decision's `shownDigest`, without which
+  approving a call that keeps its text is refused (`ApprovalNotShown`) and nothing runs; `args` alone can hold another number. Then, at the shared
   boundary, the checkpoint with status `paused` emitted `durable`, `end`, and no error. A model engine
   gets there once its step's other calls are answered (its next request is refused before it is
   claimed or sent); an agent engine at the call, its invocation stopped as at a handoff.

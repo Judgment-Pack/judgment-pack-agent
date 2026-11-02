@@ -145,7 +145,7 @@ function matches(s:Shape,v:unknown,definitions:Record<string,Shape>=frozenDefini
 }
 /** Source-version restrictions apply only to typed Plan facts, including retained revisions. */
 function oldSourceTaskFacts(v:Record<string,unknown>):boolean{
- if(v.version!==2||v.checkpointVersion===3)return true // report 3 reads only checkpoint 4, whose Plan is current
+ if(v.version!==2||v.checkpointVersion===3)return true // report 3 reads only checkpoints from 4, whose Plan is current
  const step=(s:unknown):boolean=>!object(s)||(
   !Object.hasOwn(s,'dependsOn')&&
   !Object.hasOwn(s,'budget')&&

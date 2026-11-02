@@ -71,7 +71,7 @@ function declarations(value:unknown,paths:unknown):paths is string[]{
 function scopeValid(v:unknown):v is DurableScope{return object(v)&&Object.keys(v).every(k=>['execution','role','task'].includes(k))&&storageId(v.execution)&&storageId(v.role)&&(v.task===undefined||storageId(v.task))}
 function validateDocument(kind:ArchiveKind,document:unknown,derived:boolean){
  const bytes=historyJSONBytes(document)
- if(kind==='checkpoint'){if(derived){checkRecord('checkpoint',document);if(!object(document)||!storageId(document.id)||![1,2,3,4].includes(Number(document.version)))invalid()}else if(!readExecution(document))invalid()}
+ if(kind==='checkpoint'){if(derived){checkRecord('checkpoint',document);if(!object(document)||!storageId(document.id)||![1,2,3,4,5,6].includes(Number(document.version)))invalid()}else if(!readExecution(document))invalid()}
  else if(kind==='event'){if(!closed(document,['version','scope','event'])||document.version!==1||!scopeValid(document.scope))invalid();if(derived)checkRecord('event',document.event);else readStoredRunEvent(bytes)}
  else if(kind==='report'){if(derived)readRunReportDisplay(document);else readRunReport(document)}
  else if(kind==='metadata'){if(derived){if(!object(document))invalid();const {digest:_,...body}=document;readMetadataEntry({...body,digest:historyJSONDigest(body)})}else readMetadataEntry(document)}

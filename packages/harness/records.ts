@@ -9,7 +9,7 @@ export const EXPORT_SCHEMA='https://github.com/Judgment-Pack/judgment-pack-agent
 export const RECORD_SCHEMAS=[CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA] as const
 export type RecordSchema=typeof RECORD_SCHEMAS[number]
 export interface RecordsPolicy {retainDays:number;redactOnStore:boolean;exportFormat:'json'}
-export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2|3|4 : 1;digest:string;retainUntil:string;records?:RecordMarker}
+export interface RecordMembers<S extends RecordSchema=RecordSchema> {schema:S;version:S extends typeof CHECKPOINT_SCHEMA ? 1|2|3|4|5|6 : 1;digest:string;retainUntil:string;records?:RecordMarker}
 export interface RecordGuard {declaredNames?:ReadonlySet<string>;value<T>(input:T,where:'message',record?:boolean,marker?:RecordMarker):T}
 export interface ExportEntry extends RecordMembers {bytes:number}
 export interface ExportManifest {

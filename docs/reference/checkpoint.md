@@ -187,7 +187,7 @@ Closed: a member the schema does not name is refused.
 
 ### `checkpoint.json $defs/approvalDecision`
 
-The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data. Closed.
+The person's decision on a paused act call (ADR-0008), the continuation input beside the request grant: the host hands it to the run with the paused checkpoint (context.approval in TypeScript, Input.Approval in Go). callId must be the pending approval's, or the run is refused before anything runs (stale-state); approved: whether the call may run; note: the person's words, at most 2,000 characters, shown to the model as data; shownDigest: the digest of the text the person was shown (#275, approvalShownDigest). Approving a call whose record keeps its text needs it, and it must match, or the run is refused before anything runs and the pause stands; with no text kept it is optional and, where sent, must match. It is input only, and no record holds it. Closed.
 
 Closed: a member the schema does not name is refused.
 
@@ -196,6 +196,7 @@ Closed: a member the schema does not name is refused.
 | `callId` | yes | string (min length 1, max length 256) |  |
 | `approved` | yes | boolean |  |
 | `note` |  | string (max length 2000) |  |
+| `shownDigest` |  | string (pattern `^sha256:[a-f0-9]{64}$`) |  |
 
 ### `checkpoint.json $defs/approvalContinuation`
 

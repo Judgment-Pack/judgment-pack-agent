@@ -527,7 +527,7 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		if c.session.Context != nil {
 			decision = c.session.Context.Approval
 		}
-		if decision != nil && (decision.CallID == "" || U16Length(decision.CallID) > 256 || decision.Note != nil && U16Length(*decision.Note) > 2000) {
+		if decision != nil && (decision.CallID == "" || U16Length(decision.CallID) > 256 || decision.Note != nil && U16Length(*decision.Note) > 2000 || decision.ShownDigest != nil && !sourceDigest.MatchString(*decision.ShownDigest)) {
 			return failure.Authored("configuration", "The approval decision is not one this package reads: a callId, approved, and an optional note of at most 2,000 characters. Nothing was decided or run.", "context")
 		}
 		handled, err := c.restorePlanDecision(saved, decision)
@@ -548,6 +548,11 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 		}
 		if asked && decision == nil {
 			return failure.Authored("stale-state", "This response waits for the person’s decision on "+saved.Approval.Name+"; continue it with that decision.", "context")
+		}
+		if asked {
+			if err := approvalDecisionHolds(*saved.Approval, *decision); err != nil {
+				return err
+			}
 		}
 		if (saved.Status == "paused" && !asked) || saved.Used >= saved.Limit {
 			return ErrExecutionPaused

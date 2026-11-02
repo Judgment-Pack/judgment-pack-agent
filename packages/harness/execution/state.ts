@@ -127,8 +127,8 @@ export function validApproval(v:unknown):v is ApprovalRecord{
 }
 /** The person's decision, read closed (ADR-0008), or undefined where it is not one. */
 export function readApprovalDecision(v:unknown):ApprovalDecision|undefined{
- if(!object(v)||!exact(v,['callId','approved','note'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000))return
- return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string})}
+ if(!object(v)||!exact(v,['callId','approved','note','shownDigest'])||!text(v.callId,256)||v.callId.length<1||typeof v.approved!=='boolean'||v.note!==undefined&&!text(v.note,2000)||v.shownDigest!==undefined&&(typeof v.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(v.shownDigest)))return
+ return {callId:v.callId,approved:v.approved,...(v.note===undefined?{}:{note:v.note as string}),...(v.shownDigest===undefined?{}:{shownDigest:v.shownDigest as string})}
 }
 /**
  * The text a host renders for a call held for approval: what the approved call runs (#275). A stored record's
@@ -146,8 +146,16 @@ export function approvalShownArguments(asked: { request?: string; args?: Record<
 export function approvalShownDigest(asked: { request?: string; args?: Record<string, unknown> }): string {
   return `sha256:${sha256(approvalShownArguments(asked))}`
 }
-/** STUB */
-export function approvalNotShown(_asked:{request?:string;args?:Record<string,unknown>},_decision:{approved:boolean;shownDigest?:string}):string|undefined{return undefined}
+/**
+ * What a decision must prove (#275), or the refusal's words where it does not. A stored record's args are the parsed
+ * form, so a host that shows them shows another number than the one that runs where a text is kept: approving such a
+ * call needs the digest of the text the person was shown. A digest sent must match on any call. A refusal runs nothing
+ * and needs none. `approvalDecisionHolds` in go/context/sources.go is its twin.
+ */
+export function approvalNotShown(asked:{request?:string;args?:Record<string,unknown>},decision:{approved:boolean;shownDigest?:string}):string|undefined{
+ if(!decision.approved||decision.shownDigest===undefined&&asked.request===undefined||decision.shownDigest===approvalShownDigest(asked))return undefined
+ return 'ApprovalNotShown: this call runs exactly as the model wrote it, because its parsed form cannot say that text, so an approval must prove what the person was shown, and this decision does not. Nothing was decided or run, and the pause stands. Show the person approvalShownArguments, the text that runs, as a string and never parsed, and send approvalShownDigest as the decision\'s shownDigest.'
+}
 /** The refused result an act call the person refused carries (ADR-0008): never run. */
 export function refusedResult(name:string):McpToolResult{
  const held={...failure('permission','tool','not-started'),detail:`The person refused this call of ${name}; it was not run and nothing was changed.`}

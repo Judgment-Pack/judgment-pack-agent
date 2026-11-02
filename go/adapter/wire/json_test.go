@@ -178,3 +178,22 @@ func TestACallWithNoReplayIsWrittenBackAsWritten(t *testing.T) {
 		}
 	}
 }
+
+// What the record can hold, by its surrogate escapes: a pair, and no other.
+func TestHeldText(t *testing.T) {
+	escape := string(rune(0x5c)) + "u"
+	for text, want := range map[string]bool{
+		`{"q":"x"}`: true,
+		`{"q":"` + escape + `d83d` + escape + `de00"}`:                 true,
+		`{"q":"` + escape + `0041"}`:                                   true,
+		`{"q":"` + string(rune(0x5c)) + string(rune(0x5c)) + `ud800"}`: true,
+		`{"q":"` + escape + `d800"}`:                                   false,
+		`{"q":"` + escape + `de00"}`:                                   false,
+		`{"q":"` + escape + `d83d` + escape + `0041"}`:                 false,
+		"{\"q\":\"\xff\"}":                                             false,
+	} {
+		if heldText(text) != want {
+			t.Errorf("%q: not %v", text, want)
+		}
+	}
+}
