@@ -1,4 +1,4 @@
-package eino_test
+package durableapprovaltests
 
 // #275: what a person approves is what runs, byte for byte, and an approved call is answered by the same
 // decision over the record as any other. The approval record's args are the parsed form, so a call held for

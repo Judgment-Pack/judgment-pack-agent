@@ -1,4 +1,4 @@
-package adapter_test
+package principaltests
 
 // #275 with ADR-0029: a delegated run's checkpoint keeps its version when a held call keeps its text. Version 4 holds a
 // principal, 5 a text, 6 both, so the text's format can neither drop the principal nor be dropped itself.

@@ -4,7 +4,7 @@ package runcontext
 // not change; the decision is made from the exact text every row records, so a row a published release
 // wrote is judged by the same rule. contract/vectors/storage/durable-repeats.json states the cases and
 // storage/durableWrites.test.ts holds the TypeScript to the same ones.
-// go/adapter/eino/durable_writes_test.go drives the same pairs through both adapters.
+// go/adapter/durablewritetests and go/adapter/durablewiretests drive the same pairs through both adapters.
 
 import (
 	"context"

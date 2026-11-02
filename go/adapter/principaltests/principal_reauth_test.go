@@ -1,4 +1,4 @@
-package adapter_test
+package principaltests
 
 // ADR-0029 with #226: a run under a delegation that parks for re-authorization, through the real eino and agent
 // adapters, the writer and the reference effect host. A credential refusal is not a delegation refusal and counts

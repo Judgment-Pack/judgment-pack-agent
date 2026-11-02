@@ -14,7 +14,7 @@ import (
 )
 
 // The Go twin of packages/harness/storage/reauth.test.ts (#226): the shared re-authorization vectors and
-// the effect host's admission boundary. The adapter-level flow is go/adapter/run_reauth_test.go.
+// the effect host's admission boundary. The adapter-level flow is go/adapter/reauthtests/run_reauth_test.go.
 
 func readReauthVector(t *testing.T, name string) map[string]json.RawMessage {
 	t.Helper()

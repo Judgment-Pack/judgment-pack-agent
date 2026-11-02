@@ -18,7 +18,7 @@ import actionVector from '../../../contract/vectors/reauth/action.json'
 import refusalVector from '../../../contract/vectors/reauth/refusal.json'
 
 /* #226: re-authorization waits, through the real Vercel engine, the package's writer and the reference effect host. The
- * Go twin is go/context/run_reauth_test.go with go/adapter/run_reauth_test.go. */
+ * Go twin is go/context/run_reauth_test.go with go/adapter/reauthtests/run_reauth_test.go. */
 const T0=Date.parse('2026-01-01T00:00:00.000Z'),MINUTE=60_000,HOUR=60*MINUTE
 const iso=(ms:number)=>new Date(ms).toISOString()
 const reauthRefusal=(reason:string)=>expect.objectContaining({name:'ReauthorizationRefused',reason})
