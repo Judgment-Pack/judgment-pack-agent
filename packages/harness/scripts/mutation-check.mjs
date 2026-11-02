@@ -21,6 +21,7 @@
  *                        same seed picks the same rows
  *   --shard <k>/<n>     every n-th row from the k-th (the full table's shards)
  *   --names              print the names of the rows chosen, one a line, and stop
+ *   --no-mutant          run the whole suite in the scratch copy with no mutant, name what fails, and stop
  *   --whole              run the whole suite for every row instead of the row's tests
  *   --timeout <seconds>  the bound on one run (default 900)
  *   --verbose            name every test that failed, not the first
@@ -32,6 +33,15 @@
  * out, and one in which the mutated file did not load are each run again against the
  * whole suite, and that run decides. So the selection can only make a row faster, never
  * weaker: the table's `tests` are a starting point, not a claim.
+ *
+ * **A failure counts only if the mutant caused it (agent#285).** The scratch copy holds the
+ * repository's files, so the suite passes there as it does in the checkout. Whatever still
+ * fails with no mutant counts for nothing: a test file that fails under a mutant is run once
+ * with no mutant, and what fails then is taken away. A failure the whole suite alone found
+ * must also fail again in a run of its own file under the mutant, so that load on the whole
+ * suite cannot catch a row. The generated reference's check stays out of the whole suite's run,
+ * so only a row that names it can be caught by it: its pages name source lines, so it fails for
+ * any mutant that moves a line, whether or not anything holds the safeguard.
  *
  * Exit 0 when every row chosen is caught (retired rows are listed, not run); 1 on a row
  * nothing caught, one that did not apply, or one that could not be decided.
@@ -49,11 +59,11 @@ const TABLE = join(HERE, 'mutation-rows.json')
 
 function usage(message) {
   if (message) console.error(message)
-  console.error('usage: mutation-check.mjs [--list] [--check] [--names] [--row <text>]... [--changed <git-ref>] [--sample <n>] [--seed <k>] [--shard <k>/<n>] [--whole] [--timeout <seconds>] [--verbose]')
+  console.error('usage: mutation-check.mjs [--list] [--check] [--names] [--no-mutant] [--row <text>]... [--changed <git-ref>] [--sample <n>] [--seed <k>] [--shard <k>/<n>] [--whole] [--timeout <seconds>] [--verbose]')
   process.exit(2)
 }
 
-const options = { verbose: false, list: false, check: false, names: false, rows: [], changed: null, sample: null, seed: 0, shard: [1, 1], whole: false, timeout: 900 }
+const options = { verbose: false, list: false, check: false, names: false, noMutant: false, rows: [], changed: null, sample: null, seed: 0, shard: [1, 1], whole: false, timeout: 900 }
 const argv = process.argv.slice(2)
 for (let at = 0; at < argv.length; at++) {
   const flag = argv[at]
@@ -65,6 +75,7 @@ for (let at = 0; at < argv.length; at++) {
   if (flag === '--list') options.list = true
   else if (flag === '--check') options.check = true
   else if (flag === '--names') options.names = true
+  else if (flag === '--no-mutant') options.noMutant = true
   else if (flag === '--whole') options.whole = true
   else if (flag === '--verbose') options.verbose = true
   else if (flag === '--row') options.rows.push(value())
@@ -160,24 +171,23 @@ if (options.check) {
   process.exit(bad === 0 ? 0 : 1)
 }
 
-if (runnable.length === 0) {
+if (runnable.length === 0 && !options.noMutant) {
   console.log(`no row chosen to run (${retired.length} retired)`)
   process.exit(0)
 }
 
-// The scratch copy: the package, the contract it reads, and the installed packages by link.
+// The scratch copy: the repository's files as the checkout has them, so that a test reading the
+// corpus, the Go sources, the scripts or the generated pages finds them; the built package, which
+// the generated reference reads; and the installed packages by link.
 const scratch = mkdtempSync(join(tmpdir(), 'mutation-'))
 const copy = join(scratch, 'packages', 'harness')
-cpSync(PACKAGE, copy, { recursive: true, filter: (from) => !/(^|[\\/])(node_modules|dist|\.vite|\.vite-temp)([\\/]|$)/.test(from.slice(PACKAGE.length)) })
-cpSync(join(REPOSITORY, 'contract'), join(scratch, 'contract'), { recursive: true })
-cpSync(join(REPOSITORY, 'package.json'), join(scratch, 'package.json'))
-// The provider-matrix mutant changes a generated repository page. Its reference check reads
-// the same built records and generator as the normal reference gate.
-if(chosen.some(row=>row.file==='../../docs/reference/providers.md')) {
- cpSync(join(REPOSITORY,'docs/reference'),join(scratch,'docs/reference'),{recursive:true})
- cpSync(join(REPOSITORY,'scripts'),join(scratch,'scripts'),{recursive:true})
- cpSync(join(PACKAGE,'dist'),join(copy,'dist'),{recursive:true})
+const listed = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: REPOSITORY, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+if (listed.status !== 0) usage(`git ls-files failed: ${listed.stderr}`)
+for (const path of listed.stdout.split('\0').filter(Boolean)) {
+  // A file deleted from the working tree is still listed; what the checkout does not have is not copied.
+  if (existsSync(join(REPOSITORY, path))) cpSync(join(REPOSITORY, path), join(scratch, path), { recursive: true, verbatimSymlinks: true })
 }
+if (existsSync(join(PACKAGE, 'dist'))) cpSync(join(PACKAGE, 'dist'), join(copy, 'dist'), { recursive: true })
 symlinkSync(join(REPOSITORY, 'node_modules'), join(scratch, 'node_modules'), 'dir')
 process.on('exit', () => rmSync(scratch, { recursive: true, force: true }))
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130))
@@ -190,9 +200,9 @@ if (!existsSync(VITEST)) usage('vitest is not installed: run npm ci first')
  * Resolves to the names of the tests that failed, [] where none did, or { undecided } where
  * the run timed out, ran nothing, or could not load the mutated file.
  */
-function run(files, report) {
+function run(files, report, excluded = []) {
   return new Promise((done) => {
-    const args = [VITEST, 'run', ...files, '--reporter=json', `--outputFile=${report}`]
+    const args = [VITEST, 'run', ...files, ...excluded.flatMap((file) => ['--exclude', `**/${file}`]), '--reporter=json', `--outputFile=${report}`]
     const child = spawn(process.execPath, args, { cwd: copy, detached: true, stdio: ['ignore', 'ignore', 'ignore'] })
     const timer = setTimeout(() => {
       try {
@@ -230,14 +240,52 @@ function run(files, report) {
   })
 }
 
-const results = []
+/** Test files that fail for any mutant that moves a line: a row's own selection may name one, and the whole suite's run leaves it out. */
+const LINE_SENSITIVE = ['providers-reference.test.ts']
 let reportNumber = 0
+const nextReport = () => join(scratch, `report-${reportNumber++}.json`)
+const fileOf = (failure) => failure.split(' > ')[0]
+
+if (options.noMutant) {
+  const answer = await run([], nextReport())
+  if (!Array.isArray(answer)) {
+    console.log(`the whole suite with no mutant decided nothing: ${answer.undecided}`)
+    process.exit(1)
+  }
+  for (const failure of answer) console.log(`fails with no mutant: ${failure}`)
+  console.log(`the whole suite with no mutant: ${answer.length} failed`)
+  process.exit(answer.length === 0 ? 0 : 1)
+}
+
+/** What each test file fails with no mutant, from one run of it: a file is asked once. */
+const noMutant = new Map()
+async function failingWithNoMutant(files) {
+  const unknown = [...new Set(files)].filter((file) => !noMutant.has(file))
+  if (unknown.length > 0) {
+    const answer = await run(unknown, nextReport())
+    if (!Array.isArray(answer)) return answer
+    for (const file of unknown) noMutant.set(file, new Set())
+    for (const failure of answer) {
+      noMutant.get(fileOf(failure))?.add(failure)
+      console.error(`mutation-baseline fails with no mutant: ${failure}`)
+    }
+  }
+  return new Set(files.flatMap((file) => [...noMutant.get(file)]))
+}
+/** The failures that are the mutant's: those of the answer that do not also fail with no mutant. */
+async function beyondNoMutant(failures) {
+  const clean = await failingWithNoMutant(failures.map(fileOf))
+  return clean instanceof Set ? failures.filter((failure) => !clean.has(failure)) : clean
+}
+
+const results = []
 /** One line per row as it ends, on the standard error stream: a shard stopped at its limit prints no
  * table, and a row's cost runs from seconds to many minutes (agent#281). */
 const finished = (row, started) => {
   const last = results[results.length - 1]
   console.error(`mutation-row ${((Date.now() - started) / 1000).toFixed(1)} ${last.verdict.replace(/ /g, '-')} ${row.name}`)
 }
+const shown = (how, failures) => (options.verbose ? `${how}: ${failures.join('; ')}` : `${how}: ${failures[0]}${failures.length > 1 ? ` (+${failures.length - 1})` : ''}`)
 for (const row of runnable) {
   const started = Date.now()
   const path = join(copy, row.file)
@@ -248,20 +296,48 @@ for (const row of runnable) {
     finished(row, started)
     continue
   }
-  writeFileSync(path, original.replace(row.find, () => row.replace))
-  try {
-    const report = join(scratch, `report-${reportNumber++}.json`)
-    let how = options.whole ? 'whole' : 'selected'
-    let answer = options.whole || row.tests.length === 0 ? await run([], report) : await run(row.tests, report)
-    if (!options.whole && row.tests.length > 0 && !(Array.isArray(answer) && answer.length > 0)) {
-      how = 'whole, after its selection decided nothing'
-      answer = await run([], join(scratch, `report-${reportNumber++}.json`))
+  const underMutant = async (files, excluded = []) => {
+    writeFileSync(path, original.replace(row.find, () => row.replace))
+    try {
+      return await run(files, nextReport(), excluded)
+    } finally {
+      writeFileSync(path, original)
     }
-    if (Array.isArray(answer) && answer.length > 0) results.push({ row, verdict: 'caught', detail: options.verbose ? `${how}: ${answer.join('; ')}` : `${how}: ${answer[0]}${answer.length > 1 ? ` (+${answer.length - 1})` : ''}` })
-    else if (Array.isArray(answer)) results.push({ row, verdict: 'NOT CAUGHT', detail: `${how}: no test failed` })
-    else results.push({ row, verdict: 'UNDECIDED', detail: answer.undecided })
-  } finally {
-    writeFileSync(path, original)
+  }
+  const selection = !options.whole && row.tests.length > 0
+  let decided = false
+  if (selection) {
+    const answer = await underMutant(row.tests)
+    if (Array.isArray(answer) && answer.length > 0) {
+      const counted = await beyondNoMutant(answer)
+      if (Array.isArray(counted) && counted.length > 0) {
+        results.push({ row, verdict: 'caught', detail: shown('selected', counted) })
+        decided = true
+      } else if (!Array.isArray(counted)) {
+        results.push({ row, verdict: 'UNDECIDED', detail: `with no mutant: ${counted.undecided}` })
+        decided = true
+      }
+    }
+  }
+  if (!decided) {
+    const how = selection ? 'whole, after its selection decided nothing' : 'whole'
+    const answer = await underMutant([], LINE_SENSITIVE)
+    if (!Array.isArray(answer)) results.push({ row, verdict: 'UNDECIDED', detail: answer.undecided })
+    else {
+      const counted = answer.length > 0 ? await beyondNoMutant(answer) : []
+      if (!Array.isArray(counted)) results.push({ row, verdict: 'UNDECIDED', detail: `with no mutant: ${counted.undecided}` })
+      else if (counted.length === 0) results.push({ row, verdict: 'NOT CAUGHT', detail: `${how}: no test failed beyond the failures with no mutant` })
+      else {
+        // Only the whole suite saw these: they must fail again without the rest of the suite beside them.
+        const again = await underMutant([...new Set(counted.map(fileOf))])
+        if (!Array.isArray(again)) results.push({ row, verdict: 'UNDECIDED', detail: `in its own file: ${again.undecided}` })
+        else {
+          const kept = counted.filter((failure) => again.includes(failure))
+          if (kept.length > 0) results.push({ row, verdict: 'caught', detail: shown(how, kept) })
+          else results.push({ row, verdict: 'NOT CAUGHT', detail: `${how}: what failed did not fail again in its own file: ${counted[0]}` })
+        }
+      }
+    }
   }
   finished(row, started)
 }
