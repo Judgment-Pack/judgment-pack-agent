@@ -1,4 +1,4 @@
-package adapter_test
+package principaltests
 
 // ADR-0029: an acting Runtime call is admitted as any act is, on both Go engines: refused outside the
 // scope, past expiry and after revocation, before it is asked and again before it runs, counted only
@@ -34,7 +34,7 @@ func (p *runtimePrincipalPort) counts() []bool {
 
 func runtimePrincipal(t *testing.T, chain int, now string, port *runtimePrincipalPort, answer func(runcontext.PrincipalAdmissionRead) string) *runcontext.RunPrincipal {
 	t.Helper()
-	raw, err := os.ReadFile("../../contract/vectors/principal/chains.json")
+	raw, err := os.ReadFile("../../../contract/vectors/principal/chains.json")
 	if err != nil {
 		t.Fatal(err)
 	}
