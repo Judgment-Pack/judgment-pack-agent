@@ -5,8 +5,8 @@
     "not a pinned VM image. Every profile compares with the release runner: a rolled image refuses (runtime-identity)",
     "and takes the fresh route; there is no revalidation here, because the check job does work outside the check list",
     "(the Desk and Gateway checkouts) and the mutation shards are not the check list.",
-    "pull_request_reuse lists only the check job's checks whose result depends on the tree and the recorded inputs;",
-    "tests/test_release_evidence.py holds every check of the check job to one side or the other."
+    "pull_request_reuse lists only the checks of the check and go-race jobs whose result depends on the tree and the recorded inputs;",
+    "tests/test_release_evidence.py holds every check of those jobs to one side or the other."
   ],
   "schema": 2,
   "repository": "Judgment-Pack/judgment-pack-agent",
@@ -186,11 +186,18 @@
             "go-vet",
             "go-generate",
             "go-test",
-            "go-race",
             "harness-check",
             "parity"
           ],
           "optional_skips": ["dependency-audit-live"],
+          "setup": true
+        },
+        "go-race": {
+          "name": "go-race",
+          "job_id": "go-race",
+          "labels": ["ubuntu-latest"],
+          "profile": "check",
+          "checks": ["go-race"],
           "setup": true
         }
       }
