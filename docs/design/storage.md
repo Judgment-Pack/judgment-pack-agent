@@ -728,7 +728,8 @@ view of a store whose jobs, leases and waits outlive its process, with an effect
 `AdmitJobs`, which the session runs over the view's own store and host), or it refuses by name before any request. A tool of a
 `gateway` source needs `gatewayKeyScope` (`job-host-unsupported`). A sub-agent is offered no job tool: a declaration naming one is
 withheld, and a child session offered one refuses `child-unsupported`. A job with no row in the run's head means its rows were
-restored from an earlier moment than its jobs, and the run refuses `store-inconsistent` before any request.
+restored from an earlier moment than its jobs, and the run refuses `store-inconsistent` before any request. A run under a stored
+chat refuses `chat-store-unsupported` before any request too: its job wait could not resume there.
 
 **The job port.** A store kind implements `JobStore` (Go `JobStore`): `jobVersion` 1, `jobLifetime`, and these, each atomic under
 the same serialization as its commits, with everything they decide by surviving the store's own restarts.

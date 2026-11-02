@@ -610,10 +610,23 @@ describe('what is refused before an offer or a park (#229)',()=>{
  })
  it('M-5: a run under a stored chat does not park: its chat could not take the continuation',async()=>{
   const held=await leased(),scope=new StoredChatScope(held.view as never,'chat-1',new ChatContext({scope:'fixture'}))
-  const session={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[await startTool(started)],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{currentRequest:{message:'Run the job.',input:'job'},chat:scope,runStore:{store:held.view,id:RUN,context:scope}},model:{family:'openai-compatible',model:'fixture',call:provider([CALL,{say:'running'}]).call}} as unknown as EngineSession
-  for await(const _ of vercel.start(session)){}
-  const job=(await listJobs(held.store,RUN)).jobs[0]!;expect(job.state).toBe('started')
-  await expect(parkJob(held.store,held.fence,job.job)).rejects.toMatchObject({name:'WaitCapabilityRefused',reason:'chat-store-unsupported'})
+  const start=vi.fn(started),first=provider([CALL,{say:'running'}])
+  const session={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[await startTool(start)],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{currentRequest:{message:'Run the job.',input:'job'},chat:scope,runStore:{store:held.view,id:RUN,context:scope}},model:{family:'openai-compatible',model:'fixture',call:first.call}} as unknown as EngineSession
+  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event)
+  // R-2: refused before any offer, so nothing tells the model the host resumes it.
+  expect(JSON.stringify(out)).toContain('JobCapabilityRefused: chat-store-unsupported')
+  expect(start).not.toHaveBeenCalled();expect(first.state.requests).toBe(0);expect((await listJobs(held.store,RUN)).jobs).toEqual([])
+ })
+ it('R-2: a head that holds a stored chat is refused with no scope passed',async()=>{
+  const held=await leased()
+  vi.spyOn(held.store,'readHistoryHead').mockResolvedValue({context:{chatId:'chat-1'}} as never)
+  const writer=new RunWriter(unattendedRunStore({store:held.store,fence:held.fence,effectHost:held.host}),RUN)
+  await expect(writer.attachJobs()).rejects.toMatchObject({name:'JobCapabilityRefused',reason:'chat-store-unsupported'})
+ })
+ it('M-5: a park reads the history head as well: a job from before the chat cannot wait under it',async()=>{
+  const held=await oneJob()
+  const chatted=Object.create(held.store,{readHistoryHead:{value:async()=>({context:{chatId:'chat-1'}})}}) as RunStore
+  await expect(parkJob(chatted,held.fence,held.job.job)).rejects.toMatchObject({name:'WaitCapabilityRefused',reason:'chat-store-unsupported'})
   expect((await exportWaits(held.store,RUN)).waits).toEqual([])
  })
  it('M-6: a job with no row in the head means jobs and rows from different moments: refused before anything is offered',async()=>{

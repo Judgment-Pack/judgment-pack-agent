@@ -20,7 +20,7 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
-import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobIdentity,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
+import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -517,6 +517,9 @@ export class RunWriter {
  /** #229: this run offers job tools. Nothing below is asked of a store otherwise. */
  async attachJobs(signal?:AbortSignal):Promise<void>{
   admitJobView(this.store)
+  // R-2: capability, before any offer. A job's wait cannot resume under a stored chat, so a start there would tell the model the
+  // host resumes it when nothing can.
+  if(await heldChat(this.store,this.id,signal))throw new JobCapabilityRefused('chat-store-unsupported')
   this.jobRecords??=new Map();await this.refreshJobs(signal)
   // M-6: a job and its claim commit together, so a job with no row of the head means its rows were restored from an earlier
   // moment than its jobs: a repeat would get a new row and a second start.
@@ -932,6 +935,8 @@ export class RunWriter {
   return value
  }
 }
+/** Whether the run's history head holds a stored chat, whether or not this session passes it. */
+const heldChat=async(store:RunStore,id:string,signal?:AbortSignal)=>{const history=store as Partial<HistoryRunStore>;return history.historyVersion===1&&(await history.readHistoryHead!(id,signal))?.context!==undefined}
 /** #229: what a start's dispatch asks of the writer: the key digest of its job, and being told the job before it runs. */
 export interface JobStartDispatch {mint:JobStartSeam['mint'];bind:(job:string)=>void}
 /** A callback acknowledges legacy checkpoint delivery. It cannot create an exact dispatch journal. */
@@ -977,6 +982,8 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
  const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined
  if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
+ // R-2: a chat this session passes, before the writer opens: nothing of the chat is touched.
+ if(config?.context&&session.hostTools?.some(tool=>jobSeamOf(tool)!==undefined))throw new JobCapabilityRefused('chat-store-unsupported')
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()

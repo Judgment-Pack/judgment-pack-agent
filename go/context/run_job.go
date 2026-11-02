@@ -55,7 +55,7 @@ type (
 // JobRefusalReasons and JobCapabilityReasons are every reason, in the vector's order.
 var (
 	JobRefusalReasons    = []string{"invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven"}
-	JobCapabilityReasons = []string{"store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent"}
+	JobCapabilityReasons = []string{"store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent", "chat-store-unsupported"}
 )
 
 // JobRefused is a named job refusal. Nothing changed. A refusal that reaches the model is a tool error, and

@@ -116,7 +116,7 @@
       "description": "A store or tool that cannot give the guarantee refuses by name before anything is offered.",
       "type": "object",
       "required": ["version", "reason"],
-      "properties": {"version": {"const": 1}, "reason": {"enum": ["store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent"]}},
+      "properties": {"version": {"const": 1}, "reason": {"enum": ["store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent", "chat-store-unsupported"]}},
       "additionalProperties": false
     },
     "export": {

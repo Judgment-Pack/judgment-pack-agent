@@ -194,6 +194,10 @@
   {
    "version": 1,
    "reason": "store-inconsistent"
+  },
+  {
+   "version": 1,
+   "reason": "chat-store-unsupported"
   }
  ],
  "exportsRefused": [

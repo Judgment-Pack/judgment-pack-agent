@@ -546,7 +546,7 @@ The gateway builds, on `/act`:
 
 | Host must | Otherwise |
 | --- | --- |
-| Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`) | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, before any offer |
+| Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`), on a run with no stored chat | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, `chat-store-unsupported`, before any offer |
 | Decide every held start with `shownDigest` (`approvalShownDigest`), text kept or not: a new surface has no unmoved host | `ApprovalNotShown`, before the claim: no job, nothing runs, and the pause stands |
 | Declare `gatewayKeyScope` on a start tool of a `gateway` source | `job-host-unsupported` |
 | Declare no sub-agent with a job tool | The definition is withheld; a child session offered one refuses `child-unsupported` |

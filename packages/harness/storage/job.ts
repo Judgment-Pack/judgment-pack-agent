@@ -27,9 +27,9 @@ export type JobOutcome='succeeded'|'failed'|'cancelled'|'unknown'
 export type JobFinding='started'|'not-started'|'unknown'
 export type JobLifetime='durable'|'process'
 export type JobRefusalReason='invalid'|'no-job'|'unauthenticated'|'conflict'|'stale'|'key-reused'|'jobs-exhausted'|'job-settled'|'job-unproven'
-export type JobCapabilityReason='store-unsupported'|'store-lifetime'|'job-host-unsupported'|'child-unsupported'|'store-inconsistent'
+export type JobCapabilityReason='store-unsupported'|'store-lifetime'|'job-host-unsupported'|'child-unsupported'|'store-inconsistent'|'chat-store-unsupported'
 export const JOB_REFUSAL_REASONS:readonly JobRefusalReason[]=['invalid','no-job','unauthenticated','conflict','stale','key-reused','jobs-exhausted','job-settled','job-unproven']
-export const JOB_CAPABILITY_REASONS:readonly JobCapabilityReason[]=['store-unsupported','store-lifetime','job-host-unsupported','child-unsupported','store-inconsistent']
+export const JOB_CAPABILITY_REASONS:readonly JobCapabilityReason[]=['store-unsupported','store-lifetime','job-host-unsupported','child-unsupported','store-inconsistent','chat-store-unsupported']
 export interface JobActor {owner:string;epoch:string;at:string}
 /** How a start became known or closed: the writer's typed answer, or a host's reconciliation with its evidence id. */
 export interface JobFact {by:'answer'|'reconcile';at:string;digest:string;evidence?:string}
