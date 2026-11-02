@@ -32,7 +32,7 @@ permissions:
 # because a group holds one pending run and a newcomer replaces it: in one group, a nightly run could
 # cancel a dispatch waiting at the same commit.
 concurrency:
-  group: mutation-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: mutation-${{ github.event_name }}-${{ github.ref }}${{ github.event_name != 'pull_request' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

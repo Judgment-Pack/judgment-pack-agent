@@ -209,6 +209,23 @@ describe("a lease holds a delegated run's principals",()=>{
   const given=session([],input(['otherActor']),{link:{attach(){},principal:()=>parent}})
   await expect(contextualSession(given)).rejects.toThrow(/delegation is refused \(chain-broken\)/)
  })
+ it('a fence of other principals is refused before the store is touched: not a read, not a commit (ADR-0029)',async()=>{
+  class Counting extends MemoryRunStore {touched:string[]=[];override load(...args:Parameters<MemoryRunStore['load']>){this.touched.push('load');return super.load(...args)};override readEvents(...args:Parameters<MemoryRunStore['readEvents']>){this.touched.push('readEvents');return super.readEvents(...args)}}
+  const opened=await openPrincipal(input(['root']))
+  for(const fenceBinding of [undefined,bindings.items[1],principalBinding(opened.record)] as const)for(const principal of fenceBinding===undefined||fenceBinding===bindings.items[1]?[input(['root'])]:[undefined]){
+   const store=new Counting({now:()=>new Date(T)}),ran:string[]=[]
+   const lease=await store.acquireLease({resource:'run-1',owner:'worker-a',expectedRevision:null,durationMs:60_000,...(fenceBinding?{principal:fenceBinding as never}:{})})
+   const fenced=fencedRunStore(store,fenceOf(lease))
+   store.touched=[]
+   const given=session([await readTool(ran)],principal)
+   ;(given.context as Record<string,unknown>).runStore={store:fenced,id:'run-1'}
+   const events:AssistantEvent[]=[]
+   for await(const event of managedContext(given,async function*(){yield {type:'end' as const}}))events.push(event)
+   expect(JSON.stringify(events.filter(e=>e.type==='error'))).toContain('principal-changed')
+   expect(store.touched).toEqual([])
+   expect(await store.load('run-1')).toBeUndefined()
+  }
+ })
  it("a session's fenced store must hold the run's principals",async()=>{
   const at=()=>new Date(T)
   const opened=await openPrincipal(input(['root']))

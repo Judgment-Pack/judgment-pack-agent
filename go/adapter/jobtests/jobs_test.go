@@ -1926,17 +1926,21 @@ func TestJobsANestedRunInACancelIsNoCancel(t *testing.T) {
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
 			nested := newLeased(t, nil)
+			nestedAnswer := ""
 			p := pairOf(t, "runner", nil, func(ctx context.Context, _ runcontext.JobCancelInput) error {
-				if result := drive(t, nested.view, engine, nil, nil, options{ctx: ctx}); result.err != nil {
-					return result.err
-				}
-				return nil
+				result := drive(t, nested.view, engine, nil, nil, options{ctx: ctx})
+				nestedAnswer = fmt.Sprint(result.err) + toolAnswer(result)
+				return result.err
 			}, "allow", jobKey)
 			l, job := startedPair(t, engine, p)
 			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
 			rows := cancelRows(t, l.store)
 			if p.sent.Load() != 1 || len(rows) != 1 || rows[0].State != "result" || !strings.Contains(lastToolResult(t, result), "cancel requested") {
 				t.Fatal(p.sent.Load(), rows, lastToolResult(t, result))
+			}
+			// The nested run's own requests went through: none was taken for a cancel.
+			if strings.Contains(nestedAnswer, `"type":"error"`) {
+				t.Fatal(nestedAnswer)
 			}
 		})
 	}
