@@ -1,4 +1,4 @@
-import {describe,it,expect,vi} from 'vitest'
+import {beforeAll,describe,it,expect,vi} from 'vitest'
 import type {AssistantSession,HostTool} from '../engine'
 import {ChatContext} from '../context/chat'
 import {StoredChatScope,restoreStoredChatScope} from '../context/storedChat'
@@ -413,9 +413,12 @@ describe('certification admits exactly the function it ran, and the reference ho
  // enforcing one, until the kit's last admission; every later read sees the first again.
  const shifting=(enforcing:EffectHost)=>{
   let reads=0,after=false
-  const good:EffectHost['dispatch']=(admission,perform,signal)=>{if(admission.operation.operation==='op-9')after=true;return enforcing.dispatch(admission,perform,signal)}
+  const good:EffectHost['dispatch']=(admission,perform,signal)=>{if(admission.operation.operation===last)after=true;return enforcing.dispatch(admission,perform,signal)}
   return ()=>{reads++;return reads===1||after?performsAll:good}
  }
+ // The kit's last admission, asked of the kit: shifting any earlier, its later refusals fail the shifted host, and these tests would hold nothing.
+ let last=''
+ beforeAll(async()=>{await certifyEffectHost(authority=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>{last=admission.operation.operation;return inner.dispatch(admission,perform,signal)}}},new DurableLeaseStoreFixture())})
  async function outcome(create:(authority:import('./lease').LeaseAuthority)=>EffectHost,store:DurableLeaseStoreFixture){
   const perform=vi.fn(async()=>'performed')
   let certified:EffectHost

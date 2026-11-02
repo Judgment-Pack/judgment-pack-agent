@@ -713,9 +713,11 @@ in `contract/vectors/reauth/`; the wait record (`run-wait.json`, not yet release
 TypeScript is `packages/harness/storage/reauth.ts` with the effect-host boundary in `storage/lease.ts`
 and the wait transitions in `wait.ts`; Go is `go/context/run_reauth.go` with `run_lease.go` and
 `run_wait.go`. Nothing is configured by default: without a credential check at the effect host no
-refusal is minted, and a run's bytes are unchanged. The one exception is a failure a tool or a host
-itself reports in the exact shape of the typed failure below: it is recorded as `unknown`, not as it
-says (see "The run stops at the refusal").
+refusal is minted, and a run's bytes are unchanged, with two exceptions that apply whether or not a check
+is configured. Under a run store, a failure a tool or a host itself reports in the exact shape of the typed
+failure below is recorded and reported as `unknown`, not as it says (see "The run stops at the refusal");
+with no run store it still reaches the model as written. Under a fenced view, a `perform` after the dispatch
+has ended runs nothing.
 
 **The boundary.** Only the effect host can tell an operation that was never admitted from one whose
 outcome is unknown, and only at its own admission boundary. The reference effect host takes an
@@ -736,7 +738,8 @@ after the operation was performed, a refusal followed by a `perform`, a refusal 
 (a token or an error member, an undigested principal, an unbounded connection) and an unproven host
 give an untrusted refusal: an ordinary failure whose operation keeps its unknown outcome. A `perform`
 after the dispatch has ended runs nothing (`LeaseRefused` `invalid`) and takes the trust back from a
-refusal that dispatch minted. An error a tool returns after admission (a provider's 401 included) is
+refusal that dispatch minted. In TypeScript a dispatch may be a plain function that throws the refusal, or
+throws after scheduling a `perform`: its throw ends the dispatch like any other answer. An error a tool returns after admission (a provider's 401 included) is
 never this proof. A credential check that errors admits nothing and proves nothing, and what it threw
 stays with the host: the reference host replaces it with one fixed failure, `CredentialCheckFailed`
 (`unknown`, `tool`, `unknown`), so a check's own typed error or detail reaches no record.
@@ -821,11 +824,13 @@ sends the operation once more with no new action. Otherwise the operation stays 
 reconciled like any other, and a further attempt is a new run.
 
 **What the host keeps.** The credentials, their refresh and the person's action are the host's; the
-package receives digests, labels and bounded references only, and the wait records those. A check's
-error, a tool's error, a refusal with any other member and an undigested principal reach no checkpoint,
-event, wait, attention event, export, report, prompt or error. The readers cannot recognize a secret that
-fits a pattern: a connection, an `actor` or a label that holds one does reach the wait and its attention
-event, so keeping them out is the host's. The store's obligations are certified by the wait conformance
+package receives digests, labels and bounded references only, and the wait records those. The reference
+host's check error, a tool's plain or wrapped error, a refusal with any other member and an undigested
+principal reach no checkpoint, event, wait, attention event, export, report, prompt or error. Two things the
+host writes itself do. A typed failure with an authored detail, from a tool or a certified host, reaches the
+checkpoint, the events and the prompt, unless it has the never-admitted shape. And the readers cannot
+recognize a secret that fits a pattern: a connection, an `actor` or a label that holds one reaches the wait
+and its attention event. Keeping credentials out of both is the host's. The store's obligations are certified by the wait conformance
 kit's `reauth.*` properties: the fence (owner and epoch) and each way a head can fail to hold the dispatch
 at the park, the attached approval and its expiry, the claim's checks, its lease bounded by that expiry
 and the recorded refresh, `limitRun` keeping the approval time, the timeout and the deadline wake ending

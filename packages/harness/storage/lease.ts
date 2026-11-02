@@ -469,6 +469,7 @@ export function holdLeasePrincipal(store:RunStore,record:PrincipalRecord|undefin
  * admission handed to the effect host is in flight while its dispatch runs; a re-authorization refusal minted for it, once,
  * before anything was performed, that the dispatch rejects with, from an effect host proven for the run's store, is
  * trusted and kept on the view (reauthorizationOf). */
+const enteredDispatch=<T,>(dispatch:()=>Promise<T>)=>new Promise<T>(resolve=>resolve(dispatch()))
 export function fencedEffect<T>(store:RunStore,operation:EffectOperation,perform:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
  const lease=leased.get(store)
  if(!lease)return perform()
@@ -477,12 +478,13 @@ export function fencedEffect<T>(store:RunStore,operation:EffectOperation,perform
  try{admission=effectAdmission(lease.fence,operation)}catch(error){return Promise.reject(error)}
  const attempt:DispatchAttempt={live:true,performed:false,invalid:false},host=lease.effectHost
  inflight.set(admission,attempt)
- return host.dispatch(admission,()=>{
+ // #278: a host's dispatch may be a plain function that throws the mint, as the guide says: entered inside a promise, its throw ends the attempt like any other answer.
+ return enteredDispatch(()=>host.dispatch(admission,()=>{
   // #226: a perform after the dispatch ended never runs, and a refusal followed by one is no proof: the host that minted it
   // did not stand by it.
   if(!attempt.live){attempt.invalid=true;if(attempt.minted){trusted.delete(attempt.minted);fresh.delete(attempt.minted)}return Promise.reject(new LeaseRefused('invalid'))}
   attempt.performed=true;return perform()
- },signal).then(value=>{attempt.live=false;return value},error=>{
+ },signal)).then(value=>{attempt.live=false;return value},error=>{
   attempt.live=false
   if(attempt.minted!==undefined&&error===attempt.minted&&!attempt.performed&&!attempt.invalid&&provenAuthority(host)===(lease.store as object)){
    const refusal=attempt.refusal!
