@@ -692,7 +692,7 @@ run of its own file under the mutant. A row whose mutant changes nothing a test 
 `NOT CAUGHT`, which fails the run. `--no-mutant` runs the whole suite in the scratch copy and names
 what fails. `.github/workflows/mutation.yml`
 runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
-request's number, and the whole table on every push to `main`, weekly and on demand, in ten shards.
+request's number, and the whole table nightly and by dispatch on `main`, in ten shards.
 A run prints a `mutation-row` line with each row's seconds on the standard error stream as it ends.
 
 ### The certified scenarios (agent#13)
