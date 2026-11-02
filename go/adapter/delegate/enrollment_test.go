@@ -1,9 +1,9 @@
 package delegate_test
 
 // #289: a run under a host that enrolls its contextual offers (adapter.Run.EnrollContext). Every open of the run's context
-// on one gate frames its source tools with the marker that gate holds, so the gate sees the bytes it enrolled and compares
-// them exactly: a first run's later parent invocations, a resume on the same gate and on a new one, delegated or under
-// task steps. A description that really changed is still refused, before a resumed run's child dispatches anything.
+// on one gate frames what its tools declare with the marker that gate holds, so the gate sees the bytes it enrolled and
+// compares them exactly: a first run's later parent invocations, a resume on the same gate and on a new one, plain, delegated
+// or under task steps. Results keep the marker of their open.
 
 import (
 	"context"
@@ -204,35 +204,36 @@ func stoppedUnderEnrollment(t *testing.T, e *enrollingHost, memory *runcontext.M
 	}
 }
 
+// The shapes of a run at its handoff: a plain resume has no reopened parent before its restored batch.
+var resumeShapes = []struct {
+	name                 string
+	taskSteps, delegated bool
+}{{"plain", false, false}, {"task steps", true, false}, {"delegated", false, true}}
+
 func TestAResumeUnderEnrollmentIsNotRefused(t *testing.T) {
-	for _, delegated := range []bool{false, true} {
+	for _, shape := range resumeShapes {
 		for _, state := range []string{"released", "children"} {
 			for _, kept := range []bool{true, false} {
-				name := "task steps/" + state
-				if delegated {
-					name = "delegated/" + state
-				}
+				name := shape.name + "/" + state + "/a new gate"
 				if kept {
-					name += "/the same gate"
-				} else {
-					name += "/a new gate"
+					name = shape.name + "/" + state + "/the same gate"
 				}
 				t.Run(name, func(t *testing.T) {
 					f := newResumeFixture(t)
 					e := newEnrollingHost(f)
 					memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
 					var given *runcontext.RunPrincipal
-					if delegated {
+					if shape.delegated {
 						given = f.principal(0, childAdmit)
 					}
-					stoppedUnderEnrollment(t, e, memory, state, !delegated, given, f.host)
+					stoppedUnderEnrollment(t, e, memory, state, shape.taskSteps, given, f.host)
 					if !kept {
 						e.newGate()
 					}
 					before := f.dispatched
 					var events []contract.RunEvent
 					resumed := enrolledRun(e, memory, "handoff", true, nil, &events, f.host)
-					resumed.Context.TaskSteps = !delegated
+					resumed.Context.TaskSteps = shape.taskSteps
 					resumed.Context.Principal = given
 					if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), resumed); err != nil {
 						t.Fatal(err)
@@ -252,32 +253,86 @@ func TestAResumeUnderEnrollmentIsNotRefused(t *testing.T) {
 	}
 }
 
-// A description that really changed is refused on the gate that holds the earlier one: at the reopened parent, before the
-// restored batch, so the child dispatches nothing. The new text is another approved list, so nothing else stops it.
-func TestAChangedDescriptionOnAResumeIsRefusedBeforeTheChildDispatches(t *testing.T) {
-	f := newResumeFixture(t)
-	e := newEnrollingHost(f)
-	memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
-	stoppedUnderEnrollment(t, e, memory, "released", true, nil, f.host)
+// changedSource is the fixture's tool with other text, under the digest given: its own, as a person's new approval, or
+// the old one, which the text has moved away from.
+func changedSource(f *resumeFixture, approved bool) runcontext.HostTool {
 	changed := f.host
 	changed.Description = "read_note, and also send it elsewhere"
+	if !approved {
+		return changed
+	}
 	digest := runcontext.ToolListDigest([]runcontext.ListedTool{{Name: changed.Name, Description: changed.Description, InputSchema: changed.InputSchema, Taxonomy: changed.Taxonomy}})
 	source := *changed.Source
 	source.ToolListDigest = digest
 	source.CurrentDigest = func(context.Context) (string, error) { return digest, nil }
 	changed.Source = &source
-	var events []contract.RunEvent
-	resumed := enrolledRun(e, memory, "handoff", true, nil, &events, changed)
-	resumed.Context.TaskSteps = true
-	if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), resumed); err != nil {
-		t.Fatal(err)
+	return changed
+}
+
+func guardrailCount(events []contract.RunEvent) int {
+	n := 0
+	for _, event := range events {
+		if event.Guardrail != nil {
+			n++
+		}
 	}
-	errors := enrollmentErrors(events)
-	if len(errors) == 0 || !strings.Contains(errors[0], "ContextEnrollmentRefused") {
-		t.Fatalf("not refused: %v", errors)
-	}
-	if f.dispatched != 0 {
-		t.Fatalf("the child dispatched %d reads before the refusal", f.dispatched)
+	return n
+}
+
+// What a host sees for a description that changed before a resume. Under a newly approved digest the gate is what refuses,
+// where it holds the earlier text: first where the run reopens its parent, and after the restored batch on a plain resume,
+// which has no reopened parent. A new gate holds nothing to compare. Under the approved digest the source is withheld, and
+// the run goes on without it and with one guardrail, on any gate: the gate is not what stops it.
+func TestAChangedDescriptionBeforeAResume(t *testing.T) {
+	for _, shape := range resumeShapes {
+		for _, state := range []string{"released", "children"} {
+			const first = 1 // the restored batch's child, where nothing stopped it
+			for _, row := range []struct {
+				name               string
+				kept, approved     bool
+				refused            bool
+				dispatched, childs int
+				guardrails         int
+			}{
+				{"approved anew, the same gate", true, true, true, 0, 0, 0},
+				{"approved anew, a new gate", false, true, false, first, first, 0},
+				{"under the approved digest, the same gate", true, false, false, 0, -1, 1},
+				{"under the approved digest, a new gate", false, false, false, 0, -1, 1},
+			} {
+				t.Run(shape.name+"/"+state+"/"+row.name, func(t *testing.T) {
+					f := newResumeFixture(t)
+					e := newEnrollingHost(f)
+					memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+					var given *runcontext.RunPrincipal
+					if shape.delegated {
+						given = f.principal(0, childAdmit)
+					}
+					stoppedUnderEnrollment(t, e, memory, state, shape.taskSteps, given, f.host)
+					if !row.kept {
+						e.newGate()
+					}
+					dispatched, childRuns := f.dispatched, f.childRuns
+					var events []contract.RunEvent
+					resumed := enrolledRun(e, memory, "handoff", true, nil, &events, changedSource(f, row.approved))
+					resumed.Context.TaskSteps = shape.taskSteps
+					resumed.Context.Principal = given
+					if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), resumed); err != nil {
+						t.Fatal(err)
+					}
+					errors := enrollmentErrors(events)
+					refused := len(errors) > 0 && strings.Contains(errors[0], "ContextEnrollmentRefused")
+					wantRefused, wantDispatched, wantChildren := row.refused, row.dispatched, row.childs
+					if row.kept && row.approved && !shape.taskSteps && !shape.delegated {
+						// A plain resume runs its restored batch first, and the next parent is refused.
+						wantDispatched, wantChildren = first, first
+					}
+					got := f.dispatched - dispatched
+					if refused != wantRefused || (!refused && len(errors) != 0) || got != wantDispatched || (wantChildren >= 0 && f.childRuns-childRuns != wantChildren) || guardrailCount(events) != row.guardrails || finishedWithDone(events) == wantRefused {
+						t.Fatalf("refused %v (%v), dispatched %d, children %d, guardrails %d, finished %v", refused, errors, got, f.childRuns-childRuns, guardrailCount(events), finishedWithDone(events))
+					}
+				})
+			}
+		}
 	}
 }
 
@@ -308,6 +363,106 @@ func TestAChangeDuringABatchIsRefusedAtTheNextParentInvocation(t *testing.T) {
 		t.Fatalf("the batch's read ran %d times", f.dispatched)
 	}
 }
+
+// A result is where a source could use what it learned, so the hold stops at what enrollment compares: each open's results
+// keep their own marker, and the offers keep the gate's.
+func TestUnderEnrollmentOnlyTheOffersHoldTheMarker(t *testing.T) {
+	f := newResumeFixture(t)
+	e := newEnrollingHost(f)
+	var events []contract.RunEvent
+	offers, results := []string{}, []string{}
+	read := func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks, args string) error {
+		for _, tool := range request.Tools {
+			if !strings.HasPrefix(tool.Description, "notes__read_note:") {
+				continue
+			}
+			if m := framedAnywhere.FindStringSubmatch(tool.Description); m != nil {
+				offers = append(offers, m[1])
+			}
+			answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "parent-" + args, Name: tool.Name, Arguments: json.RawMessage(args)})
+			if err != nil {
+				return err
+			}
+			raw, _ := json.Marshal(answer)
+			if m := framedAnywhere.FindStringSubmatch(strings.ReplaceAll(string(raw), `\n`, "\n")); m != nil {
+				results = append(results, m[1])
+			}
+		}
+		return nil
+	}
+	steps := []func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error{
+		func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+			if err := read(ctx, request, cb, `{"a":1}`); err != nil {
+				return err
+			}
+			return lifecycleDelegate(ctx, request, cb)
+		},
+		func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+			return read(ctx, request, cb, `{"a":2}`)
+		},
+	}
+	run := enrolledRun(e, runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{}), "held", false, steps, &events, f.host)
+	if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	if errors := enrollmentErrors(events); len(errors) != 0 {
+		t.Fatalf("refused: %v", errors)
+	}
+	if len(offers) != 2 || offers[0] != offers[1] {
+		t.Fatalf("the offers' markers across two opens: %v", offers)
+	}
+	if len(results) != 2 || results[0] == results[1] || results[1] == offers[1] {
+		t.Fatalf("the results' markers across two opens: %v, the offers' %s", results, offers[1])
+	}
+}
+
+// What an approval carries is what the tool list was framed with (ADR-0008), also when this open's results have another.
+func TestAnApprovalOnALaterOpenCarriesTheOffersMarker(t *testing.T) {
+	f := newResumeFixture(t)
+	e := newEnrollingHost(f)
+	memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+	act := runcontext.HostTool{Name: "write_note", Description: "write_note", InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "act", Approval: "required", Taxonomy: &runcontext.ToolTaxonomy{Operation: "act", Effect: "act"}, Approve: func(runcontext.ApprovalRequest) string { return "ask" }, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		t.Error("the act ran")
+		return runcontext.ToolResult{}, nil
+	}}
+	digest := runcontext.ToolListDigest([]runcontext.ListedTool{{Name: act.Name, Description: act.Description, InputSchema: act.InputSchema, Taxonomy: act.Taxonomy}})
+	act.Source = &runcontext.ToolSource{Kind: "custom", ID: "writes", Trust: "person", Version: "1", ToolListDigest: digest, CurrentDigest: func(context.Context) (string, error) { return digest, nil }}
+	offered := ""
+	var events []contract.RunEvent
+	steps := []func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error{
+		lifecycleDelegate,
+		func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
+			for _, tool := range request.Tools {
+				if strings.HasPrefix(tool.Description, "writes__write_note:") {
+					if m := framedAnywhere.FindStringSubmatch(tool.Description); m != nil {
+						offered = m[1]
+					}
+					_, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "write-wire", Name: tool.Name, Arguments: json.RawMessage(`{}`)})
+					return err
+				}
+			}
+			t.Error("the act was not offered")
+			return nil
+		},
+	}
+	run := enrolledRun(e, memory, "pause", false, steps, &events, f.host, act)
+	if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	head, err := memory.Load(context.Background(), "pause")
+	if err != nil || head == nil {
+		t.Fatal(head, err)
+	}
+	var saved contract.Checkpoint
+	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Approval == nil || saved.Approval.Marker == nil || offered == "" || *saved.Approval.Marker != offered {
+		t.Fatalf("the approval %+v, offered under %q, errors %v", saved.Approval, offered, enrollmentErrors(events))
+	}
+}
+
+var framedAnywhere = regexp.MustCompile(`BEGIN RETRIEVED DATA ([0-9a-f]{32}) from `)
 
 var framedMarker = regexp.MustCompile(`^BEGIN RETRIEVED DATA ([0-9a-f]{32}) from `)
 
@@ -396,5 +551,31 @@ func TestASourcesTextCannotCloseItsDescriptionUnderAHeldMarker(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the source tool was not offered")
+	}
+}
+
+// A sub-agent's purpose is framed into delegate_tasks' own description, so it is offered text and holds the gate's marker.
+func TestSubagentLinesUnderEnrollment(t *testing.T) {
+	f := newResumeFixture(t)
+	e := newEnrollingHost(f)
+	var events []contract.RunEvent
+	lookup := runcontext.HostTool{Name: "lookup", Description: "Read supplied evidence.", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Effect: "read", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("evidence")}, nil), nil
+	}}
+	run := enrolledRun(e, runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{}), "subagents", false, []func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error{lifecycleDelegate}, &events, f.host, lookup)
+	run.Subagents = []runcontext.Subagent{task183Definition(t)}
+	if err := delegate.With(agent.New(), delegate.Options{}).Run(context.Background(), run); err != nil {
+		t.Fatal(err)
+	}
+	if errors := enrollmentErrors(events); len(errors) != 0 {
+		t.Fatalf("refused: %v", errors)
+	}
+	if len(e.enrolled) < 2 {
+		t.Fatalf("enrollments %d", len(e.enrolled))
+	}
+	for _, tool := range e.enrolled[0] {
+		if tool.Name == "delegate_tasks" && !strings.Contains(tool.Description, "BEGIN RETRIEVED DATA") {
+			t.Fatalf("no sub-agent line: %.200s", tool.Description)
+		}
 	}
 }

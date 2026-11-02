@@ -26,10 +26,11 @@ func detachedDeclarations(hosts []contract.ToolOfferHostTool) ([]contract.ToolOf
 
 // FramingMarker answers the marker this gate's contextual offers are framed with (#289): the first
 // drawn marker it is given, for as long as the gate lives. A source tool's description is framed with
-// the run's marker, and EnrollContext compares declarations byte for byte, so every open of a run's
-// context on this gate must frame with one marker. The gate never reads a marker out of a declaration,
-// so no tool's text can be taken for one, and FrameBlock removes the marker from every text it frames.
-// It is kept with the offer it frames, in memory: a new gate has no enrollment to match, and draws anew.
+// a marker, and EnrollContext compares declarations byte for byte, so every open of a run's context on
+// this gate must frame its offers with one. It holds no more than that: a tool's results keep the
+// marker of their open. The gate never reads a marker out of a declaration, so no tool's text can be
+// taken for one, and FrameBlock removes the marker from every text it frames. It is kept with the offer
+// it frames, in memory: a new gate has no enrollment to match, and holds the next one it is given.
 func FramingMarker(calls *Calls, drawn string) string {
 	if calls == nil {
 		return drawn

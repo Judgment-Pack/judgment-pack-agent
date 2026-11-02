@@ -120,6 +120,7 @@ func execute(ctx context.Context, run *adapter.Run, observation *observationStat
 		Interactive:       run.Interactive,
 		CallTool:          r.gatedCall,
 		RuntimeCalls:      run.Gate,
+		FramingCalls:      adapter.FramingCalls(run),
 		Model:             &runcontext.ModelSession{Family: run.Wire, Model: run.ModelName, Budget: budgetOf(capabilities), ToolSchemas: string(capabilities.ToolSchemas), Thinking: rawReasoning.Thinking},
 		Host:              run.Host,
 		Skills:            run.Skills,
@@ -136,7 +137,9 @@ func execute(ctx context.Context, run *adapter.Run, observation *observationStat
 	for _, tool := range run.Tools {
 		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
 	}
-	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, adapter.ContextEnrollment(run))
+	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+		return adapter.EnrollContext(ctx, run, execution, declarations)
+	})
 	if err != nil {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return err

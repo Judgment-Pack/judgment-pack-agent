@@ -153,10 +153,12 @@ type SessionContext struct {
 	Execution *ExecutionController
 	// Marker is this run's closing marker for retrieved data (agent#12), drawn once, never written
 	// into the instructions. A run restored from an approval pause takes the marker the paused run
-	// drew (CarryMarker, ADR-0008), so the tool list it frames is the same bytes across the pause; a
-	// run whose host enrolls its offers takes the one its gate holds (gate.FramingMarker, #289),
-	// so the gate sees the bytes it enrolled. It is never read from model output.
+	// drew (CarryMarker, ADR-0008), so the tool list it frames is the same bytes across the pause; it
+	// is never read from model output.
 	Marker string
+	// offerMarker frames what the tools offered declare (descriptions, schemas, sub-agent lines): Marker,
+	// or under a host that enrolls its offers the one its gate holds (gate.FramingMarker, #289).
+	offerMarker string
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
 	CriticReading bool
@@ -1296,7 +1298,11 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
 		return false
 	}
+	// ADR-0008: what is carried is what the tool list was framed with.
 	marker := b.c.Marker
+	if b.c.offerMarker != "" {
+		marker = b.c.offerMarker
+	}
 	record.Marker = &marker
 	// What the record holds selects the checkpoint's format (#275, MutateCheckpoint).
 	return b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record}) == nil
@@ -1701,9 +1707,12 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			}
 		}
 		held.CarryMarker()
-		// #289: under enrollment the gate holds the marker, so that every open on it presents the bytes it enrolled.
-		if enroll != nil && session.RuntimeCalls != nil {
-			held.Marker = gate.FramingMarker(session.RuntimeCalls, held.Marker)
+		// #289: under enrollment the gate holds the offers' marker, so that every open on it presents the bytes it
+		// enrolled. Only the offers: their text cannot change without a refusal, while a result is where a source
+		// could use what it learned, so results keep this open's marker.
+		held.offerMarker = held.Marker
+		if session.FramingCalls != nil {
+			held.offerMarker = gate.FramingMarker(session.FramingCalls, held.Marker)
 		}
 		held.OpenMemories()
 		if err := held.OpenDrafts(); err != nil {
@@ -1711,7 +1720,7 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		catalogue := false
 		if len(declared.Sources) > 0 || hasSubagents {
-			offered, keptCatalogue, withheld := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.Marker)
+			offered, keptCatalogue, withheld := OfferSources(session.HostTools, declared.Entries, *held.Policy, held.offerMarker)
 			session.HostTools = offered
 			catalogue = keptCatalogue
 			declared.Withheld = append(declared.Withheld, withheld...)
@@ -1725,7 +1734,7 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		if err != nil {
 			return err
 		}
-		if err := RequireAskingWell(skills, session.HostTools, *held.Policy, held.Marker); err != nil {
+		if err := RequireAskingWell(skills, session.HostTools, *held.Policy, held.offerMarker); err != nil {
 			return err
 		}
 		for _, source := range skills.Sources {
@@ -1752,7 +1761,7 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		if hasSubagents {
 			notices := subagentNotices
-			section, kept, cut := CatalogueSubagents(admittedSubagents, *held.Policy, held.Marker)
+			section, kept, cut := CatalogueSubagents(admittedSubagents, *held.Policy, held.offerMarker)
 			held.Subagents = kept
 			for _, event := range append(notices, cut...) {
 				held.Sources.Notify(event)

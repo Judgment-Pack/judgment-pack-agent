@@ -565,11 +565,13 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			named.Critic = run.Agent.Model
 		}
 		raw := adapter.ReadAdmissionReasoning(run)
-		session := runcontext.Session{Prompt: run.Prompt, TestPrompt: run.TestPrompt, HostTools: run.HostTools, Context: &input, Purpose: run.Purpose, AllowConversation: run.AllowConversation, Interactive: run.Interactive, RuntimeCalls: run.Gate, Agent: &runcontext.AgentSession{Model: run.Agent.Model, Effort: raw.Effort}, Host: run.Host, Skills: run.Skills, Subagents: run.Subagents, ChildDefinition: run.ChildDefinition, Critic: run.Critic, Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests, CriticProject: run.CriticProject, CriticReasoning: raw.Critic, ExistingPack: run.ExistingPack, ReviewerAssigned: run.ReviewerAssigned, AdversarialReview: run.Review, Route: run.Route, RouteFacts: run.RouteFacts}
+		session := runcontext.Session{Prompt: run.Prompt, TestPrompt: run.TestPrompt, HostTools: run.HostTools, Context: &input, Purpose: run.Purpose, AllowConversation: run.AllowConversation, Interactive: run.Interactive, RuntimeCalls: run.Gate, FramingCalls: adapter.FramingCalls(run), Agent: &runcontext.AgentSession{Model: run.Agent.Model, Effort: raw.Effort}, Host: run.Host, Skills: run.Skills, Subagents: run.Subagents, ChildDefinition: run.ChildDefinition, Critic: run.Critic, Policy: run.Policy, PolicyProject: run.PolicyProject, TaskClass: run.TaskClass, PaceUsed: run.PaceUsed, PolicyLegacyModels: &named, PolicyFamilies: adapter.PolicyFamilies(run, named), PolicyConnections: append(adapter.PolicyConnectionIDs(run), named.Critic, named.Child), PolicyRequests: run.PolicyRequests, CriticProject: run.CriticProject, CriticReasoning: raw.Critic, ExistingPack: run.ExistingPack, ReviewerAssigned: run.ReviewerAssigned, AdversarialReview: run.Review, Route: run.Route, RouteFacts: run.RouteFacts}
 		for _, tool := range run.Tools {
 			session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
 		}
-		opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, adapter.ContextEnrollment(run))
+		opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+			return adapter.EnrollContext(ctx, run, execution, declarations)
+		})
 		if err != nil {
 			fail(err)
 			return

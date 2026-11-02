@@ -438,11 +438,14 @@ type Session struct {
 	PolicyLegacyModels *RunModels
 	PolicyRequests     int
 
-	Prompt            string
-	TestPrompt        string
-	Tools             []RuntimeTool
-	HostTools         []HostTool
-	RuntimeCalls      *gate.Calls
+	Prompt       string
+	TestPrompt   string
+	Tools        []RuntimeTool
+	HostTools    []HostTool
+	RuntimeCalls *gate.Calls
+	// FramingCalls is the gate that holds the marker this session's offers are framed with (#289), set only
+	// for a host that enrolls its offers. Nil, the offers are framed with the marker this open drew.
+	FramingCalls      *gate.Calls
 	CallTool          func(ctx context.Context, name string, args json.RawMessage) (ToolResult, error)
 	Model             *ModelSession
 	Agent             *AgentSession

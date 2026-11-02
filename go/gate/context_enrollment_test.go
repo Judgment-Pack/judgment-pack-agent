@@ -176,7 +176,8 @@ func TestContextEnrollmentMayNarrowWhatAnEnrollmentAddedAndNoMore(t *testing.T) 
 	}
 	// Taken away and offered again, a tool is held to what it was: narrowing is no way round the comparison.
 	changed := append([]contract.ToolOfferHostTool{}, hosts[:3]...)
-	changed[2].Description = "changed"
+	// The same length: a comparison that looks at less than every byte would pass it.
+	changed[2].Description = strings.Repeat("x", len(hosts[2].Description))
 	if err := g.EnrollContext("changed", changed); err == nil {
 		t.Fatal("a description changed while the tool was not offered")
 	}
