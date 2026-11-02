@@ -20,6 +20,15 @@ type ContextOffer struct {
 	HostTools []contract.ToolOfferHostTool
 }
 
+// FramingCalls is the handle a session's offers hold their marker on (gate.FramingMarker, #289): this run's gate
+// under a host with EnrollContext, and nil under any other, whose run stays as it was.
+func FramingCalls(run *Run) *gate.Calls {
+	if run.EnrollContext == nil {
+		return nil
+	}
+	return run.Gate
+}
+
 // EnrollContext observes final real context declarations before approval continuation or adapter dispatch.
 func EnrollContext(ctx context.Context, run *Run, execution string, hosts []contract.ToolOfferHostTool) error {
 	if run.EnrollContext == nil {

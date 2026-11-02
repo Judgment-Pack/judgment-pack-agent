@@ -60,6 +60,11 @@ type Gate struct {
 	calls              *Calls
 	contextEnrollments map[string]bool
 	contextEnrollment  string
+	// contextDeclared is the bytes each name was last enrolled with, and contextAdded the names an
+	// enrollment added to what the host registered. A new SetOffer is a new registration and clears both.
+	contextDeclared map[string][]byte
+	contextAdded    map[string]bool
+	framingMarker   string
 }
 
 // GuardNotices binds only notice delivery to a run's output boundary. The returned function
@@ -322,6 +327,7 @@ func (g *Gate) SetOffer(offer contract.ToolOffer) {
 	g.offer = offer
 	g.phase = LoopPhase(offer)
 	g.narrowed = ""
+	g.contextDeclared, g.contextAdded = nil, nil
 }
 
 // Offer is the session's offer.

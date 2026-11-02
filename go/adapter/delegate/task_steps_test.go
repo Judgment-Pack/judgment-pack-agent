@@ -33,6 +33,25 @@ func task183Definition(t *testing.T) runcontext.Subagent {
 	}
 	return file.Items[0]
 }
+
+// task183UnhurriedDefinition is the native sub-agent with room for a slow runner. The declaration's 30 seconds are a real
+// time limit on a child and on its batch, and these tests are not about it: under -race on a loaded runner a child's durable
+// admission and result commits alone can pass it, and the run then stops with a StorageOutcomeUnknown or a batch-limit error.
+func task183UnhurriedDefinition(t *testing.T) runcontext.Subagent {
+	t.Helper()
+	raw, err := os.ReadFile("../../../contract/testdata/task-steps/native-subagent.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var definition runcontext.Subagent
+	if err = json.Unmarshal(raw, &definition); err != nil {
+		t.Fatal(err)
+	}
+	definition.Bounds.Milliseconds = 300000
+	definition.PinnedDigest = runcontext.SubagentDigest(definition)
+	return definition
+}
+
 func task183Root(t *testing.T, store runcontext.RunStore) *adapter.Run {
 	t.Helper()
 	g := gate.New(gate.Options{})
@@ -85,19 +104,8 @@ func task183Completion(state *runcontext.Value, index int) any {
 func TestTaskSteps183ActualModelCoordinatorConcurrencyAndCompletion(t *testing.T) {
 	store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
 	run := task183Root(t, store)
-	raw, err := os.ReadFile("../../../contract/testdata/task-steps/native-subagent.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var definition runcontext.Subagent
-	if err = json.Unmarshal(raw, &definition); err != nil {
-		t.Fatal(err)
-	}
-	// This tests overlap and acknowledged completion, not the shared declaration's
-	// 30-second latency bound. The child clock also covers serialized durable
-	// admission and result commits, which race instrumentation makes expensive.
-	definition.Bounds.Milliseconds = 120000
-	definition.PinnedDigest = runcontext.SubagentDigest(definition)
+	// This tests overlap and acknowledged completion, not the shared declaration's latency bound.
+	definition := task183UnhurriedDefinition(t)
 	run.Subagents = []runcontext.Subagent{definition}
 	pin := &contract.SubagentRecord{ID: run.Subagents[0].ID, Digest: run.Subagents[0].PinnedDigest, Source: contract.SubagentRecordSource(run.Subagents[0].Source)}
 	var mu sync.Mutex
@@ -198,14 +206,7 @@ func TestTaskSteps183ActualNativeCoordinatorIntersectionAndCompletion(t *testing
 	store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
 	run := task183Root(t, store)
 	run.Context.RequestCap = nil
-	raw, loadErr := os.ReadFile("../../../contract/testdata/task-steps/native-subagent.json")
-	if loadErr != nil {
-		t.Fatal(loadErr)
-	}
-	var native runcontext.Subagent
-	if err := json.Unmarshal(raw, &native); err != nil {
-		t.Fatal(err)
-	}
+	native := task183UnhurriedDefinition(t)
 	run.Subagents = []runcontext.Subagent{native}
 	run.Policy = runcontext.PolicyLayer{"concurrency": map[string]any{"children": 1, "requests": 1}}
 	run.Context.TaskStepEnvelope = &runcontext.TaskStepEnvelope{ID: "native-host-envelope", Revision: "sha256:" + strings.Repeat("a", 64), Unit: "provider-invocations", Limit: 4}
@@ -336,14 +337,7 @@ func TestTaskSteps183ActualNativeQueuedAndPhysicalACKResume(t *testing.T) {
 			store := &task183FaultStore{RunStore: memory, fault: fault, lose: true}
 			run := task183Root(t, store)
 			run.Context.RequestCap = nil
-			raw, err := os.ReadFile("../../../contract/testdata/task-steps/native-subagent.json")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var definition runcontext.Subagent
-			if err = json.Unmarshal(raw, &definition); err != nil {
-				t.Fatal(err)
-			}
+			definition := task183UnhurriedDefinition(t)
 			run.Subagents = []runcontext.Subagent{definition}
 			run.Policy = runcontext.PolicyLayer{"concurrency": map[string]any{"children": 1, "requests": 1}}
 			run.Context.TaskStepEnvelope = &runcontext.TaskStepEnvelope{ID: "native-host-envelope", Revision: "sha256:" + strings.Repeat("a", 64), Unit: "provider-invocations", Limit: 4}
@@ -431,17 +425,22 @@ func TestTaskSteps183ActualModelRetryCharges(t *testing.T) {
 func task183ActualModelResponse(t *testing.T, status int) {
 	store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
 	run := task183Root(t, store)
-	raw, err := os.ReadFile("../../../contract/testdata/task-steps/native-subagent.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var definition runcontext.Subagent
-	if err = json.Unmarshal(raw, &definition); err != nil {
-		t.Fatal(err)
-	}
+	definition := task183UnhurriedDefinition(t)
 	run.Subagents = []runcontext.Subagent{definition}
 	pin := &contract.SubagentRecord{ID: definition.ID, Digest: definition.PinnedDigest, Source: contract.SubagentRecordSource(definition.Source)}
 	parent, child := 0, 0
+	var events []string
+	var eventsMu sync.Mutex
+	run.Emit = func(event contract.RunEvent) {
+		if event.ExecutionCheckpoint != nil {
+			return
+		}
+		raw, _ := json.Marshal(event)
+		eventsMu.Lock()
+		events = append(events, runcontext.U16Slice(string(raw), 0, 300))
+		eventsMu.Unlock()
+	}
+	var err error
 	run.Model = func(ctx context.Context, _ string, request relay.Request) (*http.Response, error) {
 		if !strings.Contains(string(request.Body), `"name":"delegate_plan_steps"`) {
 			child++
@@ -466,9 +465,9 @@ func task183ActualModelResponse(t *testing.T, status int) {
 	claims := state.Get("planState").Get("taskSchedule").Get("rows").Items()[0].Get("claims")
 	if status == 429 {
 		if child != 2 || parent != 3 || state.Get("used").Num() != 5 || claims.Len() != 2 || claims.Items()[0].Get("id").Str() == claims.Items()[1].Get("id").Str() || !state.Get("planState").Get("taskSchedule").Get("rows").Items()[0].Get("child").Has("result") {
-			t.Fatalf("retry charges: parent=%d child=%d state=%s", parent, child, state.JSON())
+			t.Fatalf("retry charges: parent=%d child=%d events=%q state=%s", parent, child, events, state.JSON())
 		}
 	} else if child != 1 || parent != 2 || state.Get("used").Num() != 3 || claims.Len() != 1 || state.Get("planState").Get("taskSchedule").Get("rows").Items()[0].Get("child").Has("result") {
-		t.Fatalf("unknown503 retried or established proof: parent=%d child=%d state=%s", parent, child, state.JSON())
+		t.Fatalf("unknown503 retried or established proof: parent=%d child=%d events=%q state=%s", parent, child, events, state.JSON())
 	}
 }
