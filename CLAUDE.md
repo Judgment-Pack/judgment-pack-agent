@@ -121,8 +121,9 @@ summary block, and anything you stopped on or chose not to do.
 - The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list (scoped on a pull
   request, see below). Edit `dev.json` when a check is added, not the workflow.
 - The `contract` job runs `contract`, `local-paths`, `agent-docs` and `diff-check` on every event;
-  the `go-race` job runs the `go-race` step on a runner of its own (#254); the `check` job runs
-  every other step and skips those five. On a pull request `check` and `go-race` each run their part
+  the `go-race` matrix job's legs `go-race-a` and `go-race-b` each run the step of that name on a runner
+  of its own (#254, #292); the `check` job runs every other step and skips those six. On a pull request
+  `check` and each race leg run their part
   of `scripts/dev/check.sh --all --changed origin/<base>`: only the steps that `jpdev.json` maps its
   changed paths to, and the whole list when a changed path matches no rule (the workflows,
   `.gitignore`, `.gitattributes`, the root `package.json` and `package-lock.json`, a file in a new
@@ -132,7 +133,7 @@ summary block, and anything you stopped on or chose not to do.
   check is also classified in `.github/ci-evidence.json` (reusable or not, and in which job), or
   `tests/test_release_evidence.py` fails. Run the same selection
   locally with `scripts/dev/check.sh --changed origin/main` (or `jpdev check --changed`). The rules
-  follow what each step reads, not its name: the Go certification steps (`go-test`, `go-race`,
+  follow what each step reads, not its name: the Go certification steps (`go-test`, `go-race-a`, `go-race-b`,
   `harness-check`) start the TypeScript scripted server, so a harness change selects them; the
   generated reference reads the Go sources and `packages/harness/dist`, so a Go change selects
   `reference` and `unit-tests`, and every rule with `reference`, `unit-tests`, `packed-smoke` or

@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -48,8 +49,11 @@ CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
 # The full mutation table's shards (#281): the workflow's matrix and the configuration's jobs. The gate
 # reads the jobs from the configuration, so the number is this repository's, not the kit's.
 SHARDS = 10
-# The jobs that plan reuse from the merged pull request: the check job, and the race step's own (#254).
-PLANNING_JOBS = ['check', 'go-race']
+# The race steps and their jobs: the two legs of one matrix job (#292), each its own key, name, check
+# and evidence in the configuration, the same way the mutation shards are.
+RACE_JOBS = ['go-race-a', 'go-race-b']
+# The jobs that plan reuse from the merged pull request: the check job, and the race steps' own (#254).
+PLANNING_JOBS = ['check'] + RACE_JOBS
 # The check job's checks that run on every branch push, and why none of them is reusable from a
 # pull request's run (docs/ci-evidence.md). Every other check of the two jobs is listed as reusable.
 FRESH_ON_MAIN = {
@@ -72,6 +76,65 @@ def config():
 def manifest_checks():
     manifest = json.loads(read('dev.json'))
     return [row['name'] for row in manifest['checks']] + (['parity'] if 'parity' in manifest else [])
+
+
+def workflow_job_id(key):
+    """The job of ci.yml that a planning job's key is a leg of."""
+    return config()['workflows']['ci']['jobs'][key]['job_id']
+
+
+GO_MODULE = 'github.com/Judgment-Pack/judgment-pack-agent/go'
+
+
+def packages_under_the_race_patterns():
+    """What `go list ./context/... ./adapter/...` names, by Go's own rules, from the tree: each directory
+    holding a Go file, leaving out testdata and directories starting with a dot or an underscore."""
+    found = []
+    for top in ('context', 'adapter'):
+        for directory, children, files in os.walk(ROOT / 'go' / top):
+            children[:] = [name for name in children if name != 'testdata' and name[0] not in '._']
+            if any(name.endswith('.go') and name[0] not in '._' for name in files):
+                found.append('%s/%s' % (GO_MODULE, Path(directory).relative_to(ROOT / 'go').as_posix()))
+    return sorted(found)
+
+
+# A `go` for the race steps' run text: `list` answers over the packages it is given, by Go's patterns,
+# and when told to fail does so part of the way through its answer, as a broken package makes it; a
+# package pattern that names nothing fails, as it does; `test` says what it was asked.
+GO_SHIM = '''
+import json, os, sys
+
+packages = os.environ['GO_SHIM_PACKAGES'].split()
+module = os.environ['GO_SHIM_MODULE']
+
+
+def resolve(pattern):
+    if not pattern.startswith('./'):
+        wanted = pattern
+    else:
+        wanted = module + pattern[1:]
+    if wanted.endswith('/...'):
+        base = wanted[:-len('/...')]
+        return [name for name in packages if name == base or name.startswith(base + '/')]
+    if wanted not in packages:
+        sys.exit('package %s is not in the module' % pattern)
+    return [wanted]
+
+
+verb, rest = sys.argv[1], sys.argv[2:]
+if verb == 'list':
+    if os.environ['GO_SHIM_LIST_FAILS']:
+        print(packages[0])
+        sys.exit('go list failed')
+    for pattern in rest:
+        print('\\n'.join(resolve(pattern)))
+elif verb == 'test':
+    flags = [word for word in rest if word.startswith('-')]
+    chosen = [name for word in rest if not word.startswith('-') for name in resolve(word)]
+    print('go test: ' + json.dumps({'flags': flags, 'packages': chosen}))
+else:
+    sys.exit('no such verb ' + verb)
+'''
 
 
 # The sources a check runs: every tracked script, test and module of the repository, and the
@@ -208,16 +271,18 @@ class Configuration(unittest.TestCase):
 
     def test_the_check_list_is_divided_between_the_ci_jobs_each_check_once(self):
         jobs = config()['workflows']['ci']['jobs']
-        self.assertEqual(sorted(jobs), ['check', 'contract', 'go-race'])
+        self.assertEqual(sorted(jobs), sorted(['check', 'contract'] + RACE_JOBS))
         self.assertEqual(jobs['contract']['checks'], CONTRACT_CHECKS)
-        self.assertEqual(jobs['go-race']['checks'], ['go-race'])
-        self.assertEqual(sorted(jobs['contract']['checks'] + jobs['check']['checks'] + jobs['go-race']['checks']),
-                         sorted(manifest_checks()))
+        self.assertEqual(sorted(sum((jobs[key]['checks'] for key in jobs), [])), sorted(manifest_checks()))
         self.assertTrue(jobs['check']['setup'])
-        self.assertTrue(jobs['go-race']['setup'])
-        self.assertEqual(jobs['go-race']['profile'], 'check')
         self.assertEqual(jobs['check']['optional_skips'], ['dependency-audit-live'])
-        self.assertNotIn('optional_skips', jobs['go-race'])
+        for key in RACE_JOBS:
+            with self.subTest(job=key):
+                # Each leg holds its one step under its own name; the workflow's job id is shared.
+                self.assertEqual((jobs[key]['name'], jobs[key]['job_id'], jobs[key]['checks']), (key, 'go-race', [key]))
+                self.assertTrue(jobs[key]['setup'])
+                self.assertEqual(jobs[key]['profile'], 'check')
+                self.assertNotIn('optional_skips', jobs[key])
         mutation = config()['workflows']['mutation']
         self.assertEqual(list(mutation['jobs']), ['full-%d' % shard for shard in range(1, SHARDS + 1)])
         for shard, (key, spec) in enumerate(mutation['jobs'].items(), 1):
@@ -233,7 +298,7 @@ class Configuration(unittest.TestCase):
         reusable = workflow['pull_request_reuse']['checks']
         checks = [name for job in PLANNING_JOBS for name in workflow['jobs'][job]['checks']]
         self.assertEqual(sorted(reusable + list(FRESH_ON_MAIN)), sorted(checks))
-        self.assertIn('go-race', reusable)
+        self.assertEqual([name for name in RACE_JOBS if name not in reusable], [])
         self.assertFalse(set(reusable) & set(FRESH_ON_MAIN))
         self.assertFalse(set(reusable) & set(CONTRACT_CHECKS))
 
@@ -303,12 +368,21 @@ class Workflows(unittest.TestCase):
                         # One matrix job: the shard's leg names its key and artifact from the matrix.
                         capture = 'python3 scripts/dev/release_evidence.py capture --workflow mutation --job full-${{ matrix.shard }} '
                         name = 'name: ci-evidence-mutation-full-${{ matrix.shard }}-${{ github.run_attempt }}'
+                    elif spec['job_id'] == 'go-race':
+                        # The same for the race steps' two legs.
+                        capture = 'python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race-${{ matrix.part }} '
+                        name = 'name: ci-evidence-ci-go-race-${{ matrix.part }}-${{ github.run_attempt }}'
                     else:
                         name = 'name: ci-evidence-%s-%s-${{ github.run_attempt }}' % (key, job_key)
                     self.assertIn(capture, job)
                     self.assertIn(name, job)
         mutation = read('.github/workflows/mutation.yml')
         self.assertIn('        shard: [%s]\n' % ', '.join(str(shard) for shard in range(1, SHARDS + 1)), mutation)
+        # The matrix makes exactly the configuration's two legs, under the names the gate reads.
+        race = job_block(read('.github/workflows/ci.yml'), 'go-race')
+        self.assertIn('    name: go-race-${{ matrix.part }}\n', race)
+        self.assertIn('      fail-fast: false\n      matrix:\n        part: [a, b]\n', race)
+        self.assertEqual(['go-race-%s' % part for part in ('a', 'b')], RACE_JOBS)
 
     def test_main_evidence_is_recorded_on_push_or_dispatch_and_never_on_a_schedule(self):
         mutation = read('.github/workflows/mutation.yml')
@@ -368,9 +442,9 @@ class Workflows(unittest.TestCase):
         self.assertIn('if [ "$SECONDS" -gt 5400 ]; then echo "::warning::', step)
 
     def test_each_planning_job_plans_before_its_checks_and_records_the_plan(self):
-        for name in PLANNING_JOBS:
+        for job_id, name in (('check', 'check'), ('go-race', 'go-race-${{ matrix.part }}')):
             with self.subTest(job=name):
-                job = job_block(read('.github/workflows/ci.yml'), name)
+                job = job_block(read('.github/workflows/ci.yml'), job_id)
                 main = "github.ref == 'refs/heads/main' && github.event_name != 'pull_request'"
                 plan = step_block(job, 'Plan reuse from the merged pull request')
                 self.assertIn('        id: plan\n        if: %s\n' % main, plan)
@@ -380,6 +454,7 @@ class Workflows(unittest.TestCase):
                 self.assertIn('          COVERED: ${{ steps.plan.outputs.covered }}\n', checks)
                 record = step_block(job, 'Record exact CI inputs and coverage')
                 self.assertIn('        if: %s\n' % main, record)
+                self.assertIn('python3 scripts/dev/release_evidence.py capture --workflow ci --job %s --check-log' % name, record)
                 self.assertIn('--reuse-plan "${{ runner.temp }}/reuse-plan.json"', record)
                 order = [job.index('- name: Setup steps'), job.index('- name: Plan reuse'), job.index('- name: Checks'),
                          job.index('- name: Record exact CI inputs')]
@@ -395,90 +470,176 @@ class Workflows(unittest.TestCase):
         self.assertIn('scripts/dev/check.sh --manifest dev.json --all --only %s |' % ','.join(CONTRACT_CHECKS),
                       contract)
         checks = step_block(job_block(ci, 'check'), 'Checks')
-        self.assertIn('          skip=%s\n' % ','.join(CONTRACT_CHECKS + ['go-race']), checks)
+        self.assertIn('          skip=%s\n' % ','.join(CONTRACT_CHECKS + RACE_JOBS), checks)
         self.assertIn('          if [ -n "$COVERED" ]; then skip="$skip,$COVERED"; fi\n', checks)
         invocations = re.findall(r'scripts/dev/check\.sh [^|]*', checks)
         self.assertEqual(invocations, ['scripts/dev/check.sh --all --changed "origin/$BASE_REF" --skip "$skip" ',
                                        'scripts/dev/check.sh --all --skip "$skip" '])
 
-    def go_race_others(self, manifest):
-        """What the go-race job's own step computes as every other step, from the workflow's text."""
+    def go_race_others(self, manifest, leg):
+        """What a race leg's own step computes as every other step, from the workflow's text."""
         step = step_block(job_block(read('.github/workflows/ci.yml'), 'go-race'), 'Read the toolchains from dev.json')
+        self.assertIn('          RACE_STEP: go-race-${{ matrix.part }}\n', step)
         source = step[step.index("<<'PY'\n") + len("<<'PY'\n"):step.index('          PY\n')]
         source = '\n'.join(line[10:] for line in source.splitlines())
         with tempfile.TemporaryDirectory(prefix='go-race-others-') as room:
             Path(room, 'dev.json').write_text(json.dumps(manifest), encoding='utf-8')
             out = subprocess.run([shutil.which('python3'), '-I', '-c', source], cwd=room, check=True,
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True).stdout
+                                 env=dict(os.environ, RACE_STEP=leg), stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, text=True).stdout
         return dict(line.split('=', 1) for line in out.splitlines())
 
     def test_the_go_race_job_skips_every_other_step_of_the_manifest(self):
         """The job selects by skipping (check.sh refuses --changed with --only), so the list is
-        derived from the manifest: a step added later is not run here, and go-race is never skipped
-        but for what the plan covered."""
-        manifest = json.loads(read('dev.json'))
-        others = self.go_race_others(manifest)['others'].split(',')
-        self.assertEqual(sorted(others + ['go-race']), sorted(manifest_checks()))
-        manifest['checks'].append({'name': 'added-later', 'run': 'true'})
-        self.assertIn('added-later', self.go_race_others(manifest)['others'].split(','))
+        derived from the manifest: a step added later is not run here, each leg skips the other's
+        step, and a leg's own is never skipped but for what the plan covered."""
+        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+            with self.subTest(leg=leg):
+                manifest = json.loads(read('dev.json'))
+                others = self.go_race_others(manifest, leg)['others'].split(',')
+                self.assertEqual(sorted(others + [leg]), sorted(manifest_checks()))
+                self.assertIn(other, others)
+                manifest['checks'].append({'name': 'added-later', 'run': 'true'})
+                self.assertIn('added-later', self.go_race_others(manifest, leg)['others'].split(','))
         checks = step_block(job_block(read('.github/workflows/ci.yml'), 'go-race'), 'Checks')
         self.assertIn('          skip="$OTHERS"\n', checks)
         self.assertIn('          OTHERS: ${{ steps.dev.outputs.others }}\n', checks)
 
-    def test_the_go_race_step_is_the_same_command_on_its_own_runner(self):
-        """The step moved, not changed: dev.json's command under -race over the same packages, and
-        every path that selected it. The job needs neither the Desk nor the Gateway checkout, and its
-        limit leaves the step its own."""
-        row = next(row for row in json.loads(read('dev.json'))['checks'] if row['name'] == 'go-race')
-        self.assertRegex(row['run'], r'^go test -count=1 -race -timeout=\d+m \./context/\.\.\. \./adapter/\.\.\.$')
-        self.assertEqual(row['cwd'], 'go')
-        # The adapter's test-only packages are found by these patterns, in go-test too.
-        plain = next(row for row in json.loads(read('dev.json'))['checks'] if row['name'] == 'go-test')
-        self.assertEqual((plain['run'], plain['cwd']), ('go test -count=1 ./...', 'go'))
-        mapped = {path for rule in json.loads(read('jpdev.json'))['changed'] if 'go-race' in rule['checks']
-                  for path in rule['paths']}
-        self.assertEqual(sorted(mapped), ['contract/**', 'corpus/**', 'go/**', 'packages/harness/**'])
+    def test_each_race_step_keeps_the_command_and_limits_on_its_own_runner(self):
+        """The step was divided, not changed: dev.json's flags and limits, every path that selected it,
+        each path selecting both. The job needs neither the Desk nor the Gateway checkout, and its limit
+        leaves each step its own."""
+        rows = {row['name']: row for row in json.loads(read('dev.json'))['checks']}
+        self.assertNotIn('go-race', rows)
         job = job_block(read('.github/workflows/ci.yml'), 'go-race')
+        for name in RACE_JOBS:
+            with self.subTest(step=name):
+                row = rows[name]
+                self.assertEqual(row['run'].count('go test -count=1 -race -timeout=40m '), 1)
+                self.assertEqual((row['cwd'], row['toolchain'], row['summary'], row['timeout']),
+                                 ('go', 'go', '^(ok|FAIL|---) ', 3000))
+                self.assertGreater(60 * 60, row['timeout'])
+                mapped = {path for rule in json.loads(read('jpdev.json'))['changed'] if name in rule['checks']
+                          for path in rule['paths']}
+                self.assertEqual(sorted(mapped), ['contract/**', 'corpus/**', 'go/**', 'packages/harness/**'])
+        # The adapter's test-only packages are found by go-test's own pattern too.
+        self.assertEqual((rows['go-test']['run'], rows['go-test']['cwd']), ('go test -count=1 ./...', 'go'))
         self.assertNotIn('judgment-pack-desk', job)
         self.assertNotIn('judgment-pack-gateway', job)
         self.assertIn('    timeout-minutes: 60\n', job)
-        self.assertGreater(60 * 60, row['timeout'])
 
-    def test_the_go_race_job_prints_each_binary_and_warns_before_its_limit(self):
+    def race_step(self, name, packages, go_list_fails=False):
+        """The race step's own run text from dev.json, under bash in a directory that stands for go/,
+        with a `go` first on the PATH that answers `go list` over these packages by Go's own rules and
+        says what `go test` was asked. Returns (exit status, flags, packages handed to go test), each
+        package as its import path."""
+        row = next(row for row in json.loads(read('dev.json'))['checks'] if row['name'] == name)
+        with tempfile.TemporaryDirectory(prefix='go-race-split-') as room:
+            shim = Path(room, 'bin')
+            shim.mkdir()
+            Path(room, 'go.py').write_text(GO_SHIM, encoding='utf-8')
+            go = shim / 'go'
+            go.write_text('#!/bin/sh\nexec "$GO_SHIM_PYTHON" -I "$GO_SHIM" "$@"\n', encoding='utf-8')
+            go.chmod(0o755)
+            env = {'PATH': '%s%s%s' % (shim, os.pathsep, os.environ['PATH']), 'GO_SHIM': str(Path(room, 'go.py')),
+                   'GO_SHIM_PYTHON': sys.executable, 'GO_SHIM_PACKAGES': '\n'.join(packages),
+                   'GO_SHIM_MODULE': GO_MODULE, 'GO_SHIM_LIST_FAILS': '1' if go_list_fails else ''}
+            done = subprocess.run(['bash', '-c', row['run']], cwd=room, env=env, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=30)
+        said = [line[len('go test: '):] for line in done.stdout.splitlines() if line.startswith('go test: ')]
+        self.assertLessEqual(len(said), 1, done.stdout)
+        asked = json.loads(said[0]) if said else {'flags': [], 'packages': []}
+        return done.returncode, asked['flags'], asked['packages']
+
+    def race_parts(self, packages):
+        parts = {}
+        for name in RACE_JOBS:
+            status, flags, chosen = self.race_step(name, packages)
+            self.assertEqual(status, 0, name)
+            self.assertEqual(flags, ['-count=1', '-race', '-timeout=40m'], name)
+            self.assertEqual(len(chosen), len(set(chosen)), name)
+            parts[name] = chosen
+        return parts
+
+    def test_the_two_race_steps_together_test_every_package_once(self):
+        """Together they run what `go test ./context/... ./adapter/...` ran, over this tree: no package
+        left out, none twice, and neither step empty."""
+        every = packages_under_the_race_patterns()
+        self.assertIn(GO_MODULE + '/context', every)
+        self.assertIn(GO_MODULE + '/adapter', every)
+        parts = self.race_parts(every)
+        self.assertTrue(all(parts.values()))
+        self.assertEqual(sorted(sum(parts.values(), [])), sorted(every))
+        self.assertFalse(set(parts['go-race-a']) & set(parts['go-race-b']))
+
+    def test_a_new_test_binary_cannot_be_left_out_of_both_race_steps(self):
+        """A package nobody has placed runs, and exactly once, in the step that takes what the other
+        does not name: beside the named ones, under one of them, and under ./context."""
+        every = packages_under_the_race_patterns()
+        for added in ('adapter/newtests', 'adapter/delegate/inner', 'adapter/agentish', 'context/inner'):
+            with self.subTest(added=added):
+                parts = self.race_parts(every + ['%s/%s' % (GO_MODULE, added)])
+                self.assertEqual(sorted(sum(parts.values(), [])), sorted(every + ['%s/%s' % (GO_MODULE, added)]))
+                self.assertIn('%s/%s' % (GO_MODULE, added), parts['go-race-b'])
+        # The other way: outside the two patterns is not a race package, as it was not before.
+        parts = self.race_parts(every + [GO_MODULE + '/cmd/elsewhere'])
+        self.assertEqual(sorted(sum(parts.values(), [])), sorted(every))
+
+    def test_a_named_race_package_that_has_gone_stops_its_step(self):
+        """The first step names its packages: one that has moved fails it, it is not quietly dropped."""
+        every = packages_under_the_race_patterns()
+        status, _, _ = self.race_step('go-race-a', [name for name in every if not name.endswith('/adapter/plantests')])
+        self.assertNotEqual(status, 0)
+
+    def test_a_race_step_whose_package_list_failed_tests_nothing_and_fails(self):
+        """A list that broke part of the way is not the list: the step must not test what it got and pass."""
+        status, _, chosen = self.race_step('go-race-b', packages_under_the_race_patterns(), go_list_fails=True)
+        self.assertNotEqual(status, 0)
+        self.assertEqual(chosen, [])
+
+    def test_each_race_job_prints_each_binary_and_warns_before_its_limits(self):
         """The summary keeps one line of the step's output, so the job prints what each binary took,
-        on a failure too, and warns past three quarters of the 40-minute limit."""
+        on a failure too, and warns past three quarters of the 40-minute limit and of the step's own."""
         job = job_block(read('.github/workflows/ci.yml'), 'go-race')
         self.assertIn('          JPDEV_LOGDIR: ${{ runner.temp }}/logs\n', step_block(job, 'Checks'))
         step = step_block(job, "Each test binary's time")
         self.assertIn('        if: ${{ !cancelled() }}\n', step)
-        self.assertIn('          LOG: ${{ runner.temp }}/logs/go-race.log\n', step)
+        self.assertIn('          LOG: ${{ runner.temp }}/logs/go-race-${{ matrix.part }}.log\n', step)
+        self.assertIn('          STEP: go-race-${{ matrix.part }}\n', step)
+        self.assertIn('          SUMMARY: ${{ runner.temp }}/checks.log\n', step)
         script = '\n'.join(line[10:] for line in step[step.index('        run: |\n') + len('        run: |\n'):].splitlines())
         with tempfile.TemporaryDirectory(prefix='go-race-times-') as room:
-            log = Path(room, 'go-race.log')
+            log, summary = Path(room, 'go-race-a.log'), Path(room, 'checks.log')
             log.write_text('=== noise\nok  \tmodule/quick\t12.5s\nok  \tmodule/near\t1800.1s\nok  \tmodule/under\t1800.0s\n'
                            'panic: test timed out after 40m0s\nFAIL\tmodule/slow\t2400.1s\n', encoding='utf-8')
-            done = subprocess.run(['bash', '-c', script], env={'LOG': str(log), 'PATH': os.environ['PATH']},
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True, timeout=30)
-            self.assertEqual(done.returncode, 0)
-            self.assertEqual(done.stdout.splitlines(), [
-                'ok  \tmodule/quick\t12.5s', 'ok  \tmodule/near\t1800.1s', 'ok  \tmodule/under\t1800.0s',
-                'panic: test timed out after 40m0s', 'FAIL\tmodule/slow\t2400.1s',
-                '::warning::module/near took 1800.1s, past three quarters of its 40-minute limit'])
+            summary.write_text('go-race-a: output\nPASS     go-race-a                2250s\n', encoding='utf-8')
+            base = {'LOG': str(log), 'STEP': 'go-race-a', 'SUMMARY': str(summary), 'PATH': os.environ['PATH']}
+
+            def times(**change):
+                done = subprocess.run(['bash', '-c', script], env=dict(base, **change), stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.PIPE, text=True, timeout=30)
+                self.assertEqual(done.returncode, 0)
+                return done.stdout.splitlines()
+            printed = ['ok  \tmodule/quick\t12.5s', 'ok  \tmodule/near\t1800.1s', 'ok  \tmodule/under\t1800.0s',
+                       'panic: test timed out after 40m0s', 'FAIL\tmodule/slow\t2400.1s',
+                       '::warning::module/near took 1800.1s, past three quarters of its 40-minute limit']
+            self.assertEqual(times(), printed)
+            summary.write_text('go-race-a: output\nPASS     go-race-a                2251s\nPASS     go-race-b                9999s\n',
+                               encoding='utf-8')
+            self.assertEqual(times(), printed + ['::warning::go-race-a took 2251s, past three quarters of its 3000-second limit'])
             # A main run that reused the step wrote no log; that is not a failure.
-            done = subprocess.run(['bash', '-c', script], env={'LOG': str(log) + '.absent', 'PATH': os.environ['PATH']},
-                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True, timeout=30)
-            self.assertEqual((done.returncode, done.stdout), (0, ''))
+            self.assertEqual(times(LOG=str(log) + '.absent'), [])
 
     def checks_step(self, room, job, event, covered):
         """The Checks step of a job as the workflow writes it, run in a fixture repository whose
         manifest's steps only say their names."""
         ci = read('.github/workflows/ci.yml')
-        step = step_block(job_block(ci, job), 'Checks')
+        step = step_block(job_block(ci, workflow_job_id(job)), 'Checks')
         script = step[step.index('        run: |\n') + len('        run: |\n'):]
         log = room.parent / 'checks.log'
         script = '\n'.join(line[10:] for line in script.splitlines()).replace('${{ runner.temp }}/checks.log', str(log))
         manifest = json.loads((room / 'dev.json').read_text(encoding='utf-8'))
-        others = ','.join(row['name'] for row in manifest['checks'] if row['name'] != 'go-race')
+        others = ','.join(row['name'] for row in manifest['checks'] if row['name'] != job)
         env = {'PATH': os.environ['PATH'], 'HOME': room.as_posix(), 'EVENT': event, 'BASE_REF': 'main', 'COVERED': covered,
                'OTHERS': others, 'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1', 'JPDEV_BIND_ENV': ''}
         done = subprocess.run(['bash', '-c', script], cwd=room, env=env, stdin=subprocess.DEVNULL,
@@ -495,11 +656,11 @@ class Workflows(unittest.TestCase):
             for path in ('scripts/dev/check.sh', 'scripts/dev/changed_checks.py'):
                 (room / path).parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(ROOT / path, room / path)
-            names = CONTRACT_CHECKS + ['go-test', 'go-race', 'unit-tests']
+            names = CONTRACT_CHECKS + ['go-test'] + RACE_JOBS + ['unit-tests']
             (room / 'dev.json').write_text(json.dumps({'version': 1, 'checks': [
                 {'name': name, 'run': 'echo %s' % name, 'toolchain': 'shell'} for name in names]}), encoding='utf-8')
             (room / 'jpdev.json').write_text(json.dumps({'version': 1, 'changed': [
-                {'paths': ['go/**'], 'checks': ['go-test', 'go-race']},
+                {'paths': ['go/**'], 'checks': ['go-test'] + RACE_JOBS},
                 {'paths': ['docs/**'], 'checks': ['unit-tests']}]}), encoding='utf-8')
             env = dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
                        GIT_AUTHOR_NAME='Fixture', GIT_AUTHOR_EMAIL='fixture@example.invalid',
@@ -513,7 +674,7 @@ class Workflows(unittest.TestCase):
             git_in_room('add', '.')
             git_in_room('commit', '-qm', 'base')
             git_in_room('update-ref', 'refs/remotes/origin/main', 'HEAD')
-            for changed, check_part, race_part in (('go/a.go', ['go-test'], ['go-race']), ('docs/a.md', ['unit-tests'], [])):
+            for changed, check_part, race_selected in (('go/a.go', ['go-test'], True), ('docs/a.md', ['unit-tests'], False)):
                 with self.subTest(changed=changed):
                     git_in_room('checkout', '-q', '-B', 'work', 'origin/main')
                     (room / changed).parent.mkdir(parents=True, exist_ok=True)
@@ -521,16 +682,18 @@ class Workflows(unittest.TestCase):
                     git_in_room('add', '.')
                     git_in_room('commit', '-qm', 'work')
                     self.assertEqual(self.checks_step(room, 'check', 'pull_request', ''), check_part)
-                    self.assertEqual(self.checks_step(room, 'go-race', 'pull_request', ''), race_part)
+                    for leg in RACE_JOBS:
+                        self.assertEqual(self.checks_step(room, leg, 'pull_request', ''), [leg] if race_selected else [])
             self.assertEqual(self.checks_step(room, 'check', 'push', ''), ['go-test', 'unit-tests'])
-            self.assertEqual(self.checks_step(room, 'go-race', 'push', ''), ['go-race'])
             self.assertEqual(self.checks_step(room, 'check', 'push', 'go-test'), ['unit-tests'])
-            self.assertEqual(self.checks_step(room, 'go-race', 'push', 'go-race'), [])
+            for leg in RACE_JOBS:
+                self.assertEqual(self.checks_step(room, leg, 'push', ''), [leg])
+                self.assertEqual(self.checks_step(room, leg, 'push', leg), [])
 
     def test_a_pull_request_into_main_records_its_checks_for_reuse(self):
-        for name in PLANNING_JOBS:
+        for job_id, name in (('check', 'check'), ('go-race', 'go-race-${{ matrix.part }}')):
             with self.subTest(job=name):
-                job = job_block(read('.github/workflows/ci.yml'), name)
+                job = job_block(read('.github/workflows/ci.yml'), job_id)
                 pr = ("github.event_name == 'pull_request' && github.base_ref == 'main' && "
                       "github.event.pull_request.head.repo.full_name == github.repository")
                 record = step_block(job, "Record the pull request's checks")
@@ -624,8 +787,8 @@ TOOLS = {'base': {'python': 'Python 3.12.15'},
                    'python': 'Python 3.12.15', 'python-packages': '[["pip", "25.0.1"]]'},
          'mutation': {'node': 'v22.23.4', 'npm': '10.9.9'}}
 ENVIRONMENT_VALUES = {'CI': 'true', 'JPDEV_DESK': 'desk-checkout', 'JP_AGENT_GATEWAY_SOURCE': 'gateway-checkout'}
-# The go-race job makes neither checkout, so it runs without those two (unset, on both sides of a reuse).
-JOB_ENVIRONMENT = {'check': ENVIRONMENT_VALUES, 'go-race': {'CI': 'true'}}
+# The race jobs make neither checkout, so they run without those two (unset, on both sides of a reuse).
+JOB_ENVIRONMENT = {'check': ENVIRONMENT_VALUES, 'go-race-a': {'CI': 'true'}, 'go-race-b': {'CI': 'true'}}
 BASE = 'e' * 40
 HEAD = 'b' * 40
 MERGE = 'd' * 40
@@ -821,32 +984,50 @@ class AgentGate(AgentWorld):
         self.assertEqual(sorted(identity['groups']), ['linux-x64/base', 'linux-x64/check', 'linux-x64/mutation'])
         self.assertEqual(identity['groups']['linux-x64/mutation']['jobs'],
                          ['mutation/full-%d' % shard for shard in range(1, SHARDS + 1)])
-        self.assertEqual(identity['groups']['linux-x64/check']['jobs'], ['ci/check', 'ci/go-race'])
+        self.assertEqual(identity['groups']['linux-x64/check']['jobs'], ['ci/check', 'ci/go-race-a', 'ci/go-race-b'])
         self.assertEqual(self.record['workflows']['ci']['jobs']['check']['reused'], None)
-        self.assertEqual(self.record['workflows']['ci']['jobs']['go-race']['coverage'],
-                         {'go-race': 'PASS', 'setup:npm-ci': 'PASS', 'setup:python-deps': 'PASS'})
+        for leg in RACE_JOBS:
+            self.assertEqual(self.record['workflows']['ci']['jobs'][leg]['coverage'],
+                             {leg: 'PASS', 'setup:npm-ci': 'PASS', 'setup:python-deps': 'PASS'})
 
-    def test_a_release_requires_the_go_race_job(self):
-        """The race step is as required as it was inside the check job: without its job, its
-        artifact or its result, the release refuses."""
+    def test_a_release_requires_both_race_jobs(self):
+        """Each race step is as required as the one step was: without either job, its artifact or its
+        result, the release refuses, and neither leg can stand for the other."""
+        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+            with self.subTest(leg=leg):
+                self.data = self.world()
+                listing = self.data['actions/runs/100/attempts/1/jobs?per_page=100&page=1']
+                listing['jobs'] = [job for job in listing['jobs'] if job['name'] != leg]
+                listing['total_count'] = len(listing['jobs'])
+                self.assertEqual(self.decide(), 'job-coverage')
+                self.data = self.world()
+                artifacts = self.data['actions/runs/100/artifacts?per_page=100&page=1']
+                artifacts['artifacts'] = [item for item in artifacts['artifacts'] if leg not in item['name']]
+                artifacts['total_count'] = len(artifacts['artifacts'])
+                self.assertEqual(self.decide(), 'artifact-coverage')
+                self.data = self.world()
+                self.change_evidence('ci', leg, lambda payload: payload['coverage'].pop(leg))
+                self.assertEqual(self.decide(), 'check-coverage')
+                self.data = self.world()
+                self.change_evidence('ci', leg, lambda payload: payload['coverage'].update({leg: 'SKIP'}))
+                self.assertEqual(self.decide(), 'check-result')
+                self.data = self.world()
+                self.change_evidence('ci', 'check', lambda payload: payload['coverage'].update({leg: 'PASS'}))
+                self.assertEqual(self.decide(), 'check-coverage')
+                self.data = self.world()
+                self.change_evidence('ci', other, lambda payload: payload['coverage'].update({leg: 'PASS'}))
+                self.assertEqual(self.decide(), 'check-coverage')
+
+    def test_a_candidate_with_the_one_old_race_job_is_refused(self):
+        """A run from before the division has the one go-race job and neither leg: it is not a candidate
+        under this configuration."""
         listing = self.data['actions/runs/100/attempts/1/jobs?per_page=100&page=1']
-        listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'go-race']
+        for job in listing['jobs']:
+            if job['name'] == 'go-race-a':
+                job['name'] = 'go-race'
+        listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'go-race-b']
         listing['total_count'] = len(listing['jobs'])
         self.assertEqual(self.decide(), 'job-coverage')
-        self.data = self.world()
-        artifacts = self.data['actions/runs/100/artifacts?per_page=100&page=1']
-        artifacts['artifacts'] = [item for item in artifacts['artifacts'] if 'go-race' not in item['name']]
-        artifacts['total_count'] = len(artifacts['artifacts'])
-        self.assertEqual(self.decide(), 'artifact-coverage')
-        self.data = self.world()
-        self.change_evidence('ci', 'go-race', lambda payload: payload['coverage'].pop('go-race'))
-        self.assertEqual(self.decide(), 'check-coverage')
-        self.data = self.world()
-        self.change_evidence('ci', 'go-race', lambda payload: payload['coverage'].update({'go-race': 'SKIP'}))
-        self.assertEqual(self.decide(), 'check-result')
-        self.data = self.world()
-        self.change_evidence('ci', 'check', lambda payload: payload['coverage'].update({'go-race': 'PASS'}))
-        self.assertEqual(self.decide(), 'check-coverage')
 
     def test_a_rolled_image_refuses_and_is_never_revalidated(self):
         self.here['check']['runner']['ImageVersion'] = '20261102.200.1'
@@ -896,19 +1077,20 @@ class AgentGate(AgentWorld):
 
 class ReuseWorld(AgentWorld):
     """The push run took tree-only checks from the merged pull request's run, each job its own: the
-    check job two, and the go-race job its one."""
+    check job two, and each race job its one."""
 
     COVERED = ['go-test', 'unit-tests']
-    RACE_COVERED = ['go-race']
     # The pull request run's job and artifact ids, for each job.
-    IDS = {'check': (551, 651), 'go-race': (552, 652)}
+    IDS = {'check': (551, 651), 'go-race-a': (552, 652), 'go-race-b': (553, 653)}
 
     def setUp(self):
         super().setUp()
         self.add_pull_request()
 
     def add_pull_request(self, covered=None, race_covered=None):
-        covered = {'check': covered or self.COVERED, 'go-race': self.RACE_COVERED if race_covered is None else race_covered}
+        """race_covered names the race steps the pull request's jobs passed; every one, by default."""
+        covered = dict({leg: [leg] if race_covered is None or leg in race_covered else [] for leg in RACE_JOBS},
+                       check=covered or self.COVERED)
         workflow = self.config['workflows']['ci']
         names = workflow['pull_request_reuse']['environment']
         pull = {'number': 7, 'state': 'closed', 'created_at': '2026-10-30T08:00:00Z',
@@ -987,39 +1169,56 @@ class AgentReuse(ReuseWorld):
     def test_each_job_reuses_its_own_checks_from_its_own_job_and_artifact(self):
         self.assertEqual(self.decide(), 'reuse')
         jobs = self.record['workflows']['ci']['jobs']
-        self.assertEqual(jobs['go-race']['reused']['checks'], ['go-race'])
-        self.assertEqual(jobs['go-race']['reused']['job_id'], 552)
-        self.assertEqual(jobs['go-race']['reused']['artifact']['name'], 'ci-evidence-ci-go-race-1')
+        for leg in RACE_JOBS:
+            self.assertEqual(jobs[leg]['reused']['checks'], [leg])
+            self.assertEqual(jobs[leg]['reused']['job_id'], self.IDS[leg][0])
+            self.assertEqual(jobs[leg]['reused']['artifact']['name'], 'ci-evidence-ci-%s-1' % leg)
+            self.assertEqual(jobs[leg]['coverage'][leg], 'REUSED')
+            self.assertNotIn(leg, jobs['check']['coverage'])
         self.assertEqual(jobs['check']['reused']['job_id'], 551)
         self.assertEqual(jobs['check']['reused']['artifact']['name'], 'ci-evidence-ci-check-1')
-        self.assertEqual(jobs['go-race']['coverage']['go-race'], 'REUSED')
-        self.assertNotIn('go-race', jobs['check']['coverage'])
 
-    def test_a_race_result_recorded_by_the_other_job_is_not_reusable(self):
-        """Evidence that carries go-race in the check job's record is not the go-race job's: the
+    def test_a_race_result_recorded_by_another_job_is_not_reusable(self):
+        """Evidence that carries a race step in another job's record is not that step's job's: the
         record says which job ran what, and each job is held to its own list."""
-        self.pr_payloads['check']['coverage']['go-race'] = 'PASS'
-        artifact = self.repack_pull_request('check')
-        self.change_evidence('ci', 'check', lambda payload: payload['reused']['artifact'].update(digest=artifact['digest']))
-        self.assertEqual(self.decide(), 'reuse-coverage')
+        for carrier, leg in (('check', 'go-race-a'), ('check', 'go-race-b'), ('go-race-a', 'go-race-b'), ('go-race-b', 'go-race-a')):
+            with self.subTest(carrier=carrier, leg=leg):
+                self.data = self.world()
+                self.add_pull_request()
+                self.pr_payloads[carrier]['coverage'][leg] = 'PASS'
+                artifact = self.repack_pull_request(carrier)
+                self.change_evidence('ci', carrier, lambda payload: payload['reused']['artifact'].update(digest=artifact['digest']))
+                self.assertEqual(self.decide(), 'reuse-coverage')
 
     def test_a_race_result_the_pull_request_job_did_not_pass_is_not_reused(self):
-        """The go-race job claimed the reuse of a check its pull request job never ran."""
-        self.pr_payloads['go-race']['coverage'].pop('go-race')
-        artifact = self.repack_pull_request('go-race')
-        self.change_evidence('ci', 'go-race', lambda payload: payload['reused']['artifact'].update(digest=artifact['digest']))
-        self.assertEqual(self.decide(), 'reuse-coverage')
+        """A race job claimed the reuse of a check its pull request job never ran."""
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                self.data = self.world()
+                self.add_pull_request()
+                self.pr_payloads[leg]['coverage'].pop(leg)
+                artifact = self.repack_pull_request(leg)
+                self.change_evidence('ci', leg, lambda payload: payload['reused']['artifact'].update(digest=artifact['digest']))
+                self.assertEqual(self.decide(), 'reuse-coverage')
 
-    def test_the_go_race_job_reuses_nothing_when_its_pull_request_job_ran_nothing(self):
-        """A pull request whose paths did not select go-race recorded an empty coverage; its main job
-        then ran the step (no reused record), and that evidence stands alone."""
-        self.data = self.world()
-        self.add_pull_request(race_covered=[])
-        self.assertEqual(self.decide(), 'reuse')
-        jobs = self.record['workflows']['ci']['jobs']
-        self.assertIsNone(jobs['go-race']['reused'])
-        self.assertEqual(jobs['go-race']['coverage']['go-race'], 'PASS')
-        self.assertEqual(jobs['check']['reused']['checks'], self.COVERED)
+    def test_a_race_job_reuses_nothing_when_its_pull_request_job_ran_nothing(self):
+        """A pull request whose paths did not select the race steps recorded an empty coverage; its main
+        jobs then ran them (no reused record), and that evidence stands alone. One leg's reuse does not
+        depend on the other's."""
+        for race_covered, reused in (([], []), (['go-race-a'], ['go-race-a']), (['go-race-b'], ['go-race-b'])):
+            with self.subTest(race_covered=race_covered):
+                self.data = self.world()
+                self.add_pull_request(race_covered=race_covered)
+                self.assertEqual(self.decide(), 'reuse')
+                jobs = self.record['workflows']['ci']['jobs']
+                for leg in RACE_JOBS:
+                    if leg in reused:
+                        self.assertEqual(jobs[leg]['reused']['checks'], [leg])
+                        self.assertEqual(jobs[leg]['coverage'][leg], 'REUSED')
+                    else:
+                        self.assertIsNone(jobs[leg]['reused'])
+                        self.assertEqual(jobs[leg]['coverage'][leg], 'PASS')
+                self.assertEqual(jobs['check']['reused']['checks'], self.COVERED)
 
     def test_a_check_that_is_not_tree_only_is_never_taken_from_a_pull_request(self):
         for name in sorted(FRESH_ON_MAIN):
@@ -1074,7 +1273,7 @@ class AgentReusePlan(ReuseWorld):
         env = {name: value for name, value in os.environ.items()
                if name not in self.config['workflows']['ci']['pull_request_reuse']['environment']}
         env.update(JOB_ENVIRONMENT[job], GITHUB_SHA=self.sha, GITHUB_EVENT_NAME=event, GITHUB_REF='refs/heads/main',
-                   GITHUB_JOB=job, GITHUB_RUN_ID='100', GITHUB_RUN_ATTEMPT=str(attempt),
+                   GITHUB_JOB=workflow_job_id(job), GITHUB_RUN_ID='100', GITHUB_RUN_ATTEMPT=str(attempt),
                    GITHUB_WORKFLOW_REF='%s/.github/workflows/ci.yml@refs/heads/main' % REPO, GITHUB_WORKFLOW_SHA=self.sha)
         with patch.dict(os.environ, env, clear=True):
             return g.plan(FakeAPI(self.data), self.config, copy.deepcopy(self.source), 'ci', job, NOW)
@@ -1084,29 +1283,56 @@ class AgentReusePlan(ReuseWorld):
         self.assertEqual(record['decision'], 'reuse', record['refusal'])
         self.assertEqual(record['covered'], self.COVERED)
 
-    def test_the_go_race_job_plans_its_own_check_from_its_own_pull_request_job(self):
-        record = self.plan(job='go-race')
-        self.assertEqual(record['decision'], 'reuse', record['refusal'])
-        self.assertEqual(record['covered'], ['go-race'])
-        self.assertEqual(record['job'], 'go-race')
-        self.assertEqual(record['reused']['job_id'], 552)
-        self.assertEqual(record['reused']['artifact']['name'], 'ci-evidence-ci-go-race-1')
-        self.assertNotIn('go-race', self.plan()['covered'])
-
-    def test_the_go_race_job_runs_its_step_when_its_pull_request_job_did_not_pass_it(self):
-        self.data = self.world()
-        self.add_pull_request(race_covered=[])
-        record = self.plan(job='go-race')
-        self.assertEqual((record['decision'], record['refusal']['code']), ('fresh', 'reuse-coverage'))
-        self.assertEqual(record['covered'], [])
+    def test_a_pull_request_run_from_before_the_division_gives_the_race_jobs_no_reuse(self):
+        """Its run has the one go-race job and neither leg, so on main each leg runs its step; the check
+        job's own reuse does not depend on them."""
+        jobs = self.data['actions/runs/50/attempts/1/jobs?per_page=100&page=1']
+        artifacts = self.data['actions/runs/50/artifacts?per_page=100&page=1']
+        jobs['jobs'] = [dict(job, name='go-race') if job['name'] == 'go-race-a' else job for job in jobs['jobs']
+                        if job['name'] != 'go-race-b']
+        jobs['total_count'] = len(jobs['jobs'])
+        artifacts['artifacts'] = [dict(item, name='ci-evidence-ci-go-race-1') if item['name'] == 'ci-evidence-ci-go-race-a-1'
+                                  else item for item in artifacts['artifacts'] if item['name'] != 'ci-evidence-ci-go-race-b-1']
+        artifacts['total_count'] = len(artifacts['artifacts'])
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                record = self.plan(job=leg)
+                self.assertEqual((record['decision'], record['refusal']['code'], record['covered']), ('fresh', 'reuse-job', []))
         self.assertEqual(self.plan()['covered'], self.COVERED)
 
-    def test_the_go_race_job_is_bound_to_its_own_environment(self):
-        """A flag set on main's go-race job and not on the pull request's refuses that job's reuse."""
-        JOB_ENVIRONMENT['go-race']['GOFLAGS'] = '-tags=other'
-        self.addCleanup(JOB_ENVIRONMENT['go-race'].pop, 'GOFLAGS')
-        record = self.plan(job='go-race')
-        self.assertEqual((record['decision'], record['refusal']['code']), ('fresh', 'reuse-environment'))
+    def test_each_race_job_plans_its_own_check_from_its_own_pull_request_job(self):
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                record = self.plan(job=leg)
+                self.assertEqual(record['decision'], 'reuse', record['refusal'])
+                self.assertEqual(record['covered'], [leg])
+                self.assertEqual(record['job'], leg)
+                self.assertEqual(record['reused']['job_id'], self.IDS[leg][0])
+                self.assertEqual(record['reused']['artifact']['name'], 'ci-evidence-ci-%s-1' % leg)
+                self.assertNotIn(leg, self.plan()['covered'])
+
+    def test_a_race_job_runs_its_step_when_its_pull_request_job_did_not_pass_it(self):
+        for race_covered, plans_reuse in (([], {}), (['go-race-a'], {'go-race-a'}), (['go-race-b'], {'go-race-b'})):
+            with self.subTest(race_covered=race_covered):
+                self.data = self.world()
+                self.add_pull_request(race_covered=race_covered)
+                for leg in RACE_JOBS:
+                    record = self.plan(job=leg)
+                    if leg in plans_reuse:
+                        self.assertEqual((record['decision'], record['covered']), ('reuse', [leg]))
+                    else:
+                        self.assertEqual((record['decision'], record['refusal']['code']), ('fresh', 'reuse-coverage'))
+                        self.assertEqual(record['covered'], [])
+                self.assertEqual(self.plan()['covered'], self.COVERED)
+
+    def test_a_race_job_is_bound_to_its_own_environment(self):
+        """A flag set on main's race job and not on the pull request's refuses that job's reuse."""
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                JOB_ENVIRONMENT[leg]['GOFLAGS'] = '-tags=other'
+                self.addCleanup(JOB_ENVIRONMENT[leg].pop, 'GOFLAGS')
+                record = self.plan(job=leg)
+                self.assertEqual((record['decision'], record['refusal']['code']), ('fresh', 'reuse-environment'))
 
     def test_a_dispatch_or_a_re_run_runs_the_whole_list(self):
         for job in PLANNING_JOBS:
@@ -1134,13 +1360,13 @@ class AgentCapture(AtCommit):
         for kind, rows in (('check', checks), ('setup', setup)):
             path = self.root.parent / ('%s-%s.log' % (self.root.name, kind))
             path.write_text('== %s summary (dev.json) ==\n%s%s' % (kind, environment if line else '', rows))
-            self.addCleanup(path.unlink)
+            self.addCleanup(path.unlink, missing_ok=True)
             paths.append((kind, str(path)))
         return paths
 
     def capture(self, logs, job='check', plan=None):
         env = {'GITHUB_SHA': self.sha, 'GITHUB_EVENT_NAME': 'push', 'GITHUB_REF': 'refs/heads/main',
-               'GITHUB_JOB': job, 'GITHUB_RUN_ID': '100', 'GITHUB_RUN_ATTEMPT': '1',
+               'GITHUB_JOB': workflow_job_id(job), 'GITHUB_RUN_ID': '100', 'GITHUB_RUN_ATTEMPT': '1',
                'GITHUB_WORKFLOW_REF': '%s/.github/workflows/ci.yml@refs/heads/main' % REPO,
                'GITHUB_WORKFLOW_SHA': self.sha}
         source = {'schema': 2, 'repository': REPO, 'repository_id': REPO_ID, 'source': self.sha, 'inputs': {}}
@@ -1157,30 +1383,40 @@ class AgentCapture(AtCommit):
         self.assertEqual(record['coverage']['dependency-audit-live'], 'SKIP')
         self.assertNotIn('contract', record['coverage'])
 
-    def test_the_go_race_job_records_only_its_step_and_its_setup(self):
-        record = self.capture(self.logs(job='go-race'), 'go-race')
-        self.assertEqual(record['coverage'], {'go-race': 'PASS', 'setup:npm-ci': 'PASS', 'setup:python-deps': 'PASS'})
-        self.assertEqual(record['job'], 'go-race')
-        names = self.config['workflows']['ci']['pull_request_reuse']['environment']
-        self.assertEqual(record['environment'], environment_record(names, 'go-race'))
-        self.assertIsNone(record['environment']['JPDEV_DESK'])
+    def test_each_race_job_records_only_its_step_and_its_setup(self):
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                record = self.capture(self.logs(job=leg), leg)
+                self.assertEqual(record['coverage'], {leg: 'PASS', 'setup:npm-ci': 'PASS', 'setup:python-deps': 'PASS'})
+                self.assertEqual(record['job'], leg)
+                names = self.config['workflows']['ci']['pull_request_reuse']['environment']
+                self.assertEqual(record['environment'], environment_record(names, leg))
+                self.assertIsNone(record['environment']['JPDEV_DESK'])
 
-    def test_the_check_job_refuses_a_log_in_which_it_ran_the_race_step(self):
-        """Each check runs once: go-race in the check job's log is not coverage it may record."""
-        checks = self.config['workflows']['ci']['jobs']['check']['checks'] + ['go-race']
-        with self.assertRaises(g.Refusal) as caught:
-            self.capture(self.logs(ran=checks))
-        self.assertEqual(caught.exception.code, 'check-coverage')
+    def test_the_check_job_refuses_a_log_in_which_it_ran_a_race_step(self):
+        """Each check runs once: a race step in the check job's log is not coverage it may record."""
+        for leg in RACE_JOBS:
+            with self.subTest(leg=leg):
+                checks = self.config['workflows']['ci']['jobs']['check']['checks'] + [leg]
+                with self.assertRaises(g.Refusal) as caught:
+                    self.capture(self.logs(ran=checks))
+                self.assertEqual(caught.exception.code, 'check-coverage')
 
-    def test_the_go_race_job_refuses_a_log_in_which_it_ran_another_step(self):
-        with self.assertRaises(g.Refusal) as caught:
-            self.capture(self.logs(job='go-race', ran=['go-race', 'go-test']), 'go-race')
-        self.assertEqual(caught.exception.code, 'check-coverage')
+    def test_a_race_job_refuses_a_log_in_which_it_ran_another_step(self):
+        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+            for extra in ('go-test', other):
+                with self.subTest(leg=leg, extra=extra):
+                    with self.assertRaises(g.Refusal) as caught:
+                        self.capture(self.logs(job=leg, ran=[leg, extra]), leg)
+                    self.assertEqual(caught.exception.code, 'check-coverage')
 
-    def test_the_go_race_job_refuses_a_log_without_its_step(self):
-        with self.assertRaises(g.Refusal) as caught:
-            self.capture(self.logs(job='go-race', ran=[]), 'go-race')
-        self.assertEqual(caught.exception.code, 'check-coverage')
+    def test_a_race_job_refuses_a_log_without_its_step(self):
+        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+            for ran in ([], [other]):
+                with self.subTest(leg=leg, ran=ran):
+                    with self.assertRaises(g.Refusal) as caught:
+                        self.capture(self.logs(job=leg, ran=ran), leg)
+                    self.assertEqual(caught.exception.code, 'check-coverage')
 
     def test_a_checks_log_without_the_environment_line_refuses(self):
         with self.assertRaises(g.Refusal) as caught:
