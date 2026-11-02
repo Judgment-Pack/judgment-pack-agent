@@ -395,6 +395,10 @@ type ExecutionLink interface{ Attach(c *SessionContext) }
 // reach the parent's report. Nil where the parent holds none.
 type SourceLinked interface{ ParentSources() *SourceGate }
 
+// PrincipalLinked is the link of a delegated child of a delegated run (ADR-0029): it hands the child's
+// boundary the parent's principal, which the child's own is narrowed from.
+type PrincipalLinked interface{ ParentPrincipal() *OpenedPrincipal }
+
 // ModelSession is a run on a model capability (the model member of EngineSession): the family and
 // the model the host named, and the capability record's two budget members where the host
 // resolved them (capabilitiesFor belongs to the wire package).

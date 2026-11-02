@@ -61,6 +61,12 @@
    "name": "principal-changed"
   },
   {
+   "name": "delegation-not-permitted"
+  },
+  {
+   "name": "not-parent-actor"
+  },
+  {
    "name": "out-of-scope",
    "reason": "source"
   },

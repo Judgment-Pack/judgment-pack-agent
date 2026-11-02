@@ -172,6 +172,58 @@ async function leaseProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<Leas
  check('lease.acquire.atomic',contenders.filter(r=>r.status==='fulfilled').length===1&&contenders.some(r=>r.status==='rejected'&&r.reason instanceof LeaseRefused&&r.reason.reason==='held'))
 }
 
+/** ADR-0029: a store that declares leasePrincipals holds a run's principals on its leases: its first lease binds them, a
+ * takeover is a new epoch of the same principals, and every fence presented must name them. */
+async function leasePrincipalProperties(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>):Promise<void>{
+ let at=Date.parse('2026-01-01T00:00:00.000Z')
+ const store=await create(()=>new Date(at)),run='lease-delegated'
+ // A store that holds the member as anything but the property true is one written against another form: fencedRunStore refuses it, and the kit names it.
+ check('lease.principal.declared',store.leasePrincipals===undefined||store.leasePrincipals===true)
+ if(store.leasePrincipals!==true)return
+ const refusesLease=async(property:string,attempt:()=>Promise<unknown>,reason:LeaseRefusalReason)=>{try{await attempt()}catch(error){check(property,error instanceof LeaseRefused&&error.reason===reason);return}throw new StorageConformanceFailure(property)}
+ const sub={kind:'person' as const,issuer:'https://kit.example/',subject:'kit-subject'},principal={sub,rootActor:'b1'.repeat(16),host:'kit-host'}
+ const otherActor={...principal,rootActor:'b2'.repeat(16)},otherSubject={...principal,sub:{...sub,subject:'other'}},otherKind={...principal,sub:{...sub,kind:'service' as const}}
+ const opened=await store.commit({runId:run,expectedRevision:null,commitId:'delegated-open',checkpoint:bytes('{"commit":"delegated-open"}'),events:[]})
+ const acquire=(owner:string,over:Record<string,unknown>={principal})=>store.acquireLease({resource:run,owner,expectedRevision:opened.revision,durationMs:1000,...over})
+ const first=await acquire('worker-a')
+ check('lease.principal.version',first.version===2&&canonical(first.principal)===canonical(principal))
+ const a=fenceOf(first)
+ check('lease.principal.fence',a.version===2&&canonical(a.principal)===canonical(principal))
+ await store.checkFence(a)
+ const commit=(commitId:string,fence:LeaseFence)=>store.commitFenced({runId:run,expectedRevision:opened.revision,commitId,checkpoint:bytes(`{"commit":"${commitId}"}`),events:[]},fence)
+ for(const [name,other] of [['actor',otherActor],['subject',otherSubject],['kind',otherKind]] as const){
+  await refusesLease(`lease.principal.check.${name}`,()=>store.checkFence({...a,principal:other}),'principal-changed')
+  await refusesLease(`lease.principal.commit.${name}`,()=>commit(`forged-${name}`,{...a,principal:other}),'principal-changed')
+ }
+ // #253's ports, the commits a history store takes, hold the principals too.
+ const history=store as Partial<HistoryRunStore>&LeaseRunStore
+ if(history.historyVersion===1)for(const [name,other] of [['actor',otherActor],['subject',otherSubject],['kind',otherKind],['none',undefined]] as const){
+  const forged:LeaseFence=other?{...a,principal:other}:{version:1,resource:a.resource,owner:a.owner,epoch:a.epoch}
+  await refusesLease(`lease.principal.history.${name}`,()=>history.commitHistoryFenced!({run:{runId:run,expectedRevision:opened.revision,commitId:`forged-history-${name}`,checkpoint:bytes(`{"commit":"forged-history-${name}"}`),events:[]},observations:[]},forged),'principal-changed')
+  await refusesLease(`lease.principal.snapshot.${name}`,()=>history.commitContextSnapshotFenced!({chatId:'lease-delegated-chat',expectedRevision:null,manifest:{digest:'sha256:'+'a'.repeat(64),bytes:2}},`forged-snapshot-${name}`,forged),'principal-changed')
+ }
+ const none:LeaseFence={version:1,resource:a.resource,owner:a.owner,epoch:a.epoch}
+ await refusesLease('lease.principal.fence-none',()=>store.checkFence(none),'principal-changed')
+ await refusesLease('lease.principal.renew-none',()=>store.renewLease(none,1000),'principal-changed')
+ await refusesLease('lease.principal.release-none',()=>store.releaseLease(none),'principal-changed')
+ check('lease.principal.unapplied',(await store.load(run))?.revision===opened.revision)
+ at+=1000
+ await refusesLease('lease.principal.takeover.actor',()=>acquire('worker-b',{principal:otherActor}),'principal-changed')
+ await refusesLease('lease.principal.takeover.subject',()=>acquire('worker-b',{principal:otherSubject}),'principal-changed')
+ await refusesLease('lease.principal.takeover.none',()=>acquire('worker-b',{}),'principal-changed')
+ const second=await acquire('worker-b')
+ check('lease.principal.takeover.same',second.version===2&&second.epoch==='2'&&second.owner==='worker-b'&&canonical(second.principal)===canonical(principal))
+ await store.releaseLease(fenceOf(second))
+ await refusesLease('lease.principal.released-keeps',()=>acquire('worker-c',{principal:otherActor}),'principal-changed')
+ // A version 1 lease cannot host a delegated run.
+ const plain=await store.commit({runId:'lease-plain',expectedRevision:null,commitId:'plain-open',checkpoint:bytes('{"commit":"plain-open"}'),events:[]})
+ const v1=await store.acquireLease({resource:'lease-plain',owner:'worker-a',expectedRevision:plain.revision,durationMs:1000})
+ check('lease.principal.none-version',v1.version===1&&v1.principal===undefined)
+ at+=1000
+ await refusesLease('lease.principal.plain-takeover',()=>store.acquireLease({resource:'lease-plain',owner:'worker-b',expectedRevision:plain.revision,durationMs:1000,principal}),'principal-changed')
+}
+const canonical=(value:unknown)=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a<b?-1:a>b?1:0)):v)
+
 async function conformance(property:string,probe:()=>Promise<void>):Promise<void>{
  try{await probe()}catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure(property)}
 }
@@ -179,4 +231,4 @@ export const runStoreConformance=(create:()=>RunStore|Promise<RunStore>)=>confor
 export const chatStoreConformance=(create:()=>ChatStore|Promise<ChatStore>)=>conformance('chat.operation',()=>chatProperties(create))
 export const runStoreFaultConformance=(create:(phase:'before'|'after')=>RunStore|Promise<RunStore>)=>conformance('run.fault.operation',()=>runFaultProperties(create))
 export const chatStoreFaultConformance=(create:(phase:'before'|'after')=>ChatStore|Promise<ChatStore>)=>conformance('chat.fault.operation',()=>chatFaultProperties(create))
-export const runStoreLeaseConformance=(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>)=>conformance('lease.operation',()=>leaseProperties(create))
+export const runStoreLeaseConformance=(create:(now:()=>Date)=>LeaseRunStore|Promise<LeaseRunStore>)=>conformance('lease.operation',async()=>{await leaseProperties(create);await leasePrincipalProperties(create)})

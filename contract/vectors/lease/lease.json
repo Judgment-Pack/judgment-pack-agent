@@ -34,6 +34,23 @@
       "epoch": "999999999999999999",
       "expiry": "9999-12-31T23:59:59.999Z",
       "state": "held"
+    },
+    {
+      "version": 2,
+      "resource": "run-delegated",
+      "owner": "worker-a",
+      "epoch": "1",
+      "expiry": "2026-01-01T00:00:30.000Z",
+      "state": "held",
+      "principal": {
+        "sub": {
+          "kind": "person",
+          "issuer": "https://login.example.com/",
+          "subject": "approver@example.com"
+        },
+        "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+        "host": "desk"
+      }
     }
   ],
   "refused": [
@@ -93,9 +110,9 @@
       }
     },
     {
-      "problem": "version 2",
+      "problem": "version 3",
       "record": {
-        "version": 2,
+        "version": 3,
         "resource": "run-alpha",
         "owner": "worker-a",
         "epoch": "1",
@@ -178,6 +195,58 @@
         "epoch": "1",
         "expiry": "2026-02-30T00:00:00.000Z",
         "state": "held"
+      }
+    },
+    {
+      "problem": "a version 2 lease names its principals",
+      "record": {
+        "version": 2,
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held"
+      }
+    },
+    {
+      "problem": "a version 1 lease names no principals",
+      "record": {
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held",
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk"
+        },
+        "version": 1
+      }
+    },
+    {
+      "problem": "a principal carries no token",
+      "record": {
+        "version": 2,
+        "resource": "run-delegated",
+        "owner": "worker-a",
+        "epoch": "1",
+        "expiry": "2026-01-01T00:00:30.000Z",
+        "state": "held",
+        "principal": {
+          "sub": {
+            "kind": "person",
+            "issuer": "https://login.example.com/",
+            "subject": "approver@example.com"
+          },
+          "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+          "host": "desk",
+          "token": "never"
+        }
       }
     }
   ]

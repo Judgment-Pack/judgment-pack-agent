@@ -619,7 +619,7 @@ func StampFeatureEvent(event RunEvent) RunEvent {
 // delegatedEvent reports an event that holds what only event 3 does: a delegated run's principal, a checkpoint from
 // version 4, or a kept approval text (ADR-0029, #275).
 func delegatedEvent(event RunEvent) bool {
-	return event.ToolCall != nil && event.ToolCall.Principal != nil || event.ToolResult != nil && event.ToolResult.Principal != nil || event.Guardrail != nil && event.Guardrail.Principal != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version >= 4 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version >= 4 || event.ApprovalRequested != nil && event.ApprovalRequested.Request != nil
+	return event.DelegatedTask != nil && event.DelegatedTask.Principal != nil || event.ToolCall != nil && event.ToolCall.Principal != nil || event.ToolResult != nil && event.ToolResult.Principal != nil || event.Guardrail != nil && event.Guardrail.Principal != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version >= 4 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version >= 4 || event.ApprovalRequested != nil && event.ApprovalRequested.Request != nil
 }
 
 // stampEventVersion sets one version on the event's variant.
