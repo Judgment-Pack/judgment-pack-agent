@@ -13793,7 +13793,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARepeatAnswers."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARepeatAnswersFromTheJobWhateverItsRowHolds."
   },
   {
    "name": "job R-1b a result is not answered with its job record lost",
@@ -13805,7 +13805,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. The TypeScript path only: Go has no such path."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsWithItsRecordLostARepeatOfAStartAnswersItsRow."
   },
   {
    "name": "job R-2a a job tool is offered under a chat the session passes",
@@ -13841,7 +13841,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job R-3b the kit restarts once",
@@ -13853,7 +13853,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
   },
   {
    "name": "job R-3c the kit parks on one job only",
@@ -13865,7 +13865,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
   },
   {
    "name": "job R-6a a digested handle goes unmarked",
@@ -13889,7 +13889,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors|TestJobEvidenceVectors."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors."
   },
   {
    "name": "job R-6c a real handle reading as the digest is taken for it",
@@ -13913,7 +13913,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnotherSources."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnotherSourcesCancelIsNoJob."
   },
   {
    "name": "job CA2 a settled job reaches the card",
@@ -13925,7 +13925,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsWhatARecord."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsWhatARecordRefusesIsRefusedBeforeTheCardAndTheClaim."
   },
   {
    "name": "job CA3 a start with no handle reaches the card",
@@ -13937,7 +13937,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsWhatARecord."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsWhatARecordRefusesIsRefusedBeforeTheCardAndTheClaim."
   },
   {
    "name": "job CA4 what a record refuses is put to the person",
@@ -13949,7 +13949,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAnotherSources|TestJobsWhatARecord."
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAnotherSourcesCancelIsNoJob."
   },
   {
    "name": "job CA5 an approved cancel is not read again",
@@ -13961,7 +13961,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAHeldCancelWhoseJobSettled."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAHeldCancelWhoseJobSettledBeforeTheDecisionIsNotSent."
   },
   {
    "name": "job CA6 a cancel is offered without its start",
@@ -13973,7 +13973,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsACancelIsDeclared."
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsACancelIsDeclaredWithAStartOfItsSource."
   },
   {
    "name": "job CA7 a cancel is declared on another source",
@@ -13985,7 +13985,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsDeclared."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsDeclaredWithAStartOfItsSource."
   },
   {
    "name": "job CA8 a cancel takes another generation",
@@ -14021,7 +14021,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsRequested."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsRequestedBeforeAdmissionAndSendsTheRecord."
   },
   {
    "name": "job CA11 a refusal of the record reads as refused input",
@@ -14033,7 +14033,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAJobThatSettles."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAJobThatSettlesAfterItWasAskedAboutIsNotSent."
   },
   {
    "name": "job CA12 what a cancel throws reaches the row",
@@ -14045,7 +14045,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsACancelThatFails."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsACancelThatFailsHoldsOneFixedFailureAndIsNotSentAgain."
   },
   {
    "name": "job CA13 a repeated cancel answers its row",
@@ -14057,7 +14057,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARepeatedCancel."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARepeatedCancelIsAnsweredFromTheJob."
   },
   {
    "name": "job CA14 a cancel that failed is not answered from its job",
@@ -14069,7 +14069,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsACancelThatFails."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsACancelThatFailsHoldsOneFixedFailureAndIsNotSentAgain."
   },
   {
    "name": "job CA15 a held cancel proves nothing",
@@ -14081,7 +14081,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldCancel."
+   "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldCancelProvesWhatWasShown."
   },
   {
    "name": "job CT1 a cancel of a settled or unproven job is recorded",
@@ -14201,7 +14201,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job CT11 an abandon keeps the old epoch",
@@ -14213,7 +14213,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_lease.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_lease.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job CT12 a lease past the deadline is granted",
@@ -14225,7 +14225,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job CT13 an abandon asks no cancel",
@@ -14237,7 +14237,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job CT14 a cancel moves no state in the report",
@@ -14249,7 +14249,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsTheHostsWord."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsTheHostsWordMovesNoStateAndOnlyACompletionSaysItStopped."
   },
   {
    "name": "job AB1 an abandon sends past the effect host",
@@ -14261,7 +14261,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTakes."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTakesAFreshFenceAndSendsThroughTheEffectHost."
   },
   {
    "name": "job AB2 a retry of the command has a new identity",
@@ -14273,7 +14273,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTakes."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTakesAFreshFenceAndSendsThroughTheEffectHost."
   },
   {
    "name": "job AB3 an abandon needs no proven host",
@@ -14285,7 +14285,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSays."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSaysWhatItCouldNotSend."
   },
   {
    "name": "job AB4 an abandon sends what the host accepted",
@@ -14297,7 +14297,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSays."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSaysWhatItCouldNotSend."
   },
   {
    "name": "job AB5 past a deadline an abandon says sent",
@@ -14309,7 +14309,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSays."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSaysWhatItCouldNotSend."
   },
   {
    "name": "job AB6 a start with no handle reads as settled",
@@ -14321,7 +14321,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSays."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSaysWhatItCouldNotSend."
   },
   {
    "name": "job AB7 an abandon reads the lease of another owner",
@@ -14333,7 +14333,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTrusts."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTrustsNoLeaseOfAnotherOwner."
   },
   {
    "name": "job AB9 an abandon reads a contradicted job as settled",
@@ -14345,7 +14345,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSays."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonSaysWhatItCouldNotSend."
   },
   {
    "name": "job AB10 an abandon drops the principals",
@@ -14357,7 +14357,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_lease.go): caught at TestJob."
+   "note": "#229. Go twin (by hand, in run_lease.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   }
  ]
 }

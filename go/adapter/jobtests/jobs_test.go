@@ -1945,3 +1945,28 @@ func TestJobsANestedRunInACancelIsNoCancel(t *testing.T) {
 		})
 	}
 }
+
+// lostJobs answers as a store whose job rows were lost: a repeat's read finds none.
+type lostJobs struct{ durableJobStore }
+
+func (lostJobs) ReadJob(context.Context, string, string) (*runcontext.RunJob, error) { return nil, nil }
+
+func TestJobsWithItsRecordLostARepeatOfAStartAnswersItsRow(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			calls := &startCalls{}
+			tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
+			drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+			store := lostJobs{l.store}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeat := drive(t, view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
+			if calls.count() != 1 || !strings.Contains(lastToolResult(t, repeat), "started, not finished") {
+				t.Fatal(calls.count(), lastToolResult(t, repeat))
+			}
+		})
+	}
+}
