@@ -1598,11 +1598,11 @@ class VectorTests(unittest.TestCase):
         # handwritten job vector, every refused record fails the schema, every reader-only refusal is
         # schema-valid (the readers hold it), and every digest is the one an independent canonical JSON gives.
         rows = {name: vector for name, vector in self.vectors.items() if name.startswith("job/")}
-        self.assertEqual(set(rows), {"job/job.json", "job/answer.json", "job/reconciliation.json", "job/completion.json", "job/refusal.json", "job/transitions.json", "job/model.json", "job/gateway.json", "job/report.json"})
+        self.assertEqual(set(rows), {"job/job.json", "job/answer.json", "job/reconciliation.json", "job/completion.json", "job/cancel.json", "job/refusal.json", "job/transitions.json", "job/model.json", "job/gateway.json", "job/report.json"})
         schema = self.schemas["run-job.json"]
         registrations = [step["registration"] for scenario in rows["job/transitions.json"]["scenarios"] for step in scenario["steps"] if "registration" in step]
         carried = [(row["schema"], row["items"]) for row in rows.values()]
-        carried += [("run-job.json#/$defs/registration", registrations), ("run-job.json#/$defs/export", rows["job/report.json"]["exports"]), ("run-job.json#/$defs/capabilityRefusal", rows["job/refusal.json"]["capability"])]
+        carried += [("run-job.json#/$defs/registration", registrations), ("run-job.json#/$defs/export", rows["job/report.json"]["exports"]), ("run-job.json#/$defs/capabilityRefusal", rows["job/refusal.json"]["capability"]), ("run-job.json#/$defs/cancelAsk", rows["job/cancel.json"]["asks"])]
         carried += [("run-job.json#/$defs/key", [row["key"] for row in rows["job/job.json"]["keys"]])]
 
         def invalid(changed):
@@ -1641,7 +1641,7 @@ class VectorTests(unittest.TestCase):
                 target["enum"] = [other for other in target["enum"] if other != value]
                 with self.subTest(path=path, value=value):
                     self.assertTrue(invalid(changed), (path, value))
-        for name, reference in (("job/job.json", "run-job.json"), ("job/answer.json", "run-job.json#/$defs/answer"), ("job/reconciliation.json", "run-job.json#/$defs/reconciliation"), ("job/completion.json", "run-job.json#/$defs/completion")):
+        for name, reference in (("job/job.json", "run-job.json"), ("job/cancel.json", "run-job.json#/$defs/cancelAcknowledgement"), ("job/answer.json", "run-job.json#/$defs/answer"), ("job/reconciliation.json", "run-job.json#/$defs/reconciliation"), ("job/completion.json", "run-job.json#/$defs/completion")):
             for row in rows[name]["refused"]:
                 with self.subTest(vector=name, problem=row["problem"]):
                     self.assertTrue(problems(validator(self.schemas, reference), [row["record"]]), row["problem"])
@@ -1652,11 +1652,13 @@ class VectorTests(unittest.TestCase):
         def digest(value):
             return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
 
-        for name in ("job/answer.json", "job/reconciliation.json", "job/completion.json"):
+        for name in ("job/answer.json", "job/reconciliation.json", "job/completion.json", "job/cancel.json"):
             for item, expected in zip(rows[name]["items"], rows[name]["digests"], strict=True):
                 self.assertEqual(digest({key: value for key, value in item.items() if key != "key"}), expected)
         for row in rows["job/job.json"]["identities"]:
             self.assertEqual(digest({"resource": row["resource"], "operation": row["operation"]}), row["job"])
+        for row in rows["job/cancel.json"]["operations"]:
+            self.assertEqual(digest({"command": row["command"], "job": row["job"], "generation": 1}), row["operation"])
         for row in rows["job/job.json"]["keys"]:
             self.assertEqual("sha256:" + hashlib.sha256(row["key"].encode()).hexdigest(), row["digest"])
         for item in rows["job/job.json"]["items"]:

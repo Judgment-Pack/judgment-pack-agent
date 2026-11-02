@@ -779,6 +779,24 @@ on the record says which it is, because a real handle can read the same, and a d
 plan evidence; a start cited in `complete_plan_step` is held to its job, read afresh: `completed` with `succeeded` proves it whatever
 the row says, and anything else refuses `unsuccessful-operation`.
 
+**Cancelling.** `jobCancelTool({name, description, source, start, approve, approval, cancel})` (Go `JobCancelTool`) declares a start's
+cancel on the start's source, with both in that source's tool list (`JOB_CANCEL_SCHEMA`, Go `JobCancelSchema`). Its arguments are exactly
+`{job, generation}`. Its record is read before anyone is asked, before any claim and again before a held decision runs: `no-job` for
+another source's or tool's job, an absent one or another generation, `job-settled`, `job-unproven`. `jobCancelCard(job)` (Go
+`JobCancelCardOf`) is what a card shows. `requestJobCancel` records `requested` under the current fence before the effect host is asked:
+a stale or expired fence asks nothing, unlike `answerJob`. `cancel` is handed `{job, generation, source, tool, handle}`, or `handleDigest` and no
+`handle` where `handleDigested` marks it; a host answering an oversized handle keeps its own mapping. `acknowledgeJobCancel` takes the host's word
+by the completion key, with no lease: `accepted` or `refused`, first write wins, `no-cancel` with no request. Neither moves `state` or wakes a wait;
+only a completion with `cancelled` says the job stopped. `job_read` shows `cancel`. The row and the answer are `jobCancelResult`, or the fixed
+failures `JobCancelUnrecorded` and `JobCancelNotSent` with the answer from the job. A repeat is answered from the job and sends nothing.
+
+**Abandoning.** `abandonJobs({store, effectHost, resource, command, durationMs, cancel})` (Go `AbandonJobs`) is a host's command, standing for the
+person's approval: no source policy is asked. `JobStore.abandonJobs` takes the lease under `job-abandon` at a new epoch in one transaction with a
+cancel asked of each `started` job, and old workers get `stale-epoch`. Each cancel goes through the effect host under `jobCancelOperation(command, job)`
+with no run commit, so a retry of the command is admitted once. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
+nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-sent`, `failed`, `undelivered`, `no-handle`, `settled`,
+`contradicted` (closed, with evidence since that it ran), `acknowledged`. None of it proves anything stopped.
+
 **A gateway.** `gatewayActionMembers(job, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`: it takes the job
 (`readJob`), which a `start` can read and a reconciliation holding no lease can too. It carries no owner, subject or lease. No
 gateway accepts these members until gateway #352 ships: each refuses them and sends nothing. `gatewayRefusalFinding(refusal)` reads

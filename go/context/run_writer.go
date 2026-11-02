@@ -1340,6 +1340,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	}
 	w := binding.Writer
 	jobStart := jobStartDispatchOf(ctx)
+	jobCancel := jobCancelDispatchOf(ctx)
 	w.mu.Lock()
 	if w.fatal != nil {
 		err := w.fatal
@@ -1444,6 +1445,12 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 							return zero, err
 						}
 						return any(JobStartResult(job)).(T), nil
+					}
+				}
+				// A repeated cancel likewise: a row says nothing about its job, and nothing is sent again.
+				if jobCancel != nil {
+					if answer := w.jobCancelAnswer(ctx, jobCancel.job); answer != nil {
+						return any(*answer).(T), nil
 					}
 				}
 				if row.State != "result" || row.Result == nil {
@@ -1618,16 +1625,39 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 			return out, err
 		}
 	}
-	value, runErr := execute(request)
+	var value T
+	var runErr error
+	// #229 (H-1): from here the start has run, so nothing that goes wrong may read as refused input: the row holds the
+	// fixed unknown failure, and the model is answered from the job. A cancel likewise, once it has been asked for.
+	var answeredFromJob *ToolResult
+	cancelRefused := false
+	if jobCancel != nil {
+		// `requested` is recorded under the current fence before admission, and what is sent is that record's. A job
+		// that settled since it was asked about refuses here: nothing is sent.
+		if err := w.jobCancelRequest(ctx, jobCancel, claim.ID); err != nil {
+			if asJobRefusal(err) != nil {
+				runErr, answeredFromJob, cancelRefused = jobCancelNotSent(), w.jobCancelAnswer(ctx, jobCancel.job), true
+			} else {
+				runErr = err
+			}
+		}
+	}
+	if runErr == nil {
+		value, runErr = execute(request)
+	}
+	if jobCancel != nil && runErr == nil {
+		if answer := w.jobCancelAnswer(ctx, jobCancel.job); answer != nil {
+			value = any(*answer).(T)
+		} else {
+			runErr = jobCancelUnrecorded()
+		}
+	}
 	if runErr == nil && admit != nil && ctx.Err() == nil {
 		// The execution ended within its deadline. The check has the rest of the source's deadline,
 		// and its outcome is this dispatch's whenever it ends: the time it takes is not the call's.
 		ctx = context.WithoutCancel(ctx)
 		runErr = admit(value)
 	}
-	// #229 (H-1): from here the start has run, so nothing that goes wrong may read as refused input: the row holds the
-	// fixed unknown failure, and the model is answered from the job.
-	var answeredFromJob *ToolResult
 	if jobStart != nil && runErr == nil {
 		composed, err := w.finishJobStart(ctx, jobStart)
 		if err == nil {
@@ -1652,6 +1682,9 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				runErr = failure.Err("authentication", "tool", "unknown")
 			}
 		}
+	}
+	if jobCancel != nil && !refused && !cancelRefused && runErr != nil && answeredFromJob == nil {
+		answeredFromJob = w.jobCancelAnswer(ctx, jobCancel.job)
 	}
 	w.mu.Lock()
 	if routeClaim != nil {
@@ -2068,6 +2101,19 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		jobStart = &jobStartDispatch{mint: tool.job.mint}
 		ctx = context.WithValue(ctx, jobStartKey{}, jobStart)
 	}
+	var jobCancel *jobCancelDispatch
+	if tool.job != nil && tool.job.cancel != nil {
+		// H5, M4: what the record refuses is refused here as well, before any claim, whatever was asked and when.
+		if refused := c.jobCancelRefusal(ctx, tool.job, args); refused != "" {
+			return ToolResult{}, jobRefused(refused)
+		}
+		job, err := readJobCancelArgument(args)
+		if err != nil {
+			return ToolResult{}, err
+		}
+		jobCancel = &jobCancelDispatch{job: job}
+		ctx = context.WithValue(ctx, jobCancelKey{}, jobCancel)
+	}
 	// #242: an external read's result is recorded only once its receipt verifies.
 	var admit func(ToolResult) error
 	if held := receiptAdmissionOf(ctx); held != nil {
@@ -2083,6 +2129,13 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 			if err := admit(ctx); err != nil {
 				return ToolResult{}, err
 			}
+		}
+		if jobCancel != nil && jobCancel.record != nil {
+			// What a cancel returns as an error is no answer: its words reach neither the row nor the model.
+			if err := tool.job.cancel(withoutReceiptAdmission(ctx), JobCancelInputOf(*jobCancel.record)); err != nil {
+				return ToolResult{}, jobCancelUnrecorded()
+			}
+			return ToolResult{}, nil
 		}
 		if jobStart != nil && jobStart.job != "" {
 			answer, err := tool.job.start(withoutReceiptAdmission(ctx), JobStartInput{Job: jobStart.job, Request: bytes.Clone(raw)})

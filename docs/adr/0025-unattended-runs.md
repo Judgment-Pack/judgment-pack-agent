@@ -455,8 +455,8 @@ results; it is not proof that external effects stopped.
 ### Amendment (#229, #230): run-owned jobs and the goal
 
 Status: the design below was reviewed before any code (the record is on #229). Three stacked changes build it: the
-job core (built for v0.13.0, this amendment's first part), cancellation and the fresh fence of an abandon (#229), and
-the objective (#230). Parts marked "next" are decided here and not built yet. The records are
+job core and cancellation with the fresh fence of an abandon (#229, built for v0.13.0), and the objective (#230). Parts marked
+"next" are decided here and not built yet. The records are
 `contract/schemas/run-job.json` (version 1) with handwritten vectors in `contract/vectors/job/`, and members of the not
 yet released `run-wait.json` (version 1): the reason, pending and attention need `job`. TypeScript is
 `packages/harness/storage/job.ts` with `wait.ts` and `writer.ts`; Go is `go/context/run_job.go` with `run_wait.go` and
@@ -480,6 +480,8 @@ archive of a run with jobs needs the job export too, and a store backs its jobs 
 | `unproven` → `started`, `not-started`, or nothing on `unknown` | Host, `reconcileJob` | The completion key, no lease, an evidence id. First write wins. `not-started` means the authority that would run it has closed it |
 | `unproven`, `started` → `completed` | Host, `completeJob` | The completion key, no lease, an evidence id, outcome `succeeded`, `failed`, `cancelled` or `unknown`. The same transaction wakes a `parked` wait on the job, unless its timeout or deadline has come |
 | `unproven` stays, re-claimed | Writer, under a re-authorization grant | Current fence, only from `unproven` (`job-settled`, and the grant is not spent) |
+| `started` stays, `cancel.requested` | Writer under the current fence before admission, or an abandon's transaction | Its fence, or `undelivered` where no lease can be granted. `job-settled`, `job-unproven` otherwise. The first request stands |
+| `cancel.acknowledged` | Host, `acknowledgeJobCancel` | The completion key, no lease, an evidence id, `accepted` or `refused`. First write wins; `no-cancel` with no request. It moves no state and wakes nothing |
 | `not-started`, `completed` | Terminal | Same evidence: retained. Same id, other content: `conflict`. Later completion: `stale`. A started answer, finding or completion after `not-started`: kept as a contradiction, reported, and it moves nothing |
 
 **Waiting.** `parkRun({job})` is the host's wait port; the model has no wait tool. A job park accepts a checkpoint at rest
@@ -549,6 +551,9 @@ The gateway builds, on `/act`:
 | Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`), on a run with no stored chat | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, `chat-store-unsupported`, before any offer |
 | Decide every held start with `shownDigest` (`approvalShownDigest`), text kept or not: a new surface has no unmoved host | `ApprovalNotShown`, before the claim: no job, nothing runs, and the pause stands |
 | Declare `gatewayKeyScope` on a start tool of a `gateway` source | `job-host-unsupported` |
+| Declare each cancel as a pair with its start on one source, with both in the source's list | `job-host-unsupported`, before any offer; another source's cancel is `no-job` |
+| Map a job to its reference itself where `handleDigested` marks its handle, and acknowledge a cancel by the completion key | The cancel is handed `handleDigest` and no `handle`; only a completion with `cancelled` says it stopped |
+| Issue an abandon's command only with the person's authority, and hold its fence | It stands for their approval, and no policy is asked |
 | Declare no sub-agent with a job tool | The definition is withheld; a child session offered one refuses `child-unsupported` |
 | Mint a completion key per job, store only its digest here, and keep the key across its own restarts | `key-reused` or `invalid` before any row; a lost key means the job can never be completed |
 | Answer `start` in the typed form, with a handle and a receipt of at most 256 bytes | Anything else leaves the job unproven, or keeps what it had. The row holds a fixed `unknown` failure that says it was not re-sent, and the model is answered from the job. A handle or receipt the record cannot hold is kept as the digest of its bytes, and the job is `started`; `handleDigested` marks such a handle |
@@ -560,18 +565,31 @@ The gateway builds, on `/act`:
 **Published behaviour.** With nothing configured no byte moves: no tool, no store call, and `RunStore` and `WaitStore` keep
 their signatures. A store without the port refuses `store-unsupported` only when a job tool is offered.
 
-**Next: cancellation (#229).** Cancellation never moves `state`. Its arguments are `{job, generation}`, and a start and its
-cancel tool are declared as a pair: `job.source` must be the row's source, or `no-job`, before anyone is asked and before the
-claim (H5). `no-job`, a settled job and one with no handle refuse before the card. A card reader over the record shows source,
-tool, state, generation and operation digest (M4). `requested` is recorded by the writer under the fence before admission;
-what is sent is the record's job, generation and handle, never model bytes; `acknowledged` (`accepted`, `refused`) comes from
-the host by key. Only `completed` with `cancelled` says it stopped. The rows of cancel tools are not evidence.
+**Cancellation (#229, built).** Cancellation never moves `state`. A cancel tool (`jobCancelTool`) is an ordinary sourced `act` tool,
+declared as a pair with its start on one source, and offered only beside it (`job-host-unsupported`). Its arguments are exactly
+`{job, generation}`; anything else is `no-job`. Before anyone is asked and before any claim, the job's record is read afresh: a job
+whose `source` and `tool` are not this pair's start's is `no-job` (H5), a settled one `job-settled`, and one with no handle
+`job-unproven` (M4). That is read again before a decision that was held runs, because a job can settle while a person decides.
+`jobCancelCard` is the card reader over the record: source, tool, state, generation and the job's identity as the operation digest.
+A decision approving a held cancel must carry `shownDigest`, as a held start's does. `requested` is recorded by the writer under the
+current fence before admission, and a stale fence asks nothing, unlike a start's answer. What is sent is that record's job, generation
+and handle, never model bytes; a handle kept as its digest comes as `handleDigest` and no `handle`, and the host maps the job itself.
+The first request stands. `acknowledged` (`accepted`, `refused`) comes from the host by the completion key, with no lease
+(`acknowledgeJobCancel`); first write wins, it wakes nothing, and with no request it is `no-cancel`. Only `completed` with `cancelled`
+says the job stopped. A cancel's row holds what the package composed, or one of two fixed failures (`JobCancelUnrecorded`, `unknown`;
+`JobCancelNotSent`, `not-started`), and the model is answered from the job as it reads now. A repeat is too, and nothing is sent again.
+The rows of cancel tools are not evidence, and no child is offered one: they carry the seam.
 
-**Next: abandon (#229, #230).** Abandon's transaction takes the lease under a reserved owner at a new epoch rather than
-lowering it, and returns that fence. Old workers get `stale-epoch`. Cancels go through `EffectHost.dispatch` with the stable
-operation `sha256({command, job, generation})` and no run commit. The command stands for the person's approval, and that is
-stated as the one exception to decision 7's approval boundary. Past a deadline no lease can be granted, so `requested` stays
-undelivered and says so.
+**Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
+transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
+holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
+same fence serves what follows. Cancels go through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`
+and no run commit, so a retry of the command is admitted once. **The command stands for the person's approval. That is the one
+exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
+the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
+or on a closed run, no lease can be granted: `requested` is recorded `undelivered`, nothing is sent, and the answer says so. A parked run's wait
+stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-sent`, `failed`, `undelivered`,
+`no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
 
 **Next: the objective (#230).** Host commands only, each with id, actor and expected revision; no model call and no run
 commit. `create` makes one from none or from terminal, under an identity never used in this run; there is no `replace`. `create`
@@ -599,21 +617,21 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | H2 a grant re-sends a closed job | The re-claim is a store transition under the fence, only from unproven; `job-settled` otherwise, and the grant is not spent |
 | H3 job rows pass as evidence | Job tools' `successful` is false, so no observation is recorded. Achievement lists every job that did not succeed (next) |
 | H4 `rebindJob` is an unregistered start | Cut. Generation is 1, and readers refuse any other |
-| H5 a cancel reaches another source | Next: tools declared as a pair, `job.source` is the row's source, before the card and the claim |
+| H5 a cancel reaches another source | Tools declared as a pair; the job's source and tool must be its start's, before the card and the claim |
 | M1 reconcile needs a fence it cannot get | Reconcile is by the completion key, with no lease, first write wins |
 | M2 a late answer is lost | The answer is taken from the fence that admitted the start, current or not, and whatever the call's signal says |
 | M3 evidence at the wrong time | The proof reads the job: `completed`, `succeeded` proves it whatever the row says; anything else `unsuccessful-operation` |
-| M4 a cancel's row and card | Next: `{job, generation}`, a card reader, refused before the card |
+| M4 a cancel's row and card | `{job, generation}`, a card reader, refused before the card |
 | M5 refusals strand a row | Registration is in the claim's own transaction: no window, no `unbound`, no store parse of the head. A key is checked before the claim, and `shownDigest` at the continuation's opening, before the claim |
 | M6 `poll-refused` does not stop polling | Cut: it always answers, says unchanged and says not to poll |
 | M7 a leg's end and a resume | Statuses, the pending-decision refusal, the job on the resume, the fixed continuation block; chat-bound job waits refused |
-| M8 pause goes too far | Next: only `acquireLease` and `resumeWait`, and the answer reports the held lease |
-| M9 abandon's delivery | Next: a fresh fence and stable cancel identities |
-| M10, M11, M12 | Next: as stated under the objective; `replace` and one row per `inspect` cut |
+| M8 pause goes too far | Next (#230): only `acquireLease` and `resumeWait`, and the answer reports the held lease |
+| M9 abandon's delivery | A fresh fence and stable cancel identities; the exception is stated |
+| M10, M11, M12 | Next (#230): as stated under the objective; `replace` and one row per `inspect` cut |
 | M13 nothing identifies a start row | Start rows are package-composed and record no observation, so a lost job record leaves them no evidence. The upgrade guide says what an archive needs |
 | M14 the gateway mapping | Answers parsed as the first was; `decision` and `cites` are the host's; retention in the gateway's list; a gateway's refusal of the members mapped by the host |
 | M15 the start's answer | Its own row in the paths; the package composes the row's result; `started` after `admit` |
-| M16, M17 | Next: as stated under the objective |
+| M16, M17 | Next (#230): as stated under the objective |
 | M18 host obligations | The table above; chat-bound waits refused rather than kept current |
 | L1 two "keys" | "Completion key" and "action key" throughout |
 | L2 | Next: `achieve` under `paused` is independent; `create` resets; a terminal objective has no disposition |
@@ -639,6 +657,8 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | M-8 a child and a job tool | The declaration is withheld in both languages; `child-unsupported` in both sessions |
 | M-9 statements only the unbuilt gateway makes true | Reworded. `gatewayActionMembers` takes the job, which a `start` and a leaseless reconciliation can both read |
 | L-1, L-7 | Host text as above; a repeated contradiction id with other content is `conflict`, and an answer under another run's fence is refused, each now held by the kit |
+
+**The re-read's findings, as far as they are built.** R-1: every repeat of a start answers from its job, which also cures L-3. R-2: a run under a stored chat refuses `chat-store-unsupported` before any offer, whether the session passes the chat or the head holds it. R-3: each refusal in the kit compares the job with before; a last restart comes after waits woke, resumed and timed out; a completion wakes only the wait on its own job; reads stay fresh after a settlement; an answer needs the first fence's epoch as well as its owner; and keys, commit ids and authentication hold across a restart. R-6: `handleDigested` marks a handle kept as its digest, and a real handle reading the same is another handle. R-4, R-5, R-7 and R-8 are not built.
 
 ## Implementation split and acceptance
 

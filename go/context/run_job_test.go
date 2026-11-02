@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
 )
 
 // The Go twin of packages/harness/storage/job.test.ts (#229): the shared job vectors, the store's transitions and
@@ -114,6 +115,10 @@ func TestJobEvidenceVectors(t *testing.T) {
 			held, err := ReadJobCompletion(raw)
 			return JobEvidenceDigest(held), err
 		},
+		"cancel.json": func(raw json.RawMessage) (string, error) {
+			held, err := ReadJobCancelAcknowledgement(raw)
+			return JobEvidenceDigest(held), err
+		},
 	}
 	for name, read := range digestOf {
 		vector := readJobVector(t, name)
@@ -212,6 +217,18 @@ func TestJobTransitionVectors(t *testing.T) {
 				_, err = table.Reconcile(evidence)
 			case "reclaim":
 				_, err = table.Reclaim(fence.Resource, job, fence)
+			case "cancel":
+				var ask JobCancelAsk
+				_ = json.Unmarshal(step["ask"], &ask)
+				if step["fence"] == nil {
+					_, err = table.RequestCancel(ask, nil)
+				} else {
+					_, err = table.RequestCancel(ask, &fence)
+				}
+			case "acknowledge":
+				var evidence JobCancelAcknowledgement
+				_ = json.Unmarshal(step["evidence"], &evidence)
+				_, err = table.AcknowledgeCancel(evidence)
 			case "complete":
 				var evidence JobCompletionEvidence
 				_ = json.Unmarshal(step["evidence"], &evidence)
@@ -312,6 +329,59 @@ func TestJobModelVectors(t *testing.T) {
 		if err := readJobStartAnswer(&answer); err != nil {
 			t.Fatal(string(row["answer"]), err)
 		}
+	}
+	for _, row := range jobVectorRows(t, file["cancelResults"]) {
+		var text string
+		_ = json.Unmarshal(row["text"], &text)
+		result := JobCancelResult(jobOf(row["record"]))
+		got := MustParseJSON(string(result.JSON())).Get("content").Items()[0].Get("text").Str()
+		if got != text || result.Err() != (string(row["isError"]) == "true") {
+			t.Fatalf("%s, want %s", got, text)
+		}
+	}
+	for _, row := range jobVectorRows(t, file["cancelCards"]) {
+		if jobCanonOf(t, JobCancelCardOf(jobOf(row["record"]))) != jobCanon(t, row["card"]) {
+			t.Fatal(string(row["card"]))
+		}
+	}
+	for _, row := range jobVectorRows(t, file["cancelInputs"]) {
+		var want struct {
+			Job, Source, Tool, Handle, HandleDigest string
+			Generation                              int
+		}
+		_ = json.Unmarshal(row["input"], &want)
+		got := JobCancelInputOf(jobOf(row["record"]))
+		if got.Job != want.Job || got.Source != want.Source || got.Tool != want.Tool || got.Handle != want.Handle || got.HandleDigest != want.HandleDigest || got.Generation != want.Generation {
+			t.Fatalf("%+v, want %+v", got, want)
+		}
+	}
+	for _, row := range jobVectorRows(t, file["cancelArguments"]) {
+		var raw, job string
+		_ = json.Unmarshal(row["raw"], &raw)
+		_ = json.Unmarshal(row["job"], &job)
+		if held, err := readJobCancelArgument([]byte(raw)); err != nil || held != job {
+			t.Fatal(raw, err)
+		}
+	}
+	for _, row := range jobVectorRows(t, file["cancelArgumentsRefused"]) {
+		var raw string
+		_ = json.Unmarshal(row["raw"], &raw)
+		if _, err := readJobCancelArgument([]byte(raw)); asJobRefusal(err) == nil {
+			t.Fatal(raw)
+		}
+	}
+	if job := strings.Repeat("a", 64); func() bool {
+		_, err := readJobCancelArgument([]byte(`{"job":"sha256:` + job + `","generation":1,"JOB":"x"}`))
+		return err == nil
+	}() {
+		t.Fatal("a folded name was read")
+	}
+	var failures struct {
+		Unrecorded, NotSent json.RawMessage
+	}
+	_ = json.Unmarshal(file["cancelFailures"], &failures)
+	if jobCanonOf(t, failure.Normalize(jobCancelUnrecorded(), "tool", time.Now())) != jobCanon(t, failures.Unrecorded) || jobCanonOf(t, failure.Normalize(jobCancelNotSent(), "tool", time.Now())) != jobCanon(t, failures.NotSent) {
+		t.Fatal("a cancel's failure is not the vector's")
 	}
 	for _, row := range jobVectorRows(t, file["startAnswersKept"]) {
 		var held, read struct {
@@ -801,5 +871,30 @@ func TestJobToolsAreOfferedToNoSubAgent(t *testing.T) {
 	var refused *JobCapabilityRefused
 	if !errors.As(err, &refused) || refused.Reason != "child-unsupported" {
 		t.Fatal(err)
+	}
+}
+
+func TestJobCancelVectors(t *testing.T) {
+	vector := readJobVector(t, "cancel.json")
+	var asks []json.RawMessage
+	_ = json.Unmarshal(vector["asks"], &asks)
+	for _, raw := range asks {
+		if _, err := ReadJobCancelAsk(raw); err != nil {
+			t.Fatal(string(raw), err)
+		}
+	}
+	for _, row := range jobVectorRows(t, vector["asksRefused"]) {
+		if _, err := ReadJobCancelAsk(row["record"]); asJobRefusal(err) == nil {
+			t.Fatal(string(row["record"]))
+		}
+	}
+	for _, row := range jobVectorRows(t, vector["operations"]) {
+		var command, job, operation string
+		_ = json.Unmarshal(row["command"], &command)
+		_ = json.Unmarshal(row["job"], &job)
+		_ = json.Unmarshal(row["operation"], &operation)
+		if JobCancelOperation(command, job) != operation {
+			t.Fatal(JobCancelOperation(command, job), operation)
+		}
 	}
 }

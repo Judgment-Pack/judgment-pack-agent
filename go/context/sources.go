@@ -991,10 +991,12 @@ func OfferedSkillTools(tools []HostTool, served []string, skills []Skill, policy
 // as the turn's test-call cap is shared; a child's own gate keeps what is its own, the schemas it
 // loaded and the marks of its calls' events.
 type SourceGate struct {
-	Entries map[string]*SourceEntry
-	sources []ToolSource
-	policy  *Policy
-	marker  string
+	// beforeAsking (#229) is a refusal to answer with, in place of asking anyone; "" for none.
+	beforeAsking func(ctx context.Context, entry *SourceEntry, args json.RawMessage) string
+	Entries      map[string]*SourceEntry
+	sources      []ToolSource
+	policy       *Policy
+	marker       string
 	// schemas is the capability record's toolSchemas for the run's model ("json-schema" or
 	// "gemini-subset"): how a loaded schema is shown (ModelSession.ToolSchemas).
 	schemas string
@@ -1324,6 +1326,12 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 		} else {
 			claimPending = true
 			closed = "Another act call is being prepared or waits for approval; nothing was run."
+		}
+	}
+	// #229: what a job's record already refuses is never put to the person.
+	if !claimPending && g.beforeAsking != nil {
+		if refused := g.beforeAsking(ctx, entry, args); refused != "" {
+			closed = refused
 		}
 	}
 	served := true
@@ -2235,6 +2243,9 @@ func withoutReceiptAdmission(ctx context.Context) context.Context {
 	// #229 (M-7): nor a start's dispatch: a nested run on this context is no start itself.
 	if jobStartDispatchOf(ctx) != nil {
 		ctx = context.WithValue(ctx, jobStartKey{}, (*jobStartDispatch)(nil))
+	}
+	if jobCancelDispatchOf(ctx) != nil {
+		ctx = context.WithValue(ctx, jobCancelKey{}, (*jobCancelDispatch)(nil))
 	}
 	if receiptAdmissionOf(ctx) == nil {
 		return ctx

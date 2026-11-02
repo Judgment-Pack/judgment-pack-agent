@@ -10,7 +10,7 @@ import {StoredChatScope} from './storedChat'
 import {ContextTurnBindingInvalid} from './chatSnapshot'
 import {runtimeTaxonomyProblem, taxonomyAnnotations} from '../toolTaxonomy'
 import {ContinuationNotRecoverable,ContinuationIdentityChanged} from '../storage/writer'
-import {JobCapabilityRefused,JobRefused,jobSeamOf,readRunJob,type RunJob} from '../storage/job'
+import {JobCapabilityRefused,JobRefused,jobCancelInput,jobCancelRefusal,jobCancelUnrecorded,jobSeamOf,readJobCancelArgument,readRunJob,type JobCancelSeam,type JobRefusalReason,type RunJob} from '../storage/job'
 import {quarantineModelResponse} from '../storage/model'
 import {copyTaskDelegationTool,normalizeTaskDelegation,durableOwner,durableSession,legacyCheckpointIdentity,prepareProviderDispatch,scopeFor,hostSucceeded as resultSucceeded,durableReadingTool,exactlyHeld,type DurableBinding,type DurableRunInput} from '../storage/writer'
 import {sha256} from '../records'
@@ -257,6 +257,8 @@ export class SessionContext {
  hostParts:HostParts={}
  /** ADR-0006: the boundary's hold on the run's tools with a source, where it declares any. */
  sources?:SourceGate
+ /** #229: whether its job's record refuses a cancel, before anyone is asked and before any claim. Set where job tools are offered. */
+ cancelRefusal:(seam:JobCancelSeam,args:unknown,signal?:AbortSignal)=>Promise<JobRefusalReason|undefined>=async()=>'no-job'
  /** ADR-0029: the delegated run's principal (its own, or a delegated child's parent's), whose record its tool events and checkpoint carry. */
  principal?:OpenedPrincipal
  /** ADR-0006: the tools with a source passed the schema budget and are offered as a catalogue, with load_tool. */
@@ -1036,11 +1038,17 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   // is performed, so it never comes from here.
   const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded
   let started:string|undefined
+  let cancelRecord:RunJob|undefined
+  if(job?.kind==='cancel'){
+   const refused=await context.cancelRefusal(job,args,signal)
+   if(refused!==undefined)throw new JobRefused(refused)
+   tool={...tool,execute:async()=>{if(cancelRecord===undefined)throw new JobCapabilityRefused('store-unsupported');try{await job.cancel(jobCancelInput(cancelRecord,signal))}catch{throw jobCancelUnrecorded()};return undefined as unknown as McpToolResult}}
+  }
   if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');try{return await job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}catch{return undefined as unknown as McpToolResult}}}
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
-  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined)
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined,job?.kind==='cancel'?{job:readJobCancelArgument(args),held:record=>{cancelRecord=record}}:undefined)
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})
@@ -1066,6 +1074,15 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
    if(session.childDefinition)throw new JobCapabilityRefused('child-unsupported')
    if(!binding)throw new JobCapabilityRefused('store-unsupported')
    await binding.writer.attachJobs(session.signal)
+   // H5: a cancel is offered only beside its start, and what its job's record refuses is never put to the person.
+   for(const tool of session.hostTools){const seam=jobSeamOf(tool);if(seam?.kind==='cancel'&&!session.hostTools.some(other=>jobSeamOf(other)===seam.start))throw new JobCapabilityRefused('job-host-unsupported')}
+   context.cancelRefusal=async(seam,args,signal)=>{
+    let job:string;try{job=readJobCancelArgument(args)}catch{return 'no-job'}
+    const held=await binding.writer.readJobRecord(job,signal)
+    for(const [name,entry] of declared.entries)if(jobSeamOf(entry.declared)===seam.start)return jobCancelRefusal(held,{name,identity:`sha256:${await contextDigest(canonicalJSON(entry.record))}`})
+    return 'no-job'
+   }
+   if(context.sources)context.sources.beforeAsking=async(entry,args)=>{const seam=jobSeamOf(entry.declared);if(seam?.kind!=='cancel')return '';const refused=await context.cancelRefusal(seam,args,session.signal);return refused===undefined?'':`JobRefused: ${refused}.`}
    context.execution.refreshProof=signal=>binding.writer.refreshJobs(signal)
   }
   // The record a resumed job wait hands on is this run's, read through the reader.

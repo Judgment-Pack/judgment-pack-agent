@@ -1,10 +1,11 @@
 import {describe,it,expect} from 'vitest'
 import {canonicalJSON} from '../context/chat'
-import {JOB_CONTINUATION,JOB_GENERATION,JOB_REFUSAL_REASONS,JOB_CAPABILITY_REASONS,JobCapabilityRefused,JobRefused,JobTable,gatewayActionMembers,gatewayRefusalFinding,jobContinuation,jobEvidenceDigest,jobIdentity,jobKeyDigest,jobProjection,jobReportFromExport,jobStartResult,readJobAnswer,readJobArgument,readJobCapabilityRefusal,readJobCompletion,readJobExport,readJobReconciliation,readJobRefusal,readJobStartAnswer,readRunJob,validJobKey,type JobAnswer,type JobCompletionEvidence,type JobReconciliation,type JobRegistration,type RunJob} from './job'
+import {jobCancelCard,jobCancelInput,jobCancelNotSent,jobCancelOperation,jobCancelResult,jobCancelUnrecorded,readJobCancelAcknowledgement,readJobCancelArgument,readJobCancelAsk,type JobCancelAcknowledgement,type JobCancelAsk,JOB_CONTINUATION,JOB_GENERATION,JOB_REFUSAL_REASONS,JOB_CAPABILITY_REASONS,JobCapabilityRefused,JobRefused,JobTable,gatewayActionMembers,gatewayRefusalFinding,jobContinuation,jobEvidenceDigest,jobIdentity,jobKeyDigest,jobProjection,jobReportFromExport,jobStartResult,readJobAnswer,readJobArgument,readJobCapabilityRefusal,readJobCompletion,readJobExport,readJobReconciliation,readJobRefusal,readJobStartAnswer,readRunJob,validJobKey,type JobAnswer,type JobCompletionEvidence,type JobReconciliation,type JobRegistration,type RunJob} from './job'
 import jobVector from '../../../contract/vectors/job/job.json'
 import answerVector from '../../../contract/vectors/job/answer.json'
 import reconciliationVector from '../../../contract/vectors/job/reconciliation.json'
 import completionVector from '../../../contract/vectors/job/completion.json'
+import cancelVector from '../../../contract/vectors/job/cancel.json'
 import gatewayVector from '../../../contract/vectors/job/gateway.json'
 import reportVector from '../../../contract/vectors/job/report.json'
 import refusalVector from '../../../contract/vectors/job/refusal.json'
@@ -29,6 +30,11 @@ describe('job records and evidence: shared vectors (#229)',()=>{
   for(const row of [...answerVector.refused,...answerVector.readerRefused])expect(()=>readJobAnswer(row.record),row.problem).toThrow(JobRefused)
   for(const row of [...reconciliationVector.refused,...reconciliationVector.readerRefused])expect(()=>readJobReconciliation(row.record),row.problem).toThrow(JobRefused)
   for(const row of [...completionVector.refused,...completionVector.readerRefused])expect(()=>readJobCompletion(row.record),row.problem).toThrow(JobRefused)
+  cancelVector.items.forEach((row,i)=>{expect(readJobCancelAcknowledgement(row)).toEqual(row);expect(jobEvidenceDigest(readJobCancelAcknowledgement(row))).toBe(cancelVector.digests[i])})
+  for(const row of [...cancelVector.refused,...cancelVector.readerRefused])expect(()=>readJobCancelAcknowledgement(row.record),row.problem).toThrow(JobRefused)
+  for(const row of cancelVector.asks)expect(readJobCancelAsk(row)).toEqual(row)
+  for(const row of cancelVector.asksRefused)expect(()=>readJobCancelAsk(row.record),row.problem).toThrow(JobRefused)
+  for(const row of cancelVector.operations)expect(jobCancelOperation(row.command,row.job)).toBe(row.operation)
  })
  it('every refusal is named, and nothing else is',()=>{
   expect(refusalVector.items.map(r=>r.reason)).toEqual(JOB_REFUSAL_REASONS)
@@ -50,6 +56,8 @@ describe('job records and evidence: shared vectors (#229)',()=>{
      if(step.op==='answer'){table.answer(step.answer as JobAnswer,fence!);return}
      if(step.op==='reconcile'){table.reconcile(step.evidence as JobReconciliation);return}
      if(step.op==='reclaim'){table.reclaim(fence!.resource,step.job,fence!);return}
+     if(step.op==='cancel'){table.requestCancel(step.ask as JobCancelAsk,fence);return}
+     if(step.op==='acknowledge'){table.acknowledgeCancel(step.evidence as JobCancelAcknowledgement);return}
      const done=table.complete(step.evidence as JobCompletionEvidence)
      if(step.wakes!==undefined)expect(done.wake!==undefined,name(i)).toBe(step.wakes)
     }
@@ -70,6 +78,13 @@ describe('job records and evidence: shared vectors (#229)',()=>{
   for(const row of modelVector.arguments)expect(readJobArgument(JSON.parse(row.raw))).toBe(row.job)
   for(const row of modelVector.argumentsRefused)expect(()=>readJobArgument(JSON.parse(row.raw)),row.name).toThrow(JobRefused)
   for(const row of modelVector.startAnswers)expect(readJobStartAnswer(row.answer)).toEqual(row.answer)
+  for(const row of modelVector.cancelResults){const result=jobCancelResult(row.record as RunJob);expect(result.content![0]!.text).toBe(row.text);expect(result.isError===true).toBe(row.isError)}
+  for(const row of modelVector.cancelCards)expect(jobCancelCard(row.record as RunJob)).toEqual(row.card)
+  for(const row of modelVector.cancelInputs)expect(jobCancelInput(row.record as RunJob)).toEqual(row.input)
+  for(const row of modelVector.cancelArguments)expect(readJobCancelArgument(JSON.parse(row.raw))).toBe(row.job)
+  for(const row of modelVector.cancelArgumentsRefused)expect(()=>readJobCancelArgument(JSON.parse(row.raw)),row.name).toThrow(JobRefused)
+  expect(jobCancelUnrecorded().failure).toEqual(modelVector.cancelFailures.unrecorded)
+  expect(jobCancelNotSent().failure).toEqual(modelVector.cancelFailures.notSent)
   for(const row of modelVector.startAnswersKept)expect(readJobStartAnswer(row.answer),row.name).toEqual(row.read)
   for(const row of modelVector.startAnswersRefused)expect(()=>readJobStartAnswer(row.answer),row.name).toThrow(JobRefused)
   for(const row of gatewayVector.cases)expect(gatewayActionMembers(row.job as RunJob,row.reconcile?{reconcile:true}:{}),row.name).toEqual(row.members)

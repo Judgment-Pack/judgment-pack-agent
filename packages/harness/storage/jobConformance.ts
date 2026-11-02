@@ -1,6 +1,6 @@
 import {canonicalJSON} from '../context/chat'
 import {StorageConformanceFailure} from './conformance'
-import {JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence,type JobPage,type JobReconciliation,type JobStore,type RunJob} from './job'
+import {JOB_ABANDON_OWNER,JobRefused,jobIdentity,jobKeyDigest,type JobCancelAcknowledgement,type JobCancelAsk,type JobCompletionEvidence,type JobPage,type JobReconciliation,type JobStore,type RunJob} from './job'
 import {LeaseRefused,fenceOf,type LeaseFence} from './lease'
 import {pinsDigest,type ResumePins} from './resume'
 import {WaitRefused,checkpointBytesDigest,wakeKeyDigest,type RunWait,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
@@ -47,6 +47,7 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const reconcile=(run:string,job:string,key:string,over:Partial<JobReconciliation>={}):JobReconciliation=>({version:1,resource:run,job,generation:1,evidence:'find-1',finding:'not-started',key,...over})
  const parkOf=async(run:string,job:string,wake:string,over:Partial<WaitPark>={}):Promise<WaitPark>=>{const head=(await store.load(run))!;return {version:1,resource:run,wait:'wait-1',reason:'job',pending:{kind:'job',job,generation:1},condition:{event:{kind:'job-completion',subject:job}},continuation:'k',checkpoint:{revision:head.revision,digest:checkpointBytesDigest(head.checkpoint!)},pins:PINS,wakeKeyDigest:wakeKeyDigest(wake),release:[],...over}}
  const readWait=async(run:string):Promise<RunWait>=>(await store.readWait(run,'wait-1'))!
+ const allJobs=async(run:string)=>{const out:RunJob[]=[];for(let after:string|null=null;;){const page:JobPage=await store.listJobs(run,after,100);out.push(...page.jobs);if(page.next===null)return out;after=page.next}}
  /** A refusal changes nothing: the job reads as it did. */
  const unchanged=async(run:string,job:string,property:string,attempt:()=>Promise<unknown>,reason:string)=>{const before=await store.readJob(run,job);await refuses(property,attempt,reason);check(property,same(await store.readJob(run,job),before))}
 
@@ -170,6 +171,73 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await store.acquireLease({resource:'run-stale',owner:'worker-a',expectedRevision:staled.revision,durationMs:HOUR})
  await unchanged('run-stale',staled.job,'job.reclaim.stale',()=>store.reclaimJob('run-stale',staled.job,st.fence),'stale-epoch')
  check('job.reclaim.stale',(await store.readJob('run-stale',staled.job))?.reclaimed===undefined)
+ // A cancel: asked for under a current fence, of a started job, moving no state. A stale fence asks nothing: unlike a start's answer.
+ const askOf=(run:string,job:string,operation='cancel-1'):JobCancelAsk=>({version:1,resource:run,job,generation:1,by:'tool',operation})
+ const wordOf=(run:string,job:string,key:string,over:Partial<JobCancelAcknowledgement>={}):JobCancelAcknowledgement=>({version:1,resource:run,job,generation:1,evidence:'word-1',outcome:'accepted',key,...over})
+ const can=await open('run-cancel')
+ const canJob=await register('run-cancel','op-1',keyFor(150),can.fence,can.revision)
+ await unchanged('run-cancel',canJob.job,'job.cancel.unproven',()=>store.requestJobCancel(askOf('run-cancel',canJob.job),can.fence),'job-unproven')
+ await store.answerJob(answerOf('run-cancel',canJob.job),can.fence)
+ await unchanged('run-cancel',canJob.job,'job.cancel.none',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150))),'no-cancel')
+ await unchanged('run-cancel',canJob.job,'job.cancel.fence',()=>store.requestJobCancel(askOf('run-cancel',canJob.job),{...can.fence,owner:'worker-x'}),'other-owner')
+ const asked=await answers('job.cancel.records',()=>store.requestJobCancel(askOf('run-cancel',canJob.job),can.fence))
+ check('job.cancel.records',asked.state==='started'&&asked.cancel?.requested.by==='tool'&&asked.cancel.requested.operation==='cancel-1'&&asked.cancel.requested.owner==='worker-a'&&asked.cancel.requested.epoch===can.fence.epoch&&asked.cancel.requested.at===iso(at))
+ check('job.cancel.first',same(await answers('job.cancel.first',()=>store.requestJobCancel(askOf('run-cancel',canJob.job,'cancel-2'),can.fence)),asked))
+ await unchanged('run-cancel',canJob.job,'job.cancel.key',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,WRONG)),'unauthenticated')
+ const worded=await answers('job.cancel.word',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150))))
+ check('job.cancel.word',worded.state==='started'&&worded.cancel?.acknowledged?.outcome==='accepted'&&worded.cancel.acknowledged.evidence==='word-1'&&worded.cancel.acknowledged.at===iso(at))
+ check('job.cancel.same',same(await answers('job.cancel.same',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150)))),worded))
+ await unchanged('run-cancel',canJob.job,'job.cancel.conflict',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150),{outcome:'refused'})),'conflict')
+ await unchanged('run-cancel',canJob.job,'job.cancel.again',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150),{evidence:'word-2'})),'stale')
+ const stopped=await store.completeJob(complete('run-cancel',canJob.job,keyFor(150),{outcome:'cancelled'}))
+ check('job.cancel.completes',stopped.state==='completed'&&same(stopped.cancel,worded.cancel))
+ await unchanged('run-cancel',canJob.job,'job.cancel.settled',()=>store.requestJobCancel(askOf('run-cancel',canJob.job,'cancel-3'),can.fence),'job-settled')
+ const closedCan=await open('run-cancel-closed')
+ const closedJob=await register('run-cancel-closed','op-1',keyFor(151),closedCan.fence,closedCan.revision)
+ await store.reconcileJob(reconcile('run-cancel-closed',closedJob.job,keyFor(151)))
+ await unchanged('run-cancel-closed',closedJob.job,'job.cancel.closed',()=>store.requestJobCancel(askOf('run-cancel-closed',closedJob.job),closedCan.fence),'job-settled')
+ const staleCan=await open('run-cancel-stale')
+ const staleJob=await register('run-cancel-stale','op-1',keyFor(152),staleCan.fence,staleCan.revision)
+ await store.answerJob(answerOf('run-cancel-stale',staleJob.job),staleCan.fence)
+ await store.releaseLease(staleCan.fence)
+ const newEpoch=fenceOf(await store.acquireLease({resource:'run-cancel-stale',owner:'worker-a',expectedRevision:staleJob.revision,durationMs:HOUR}))
+ await unchanged('run-cancel-stale',staleJob.job,'job.cancel.stale',()=>store.requestJobCancel(askOf('run-cancel-stale',staleJob.job),staleCan.fence),'stale-epoch')
+ at+=2*HOUR
+ await unchanged('run-cancel-stale',staleJob.job,'job.cancel.expired',()=>store.requestJobCancel(askOf('run-cancel-stale',staleJob.job),newEpoch),'expired')
+ // An abandon's own transaction: the lease under the reserved owner at a new epoch, and a cancel asked for each started job.
+ const ab=await open('run-abandon')
+ const abStarted=await register('run-abandon','op-1',keyFor(153),ab.fence,ab.revision)
+ const abUnproven=await register('run-abandon','op-2',keyFor(154),ab.fence,abStarted.revision)
+ const abDone=await register('run-abandon','op-3',keyFor(155),ab.fence,abUnproven.revision)
+ await store.answerJob(answerOf('run-abandon',abStarted.job),ab.fence)
+ await store.answerJob(answerOf('run-abandon',abDone.job),ab.fence)
+ await store.completeJob(complete('run-abandon',abDone.job,keyFor(155)))
+ const beforeAbandon=(await store.load('run-abandon'))!.revision
+ const abTaken=await answers('job.abandon.lease',()=>store.abandonJobs({version:1,resource:'run-abandon',command:'cmd-1',durationMs:HOUR}))
+ check('job.abandon.lease',abTaken.lease?.owner===JOB_ABANDON_OWNER&&abTaken.lease.state==='held'&&Number(abTaken.lease.epoch)>Number(ab.fence.epoch)&&(await store.readLease('run-abandon'))?.epoch===abTaken.lease.epoch)
+ check('job.abandon.nocommit',(await store.load('run-abandon'))?.revision===beforeAbandon)
+ await refuses('job.abandon.epoch',()=>store.commitFenced(claim('run-abandon',beforeAbandon,'op-late',WRONG),ab.fence),'stale-epoch')
+ const abasked=await store.readJob('run-abandon',abStarted.job)
+ check('job.abandon.asks',abasked?.state==='started'&&abasked.cancel?.requested.by==='command'&&abasked.cancel.requested.command==='cmd-1'&&abasked.cancel.requested.owner===JOB_ABANDON_OWNER&&abasked.cancel.requested.epoch===abTaken.lease?.epoch)
+ check('job.abandon.only',(await store.readJob('run-abandon',abUnproven.job))?.cancel===undefined&&(await store.readJob('run-abandon',abDone.job))?.cancel===undefined)
+ check('job.abandon.jobs',same(abTaken.jobs,await allJobs('run-abandon')))
+ // A delegated run's principals stay on the abandon's lease: a takeover is a new epoch of the same principals.
+ if((store as {leasePrincipals?:true}).leasePrincipals===true){
+  const principal={sub:{kind:'person' as const,issuer:'https://host.example/',subject:'kit-subject'},rootActor:'b1'.repeat(16),host:'kit-host'}
+  const head=await store.commit({runId:'run-abandon-principal',expectedRevision:null,commitId:'run-abandon-principal-open',checkpoint:bytes('{"kit":"job"}'),events:[]})
+  await store.acquireLease({resource:'run-abandon-principal',owner:'worker-a',expectedRevision:head.revision,durationMs:HOUR,principal})
+  const held=await store.abandonJobs({version:1,resource:'run-abandon-principal',command:'cmd-3',durationMs:HOUR})
+  check('job.abandon.principal',held.lease?.version===2&&same(held.lease.principal,principal))
+ }
+ // Past a deadline no lease can be granted: each cancel stays undelivered, and says so.
+ const lost=await open('run-abandon-late')
+ const lostJob=await register('run-abandon-late','op-1',keyFor(156),lost.fence,lost.revision)
+ await store.answerJob(answerOf('run-abandon-late',lostJob.job),lost.fence)
+ await store.limitRun({version:1,resource:'run-abandon-late',run:iso(at+MINUTE)})
+ at+=MINUTE
+ const late2=await answers('job.abandon.past',()=>store.abandonJobs({version:1,resource:'run-abandon-late',command:'cmd-2',durationMs:HOUR}))
+ const undelivered=await store.readJob('run-abandon-late',lostJob.job)
+ check('job.abandon.past',late2.lease===undefined&&undelivered?.cancel?.requested.undelivered===true&&undelivered.cancel.requested.owner===undefined)
  // The answer follows the re-claim: the fence that re-sent it answers, and the first one no longer does.
  const f=await open('run-f')
  const moved=await register('run-f','op-1',KEYS[4],f.fence,f.revision)
@@ -204,7 +272,6 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await refuses('job.wake.event',()=>store.wakeWait(event),'mismatch')
  check('job.wake.event',(await readWait('run-i')).state==='parked')
  // A restart keeps every job and every wait as they were, all of each: a job completed before it is read after it.
- const allJobs=async(run:string)=>{const out:RunJob[]=[];for(let after:string|null=null;;){const page:JobPage=await store.listJobs(run,after,100);out.push(...page.jobs);if(page.next===null)return out;after=page.next}}
  const restartWhole=async()=>{
   const before=new Map<string,{jobs:RunJob[];waits:unknown}>()
   for(const run of touched)before.set(run,{jobs:await allJobs(run),waits:await store.exportWaits(run)})
@@ -268,6 +335,14 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  at+=MINUTE
  await store.completeJob(complete('run-deadline',dated.job,keyFor(133)))
  check('job.wake.deadline',(await readWait('run-deadline')).state==='parked')
+ // Neither a cancel nor the host's word on it wakes a wait.
+ const quiet=await open('run-cancel-wait')
+ const quietJob=await register('run-cancel-wait','op-1',keyFor(157),quiet.fence,quiet.revision)
+ await store.answerJob(answerOf('run-cancel-wait',quietJob.job),quiet.fence)
+ await store.requestJobCancel({version:1,resource:'run-cancel-wait',job:quietJob.job,generation:1,by:'tool',operation:'cancel-1'},quiet.fence)
+ await store.parkWait(await parkOf('run-cancel-wait',quietJob.job,keyFor(158)),quiet.fence)
+ await store.acknowledgeJobCancel({version:1,resource:'run-cancel-wait',job:quietJob.job,generation:1,evidence:'word-1',outcome:'accepted',key:keyFor(157)})
+ check('job.cancel.nowake',(await readWait('run-cancel-wait')).state==='parked')
  // A completion wakes the wait on its own job, not the run's parked wait whichever job it is for.
  const two=await open('run-two')
  const one=await register('run-two','op-1',keyFor(135),two.fence,two.revision)

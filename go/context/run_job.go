@@ -36,25 +36,30 @@ const (
 )
 
 type (
-	RunJob                = contract.RunJob
-	JobActor              = contract.RunJobActor
-	JobFact               = contract.RunJobFact
-	JobCompletion         = contract.RunJobCompletionRecord
-	JobContradiction      = contract.RunJobContradiction
-	JobRegistration       = contract.RunJobRegistration
-	JobAnswer             = contract.RunJobAnswer
-	JobReconciliation     = contract.RunJobReconciliation
-	JobCompletionEvidence = contract.RunJobCompletion
-	JobExport             = contract.RunJobExport
-	JobReport             = contract.RunJobReport
-	JobReportEntry        = contract.RunJobReportEntry
-	JobProjection         = contract.RunJobProjection
-	JobGatewayMembers     = contract.RunJobGatewayMembers
+	RunJob                   = contract.RunJob
+	JobActor                 = contract.RunJobActor
+	JobFact                  = contract.RunJobFact
+	JobCompletion            = contract.RunJobCompletionRecord
+	JobContradiction         = contract.RunJobContradiction
+	JobRegistration          = contract.RunJobRegistration
+	JobAnswer                = contract.RunJobAnswer
+	JobReconciliation        = contract.RunJobReconciliation
+	JobCompletionEvidence    = contract.RunJobCompletion
+	JobCancel                = contract.RunJobCancel
+	JobCancelRequest         = contract.RunJobCancelRequest
+	JobCancelAcknowledged    = contract.RunJobCancelAcknowledged
+	JobCancelAsk             = contract.RunJobCancelAsk
+	JobCancelAcknowledgement = contract.RunJobCancelAcknowledgement
+	JobExport                = contract.RunJobExport
+	JobReport                = contract.RunJobReport
+	JobReportEntry           = contract.RunJobReportEntry
+	JobProjection            = contract.RunJobProjection
+	JobGatewayMembers        = contract.RunJobGatewayMembers
 )
 
 // JobRefusalReasons and JobCapabilityReasons are every reason, in the vector's order.
 var (
-	JobRefusalReasons    = []string{"invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven"}
+	JobRefusalReasons    = []string{"invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven", "no-cancel"}
 	JobCapabilityReasons = []string{"store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent", "chat-store-unsupported"}
 )
 
@@ -149,6 +154,138 @@ func jobGenerationOf(m waitMembers) error {
 	}
 	return nil
 }
+func readJobCancelRequest(raw json.RawMessage) (JobCancelRequest, error) {
+	m, err := jobMembers(raw, []string{"by", "operation", "at"}, []string{"owner", "epoch", "command", "undelivered"})
+	if err != nil {
+		return JobCancelRequest{}, err
+	}
+	var out JobCancelRequest
+	if out.By, err = m.enum("by", "tool", "command"); err != nil {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	if out.Operation, err = m.id("operation"); err != nil {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	if out.At, err = m.time("at"); err != nil {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	if m.has("owner") != m.has("epoch") {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	undelivered := false
+	if m.has("undelivered") {
+		if string(bytes.TrimSpace(m["undelivered"])) != "true" {
+			return JobCancelRequest{}, jobInvalid()
+		}
+		undelivered = true
+		out.Undelivered = &undelivered
+	}
+	// By a tool: under its fence, and no command. By a command: under its fence, or undelivered where no lease could
+	// be had.
+	if out.By == "tool" && (m.has("command") || !m.has("owner") || undelivered) || out.By == "command" && (!m.has("command") || m.has("owner") == undelivered) {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	if m.has("owner") {
+		owner, err := m.id("owner")
+		if err != nil {
+			return JobCancelRequest{}, jobInvalid()
+		}
+		epoch, err := m.epoch("epoch")
+		if err != nil {
+			return JobCancelRequest{}, jobInvalid()
+		}
+		out.Owner, out.Epoch = &owner, &epoch
+	}
+	if jobOptionalID(m, "command", &out.Command) != nil {
+		return JobCancelRequest{}, jobInvalid()
+	}
+	return out, nil
+}
+
+func readJobCancel(raw json.RawMessage) (*JobCancel, error) {
+	m, err := jobMembers(raw, []string{"requested"}, []string{"acknowledged"})
+	if err != nil {
+		return nil, err
+	}
+	var out JobCancel
+	if out.Requested, err = readJobCancelRequest(m["requested"]); err != nil {
+		return nil, err
+	}
+	if m.has("acknowledged") {
+		ack, err := jobMembers(m["acknowledged"], []string{"evidence", "outcome", "at", "digest"}, []string{"receipt"})
+		if err != nil {
+			return nil, err
+		}
+		var held JobCancelAcknowledged
+		if held.Evidence, err = ack.id("evidence"); err != nil {
+			return nil, jobInvalid()
+		}
+		if held.Outcome, err = ack.enum("outcome", "accepted", "refused"); err != nil {
+			return nil, jobInvalid()
+		}
+		if held.At, err = ack.time("at"); err != nil {
+			return nil, jobInvalid()
+		}
+		if held.Digest, err = ack.digest("digest"); err != nil {
+			return nil, jobInvalid()
+		}
+		if jobOptionalID(ack, "receipt", &held.Receipt) != nil {
+			return nil, jobInvalid()
+		}
+		out.Acknowledged = &held
+	}
+	return &out, nil
+}
+
+// ReadJobCancelAsk reads what the writer or an abandon records before a cancel is sent.
+func ReadJobCancelAsk(raw []byte) (JobCancelAsk, error) {
+	m, err := jobMembers(raw, []string{"version", "resource", "job", "generation", "by", "operation"}, []string{"command"})
+	if err != nil {
+		return JobCancelAsk{}, err
+	}
+	out := JobCancelAsk{Version: JobRecordVersion, Generation: JobGeneration}
+	if err = readJobCommon(m, &out.Resource, &out.Job); err != nil {
+		return JobCancelAsk{}, err
+	}
+	if out.By, err = m.enum("by", "tool", "command"); err != nil {
+		return JobCancelAsk{}, jobInvalid()
+	}
+	if out.Operation, err = m.id("operation"); err != nil {
+		return JobCancelAsk{}, jobInvalid()
+	}
+	if (out.By == "command") != m.has("command") || jobOptionalID(m, "command", &out.Command) != nil {
+		return JobCancelAsk{}, jobInvalid()
+	}
+	return out, nil
+}
+
+// ReadJobCancelAcknowledgement reads a host's word on a cancel, with its key.
+func ReadJobCancelAcknowledgement(raw []byte) (JobCancelAcknowledgement, error) {
+	m, err := jobMembers(raw, []string{"version", "resource", "job", "generation", "evidence", "outcome", "key"}, []string{"receipt"})
+	if err != nil {
+		return JobCancelAcknowledgement{}, err
+	}
+	out := JobCancelAcknowledgement{Version: JobRecordVersion, Generation: JobGeneration}
+	if err = readJobCommon(m, &out.Resource, &out.Job); err != nil {
+		return JobCancelAcknowledgement{}, err
+	}
+	if out.Evidence, err = m.id("evidence"); err != nil {
+		return JobCancelAcknowledgement{}, jobInvalid()
+	}
+	if out.Outcome, err = m.enum("outcome", "accepted", "refused"); err != nil {
+		return JobCancelAcknowledgement{}, jobInvalid()
+	}
+	if jobOptionalID(m, "receipt", &out.Receipt) != nil {
+		return JobCancelAcknowledgement{}, jobInvalid()
+	}
+	key, err := m.str("key")
+	if err != nil || !ValidJobKey(key) {
+		return JobCancelAcknowledgement{}, jobInvalid()
+	}
+	out.Key = key
+	return out, nil
+}
+
 func readJobActor(raw json.RawMessage) (JobActor, error) {
 	m, err := jobMembers(raw, []string{"owner", "epoch", "at"}, nil)
 	if err != nil {
@@ -246,7 +383,7 @@ func readJobContradiction(raw json.RawMessage) (JobContradiction, error) {
 // ReadRunJob reads a version 1 job record and holds every rule the schema cannot state: its identity follows
 // its run and operation, and each state holds exactly what proves it.
 func ReadRunJob(raw []byte) (RunJob, error) {
-	m, err := jobMembers(raw, []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "state"}, []string{"reclaimed", "principal", "handle", "handleDigested", "receipt", "started", "closed", "completion", "contradictions"})
+	m, err := jobMembers(raw, []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "state"}, []string{"cancel", "reclaimed", "principal", "handle", "handleDigested", "receipt", "started", "closed", "completion", "contradictions"})
 	if err != nil {
 		return RunJob{}, err
 	}
@@ -298,6 +435,15 @@ func ReadRunJob(raw []byte) (RunJob, error) {
 	}
 	if job.HandleDigested, err = jobHandleMarker(m, job.Handle); err != nil {
 		return RunJob{}, err
+	}
+	if m.has("cancel") {
+		if job.Cancel, err = readJobCancel(m["cancel"]); err != nil {
+			return RunJob{}, err
+		}
+		// A cancel is asked of a start that is known, and it moves no state.
+		if !m.has("started") {
+			return RunJob{}, jobInvalid()
+		}
 	}
 	if m.has("started") {
 		if job.Started, err = readJobFact(m["started"]); err != nil {
@@ -856,6 +1002,92 @@ func (t *JobTable) Reclaim(resource, job string, fence LeaseFence) (RunJob, erro
 	return cloneRunJob(*row), nil
 }
 
+// RequestCancel is a cancel asked for, before it is sent. It moves no state, and the store checks the fence with
+// its leases: unlike a start's answer, a stale worker asks nothing. With no fence, an abandon past its deadline: it
+// stays undelivered and says so. Only a started job has something to cancel; the first request stands.
+func (t *JobTable) RequestCancel(input JobCancelAsk, fence *LeaseFence) (RunJob, error) {
+	raw, err := jobRecordOf(input)
+	if err != nil {
+		return RunJob{}, jobInvalid()
+	}
+	held, err := ReadJobCancelAsk(raw)
+	if err != nil {
+		return RunJob{}, err
+	}
+	row, err := t.held(held.Resource, held.Job)
+	if err != nil {
+		return RunJob{}, err
+	}
+	switch row.State {
+	case "completed", "not-started":
+		return RunJob{}, jobRefused("job-settled")
+	case "unproven":
+		return RunJob{}, jobRefused("job-unproven")
+	}
+	if fence == nil && held.By == "tool" {
+		return RunJob{}, jobInvalid()
+	}
+	if row.Cancel != nil {
+		return cloneRunJob(*row), nil
+	}
+	request := JobCancelRequest{By: held.By, Operation: held.Operation, At: t.stamp(), Command: held.Command}
+	if fence != nil {
+		owner, epoch := fence.Owner, fence.Epoch
+		request.Owner, request.Epoch = &owner, &epoch
+	} else {
+		yes := true
+		request.Undelivered = &yes
+	}
+	row.Cancel = &JobCancel{Requested: request}
+	return cloneRunJob(*row), nil
+}
+
+// AcknowledgeCancel is the host's word on a cancel, by the completion key, with no lease. It moves no state and
+// wakes nothing. First write wins.
+func (t *JobTable) AcknowledgeCancel(input JobCancelAcknowledgement) (RunJob, error) {
+	raw, err := jobRecordOf(input)
+	if err != nil {
+		return RunJob{}, jobInvalid()
+	}
+	held, err := ReadJobCancelAcknowledgement(raw)
+	if err != nil {
+		return RunJob{}, err
+	}
+	row, err := t.held(held.Resource, held.Job)
+	if err != nil {
+		return RunJob{}, err
+	}
+	if err := jobAuthenticate(row, held.Key); err != nil {
+		return RunJob{}, err
+	}
+	if row.Cancel == nil {
+		return RunJob{}, jobRefused("no-cancel")
+	}
+	digested := JobEvidenceDigest(held)
+	if ack := row.Cancel.Acknowledged; ack != nil {
+		if ack.Evidence != held.Evidence {
+			return RunJob{}, jobRefused("stale")
+		}
+		if ack.Digest != digested {
+			return RunJob{}, jobRefused("conflict")
+		}
+		return cloneRunJob(*row), nil
+	}
+	row.Cancel.Acknowledged = &JobCancelAcknowledged{Evidence: held.Evidence, Outcome: held.Outcome, At: t.stamp(), Digest: digested, Receipt: held.Receipt}
+	return cloneRunJob(*row), nil
+}
+
+// Started is the run's started jobs, for an abandon's own transaction.
+func (t *JobTable) Started(resource string) []RunJob {
+	out := []RunJob{}
+	for _, row := range t.rows[resource] {
+		if row.State == "started" {
+			out = append(out, cloneRunJob(*row))
+		}
+	}
+	return out
+}
+
 // AdmitPark is a park on a job: only a started job has a completion to wait for.
 func (t *JobTable) AdmitPark(resource, job string) error {
 	row, err := t.held(resource, job)
@@ -920,6 +1152,16 @@ func (t *JobTable) Export(resource string) (JobExport, error) {
 // invalid. ParkWait of a job wait refuses a settled job (job-settled) and an unproven one (job-unproven) in the
 // park's own transaction. The package checks none of this in a host store; CheckRunStoreJobConformance does.
 type JobStore interface {
+	// RequestJobCancel is under a current fence, before a cancel is sent (job-settled, job-unproven otherwise). The
+	// first request stands. It moves no state.
+	RequestJobCancel(ctx context.Context, ask JobCancelAsk, fence LeaseFence) (RunJob, error)
+	// AcknowledgeJobCancel is authenticated by the completion key, with no lease. First write wins; it moves no
+	// state and wakes nothing; no-cancel with no request.
+	AcknowledgeJobCancel(ctx context.Context, evidence JobCancelAcknowledgement) (RunJob, error)
+	// AbandonJobs is one transaction: the lease under JobAbandonOwner at a new epoch, so old workers get stale-epoch,
+	// and a cancel asked for each started job. A closed run or one past its deadline grants no lease: each is then
+	// asked undelivered, and it says so.
+	AbandonJobs(ctx context.Context, input JobAbandon) (JobAbandonTaken, error)
 	JobVersion() int
 	// JobLifetime is durable when jobs survive the store's process, process when they end with it.
 	JobLifetime() string
@@ -990,6 +1232,51 @@ func (m *MemoryRunStore) ReclaimJob(ctx context.Context, resource, job string, f
 		return err
 	})
 	return held, err
+}
+func (m *MemoryRunStore) RequestJobCancel(ctx context.Context, ask JobCancelAsk, fence LeaseFence) (held RunJob, err error) {
+	err = m.leaseTransition(ctx, func() error {
+		if fence.Resource != ask.Resource {
+			return &LeaseRefused{Reason: "resource-mismatch"}
+		}
+		if _, err := m.leases.Check(fence); err != nil {
+			return err
+		}
+		held, err = m.jobs.RequestCancel(ask, &fence)
+		return err
+	})
+	return held, err
+}
+func (m *MemoryRunStore) AcknowledgeJobCancel(ctx context.Context, evidence JobCancelAcknowledgement) (held RunJob, err error) {
+	err = m.leaseTransition(ctx, func() error { held, err = m.jobs.AcknowledgeCancel(evidence); return err })
+	return held, err
+}
+func (m *MemoryRunStore) AbandonJobs(ctx context.Context, input JobAbandon) (taken JobAbandonTaken, err error) {
+	err = m.leaseTransition(ctx, func() error {
+		var fence *LeaseFence
+		if m.waits.Leasable(input.Resource) {
+			lease, err := m.leases.Seize(input.Resource, JobAbandonOwner, input.DurationMs, m.waits.Ceiling(input.Resource))
+			if err != nil {
+				return err
+			}
+			taken.Lease = &lease
+			held := FenceOf(lease)
+			fence = &held
+		}
+		for _, job := range m.jobs.Started(input.Resource) {
+			command := input.Command
+			ask := JobCancelAsk{Version: JobRecordVersion, Resource: input.Resource, Job: job.Job, Generation: JobGeneration, By: "command", Operation: JobCancelOperation(input.Command, job.Job), Command: &command}
+			if _, err := m.jobs.RequestCancel(ask, fence); err != nil {
+				return err
+			}
+		}
+		exported, err := m.jobs.Export(input.Resource)
+		if err != nil {
+			return err
+		}
+		taken.Jobs = exported.Jobs
+		return nil
+	})
+	return taken, err
 }
 func (m *MemoryRunStore) ReadJob(ctx context.Context, resource, job string) (held *RunJob, err error) {
 	err = m.leaseTransition(ctx, func() error { held, err = m.jobs.Read(resource, job); return err })
@@ -1182,6 +1469,13 @@ func JobProjectionOf(job RunJob) JobProjection {
 		held := true
 		out.Contradicted = &held
 	}
+	if job.Cancel != nil {
+		said := "requested"
+		if job.Cancel.Acknowledged != nil {
+			said = job.Cancel.Acknowledged.Outcome
+		}
+		out.Cancel = &said
+	}
 	return out
 }
 
@@ -1280,6 +1574,49 @@ func readJobStartAnswer(answer *JobStartAnswer) error {
 	return nil
 }
 
+const (
+	jobCancelRequested = "cancel requested: that does not say it stopped, only its completion does; do not poll"
+	jobCancelAccepted  = "cancel accepted by the host: that does not say it stopped, only its completion does; do not poll"
+	jobCancelRefused   = "the host refused this cancel: it may still be running; tell the person"
+	// A cancel's fixed failures: no host text reaches the row, and neither reads as the job refusal's invalid input.
+	jobCancelUnrecordedDetail = "JobCancelUnrecorded: this cancel may have been sent, and what came of it could not be recorded. It was not sent again. Read its job."
+	jobCancelNotSentDetail    = "JobCancelNotSent: this cancel was not sent, because of what its job says now. It will not be sent. Read its job."
+)
+
+func jobCancelUnrecorded() error {
+	held := failure.New("unknown", "tool", "unknown")
+	detail := jobCancelUnrecordedDetail
+	held.Detail = &detail
+	return failure.NewError(held)
+}
+func jobCancelNotSent() error {
+	held := failure.New("unknown", "tool", "not-started")
+	detail := jobCancelNotSentDetail
+	held.Detail = &detail
+	return failure.NewError(held)
+}
+
+// JobCancelResult is a cancel's row and answer, composed from the job as it reads now. A row says nothing about its
+// job.
+func JobCancelResult(job RunJob) ToolResult {
+	view := JobProjectionOf(job)
+	note := ""
+	if job.State == "started" && job.Cancel != nil {
+		switch {
+		case job.Cancel.Acknowledged == nil:
+			note = jobCancelRequested
+		case job.Cancel.Acknowledged.Outcome == "refused":
+			note = jobCancelRefused
+		default:
+			note = jobCancelAccepted
+		}
+	}
+	if note != "" {
+		view.Note = &note
+	}
+	return jobTextResult(view, job.State != "started" && job.State != "completed")
+}
+
 func keptJobEvidence(text string) string {
 	if validStorageID(text) {
 		return text
@@ -1317,6 +1654,251 @@ func (w *RunWriter) jobStartAsRecorded(ctx context.Context, job string) *ToolRes
 	return &result
 }
 
+// JobCancelInput is what a cancel is handed: the record's job, never model bytes. Handle is the host's own reference.
+// A handle kept as its digest is no reference (handleDigested): it comes as HandleDigest and no Handle, and the host
+// maps the job itself or answers so.
+type JobCancelInput struct {
+	Job          string
+	Generation   int
+	Source       string
+	Tool         string
+	Handle       string
+	HandleDigest string
+}
+
+// JobCancelInputOf is what the record says to send.
+func JobCancelInputOf(job RunJob) JobCancelInput {
+	out := JobCancelInput{Job: job.Job, Generation: JobGeneration, Source: job.Source, Tool: job.Tool}
+	switch {
+	case job.Handle == nil:
+	case job.HandleDigested != nil:
+		out.HandleDigest = *job.Handle
+	default:
+		out.Handle = *job.Handle
+	}
+	return out
+}
+
+// JobCancelCard is M4's card reader over the record: what a person is shown is what the record says, not what the
+// model wrote.
+type JobCancelCard struct {
+	Source     string `json:"source"`
+	Tool       string `json:"tool"`
+	State      string `json:"state"`
+	Generation int    `json:"generation"`
+	Operation  string `json:"operation"`
+}
+
+// JobCancelCardOf reads the card from a job.
+func JobCancelCardOf(job RunJob) JobCancelCard {
+	return JobCancelCard{Source: job.Source, Tool: job.Tool, State: job.State, Generation: JobGeneration, Operation: job.Job}
+}
+
+// JobCancelSchema is a cancel tool's schema, which a source's tool list holds beside its start's.
+var JobCancelSchema = json.RawMessage(`{"type":"object","properties":{"job":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"generation":{"const":1}},"required":["job","generation"],"additionalProperties":false}`)
+
+// JobCancelSpec declares a start's cancel, as a pair with it on one source.
+type JobCancelSpec struct {
+	Name        string
+	Description string
+	Source      *ToolSource
+	Start       HostTool
+	Approve     func(ApprovalRequest) string
+	Approval    string
+	Cancel      func(ctx context.Context, input JobCancelInput) error
+}
+
+// JobCancelTool (H5): a job's handle goes only to the source that started it. Its arguments are exactly {job,
+// generation}, and what is sent is the record's. Its rows are never evidence, and no child is offered one.
+func JobCancelTool(spec JobCancelSpec) (HostTool, error) {
+	if spec.Start.job == nil || spec.Start.job.start == nil || spec.Source == nil || spec.Start.Source == nil || spec.Start.Source.ID != spec.Source.ID || spec.Cancel == nil {
+		return HostTool{}, &JobCapabilityRefused{Reason: "job-host-unsupported"}
+	}
+	return HostTool{Name: spec.Name, Description: spec.Description, InputSchema: JobCancelSchema, Source: spec.Source, EffectClass: "act", Taxonomy: &ToolTaxonomy{Operation: "run", Effect: "act"}, Approve: spec.Approve, Approval: spec.Approval,
+		Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+			return ToolResult{}, &JobCapabilityRefused{Reason: "store-unsupported"}
+		},
+		job: &jobToolSeam{cancel: spec.Cancel, pair: spec.Start.job}}, nil
+}
+
+// readJobCancelArgument is a cancel's arguments: exactly {job, generation}, generation 1, with repeated and folded
+// names refused on the raw bytes. Anything else is no job of this run.
+func readJobCancelArgument(raw []byte) (string, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	refused := jobRefused("no-job")
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
+		return "", refused
+	}
+	job, generation := "", false
+	for decoder.More() {
+		name, err := decoder.Token()
+		if err != nil {
+			return "", refused
+		}
+		value, err := decoder.Token()
+		if err != nil {
+			return "", refused
+		}
+		switch {
+		case name == "job" && job == "":
+			text, isText := value.(string)
+			if !isText || !jobDigest.MatchString(text) {
+				return "", refused
+			}
+			job = text
+		case name == "generation" && !generation:
+			if value != json.Number("1") {
+				return "", refused
+			}
+			generation = true
+		default:
+			return "", refused
+		}
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim('}') || decoder.More() || job == "" || !generation {
+		return "", refused
+	}
+	return job, nil
+}
+
+// JobCancelRefusal is whether this job may be asked to cancel through this pair, from what its record says now,
+// before anyone is asked and before any claim.
+func JobCancelRefusal(job *RunJob, name, identity string) string {
+	switch {
+	case job == nil || job.Source != identity || job.Tool != name:
+		return "no-job"
+	case job.State == "completed" || job.State == "not-started":
+		return "job-settled"
+	case job.State == "unproven":
+		return "job-unproven"
+	}
+	return ""
+}
+
+// AcknowledgeJobCancel delivers a host's word on a cancel. Only a completion with cancelled says the job stopped.
+func AcknowledgeJobCancel(ctx context.Context, store RunStore, evidence JobCancelAcknowledgement) (RunJob, error) {
+	port, err := jobPortOf(store)
+	if err != nil {
+		return RunJob{}, err
+	}
+	raw, err := jobRecordOf(evidence)
+	if err != nil {
+		return RunJob{}, jobInvalid()
+	}
+	held, err := ReadJobCancelAcknowledgement(raw)
+	if err != nil {
+		return RunJob{}, err
+	}
+	job, err := port.AcknowledgeJobCancel(ctx, held)
+	if err != nil {
+		return RunJob{}, err
+	}
+	return jobReadBack(job, held.Resource, held.Job)
+}
+
+// JobAbandonOwner is the owner an abandon's lease is taken under. A host's workers do not use it.
+const JobAbandonOwner = "job-abandon"
+
+// JobAbandon is an abandon's command: the lease under the reserved owner at a new epoch, and a cancel asked for each
+// started job.
+type JobAbandon struct {
+	Resource   string
+	Command    string
+	DurationMs int64
+}
+
+// JobAbandonTaken is what that transaction answers: no Lease where none could be granted.
+type JobAbandonTaken struct {
+	Lease *RunLease
+	Jobs  []RunJob
+}
+
+// JobCancelOperation is a stable identity for an abandon's cancel of a job: a host's retry of the command is the same
+// operation, and the effect host admits it once.
+func JobCancelOperation(command, job string) string {
+	return durableDigest([]byte(CanonicalJSON(ObjectOf("command", String(command), "generation", Number(1), "job", String(job)))))
+}
+
+// JobAbandonDelivery is what became of one job's cancel.
+type JobAbandonDelivery struct {
+	Job      string
+	Delivery string
+}
+
+// JobAbandonAnswer is an abandon's answer: no Fence where no lease could be granted.
+type JobAbandonAnswer struct {
+	Fence *LeaseFence
+	Jobs  []JobAbandonDelivery
+}
+
+// AbandonJobs is ADR-0025 decision 8: a host's command to stop what the run owns. The command stands for the person's
+// approval, the one stated exception to decision 7's approval boundary, so a source's policy is not asked. It takes
+// the lease under a reserved owner at a new epoch and hands the fence back: old workers get stale-epoch. Each cancel
+// goes through the effect host with a stable operation and no run commit, so a retry of the command sends nothing
+// twice. A start with no handle cannot be cancelled and says so; past a deadline no lease can be granted, so each
+// cancel is recorded undelivered and says so. None of it proves anything stopped.
+func AbandonJobs(ctx context.Context, store RunStore, host EffectHost, resource, command string, durationMs int64, cancel func(context.Context, JobCancelInput) error) (JobAbandonAnswer, error) {
+	if err := AdmitJobs(store, host); err != nil {
+		return JobAbandonAnswer{}, err
+	}
+	port, err := jobDurablePort(store)
+	if err != nil {
+		return JobAbandonAnswer{}, err
+	}
+	taken, err := port.AbandonJobs(ctx, JobAbandon{Resource: resource, Command: command, DurationMs: durationMs})
+	if err != nil {
+		return JobAbandonAnswer{}, err
+	}
+	out := JobAbandonAnswer{Jobs: []JobAbandonDelivery{}}
+	var view RunStore
+	if taken.Lease != nil {
+		fence := FenceOf(*taken.Lease)
+		if fence.Owner != JobAbandonOwner || fence.Resource != resource {
+			return JobAbandonAnswer{}, &LeaseRefused{Reason: "invalid"}
+		}
+		out.Fence = &fence
+		if view, err = FencedRunStore(store, fence, host); err != nil {
+			return JobAbandonAnswer{}, err
+		}
+	}
+	for _, row := range taken.Jobs {
+		job, err := jobReadBack(row, resource, row.Job)
+		if err != nil {
+			return JobAbandonAnswer{}, err
+		}
+		delivery := "settled"
+		// not-started is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing
+		// to stop.
+		if job.Contradictions != nil {
+			delivery = "contradicted"
+		}
+		switch {
+		case job.State == "unproven":
+			delivery = "no-handle"
+		case job.State != "started":
+		case job.Cancel != nil && job.Cancel.Acknowledged != nil && job.Cancel.Acknowledged.Outcome == "accepted":
+			delivery = "acknowledged"
+		case view == nil:
+			delivery = "undelivered"
+		default:
+			operation := EffectOperation{Run: resource, Operation: JobCancelOperation(command, job.Job), Source: job.Source, Tool: job.Tool, RequestDigest: durableDigest([]byte(CanonicalJSON(ObjectOf("generation", Number(1), "job", String(job.Job)))))}
+			err := fencedEffect(ctx, view, operation, func(ctx context.Context) error { return cancel(ctx, JobCancelInputOf(job)) })
+			var refused *LeaseRefused
+			switch {
+			case err == nil:
+				delivery = "sent"
+			case errors.As(err, &refused) && refused.Reason == "already-admitted":
+				delivery = "already-sent"
+			default:
+				delivery = "failed"
+			}
+		}
+		out.Jobs = append(out.Jobs, JobAbandonDelivery{Job: job.Job, Delivery: delivery})
+	}
+	return out, nil
+}
+
 // JobStartInput is what a start runs with: its job and the row's own request bytes.
 type JobStartInput struct {
 	Job     string
@@ -1328,6 +1910,9 @@ type JobStartInput struct {
 type jobToolSeam struct {
 	mint  func(ctx context.Context, job string) (string, error)
 	start func(ctx context.Context, input JobStartInput) (JobStartAnswer, error)
+	// A cancel tool's: what it sends, and the start it is paired with.
+	cancel func(ctx context.Context, input JobCancelInput) error
+	pair   *jobToolSeam
 }
 
 // JobStartSpec declares a background job's start. Mint gives the digest of a fresh completion key for the job
@@ -1493,6 +2078,15 @@ func JobReportFromExport(source JobExport) (JobReport, error) {
 		if job.Closed != nil {
 			out.Entries = append(out.Entries, JobReportEntry{Job: job.Job, Decision: "not-started", At: job.Closed.At, By: str(job.Closed.By), Evidence: job.Closed.Evidence})
 		}
+		if job.Cancel != nil {
+			requested := job.Cancel.Requested
+			by := requested.By
+			out.Entries = append(out.Entries, JobReportEntry{Job: job.Job, Decision: "cancel-requested", At: requested.At, By: &by, Owner: requested.Owner, Epoch: requested.Epoch, Command: requested.Command, Undelivered: requested.Undelivered})
+			if ack := job.Cancel.Acknowledged; ack != nil {
+				evidence, said := ack.Evidence, ack.Outcome
+				out.Entries = append(out.Entries, JobReportEntry{Job: job.Job, Decision: "cancel-acknowledged", At: ack.At, Evidence: &evidence, Acknowledged: &said})
+			}
+		}
 		if job.Completion != nil {
 			out.Entries = append(out.Entries, JobReportEntry{Job: job.Job, Decision: "complete", At: job.Completion.At, Evidence: str(job.Completion.Evidence), Outcome: str(job.Completion.Outcome)})
 		}
@@ -1526,6 +2120,56 @@ type jobStartDispatch struct {
 func jobStartDispatchOf(ctx context.Context) *jobStartDispatch {
 	held, _ := ctx.Value(jobStartKey{}).(*jobStartDispatch)
 	return held
+}
+
+// jobCancelKey carries a cancel's dispatch to the writer.
+type jobCancelKey struct{}
+
+// jobCancelDispatch is what a cancel's dispatch asks of the writer: its job, and the record it sends from.
+type jobCancelDispatch struct {
+	job    string
+	record *RunJob
+}
+
+func jobCancelDispatchOf(ctx context.Context) *jobCancelDispatch {
+	held, _ := ctx.Value(jobCancelKey{}).(*jobCancelDispatch)
+	return held
+}
+
+// jobCancelAnswer is a cancel's answer: its job as it reads now, or nil where it cannot be read.
+func (w *RunWriter) jobCancelAnswer(ctx context.Context, job string) *ToolResult {
+	port, err := jobPortOfView(w.Store)
+	if err != nil {
+		return nil
+	}
+	held, err := port.store.ReadJob(context.WithoutCancel(ctx), w.ID, job)
+	if err != nil || held == nil {
+		return nil
+	}
+	record, err := jobReadBack(*held, w.ID, job)
+	if err != nil {
+		return nil
+	}
+	result := JobCancelResult(record)
+	return &result
+}
+
+// jobCancelRequest records requested under the current fence, before admission: what is sent is that record's.
+func (w *RunWriter) jobCancelRequest(ctx context.Context, held *jobCancelDispatch, operation string) error {
+	port, err := jobPortOfView(w.Store)
+	if err != nil {
+		return err
+	}
+	job, err := port.store.RequestJobCancel(ctx, JobCancelAsk{Version: JobRecordVersion, Resource: w.ID, Job: held.job, Generation: JobGeneration, By: "tool", Operation: operation}, port.fence)
+	if err != nil {
+		return err
+	}
+	record, err := jobReadBack(job, w.ID, held.job)
+	if err != nil {
+		return err
+	}
+	held.record = &record
+	return nil
 }
 
 // jobLastAnswers is what a read tool last told the model of each job.
@@ -1662,4 +2306,32 @@ func asJobRefusal(err error) *JobRefused {
 		return refused
 	}
 	return nil
+}
+
+// jobCancelRefusal is whether its job's record refuses a cancel, before anyone is asked and before any claim. The
+// pair's identity is its start's row source in this run.
+func (c *SessionContext) jobCancelRefusal(ctx context.Context, seam *jobToolSeam, args json.RawMessage) string {
+	job, err := readJobCancelArgument(args)
+	if err != nil {
+		return "no-job"
+	}
+	binding := c.Persistence("author")
+	if binding == nil {
+		return "no-job"
+	}
+	port, err := jobPortOfView(binding.Writer.Store)
+	if err != nil {
+		return "no-job"
+	}
+	held, err := port.store.ReadJob(ctx, binding.Writer.ID, job)
+	if err != nil {
+		return "no-job"
+	}
+	for _, tool := range c.session.HostTools {
+		if tool.job == seam.pair && tool.Source != nil {
+			raw, _ := canonicalRaw(tool.Source.Record(tool.SourceTool))
+			return JobCancelRefusal(held, tool.Name, durableDigest(raw))
+		}
+	}
+	return "no-job"
 }
