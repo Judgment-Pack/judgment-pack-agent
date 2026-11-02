@@ -63,6 +63,10 @@ type quarantineVector struct {
 // final answer: six requests.
 var quarantineSequence = []int{0, 1, 2, 4}
 
+// quarantineToolSpends is what the expired case's tool takes of the budget, on the bubble's clock: the
+// verifier has what the call left (#297).
+const quarantineToolSpends = 100 * time.Millisecond
+
 func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMessage, receipt, verifier string, executions, verifications *atomic.Int32, waited *atomic.Int64) runcontext.HostTool {
 	t.Helper()
 	var declared struct {
@@ -79,6 +83,9 @@ func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMess
 	tool.Source = &runcontext.ToolSource{Kind: declared.Source.Kind, ID: declared.Source.ID, Trust: declared.Source.Trust, Version: declared.Source.Version, ToolListDigest: digest}
 	tool.Execute = func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
 		executions.Add(1)
+		if verifier == "answers true after the deadline" {
+			time.Sleep(quarantineToolSpends)
+		}
 		held := runcontext.ReadToolResult(runcontext.MustParseJSON(string(result)))
 		held.Receipt = receipt
 		return held, nil
@@ -296,9 +303,10 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 				if executions.Load() != 1 || verifications.Load() != held.VerifierCalls {
 					t.Fatalf("executions %d, verifier calls %d", executions.Load(), verifications.Load())
 				}
-				// #293: the bubble's clock is exact, so the deadline came at exactly the vector's budget.
-				if held.Name == "expired-receipt" && time.Duration(waited.Load()) != time.Duration(v.Fixture.SourceCallMilliseconds)*time.Millisecond {
-					t.Fatalf("the verifier was stopped after %s, not the budget's %d ms", time.Duration(waited.Load()), v.Fixture.SourceCallMilliseconds)
+				// #293, #297: the bubble's clock is exact, so the deadline came at exactly what the tool left
+				// of the vector's budget.
+				if left := time.Duration(v.Fixture.SourceCallMilliseconds)*time.Millisecond - quarantineToolSpends; held.Name == "expired-receipt" && time.Duration(waited.Load()) != left {
+					t.Fatalf("the verifier was stopped after %s, not the %s the tool left of the budget", time.Duration(waited.Load()), left)
 				}
 				head, err := store.Load(ctx, "receipt-quarantine")
 				if err != nil || head == nil {

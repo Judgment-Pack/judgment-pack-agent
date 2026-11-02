@@ -26,6 +26,10 @@ const quarantineVectorFile = "contract/vectors/tool-result/receipt-quarantine.js
 
 // quarantineCalls counts one source tool's executions and verifier calls; where entered is set, the
 // verifier says it was entered, and where release is set, it waits on it.
+// quarantineToolSpends is what the expired case's tool takes of the budget, on the bubble's clock: the
+// verifier has what the call left (#297).
+const quarantineToolSpends = 100 * time.Millisecond
+
 type quarantineCalls struct {
 	executions, verifications atomic.Int32
 	waited                    atomic.Int64
@@ -47,6 +51,9 @@ func quarantineTool(t *testing.T, declaration, result *Value, receipt, verifier 
 	tool.Source = &ToolSource{Kind: source.Get("kind").Str(), ID: source.Get("id").Str(), Trust: source.Get("trust").Str(), Version: source.Get("version").Str()}
 	tool.Execute = func(ctx context.Context, _ json.RawMessage) (ToolResult, error) {
 		calls.executions.Add(1)
+		if verifier == "answers true after the deadline" {
+			time.Sleep(quarantineToolSpends)
+		}
 		if receiptAdmissionOf(ctx) != nil {
 			t.Error("the host's own execute was handed the call's receipt check")
 		}
@@ -249,9 +256,12 @@ func TestAnUnverifiedReceiptLeavesNothingAReaderCanReach(t *testing.T) {
 			if calls.executions.Load() != 1 || calls.verifications.Load() != int32(held.Get("verifierCalls").Num()) {
 				t.Fatalf("executions %d, verifier calls %d", calls.executions.Load(), calls.verifications.Load())
 			}
-			// #293: the bubble's clock is exact, so the deadline came at exactly the vector's budget.
-			if waited := time.Duration(calls.waited.Load()); waited != time.Duration(milliseconds)*time.Millisecond {
-				t.Fatalf("the verifier was stopped after %s, not the budget's %d ms", waited, milliseconds)
+			// #293, #297: the bubble's clock is exact, so the deadline came at exactly what the tool left of
+			// the vector's budget.
+			if milliseconds > 0 {
+				if waited, left := time.Duration(calls.waited.Load()), time.Duration(milliseconds)*time.Millisecond-quarantineToolSpends; waited != left {
+					t.Fatalf("the verifier was stopped after %s, not the %s the tool left of the budget", waited, left)
+				}
 			}
 			if len(chat.EntryIDs()) != 0 {
 				t.Fatalf("the chat retained %v", chat.EntryIDs())
