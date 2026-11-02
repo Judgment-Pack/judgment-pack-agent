@@ -89,14 +89,30 @@ rule.
    since the npm audit does not cover them. Link explicit, unexpired maintainer approvals for any
    reachability exceptions and reassess each before release; withdrawal is separate from remediation.
 4. Merge the pull request.
+5. Run the full mutation table at the merge commit, by dispatch. A push to `main` no longer runs it, and
+   the nightly run is not evidence. Hold other merges until the run has started, because a dispatch runs
+   at whatever `main` names when it starts and cannot be pointed at an older commit:
+
+   ```sh
+   git fetch origin
+   gh workflow run mutation.yml --repo Judgment-Pack/judgment-pack-agent --ref main
+   gh run list --repo Judgment-Pack/judgment-pack-agent --workflow mutation.yml \
+     --event workflow_dispatch --commit "$(git rev-parse origin/main)"
+   ```
+
+   The last command must show the run; it can take a few seconds to appear. Once it has started, `main`
+   may move. Wait until the table and main CI at the commit have both passed, and tag within 48 hours of
+   when each started. A release without this step refuses (`run-missing`), and the release run says this
+   command.
 
 ## Tag
 
-Tag the merge commit on `main`, signed, and push only that tag:
+Tag the merge commit, signed, and push only that tag. It is the commit the table ran at: name it, because
+`main` may have moved since.
 
 ```sh
 git fetch origin
-git tag -s <tag> -m "agent harness <tag>" "$(git rev-parse origin/main)"
+git tag -s <tag> -m "agent harness <tag>" <the merge commit>
 git push origin <tag>
 ```
 
@@ -164,20 +180,22 @@ fails: release a new version.
 
 ### The mutation table and exact-source CI evidence
 
-The full mutation table still runs on every main push, weekly and by dispatch; pull requests run a
-sample. The release takes every full shard of a push or dispatch run on main at the commit,
+The full mutation table runs nightly and by dispatch, not on a push to `main`; pull requests run a
+sample. The release takes every full shard of a dispatch run on main at the commit
+([step 5](#prepare-the-release)),
 with `contract`, `check`, `go-race-a` and `go-race-b`, through the [release evidence gate](ci-evidence.md). It selects the
-newest applicable attempt on main whatever its result; a newer failed, cancelled or running attempt
-(a weekly scheduled run included) refuses, and nothing searches back for an older green one. A
-pull request's sample and a partial re-run cannot qualify. That every row still applies is the
+newest dispatch attempt on main whatever its result; a newer failed, cancelled or running attempt
+(a nightly run included) refuses, and nothing searches back for an older green one. A nightly run, a
+pull request's sample and a partial re-run cannot qualify. What a nightly run does to a candidate is in
+[the gate document](ci-evidence.md#the-full-table-nightly-and-by-dispatch-299). That every row still applies is the
 `mutation-rows` step of `dev.json`, which the `check` job runs, or, on a push to main, may reuse
 from the merged pull request's run, which the release admits again.
 
 The age limit is 48 hours. A rolled hosted image, changed tools or inputs, stale, missing or
 unreadable evidence, a missing or unexpected runner identity, or tag movement refuses. The bounded
-fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the main
-run at the commit (or dispatch the workflow on main while main names the commit), then re-run the
-release's failed jobs once. Fresh advisory evidence and review and approved scoped exception
+fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the CI push
+run or the table's dispatch run at the commit (or dispatch the workflow on main while main names the
+commit), then re-run the release's failed jobs once. Fresh advisory evidence and review and approved scoped exception
 decisions remain required; the optional audit's CI skip proves nothing about current advisories.
 Actual-tag upgrade, packaging, approval, publication and paired Go-tag gates stay in force.
 
