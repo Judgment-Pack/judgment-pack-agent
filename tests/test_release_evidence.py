@@ -290,8 +290,11 @@ class Configuration(unittest.TestCase):
                 self.assertEqual(spec['checks'], [])
                 self.assertEqual(spec['job_id'], 'full')
                 self.assertEqual(spec['name'], 'every row (shard %d of %d)' % (shard, SHARDS))
-        self.assertEqual(mutation['skipped_jobs'], ['rows of the files this pull request changes, and a sample'])
+        self.assertEqual(mutation['skipped_jobs'], ['rows of the files this pull request changes, and a sample',
+                                                    'report a failed nightly table'])
         self.assertNotIn('pull_request_reuse', mutation)
+        # Only a dispatch run is evidence (#299): a push does not run the table, and a schedule is not trusted.
+        self.assertEqual(mutation['events'], ['workflow_dispatch'])
 
     def test_every_check_of_the_planning_jobs_is_either_reusable_or_fresh_on_main(self):
         workflow = config()['workflows']['ci']
@@ -384,16 +387,39 @@ class Workflows(unittest.TestCase):
         self.assertIn('      fail-fast: false\n      matrix:\n        part: [a, b]\n', race)
         self.assertEqual(['go-race-%s' % part for part in ('a', 'b')], RACE_JOBS)
 
-    def test_main_evidence_is_recorded_on_push_or_dispatch_and_never_on_a_schedule(self):
+    def test_the_table_runs_nightly_and_by_dispatch_and_only_a_dispatch_records_evidence(self):
         mutation = read('.github/workflows/mutation.yml')
-        main = "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+        triggers = mutation[mutation.index('\non:\n'):mutation.index('\npermissions:')]
+        self.assertNotIn('  push:', triggers)
+        self.assertIn("  schedule:\n    - cron: '23 4 * * *'\n", triggers)
+        self.assertIn('  workflow_dispatch:\n', triggers)
+        # A pull request still runs its own rows and its sample, and never the table.
+        self.assertIn("  pull_request:\n    paths:\n      - 'packages/harness/**'\n      - '.github/workflows/mutation.yml'\n", triggers)
+        self.assertIn("    if: github.event_name == 'pull_request'\n", job_block(mutation, 'sample'))
+        self.assertIn("    if: github.event_name != 'pull_request'\n", job_block(mutation, 'full'))
+        main = "github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'"
         conditions = re.findall(r'^        if: (.*)$', job_block(mutation, 'full'), re.M)
         self.assertEqual(conditions, [main, main])
-        self.assertIn('  schedule:\n', mutation)
         # The duplicate rows-applicability job is gone: dev.json's mutation-rows step is the one run.
         self.assertNotIn('rows-apply', mutation)
         self.assertNotIn('mutation-check.mjs --check', mutation)
         self.assertIn('mutation-rows', config()['workflows']['ci']['jobs']['check']['checks'])
+
+    def test_no_other_run_can_cancel_or_replace_a_candidates_table(self):
+        """A run at another commit is in another group, nothing but a pull request cancels, and each
+        trigger has its own group, so a nightly run cannot replace a dispatch waiting at the same commit."""
+        self.assertIn("concurrency:\n  group: mutation-${{ github.event_name }}-"
+                      "${{ github.event_name == 'pull_request' && github.ref || github.sha }}\n"
+                      "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n",
+                      read('.github/workflows/mutation.yml'))
+
+    def test_releasing_states_the_step_and_tags_the_commit_the_table_ran_at(self):
+        releasing = read('docs/releasing.md')
+        self.assertIn('gh workflow run mutation.yml --repo %s --ref main\n' % REPO, releasing)
+        self.assertIn('--event workflow_dispatch --commit "$(git rev-parse origin/main)"\n', releasing)
+        # Main may have moved since the table started: its tip is not the commit to tag.
+        self.assertNotIn('git tag -s <tag> -m "agent harness <tag>" "$(git rev-parse origin/main)"', releasing)
+        self.assertIn('git tag -s <tag> -m "agent harness <tag>" <the merge commit>\n', releasing)
 
     def test_the_full_legs_partition_the_table(self):
         """Each leg runs its own shard: the matrix, shard N of the same number, and every key of the
@@ -868,11 +894,13 @@ class IdentityAtCommit(AtCommit):
 
 class AgentWorld(AtCommit):
     """decide() over the agent's own configuration and workflow files at a fixture commit, with the
-    release runner's resolution fixed: one push run of CI and one of the mutation table, every job."""
+    release runner's resolution fixed: one push run of CI and one dispatch run of the mutation table,
+    every job."""
 
     def setUp(self):
         super().setUp()
         self.attempt = 1
+        self.table_attempt = 1
         self.here = {name: {'runner': dict(RUNNER), 'tools': dict(tools)} for name, tools in TOOLS.items()}
         resolve = patch.object(g, 'runtime', side_effect=lambda profile, variant=None:
                                copy.deepcopy(self.here[profile_of(profile)]))
@@ -903,7 +931,7 @@ class AgentWorld(AtCommit):
         if 'pull_request_reuse' in workflow and extra is None:
             extra = {'environment': environment_record(workflow['pull_request_reuse']['environment'],
                                                        job_key if job_key in JOB_ENVIRONMENT else 'check'), 'reused': None}
-        return g.evidence(self.source, key, workflow, job_key, run_id, attempt, 'push', 'main',
+        return g.evidence(self.source, key, workflow, job_key, run_id, attempt, workflow['events'][0], 'main',
                           {'runner': dict(RUNNER), 'tools': dict(TOOLS[spec['profile']])}, coverage,
                           g.job_identity(self.context, profile, key), None, extra)
 
@@ -913,10 +941,10 @@ class AgentWorld(AtCommit):
                 'git/tags/' + TAG_OBJECT: {'object': {'type': 'commit', 'sha': self.sha}}}
         for index, (key, workflow) in enumerate(self.config['workflows'].items()):
             workflow_id, run_id = 9 + index, 100 + 10 * index
-            attempt = self.attempt if key == 'ci' else 1
+            attempt = self.attempt if key == 'ci' else self.table_attempt
             data['actions/workflows/' + Path(workflow['path']).name] = {
                 'id': workflow_id, 'name': workflow['name'], 'path': workflow['path'], 'state': 'active'}
-            run = {'id': run_id, 'run_attempt': attempt, 'event': 'push', 'head_branch': 'main', 'head_sha': self.sha,
+            run = {'id': run_id, 'run_attempt': attempt, 'event': workflow['events'][0], 'head_branch': 'main', 'head_sha': self.sha,
                    'workflow_id': workflow_id, 'path': workflow['path'], 'status': 'completed',
                    'conclusion': 'success', 'pull_requests': [], 'created_at': '2026-10-30T09:00:00Z',
                    'run_started_at': '2026-10-30T09:00:00Z', 'updated_at': '2026-10-30T10:30:00Z',
@@ -938,8 +966,8 @@ class AgentWorld(AtCommit):
                                              'repository_id': REPO_ID, 'head_repository_id': REPO_ID}}
                 artifacts.append(artifact)
                 pack(data, artifact, self.payload(key, job_key, run_id, self.coverage((key, job_key)), attempt=attempt))
-            for name in workflow.get('skipped_jobs', []):
-                jobs.append({'id': run_id * 10 + 99, 'name': name, 'run_id': run_id, 'run_attempt': attempt,
+            for number, name in enumerate(workflow.get('skipped_jobs', [])):
+                jobs.append({'id': run_id * 10 + 90 + number, 'name': name, 'run_id': run_id, 'run_attempt': attempt,
                              'head_sha': self.sha, 'head_branch': 'main', 'workflow_name': workflow['name'],
                              'status': 'completed', 'conclusion': 'skipped', 'labels': ['ubuntu-latest'],
                              'runner_group_id': None, 'runner_group_name': None,
@@ -953,7 +981,7 @@ class AgentWorld(AtCommit):
     def artifact(self, key, job_key):
         run_id = 100 + 10 * list(self.config['workflows']).index(key)
         listing = self.data['actions/runs/%d/artifacts?per_page=100&page=1' % run_id]['artifacts']
-        attempt = self.attempt if key == 'ci' else 1
+        attempt = self.attempt if key == 'ci' else self.table_attempt
         return next(item for item in listing if item['name'] == 'ci-evidence-%s-%s-%d' % (key, job_key, attempt))
 
     def change_evidence(self, key, job_key, change):
@@ -1073,6 +1101,305 @@ class AgentGate(AgentWorld):
         scheduled['conclusion'] = 'success'
         self.assertEqual(self.decide(), 'reuse')
         self.assertEqual(self.record['workflows']['mutation']['run_id'], 110)
+
+
+class TheTableAtACandidate(AgentWorld):
+    """#299: the real gate over a candidate commit, whose table is the dispatch run 110 started at 09:00,
+    and a nightly run landing on the same commit, or not."""
+
+    EARLIER, LATER = '2026-10-30T08:00:00Z', '2026-10-30T11:00:00Z'
+
+    def runs(self):
+        return self.data['actions/workflows/10/runs?head_sha=%s&per_page=100&page=1' % self.sha]
+
+    def add_run(self, event='schedule', started=LATER, conclusion='success', status='completed', run_id=120):
+        runs = self.runs()
+        run = dict(self.data['actions/runs/110'], id=run_id, event=event, run_started_at=started, created_at=started,
+                   status=status, conclusion=conclusion)
+        runs['workflow_runs'].append(run)
+        runs['total_count'] = len(runs['workflow_runs'])
+        return run
+
+    def assert_the_evidence_is_the_dispatch_run(self, attempt=1):
+        self.assertEqual(self.decide(), 'reuse', self.record.get('refusal'))
+        trail = self.record['workflows']['mutation']
+        self.assertEqual((trail['run_id'], trail['attempt'], trail['event']), (110, attempt, 'workflow_dispatch'))
+
+    def test_a_dispatch_run_is_the_evidence(self):
+        self.assert_the_evidence_is_the_dispatch_run()
+        self.assertEqual(self.record['workflows']['mutation']['events'], ['workflow_dispatch'])
+
+    def test_a_commit_without_a_dispatch_table_refuses_and_names_what_is_missing(self):
+        """Neither a nightly run nor a push run stands in for it, however green."""
+        runs = self.runs()
+        runs['workflow_runs'], runs['total_count'] = [], 0
+        self.assertEqual(self.decide(), 'run-missing')
+        for event in ('schedule', 'push'):
+            self.add_run(event, run_id=120 if event == 'schedule' else 121)
+            self.assertEqual(self.decide(), 'run-missing')
+        detail = self.record['refusal']['detail']
+        self.assertIn('no workflow_dispatch run of .github/workflows/mutation.yml at %s' % self.sha, detail)
+
+    def test_a_dispatch_on_another_branch_is_not_evidence(self):
+        runs = self.runs()
+        runs['workflow_runs'][0]['head_branch'] = 'feature'
+        self.assertEqual(self.decide(), 'run-missing')
+
+    def test_a_nightly_run_that_passed_changes_nothing_before_or_after_the_dispatch(self):
+        for started in (self.EARLIER, self.LATER):
+            with self.subTest(started=started):
+                self.data = self.world()
+                self.add_run(started=started)
+                self.assert_the_evidence_is_the_dispatch_run()
+
+    def test_a_nightly_run_not_finished_holds_the_release_and_is_named(self):
+        for started in (self.EARLIER, self.LATER):
+            for status in ('queued', 'in_progress'):
+                with self.subTest(started=started, status=status):
+                    self.data = self.world()
+                    run = self.add_run(started=started, status=status, conclusion=None)
+                    self.assertEqual(self.decide(), 'run-unfinished')
+                    self.assertIn('120', self.record['refusal']['detail'])
+                    run['status'], run['conclusion'] = 'completed', 'success'
+                    self.assert_the_evidence_is_the_dispatch_run()
+
+    def test_a_nightly_run_after_the_dispatch_that_did_not_pass_refuses_and_is_named(self):
+        """The gate's rule is unchanged, for a cancelled run too."""
+        for conclusion in ('failure', 'cancelled', 'timed_out'):
+            with self.subTest(conclusion=conclusion):
+                self.data = self.world()
+                self.add_run(conclusion=conclusion)
+                self.assertEqual(self.decide(), 'run-newer-failed')
+                self.assertIn('120 (schedule, %s)' % conclusion, self.record['refusal']['detail'])
+                self.assertIn('run 110', self.record['refusal']['detail'])
+
+    def test_a_nightly_run_before_the_dispatch_that_did_not_pass_blocks_nothing(self):
+        """A failed night does not stop a candidate's own table, and a cancelled run can stay cancelled."""
+        for conclusion in ('failure', 'cancelled', 'timed_out'):
+            with self.subTest(conclusion=conclusion):
+                self.data = self.world()
+                self.add_run(started=self.EARLIER, conclusion=conclusion)
+                self.assert_the_evidence_is_the_dispatch_run()
+
+    def test_re_running_the_failed_nightly_jobs_clears_the_refusal_and_is_not_evidence(self):
+        run = self.add_run(conclusion='failure')
+        self.assertEqual(self.decide(), 'run-newer-failed')
+        run.update(run_attempt=2, conclusion='success', run_started_at='2026-10-30T12:00:00Z')
+        self.assert_the_evidence_is_the_dispatch_run()
+
+    def test_re_running_the_dispatch_run_makes_it_the_newest_again_after_main_moved(self):
+        """The re-run's attempt started after the failed night, at the same commit, whatever main names."""
+        self.table_attempt = 2
+        self.data = self.world()
+        for run in (self.runs()['workflow_runs'][0], self.data['actions/runs/110']):
+            run['created_at'] = '2026-10-30T07:00:00Z'
+        self.add_run(started=self.EARLIER, conclusion='failure')
+        self.assert_the_evidence_is_the_dispatch_run(attempt=2)
+
+    def test_a_nightly_run_re_run_is_still_not_evidence_without_a_dispatch(self):
+        runs = self.runs()
+        runs['workflow_runs'], runs['total_count'] = [], 0
+        self.add_run(started='2026-10-30T12:00:00Z').update(run_attempt=2)
+        self.assertEqual(self.decide(), 'run-missing')
+
+    def test_a_newer_dispatch_that_did_not_pass_refuses_though_an_older_one_passed(self):
+        for conclusion in ('failure', 'cancelled'):
+            with self.subTest(conclusion=conclusion):
+                self.data = self.world()
+                run = self.add_run('workflow_dispatch', conclusion=conclusion)
+                self.data['actions/runs/120'] = run
+                self.assertEqual(self.decide(), 'run-result')
+                self.assertEqual(self.record['workflows']['mutation']['run_id'], 120)
+
+    def test_only_a_dispatch_on_main_can_record_the_table(self):
+        """The gate refuses a capture on a schedule or on a push, as well as the workflow's condition."""
+        source = {'schema': 2, 'repository': REPO, 'repository_id': REPO_ID, 'source': self.sha, 'inputs': {}}
+        base = {'GITHUB_SHA': self.sha, 'GITHUB_REF': 'refs/heads/main', 'GITHUB_JOB': 'full', 'GITHUB_RUN_ID': '100',
+                'GITHUB_RUN_ATTEMPT': '1', 'GITHUB_WORKFLOW_SHA': self.sha,
+                'GITHUB_WORKFLOW_REF': '%s/.github/workflows/mutation.yml@refs/heads/main' % REPO}
+        for event, ref, code in (('schedule', 'refs/heads/main', 'capture-event'), ('push', 'refs/heads/main', 'capture-event'),
+                                 ('workflow_dispatch', 'refs/heads/feature', 'capture-ref')):
+            with self.subTest(event=event, ref=ref):
+                with patch.dict(os.environ, dict(base, GITHUB_EVENT_NAME=event, GITHUB_REF=ref)):
+                    with self.assertRaises(g.Refusal) as caught:
+                        g.capture_context(self.config, source, 'mutation', 'full-1')
+                self.assertEqual(caught.exception.code, code)
+        with patch.dict(os.environ, dict(base, GITHUB_EVENT_NAME='workflow_dispatch')):
+            self.assertEqual(g.capture_context(self.config, source, 'mutation', 'full-1')[2], 'workflow_dispatch')
+
+    def test_the_report_job_of_a_dispatch_run_must_be_skipped(self):
+        name = 'report a failed nightly table'
+        listing = self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']
+        job = next(job for job in listing['jobs'] if job['name'] == name)
+        self.assertEqual(job['conclusion'], 'skipped')
+        job['conclusion'] = 'success'
+        self.assertEqual(self.decide(), 'job-not-skipped')
+        listing['jobs'].remove(job)
+        listing['total_count'] = len(listing['jobs'])
+        self.assertEqual(self.decide(), 'job-coverage')
+
+    def refusal_says(self, record):
+        """What release.yml's own step prints for a decision record of the gate."""
+        step = step_block(job_block(read('.github/workflows/release.yml'), 'verify'), 'Say what to do about a refusal')
+        self.assertIn("        if: ${{ failure() && steps.gate.outcome == 'failure' }}\n", step)
+        self.assertIn('          RECORD: ${{ runner.temp }}/release-evidence.json\n', step)
+        source = step[step.index("<<'PYCURE'\n") + len("<<'PYCURE'\n"):step.index('          PYCURE\n')]
+        source = '\n'.join(line[10:] for line in source.splitlines())
+        path = self.root.parent / ('%s-record.json' % self.root.name)
+        path.write_text(json.dumps(record), encoding='utf-8')
+        self.addCleanup(path.unlink, missing_ok=True)
+        done = subprocess.run([sys.executable, '-I', '-c', source], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, timeout=30,
+                              env={'RECORD': str(path), 'GITHUB_REPOSITORY': REPO, 'PATH': os.environ['PATH']})
+        self.assertEqual((done.returncode, done.stderr), (0, ''))
+        self.assertTrue(done.stdout.startswith('::error::'), done.stdout)
+        return done.stdout
+
+    def test_the_release_run_says_what_to_do_about_each_refusal_of_the_table(self):
+        runs = self.runs()
+        dispatch = runs['workflow_runs'][0]
+        runs['workflow_runs'], runs['total_count'] = [], 0
+        self.assertEqual(self.decide(), 'run-missing')
+        says = self.refusal_says(self.record)
+        self.assertIn('gh workflow run mutation.yml --repo %s --ref main' % REPO, says)
+        self.assertIn('While main names this commit', says)
+        self.assertIn('a nightly run is not evidence', says)
+        runs['workflow_runs'], runs['total_count'] = [dispatch], 1
+        run = self.add_run(status='in_progress', conclusion=None)
+        self.assertEqual(self.decide(), 'run-unfinished')
+        self.assertIn('Wait for it', self.refusal_says(self.record))
+        run.update(status='completed', conclusion='failure')
+        self.assertEqual(self.decide(), 'run-newer-failed')
+        says = self.refusal_says(self.record)
+        self.assertIn('did not pass', says)
+        self.assertIn('gh run rerun <run id> --repo %s' % REPO, says)
+        # main CI's own missing run is not told to dispatch the table.
+        self.data = self.world()
+        ci = self.data['actions/workflows/9/runs?head_sha=%s&per_page=100&page=1' % self.sha]
+        ci['workflow_runs'], ci['total_count'] = [], 0
+        self.assertEqual(self.decide(), 'run-missing')
+        says = self.refusal_says(self.record)
+        self.assertNotIn('gh workflow run', says)
+        self.assertIn('docs/ci-evidence.md#the-fresh-route', says)
+
+
+# A `gh` for the report step: it says what it was asked, answers `api` with the jobs it is given and
+# `issue list` with the open issue's number (the step's own --jq filter is held to its text below).
+GH_SHIM = '''
+import json, os, sys
+
+args = sys.argv[1:]
+with open(os.environ['GH_SHIM_CALLS'], 'a', encoding='utf-8') as calls:
+    calls.write(json.dumps(args) + '\\n')
+if args[0] == 'api':
+    print(os.environ['GH_SHIM_JOBS'])
+elif args[:2] == ['issue', 'list']:
+    print(os.environ['GH_SHIM_OPEN'])
+elif args[:2] not in (['issue', 'create'], ['issue', 'comment']):
+    sys.exit('no such command')
+'''
+
+
+class NightlyReport(unittest.TestCase):
+    """The report job of mutation.yml, its condition and its step over a stand-in gh, with the jobs
+    as the API gave them on live runs: a shard at its limit and a run cancelled by hand both say
+    `cancelled`, and differ only by time."""
+
+    REPORT = 'report a failed nightly table'
+    TITLE = 'The nightly mutation table did not pass'
+
+    def job(self, shard, conclusion, started='2026-11-02T13:19:47Z', completed='2026-11-02T13:46:51Z'):
+        return {'name': 'every row (shard %d of 10)' % shard, 'conclusion': conclusion, 'started_at': started,
+                'completed_at': completed}
+
+    def run_step(self, jobs, open_issue=''):
+        job = job_block(read('.github/workflows/mutation.yml'), 'report')
+        step = step_block(job, 'Open the issue, or comment on the open one')
+        script = step[step.index('        run: |\n') + len('        run: |\n'):]
+        script = '\n'.join(line[10:] for line in script.splitlines())
+        with tempfile.TemporaryDirectory(prefix='nightly-report-') as room:
+            shim = Path(room, 'bin')
+            shim.mkdir()
+            Path(room, 'gh.py').write_text(GH_SHIM, encoding='utf-8')
+            gh = shim / 'gh'
+            gh.write_text('#!/bin/sh\nexec "$GH_SHIM_PYTHON" -I "$GH_SHIM" "$@"\n', encoding='utf-8')
+            gh.chmod(0o755)
+            calls = Path(room, 'calls')
+            calls.write_text('', encoding='utf-8')
+            listing = [{'name': 'rows of the files this pull request changes, and a sample', 'conclusion': 'skipped',
+                        'started_at': None, 'completed_at': None},
+                       {'name': self.REPORT, 'conclusion': None, 'started_at': '2026-11-02T15:00:00Z', 'completed_at': None}]
+            env = {'PATH': '%s%s%s' % (shim, os.pathsep, os.environ['PATH']), 'GH_SHIM': str(Path(room, 'gh.py')),
+                   'GH_SHIM_PYTHON': sys.executable, 'GH_SHIM_CALLS': str(calls), 'GH_SHIM_OPEN': open_issue,
+                   'GH_SHIM_JOBS': json.dumps({'jobs': listing + jobs}), 'GH_TOKEN': 'token', 'GH_REPO': REPO,
+                   'RUN_ID': '555', 'COMMIT': 'c' * 40, 'RUNNER_TEMP': room, 'GITHUB_SERVER_URL': 'https://github.example'}
+            done = subprocess.run(['bash', '-c', script], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stdout)
+            return [json.loads(line) for line in calls.read_text(encoding='utf-8').splitlines()]
+
+    def body_of(self, call):
+        return call[call.index('--body') + 1]
+
+    def test_the_job_runs_only_for_a_nightly_table_that_did_not_pass_and_can_write_only_issues(self):
+        job = job_block(read('.github/workflows/mutation.yml'), 'report')
+        self.assertIn('    name: %s\n    needs: full\n' % self.REPORT, job)
+        self.assertIn("    if: ${{ always() && github.event_name == 'schedule' && needs.full.result != 'success' }}\n", job)
+        self.assertIn('    permissions:\n      actions: read\n      issues: write\n    steps:\n', job)
+        self.assertNotIn('uses:', job)
+        self.assertEqual(re.findall(r': write', job), [': write'])
+        # The limit the step tells a stopped shard by is under the job's own limit.
+        self.assertIn('    timeout-minutes: 120\n', job_block(read('.github/workflows/mutation.yml'), 'full'))
+        self.assertIn('.total_seconds() >= 7000:', job)
+        self.assertLess(7000, 120 * 60)
+        self.assertIn(self.REPORT, config()['workflows']['mutation']['skipped_jobs'])
+
+    def test_a_failed_shard_opens_an_issue_naming_the_commit_the_run_and_the_shards(self):
+        calls = self.run_step([self.job(1, 'success'), self.job(4, 'failure'), self.job(7, 'failure')])
+        self.assertEqual([call[:2] for call in calls], [['api', 'repos/%s/actions/runs/555/jobs?per_page=100' % REPO],
+                                                        ['issue', 'list'], ['issue', 'create']])
+        create = calls[-1]
+        self.assertEqual(create[create.index('--title') + 1], self.TITLE)
+        self.assertEqual(create[create.index('--repo') + 1], REPO)
+        body = self.body_of(create)
+        self.assertIn('c' * 40, body)
+        self.assertIn('https://github.example/%s/actions/runs/555' % REPO, body)
+        self.assertIn('- every row (shard 4 of 10): failure\n- every row (shard 7 of 10): failure\n', body)
+        self.assertNotIn('shard 1 of', body)
+        self.assertNotIn(self.REPORT, body)
+
+    def test_a_later_failure_comments_on_the_open_issue(self):
+        calls = self.run_step([self.job(4, 'failure')], open_issue='77')
+        self.assertEqual(calls[-1][:3], ['issue', 'comment', '77'])
+        self.assertEqual([call for call in calls if call[:2] == ['issue', 'create']], [])
+        self.assertIn('- every row (shard 4 of 10): failure', self.body_of(calls[-1]))
+
+    def test_the_open_issue_is_found_by_its_exact_title(self):
+        step = step_block(job_block(read('.github/workflows/mutation.yml'), 'report'), 'Open the issue, or comment on the open one')
+        self.assertIn('''--state open --search "\\"$title\\" in:title" --json number,title --jq "[.[] | select(.title == \\"$title\\") | .number][0] // empty"''', step)
+
+    def test_a_shard_stopped_at_its_limit_is_reported_though_it_says_cancelled(self):
+        """The times of shard 4 of 4 on run 41371912091, which the job limit stopped."""
+        calls = self.run_step([self.job(4, 'cancelled', '2026-11-02T01:19:45Z', '2026-11-02T03:20:03Z')])
+        self.assertEqual(calls[-1][:2], ['issue', 'create'])
+        self.assertIn('- every row (shard 4 of 10): stopped at its 120-minute limit', self.body_of(calls[-1]))
+
+    def test_any_other_conclusion_is_reported(self):
+        calls = self.run_step([self.job(4, 'timed_out')])
+        self.assertIn('- every row (shard 4 of 10): timed_out', self.body_of(calls[-1]))
+
+    def test_a_run_cancelled_by_hand_reports_nothing(self):
+        """The times of run 41452025111, cancelled by hand. An unneeded run stays quietly cancelled."""
+        calls = self.run_step([self.job(shard, 'cancelled') for shard in range(1, 11)])
+        self.assertEqual([call[0] for call in calls], ['api'])
+        # A job cancelled before it started has no times; that is not a limit either.
+        calls = self.run_step([self.job(1, 'cancelled', None, None), self.job(2, 'success')])
+        self.assertEqual([call[0] for call in calls], ['api'])
+
+    def test_a_failure_in_a_run_also_cancelled_is_reported(self):
+        calls = self.run_step([self.job(1, 'cancelled'), self.job(2, 'failure')])
+        self.assertEqual(calls[-1][:2], ['issue', 'create'])
+        self.assertNotIn('shard 1 of', self.body_of(calls[-1]))
 
 
 class ReuseWorld(AgentWorld):

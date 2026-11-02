@@ -37,14 +37,14 @@ agent's gate is held either by the gate's own contract or by this repository's c
 | Coverage: every job and matrix leg, every check, the PR-only job skipped | `workflows.*.jobs`, `checks`, `setup`, `skipped_jobs` |
 | Freshness: 48 hours from the selected attempt's start | `max_age_hours: 48`; the reused pull request run is held to it too |
 | Advisory: only `dependency-audit-live` may be skipped, which proves nothing about advisories | `optional_skips`; the live query stays fresh (below) |
-| Mutation: every full shard of a main run at the commit | the `mutation` workflow's jobs, one per shard |
+| Mutation: every full shard of a dispatch run on main at the commit | the `mutation` workflow's jobs, one per shard, and its `events` |
 | Approval, provenance, the paired Go tag | unchanged jobs of `release.yml`, outside the gate; named in `fresh_at_release` |
 | The runner and tools, resolved again on the release runner | every profile `compare: release-runner`, now with the reported identity |
 
 Where the shared gate differs, it is stricter, with one exception named here. Stricter: the
 workflow `name:` and the jobs' workflow name are bound; every job's labels and hosted-runner group;
 the default branch is read from the API; every run at the commit on main is scanned whatever its
-trigger (a newer failed scheduled mutation run refuses); every `uses:` must be pinned. The exception
+trigger (a newer failed nightly mutation run refuses); every `uses:` must be pinned. The exception
 is the selection rule: the agent's verifier selected the run created last, the gate selects the run
 whose latest attempt started last. A re-run of an older run is therefore the newest attempt, and an
 earlier failed run does not block it; any run whose attempt started after the selected one and did
@@ -135,7 +135,7 @@ Not reusable, run on every branch push:
 
 The four `contract` steps run in their own job on every event and plan no reuse. The mutation
 table plans none: a pull request's mutation sample is not shard coverage, and the full shards
-run on every push to `main`.
+run by dispatch for a release.
 
 `tests/test_release_evidence.py` holds every check of the two jobs to one of the two lists, so a
 new `dev.json` check must be classified before CI passes. It also scans every tracked source under
@@ -172,7 +172,7 @@ evidence, now under the gate's contract.
 
 ## The mutation table's shards (#281)
 
-The full table runs on every push to `main` in ten shards. Two pushes in a row lost shard 4 of four
+The full table runs in ten shards. When it ran on every push to `main`, two pushes in a row lost shard 4 of four
 to its 120-minute limit, so no commit had the evidence the release requires. A shard's job limit stays
 120 minutes and every row still runs.
 
@@ -195,6 +195,52 @@ and `release.yml` does not name them. To change it, change the matrix, the job's
 at another number is never read for a newer commit. A shard warns past three quarters of its limit, and
 a run prints each row's seconds as it ends (`mutation-row`), so a shard stopped at its limit still says
 what it ran.
+
+## The full table nightly and by dispatch (#299)
+
+Ten shards on every push to `main` held most of the plan's runners for about an hour, so pull request
+runs and main's CI queued behind them. On 2026-11-02 main's CI waited 30 minutes until two superseded
+tables were cancelled by hand. So a push to `main` no longer runs the table. It runs nightly, at whatever
+commit `main` names, and by dispatch. A pull request still runs its own rows and its sample, and every
+push still checks that every row applies (`mutation-rows`).
+
+**The trade-off.** A row that stops being caught and that no pull request's selection named is found that
+night, not at the merge.
+
+**How a release gets its table.** By dispatch at the exact commit ([the step](releasing.md#prepare-the-release)).
+`workflows.mutation.events` in the configuration is `workflow_dispatch` alone, so only a dispatch run is
+evidence. Without one the gate refuses with `run-missing`, naming the workflow and the commit, and the
+`CI at the tag` job's next step prints the command to run. A dispatch cannot name an older commit, so a
+candidate left behind by a newer merge cannot get a first table: that is why the step holds merges until
+the run has started. A dispatch that has started keeps its commit, and can be re-run after `main` moves.
+
+**What a nightly run at a candidate's commit does.** It lands there only if `main` has not moved. It
+never replaces the candidate's evidence: a schedule is not a trusted event, the gate does not read its
+jobs, and its jobs record nothing (the gate refuses a capture on it, too). It cannot cancel the candidate's
+run: each trigger has its own concurrency group. It can hold or refuse the release, and it says so, under
+the gate's unchanged rule:
+
+| The nightly run, at the candidate's commit | The gate | What to do |
+| --- | --- | --- |
+| not finished, whenever it started | `run-unfinished`, naming it | wait, or cancel it if it started before the dispatch; then re-run the release's failed jobs |
+| started before the dispatch, and failed or was cancelled | no effect: the dispatch run is newer | none |
+| started after the dispatch, and passed | no effect: the evidence is still the dispatch run's | none |
+| started after the dispatch, and failed or was cancelled | `run-newer-failed`, naming it and its event | read it. A real fault is fixed on `main`, in a new version. Otherwise re-run its failed jobs, or re-run all jobs of the dispatch run, which makes that the newest attempt; then re-run the release's failed jobs |
+
+So do not cancel a nightly run that started after the candidate's dispatch: that refuses the release as a
+failure would. A hosted schedule starts late, too: the last two runs of this cron's hour and minute started
+6 and 8 hours after it, so its hour does not say when it will land.
+
+**What a nightly failure does.** It does not stop anything: no merge waits on it, and it reaches a release
+only as the table above says. The `report a failed nightly table` job opens one issue titled
+`The nightly mutation table did not pass`, or comments on it if it is open, naming the commit, the run and
+the shards. That notifies whoever watches the repository. GitHub also tells the person who last changed
+the cron, if their settings allow. A shard stopped at its limit is reported, although the API says
+`cancelled` for it: the job tells it from a run cancelled by hand by its time, and a run cancelled by hand
+reports nothing. The job is skipped on every other event, and the gate requires that (`skipped_jobs`).
+
+**Other commits.** A nightly or a dispatch at another commit is in another concurrency group and does not
+touch a candidate's table. Nothing re-runs a run someone cancelled.
 
 ## The race step on its own runner (#254)
 
@@ -303,18 +349,20 @@ A refusal stops that release run. The operator reads the refusal and chooses; no
 dispatches or re-runs anything automatically.
 
 1. Make fresh evidence at the same commit, once: re-run **all** jobs of the main CI run at the
-   commit, and of the main mutation run when its evidence refused
+   commit, and of the mutation table's dispatch run when its evidence refused
    (`gh run rerun <run id> --repo Judgment-Pack/judgment-pack-agent`; a failed-jobs-only re-run
    leaves the other jobs' evidence in an earlier attempt and refuses). This works after main moved
    on, and is the route for a rolled image (`runtime-identity`) and for `run-age`. When main still
-   names the commit, a dispatch of `ci.yml` or `mutation.yml` on `main` is another. A re-run or a
-   dispatch never reuses a pull request's checks: it runs the whole list.
+   names the commit, a dispatch of `ci.yml` or `mutation.yml` on `main` is another. A re-run of a nightly
+   run is not: it stays a schedule run. A re-run or a dispatch never reuses a pull request's checks: it
+   runs the whole list.
 2. When that run has completed, re-run the release run's failed jobs once.
 3. If it refuses again, or the evidence cannot be made at that commit, stop: fix the cause on main
    and release a new version from a validated commit under the tag policy.
 
-`run-unfinished` usually means the tag was pushed while main CI, the mutation table or its weekly
-scheduled run at the commit was still running: wait for it, then step 2.
+`run-unfinished` usually means the tag was pushed while main CI, the mutation table or its nightly
+run at the commit was still running: wait for it, then step 2. `run-missing` for `mutation.yml` means no
+table was dispatched at the commit: [the table's section](#the-full-table-nightly-and-by-dispatch-299).
 
 ## Limits
 
@@ -331,6 +379,11 @@ scheduled run at the commit was still running: wait for it, then step 2.
   from #254; the two legs' were exercised only against fixtures until then. The division's seconds are one
   hosted run's, and what a step takes on a slow runner is an estimate from the speed of a reference binary
   on other runs, not a run on that runner.
+- **The nightly table.** `report a failed nightly table` first runs on the first failed nightly after
+  #299 merges; its issue writes were exercised only against a stand-in `gh`. How the API reports a shard at
+  its limit and a hand cancel is from live runs. How a concurrency group treats a pending run, and GitHub's
+  own notice of a failed schedule, are from GitHub's documentation, not tried here. When a nightly starts is
+  from two readings of the weekly cron.
 - **Event names.** A future base-change event whose name contains neither `base_change` nor
   `base_ref` would not be refused (the kit's stated limit).
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
