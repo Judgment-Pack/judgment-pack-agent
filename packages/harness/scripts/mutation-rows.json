@@ -8581,7 +8581,7 @@
 {
   "name": "wait W16 the store claims a timed-out approval",
   "file": "storage/wait.ts",
-  "find": "  if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')\n",
+  "find": "  if(row.state==='timed-out'&&!timeoutContinues(row.reason))throw new WaitRefused('timed-out')\n",
   "replace": "",
   "tests": [
     "storage/wait.test.ts"
@@ -9004,8 +9004,8 @@
 {
   "name": "deadline D17 an expired wait does not end its run",
   "file": "storage/wait.ts",
-  "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'",
-  "replace": "const terminal=(row:RunWait)=>row.state==='timed-out'&&row.reason!=='question'",
+  "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&!timeoutContinues(row.reason)",
+  "replace": "const terminal=(row:RunWait)=>row.state==='timed-out'&&!timeoutContinues(row.reason)",
   "tests": [
     "storage/resume.test.ts"
   ],
@@ -9365,7 +9365,7 @@
   {
    "name": "key K1 a park takes a key another wait holds",
    "file": "storage/wait.ts",
-   "find": "  for(const list of this.rows.values())if(list.some(row=>row.wakeKeyDigest===park.wakeKeyDigest))throw new WaitRefused('key-reused')\n",
+   "find": "  if(this.keyHeld(park.wakeKeyDigest)||jobs?.keyHeld(park.wakeKeyDigest))throw new WaitRefused('key-reused')\n",
    "replace": "",
    "tests": [
     "storage/waitReview.test.ts",
@@ -10432,8 +10432,8 @@
   {
    "name": "reauth K1 a timed-out reauthorization wait does not close its run",
    "file": "storage/wait.ts",
-   "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'",
-   "replace": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&row.reason!=='question'&&row.reason!=='reauthorization'",
+   "find": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&!timeoutContinues(row.reason)",
+   "replace": "const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&!timeoutContinues(row.reason)&&row.reason!=='reauthorization'",
    "tests": [
     "storage/waitConformance.test.ts"
    ],
@@ -10564,8 +10564,8 @@
   {
    "name": "reauth K1b the store's claim takes a timed-out reauthorization wait",
    "file": "storage/wait.ts",
-   "find": "  if(row.state==='timed-out'&&row.reason!=='question')throw new WaitRefused('timed-out')\n",
-   "replace": "  if(row.state==='timed-out'&&row.reason!=='question'&&row.reason!=='reauthorization')throw new WaitRefused('timed-out')\n",
+   "find": "  if(row.state==='timed-out'&&!timeoutContinues(row.reason))throw new WaitRefused('timed-out')\n",
+   "replace": "  if(row.state==='timed-out'&&!timeoutContinues(row.reason)&&row.reason!=='reauthorization')throw new WaitRefused('timed-out')\n",
    "tests": [
     "storage/waitConformance.test.ts"
    ],
@@ -11581,6 +11581,882 @@
    "status": "caught",
    "origin": "agent#258",
    "note": "#258. Caught at lease.test.ts > a host that stays closed once the authority failed repeatedly fails the kit. Go twin (by hand, performed++ in place of the host.admit.recovered dispatch): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/stays-closed."
+  },
+  {
+   "name": "job J1 a reader takes any generation",
+   "file": "storage/job.ts",
+   "find": "const generation=(v:unknown):1=>v===JOB_GENERATION?JOB_GENERATION:invalid()",
+   "replace": "const generation=(_:unknown):1=>JOB_GENERATION",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors|TestJobEvidenceVectors."
+  },
+  {
+   "name": "job J2 a record need not hold its own identity",
+   "file": "storage/job.ts",
+   "find": " if(job.job!==jobIdentity(job.resource,job.operation))return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors."
+  },
+  {
+   "name": "job J3 a handle need not go with a start",
+   "file": "storage/job.ts",
+   "find": " if((job.handle===undefined)!==(job.started===undefined)||job.receipt!==undefined&&job.handle===undefined)return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors."
+  },
+  {
+   "name": "job J4 a state need not hold what proves it",
+   "file": "storage/job.ts",
+   "find": " if(!proves||job.contradictions&&job.state!=='not-started')return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors."
+  },
+  {
+   "name": "job J5 a registration need not be its operation's",
+   "file": "storage/job.ts",
+   "find": "  if(reg.job!==jobIdentity(resource,reg.operation))return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J6 another job's key digest is taken",
+   "file": "storage/job.ts",
+   "find": "  if(keyElsewhere||this.keyHeld(reg.keyDigest))throw new JobRefused('key-reused')\n",
+   "replace": "  if(keyElsewhere)throw new JobRefused('key-reused')\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J7 a run may hold any number of jobs",
+   "file": "storage/job.ts",
+   "find": "  if((this.rows.get(resource)?.length??0)>=JOB_RUN_LIMIT)throw new JobRefused('jobs-exhausted')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job J8 any fence may answer for a start",
+   "file": "storage/job.ts",
+   "find": "  if(presented.resource!==row.resource||presented.owner!==admitter.owner||presented.epoch!==admitter.epoch)throw new JobRefused('unauthenticated')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J9 a re-claim does not move who answers",
+   "file": "storage/job.ts",
+   "find": "row=this.held(held.resource,held.job),admitter=row.reclaimed??row.registered",
+   "replace": "row=this.held(held.resource,held.job),admitter=row.registered",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J10 another handle overwrites the first",
+   "file": "storage/job.ts",
+   "find": "   if(row.started&&row.handle!==handle)throw new JobRefused('conflict')\n   if(row.started)return structuredClone(row)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J11 a start after a closure starts the job",
+   "file": "storage/job.ts",
+   "find": "   if(row.state==='not-started')return this.contradict(row,{kind:'started',at:fact.at,digest:fact.digest,...(fact.evidence===undefined?{}:{evidence:fact.evidence}),handle:handle!})\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J12 a negative undoes a proven start",
+   "file": "storage/job.ts",
+   "find": "  if(row.state!=='unproven')throw new JobRefused('conflict')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J13 any key authenticates",
+   "file": "storage/job.ts",
+   "find": " private authenticate(row:RunJob,key:string):void{if(jobKeyDigest(key)!==row.keyDigest)throw new JobRefused('unauthenticated')}\n",
+   "replace": " private authenticate(_row:RunJob,_key:string):void{}\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J14 a reconciliation needs no key",
+   "file": "storage/job.ts",
+   "find": "  this.authenticate(row,held.key)\n  const digested=jobEvidenceDigest(held)\n  if(held.finding==='unknown')",
+   "replace": "  const digested=jobEvidenceDigest(held)\n  if(held.finding==='unknown')",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J15 a completion needs no key",
+   "file": "storage/job.ts",
+   "find": "  this.authenticate(row,held.key)\n  const digested=jobEvidenceDigest(held),seen=",
+   "replace": "  const digested=jobEvidenceDigest(held),seen=",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J16 unknown closes the job",
+   "file": "storage/job.ts",
+   "find": "  if(held.finding==='unknown')return structuredClone(row)\n",
+   "replace": "  if(held.finding==='unknown')return this.settle(row,'not-started',{by:'reconcile',at:this.now(),digest:digested,evidence:held.evidence})\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J17 the same evidence id may hold other content",
+   "file": "storage/job.ts",
+   "find": "  if(same.digest!==digested)throw new JobRefused('conflict')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J18 a later completion replaces the first",
+   "file": "storage/job.ts",
+   "find": "  if(row.state==='completed')throw new JobRefused('stale')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J19 a completion after a closure completes the job",
+   "file": "storage/job.ts",
+   "find": "  if(row.state==='not-started')return {job:this.contradict(row,{kind:'completed',at,digest:digested,evidence:held.evidence,outcome:held.outcome})}\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J20 a duplicate completion wakes again",
+   "file": "storage/job.ts",
+   "find": "  if(seen)return {job:seen}\n",
+   "replace": "  if(seen)return {job:seen,wake:{evidence:held.evidence,digest:digested}}\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J21 a settled job takes a re-claim",
+   "file": "storage/job.ts",
+   "find": "  if(row.state!=='unproven')throw new JobRefused('job-settled')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobTransitionVectors."
+  },
+  {
+   "name": "job J22 the store parks on a settled job",
+   "file": "storage/job.ts",
+   "find": "  if(row.state==='completed'||row.state==='not-started')throw new JobRefused('job-settled')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job J23 the store parks on an unproven job",
+   "file": "storage/job.ts",
+   "find": "  if(row.state==='unproven')throw new JobRefused('job-unproven')\n  return row\n",
+   "replace": "  return row\n",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job J24 what a store answers need not be the job asked for",
+   "file": "storage/job.ts",
+   "find": "function readBack(value:unknown,resource:string,job:string):RunJob{const held=readRunJob(structuredClone(value));if(held.resource!==resource||held.job!==job)return invalid();return held}",
+   "replace": "function readBack(value:unknown,_resource:string,_job:string):RunJob{return readRunJob(structuredClone(value))}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobReadBack."
+  },
+  {
+   "name": "job J25 contradictions grow without a bound",
+   "file": "storage/job.ts",
+   "find": "  if(list.length>=JOB_CONTRADICTION_LIMIT)throw new JobRefused('stale')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReconciliationKeeps."
+  },
+  {
+   "name": "job J26 a model's id may bring other members",
+   "file": "storage/job.ts",
+   "find": "if(!object(args)||Object.keys(args).length!==1||typeof args.job!=='string'",
+   "replace": "if(!object(args)||typeof args.job!=='string'",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J27 an unchanged read says it changed",
+   "file": "storage/job.ts",
+   "find": "text=canonicalJSON(projection),changed=last.get(job)!==text\n",
+   "replace": "text=canonicalJSON(projection),changed=true\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAWaitIsWoken."
+  },
+  {
+   "name": "job J28 the model is shown the handle",
+   "file": "storage/job.ts",
+   "find": " return {job:job.job,generation:1,state:job.state,...(job.completion?",
+   "replace": " return {job:job.job,generation:1,state:job.state,...(job.handle?{handle:job.handle} as object:{}),...(job.completion?",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J29 an unproven start reads as a success",
+   "file": "storage/job.ts",
+   "find": "job.state==='not-started'||job.state==='unproven')\n}",
+   "replace": "job.state==='not-started')\n}",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J30 a delegated run presents a key scope",
+   "file": "storage/job.ts",
+   "find": "...(held.fence.principal?{}:{keyScope:'authority' as const})",
+   "replace": "keyScope:'authority' as const",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J31 any gateway refusal closes the job",
+   "file": "storage/job.ts",
+   "find": "return refusal==='action-key-not-dispatched'?'not-started':'unknown'}",
+   "replace": "return refusal.startsWith('action-key')?'not-started':'unknown'}",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J32 an answer that is not typed is read",
+   "file": "storage/job.ts",
+   "find": " if(v.started!==true)return invalid()\n const held=shape(v,['started','handle'],['receipt'])\n",
+   "replace": " const held=shape(v,['started','handle'],['receipt'])\n",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job J33 a gateway start needs no key scope",
+   "file": "storage/job.ts",
+   "find": " if(spec.source.kind==='gateway'&&spec.gatewayKeyScope!==true)throw new JobCapabilityRefused('job-host-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapability."
+  },
+  {
+   "name": "job J34 any lifetime will do",
+   "file": "storage/job.ts",
+   "find": "const held=jobPort(store);if(held.jobLifetime!=='durable'||held.leaseLifetime!=='durable'||held.waitLifetime!=='durable')throw new JobCapabilityRefused('store-lifetime');return held}",
+   "replace": "return jobPort(store)}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapability."
+  },
+  {
+   "name": "job J35 a model's id may be another form",
+   "file": "storage/job.ts",
+   "find": "typeof args.job!=='string'||!DIGEST.test(args.job))return JOB_ARGUMENT_FAILURE()",
+   "replace": "typeof args.job!=='string')return JOB_ARGUMENT_FAILURE()",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job J36 a key of any form is taken",
+   "file": "storage/job.ts",
+   "find": "export const validJobKey=(v:unknown):v is string=>typeof v==='string'&&KEY.test(v)&&new Set(v).size>=16",
+   "replace": "export const validJobKey=(v:unknown):v is string=>typeof v==='string'",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobEvidenceVectors."
+  },
+  {
+   "name": "job R1 an unfenced commit may register",
+   "file": "storage/run.ts",
+   "find": "   if(frozen.job&&!fence)throw new JobRefused('invalid')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies|TestJobARegistration."
+  },
+  {
+   "name": "job R2 a key digest a wait holds is taken",
+   "file": "storage/run.ts",
+   "find": "this.jobs.admit(frozen.runId,frozen.job,this.waits.keyHeld(frozen.job.keyDigest))",
+   "replace": "this.jobs.admit(frozen.runId,frozen.job,false)",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job R3 a completion does not wake its wait",
+   "file": "storage/run.ts",
+   "find": "const done=this.jobs.complete(evidence);if(done.wake)this.waits.wakeJob(done.job.resource,done.job.job,done.wake);return done.job",
+   "replace": "return this.jobs.complete(evidence).job",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job R4 a re-claim needs no current fence",
+   "file": "storage/run.ts",
+   "find": "this.leases.check(held);return this.jobs.reclaim(resource,job,held)",
+   "replace": "return this.jobs.reclaim(resource,job,held)",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job R5 a registration does not commit with its claim",
+   "file": "storage/run.ts",
+   "find": "   if(registration)this.jobs.register(frozen.runId,registration,fence!)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job R6 a re-claim may name another run",
+   "file": "storage/run.ts",
+   "find": "const held=readLeaseFence(fence);if(held.resource!==resource)throw new LeaseRefused('resource-mismatch');this.leases.check(held)",
+   "replace": "const held=readLeaseFence(fence);this.leases.check(held)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReclaim."
+  },
+  {
+   "name": "job R7 a repeated commit id may carry another registration",
+   "file": "storage/run.ts",
+   "find": "a.expectedRevision===b.expectedRevision&&canonicalJSON(a.job??null)===canonicalJSON(b.job??null)&&",
+   "replace": "a.expectedRevision===b.expectedRevision&&",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobARepeatedCommit."
+  },
+  {
+   "name": "job W1 a job wait's timeout closes the run",
+   "file": "storage/wait.ts",
+   "find": "const timeoutContinues=(reason:WaitReason)=>reason==='question'||reason==='job'",
+   "replace": "const timeoutContinues=(reason:WaitReason)=>reason==='question'",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W2 a job wait may wait for something else",
+   "file": "storage/wait.ts",
+   "find": " if(reason==='job'&&(condition.event!.kind!==JOB_WAIT_EVENT||condition.event!.subject!==(park.pending as {job:string}).job||park.chat!==undefined))return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobAWaitIsHeldToItsJob."
+  },
+  {
+   "name": "job W3 a wake key wakes a job wait",
+   "file": "storage/wait.ts",
+   "find": "   if(row.reason==='job')throw new WaitRefused('mismatch')\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W4 the park does not look at the job",
+   "file": "storage/wait.ts",
+   "find": "  if(park.pending.kind==='job'){if(!jobs)throw new WaitCapabilityRefused('store-unsupported');jobs.admitPark(park.resource,park.pending.job)}\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W5 a job wait may bind a chat",
+   "file": "storage/wait.ts",
+   "find": " if(input.job!==undefined&&input.chat!==undefined)throw new WaitCapabilityRefused('chat-store-unsupported')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job W6 a job park over a pending decision",
+   "file": "storage/wait.ts",
+   "find": "  if(checkpoint.status==='paused'||checkpoint.approval?.state==='asked'||checkpoint.planState?.pending!==undefined)throw new WaitRefused('decision-required')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAParkRefuses."
+  },
+  {
+   "name": "job W7 a completion wakes past a timeout or a deadline",
+   "file": "storage/wait.ts",
+   "find": "  if(this.passed(row.resource,now)||row.deadline&&at(now)>=at(row.deadline.at)||row.timeoutAt!==undefined&&at(now)>=at(row.timeoutAt))return\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W8 a completion re-opens a wait",
+   "file": "storage/wait.ts",
+   "find": "const row=this.rows.get(resource)?.find(row=>row.state==='parked'&&row.pending.kind==='job'&&row.pending.job===job)",
+   "replace": "const row=this.rows.get(resource)?.find(row=>row.pending.kind==='job'&&row.pending.job===job)",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W9 a wake key digest a job holds is taken",
+   "file": "storage/wait.ts",
+   "find": "  if(this.keyHeld(park.wakeKeyDigest)||jobs?.keyHeld(park.wakeKeyDigest))throw new WaitRefused('key-reused')\n",
+   "replace": "  if(this.keyHeld(park.wakeKeyDigest))throw new WaitRefused('key-reused')\n",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+  },
+  {
+   "name": "job W10 a resume hands on whatever job the store answers",
+   "file": "storage/wait.ts",
+   "find": "job=readRunJob(copy(held));if(job.resource!==wait.resource||job.job!==claimed.wait.pending.job)return invalid()}",
+   "replace": "job=readRunJob(copy(held))}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAResumeReads."
+  },
+  {
+   "name": "job W11 a stopped checkpoint parks on a job",
+   "file": "storage/wait.ts",
+   "find": "  if(checkpoint.status==='stopped')throw new WaitRefused('nothing-pending')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAStoppedCheckpoint."
+  },
+  {
+   "name": "job W12 the package parks on a job it can see has settled",
+   "file": "storage/wait.ts",
+   "find": "  if(job.state==='completed'||job.state==='not-started')throw new JobRefused('job-settled')\n  if(job.state==='unproven')throw new JobRefused('job-unproven')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAParkReadsTheJobItself."
+  },
+  {
+   "name": "job W13 a parked approval drops the digest of what was shown",
+   "file": "storage/wait.ts",
+   "find": ",...(decision.shownDigest===undefined?{}:{shownDigest:decision.shownDigest})}}\n",
+   "replace": "}}\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job W14 a parked approval takes a digest of any form",
+   "file": "storage/wait.ts",
+   "find": "decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'||!DIGEST.test(decision.shownDigest))||",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job W15 a claim carries no registration",
+   "file": "storage/writer.ts",
+   "find": ",...(this.jobRegistration?{job:this.jobRegistration}:{})}\n",
+   "replace": "}\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartIsRegistered."
+  },
+  {
+   "name": "job W16 a key of another form is registered",
+   "file": "storage/writer.ts",
+   "find": "    if(typeof keyDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(keyDigest)){jobRefusal=new JobRefused('invalid');return}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAKeyTheHost."
+  },
+  {
+   "name": "job W17 a grant re-sends a closed job",
+   "file": "storage/writer.ts",
+   "find": "    try{await port.store.reclaimJob(this.id,jobId,port.fence,signal)}catch(error){if(!(error instanceof JobRefused))throw error;jobRefusal=error;return}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAGrantResends."
+  },
+  {
+   "name": "job W18 a repeated start is answered with no job",
+   "file": "storage/writer.ts",
+   "find": "  if(reused&&jobStart&&reused.state!=='result'){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held===undefined)throw new HostOutcomeUnknown();return jobStartResult(readRunJob(structuredClone(held))) as T}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAThrowLeaves."
+  },
+  {
+   "name": "job W19 a typed answer is lost when the call's signal ended",
+   "file": "storage/writer.ts",
+   "find": "   if(this.dispatchClosed&&!jobStart)throw new DOMException('The operation was aborted','AbortError')\n",
+   "replace": "   if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job W20 an untyped answer is taken as a start",
+   "file": "storage/writer.ts",
+   "find": "const answer=readJobStartAnswer(value),port=jobPortOfView(this.store)",
+   "replace": "const answer=(value??{started:true,handle:'unread'}) as unknown as import('./job').JobStartAnswer,port=jobPortOfView(this.store)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAnswerThatIsNotTyped."
+  },
+  {
+   "name": "job W21 a refused registration leaves its row",
+   "file": "storage/writer.ts",
+   "find": "catch(error){if(!(error instanceof JobRefused))throw error;this.book.dispatches.pop();jobRefusal=error}finally",
+   "replace": "catch(error){if(!(error instanceof JobRefused))throw error;jobRefusal=error}finally",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARefusedRegistration."
+  },
+  {
+   "name": "job W22 the row keeps the host's answer",
+   "file": "storage/writer.ts",
+   "find": "    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T\n",
+   "replace": "    await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. The TypeScript path only: Go has no such path."
+  },
+  {
+   "name": "job S1 a job tool's row is plan evidence",
+   "file": "context/session.ts",
+   "find": "const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded",
+   "replace": "const job=jobSeamOf(tool),hostSucceeded=resultSucceeded",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsTheRowsOfJobTools."
+  },
+  {
+   "name": "job S2 a job tool is offered with no durable run",
+   "file": "context/session.ts",
+   "find": "   if(!binding||session.childDefinition)throw new JobCapabilityRefused('store-unsupported')\n   await binding.writer.attachJobs(session.signal)\n",
+   "replace": "   if(!binding)return\n   await binding.writer.attachJobs(session.signal)\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAToolOffered."
+  },
+  {
+   "name": "job S3 a continuation may be another run's job",
+   "file": "context/session.ts",
+   "find": "if(!binding||binding.writer.runId!==job.resource)throw new JobRefused('invalid')}",
+   "replace": "void job;void binding}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAContinuationMustBe."
+  },
+  {
+   "name": "job P1 a start row proves itself",
+   "file": "execution/planActions.ts",
+   "find": "  if(job){if(job.state!=='completed'||job.completion?.outcome!=='succeeded')return 'unsuccessful-operation';continue}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeld."
+  },
+  {
+   "name": "job P2 a job of any outcome proves it",
+   "file": "execution/planActions.ts",
+   "find": "if(job.state!=='completed'||job.completion?.outcome!=='succeeded')return 'unsuccessful-operation';continue}",
+   "replace": "if(job.state!=='completed')return 'unsuccessful-operation';continue}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeld."
+  },
+  {
+   "name": "job C1 a close trusts the job records of the turn's start",
+   "file": "execution/controller.ts",
+   "find": "  await this.refreshProof?.(signal)\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobsACloseReadsTheJobAfresh."
+  },
+  {
+   "name": "job M1 a resumed run is not told why",
+   "file": "context/managed.ts",
+   "find": "  if(session.context?.jobContinuation)ready.session.prompt=ready.session.prompt+'\\n\\n'+jobContinuation(session.context.jobContinuation)\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAWaitIsWoken."
+  },
+  {
+   "name": "job L1 a re-claim is asked of no grant",
+   "file": "storage/lease.ts",
+   "find": " return !!grant&&!grant.used&&isNeverAdmittedFailure(recorded)&&canonicalJSON(grant.operation)===canonicalJSON(operation)\n",
+   "replace": " return true\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_reauth.go): caught at TestJobsAThrowLeaves."
   }
  ]
 }

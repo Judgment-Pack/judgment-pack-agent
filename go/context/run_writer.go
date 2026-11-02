@@ -187,6 +187,10 @@ type taskDispatchSource struct {
 }
 
 type RunWriter struct {
+	// #229: a job start's registration, set only while the claim that carries it is saved, and this run's jobs by
+	// their start's dispatch id, where the host offers job tools.
+	jobRegistration        *JobRegistration
+	jobRecords             map[string]RunJob
 	repeatTools            *contract.CheckpointRepeatTools
 	repeatScopes           map[string]repeatDispatchSource
 	restoredTaskHead       bool
@@ -801,7 +805,7 @@ func (w *RunWriter) saveLocked(ctx context.Context, binding RunBinding, state *c
 
 // commitLocked is the one exact CAS/receipt boundary, also used by metadata-only Plan preparation.
 func (w *RunWriter) commitLocked(ctx context.Context, commitID string, checkpoint contract.Checkpoint, raw []byte, events [][]byte, scopes ...DurableScope) error {
-	input, err := freezeRunCommit(RunCommit{RunID: w.ID, ExpectedRevision: w.revision, CommitID: commitID, Checkpoint: raw, Events: events})
+	input, err := freezeRunCommit(RunCommit{RunID: w.ID, ExpectedRevision: w.revision, CommitID: commitID, Checkpoint: raw, Events: events, Job: w.jobRegistration})
 	if err != nil {
 		w.fatal = err
 		return err
@@ -1247,6 +1251,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		return zero, &ContinuationIdentityChanged{}
 	}
 	w := binding.Writer
+	jobStart := jobStartDispatchOf(ctx)
 	w.mu.Lock()
 	if w.fatal != nil {
 		err := w.fatal
@@ -1298,11 +1303,47 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				// admits it for the first time. The fingerprint is of the parsed form (#275), and the effect host
 				// admits the row's digest while the tool runs these bytes, so the grant needs the very bytes that
 				// were refused: arguments that only read alike are another request, and it is not sent.
+				// #229 (H2): a grant re-sends a start only while its job is unproven, by a transition under the fence. A
+				// job a reconciliation closed is refused here, the row stays as it is and the grant is not spent.
+				if jobStart != nil && row.State == "unknown" && durableDigest(request) == row.RequestDigest && reauthorizedDispatchOpen(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
+					port, err := jobPortOfView(w.Store)
+					if err == nil {
+						_, err = port.store.ReclaimJob(ctx, w.ID, JobIdentity(w.ID, row.ID), port.fence)
+					}
+					if err != nil {
+						if asJobRefusal(err) == nil {
+							w.fatal = err
+						}
+						w.mu.Unlock()
+						return zero, err
+					}
+					jobStart.job = JobIdentity(w.ID, row.ID)
+				}
 				if row.State == "unknown" && (kind == "host" || kind == "runtime") && durableDigest(request) == row.RequestDigest && takeReauthorizedDispatch(w.Store, EffectOperation{Run: w.ID, Operation: row.ID, Source: source, Tool: tool, RequestDigest: row.RequestDigest}, row.Failure) {
 					reclaimed = i
 					break
 				}
 				w.mu.Unlock()
+				// #229: a repeated start is answered from its job's record where its row cannot say, and is never
+				// sent again.
+				if jobStart != nil && row.State != "result" {
+					port, err := jobPortOfView(w.Store)
+					if err != nil {
+						return zero, err
+					}
+					held, err := port.store.ReadJob(ctx, w.ID, JobIdentity(w.ID, row.ID))
+					if err != nil {
+						return zero, err
+					}
+					if held == nil {
+						return zero, &HostOutcomeUnknown{}
+					}
+					job, err := jobReadBack(*held, w.ID, JobIdentity(w.ID, row.ID))
+					if err != nil {
+						return zero, err
+					}
+					return any(JobStartResult(job)).(T), nil
+				}
 				if row.State != "result" || row.Result == nil {
 					return zero, &HostOutcomeUnknown{}
 				}
@@ -1344,6 +1385,18 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 			}
 		}
 		claim = DurableDispatch{ID: claimID, Scope: binding.Scope, Kind: kind, Source: source, Tool: tool, Fingerprint: fingerprint, Request: string(request), RequestDigest: durableDigest(request), State: "claimed", Read: read}
+		// #229: a start's job is registered in its claim's own transaction, so there is no claim without a job. Its
+		// key digest is the host's and is checked first: a refusal here or by the store leaves no row, and it is
+		// the call's answer.
+		if jobStart != nil {
+			jobStart.job = JobIdentity(w.ID, claim.ID)
+			keyDigest, err := jobStart.mint(ctx, jobStart.job)
+			if err != nil || !jobDigest.MatchString(keyDigest) {
+				w.mu.Unlock()
+				return zero, jobInvalid()
+			}
+			w.jobRegistration = &JobRegistration{Job: jobStart.job, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest, KeyDigest: keyDigest}
+		}
 		if !w.taskSteps.Load() && kind == "model" && w.repeatStateLocked(binding.Scope.Execution) != nil && MustParseJSON(string(request)).Get("method").Str() != "GET" {
 			charge := w.repeatRequestCharges[binding.Scope.Execution]
 			if charge == nil {
@@ -1390,6 +1443,15 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		return zero, claimErr
 	}
 	_, err := w.saveLocked(ctx, *binding, nil, claimEvent, nil, nil)
+	if w.jobRegistration != nil {
+		w.jobRegistration = nil
+		if asJobRefusal(err) != nil {
+			w.book.Dispatches = w.book.Dispatches[:len(w.book.Dispatches)-1]
+			w.fatal = nil
+			w.mu.Unlock()
+			return zero, err
+		}
+	}
 	if err == nil && kind == "agent" {
 		if slot, _ := ctx.Value(nativeCaptureKey{}).(*nativeCaptureSlot); slot != nil && slot.writer == w && slot.scope == binding.Scope && slot.id == "" {
 			slot.id = claim.ID
@@ -1447,6 +1509,12 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		// and its outcome is this dispatch's whenever it ends: the time it takes is not the call's.
 		ctx = context.WithoutCancel(ctx)
 		runErr = admit(value)
+	}
+	if jobStart != nil && runErr == nil {
+		var composed ToolResult
+		if composed, runErr = w.finishJobStart(ctx, jobStart); runErr == nil {
+			value = any(composed).(T)
+		}
 	}
 	var admitted bool
 	if usageTicketHeld != nil {
@@ -1870,12 +1938,19 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		raw, _ := canonicalRaw(tool.Source.Record(tool.SourceTool))
 		source = durableDigest(raw)
 	}
+	// #229: a job tool's rows are never plan evidence; a start runs the row's own bytes under its job's identity.
+	binding := c.Persistence(role)
+	var jobStart *jobStartDispatch
+	if tool.job != nil && tool.job.start != nil {
+		jobStart = &jobStartDispatch{mint: tool.job.mint}
+		ctx = context.WithValue(ctx, jobStartKey{}, jobStart)
+	}
 	// #242: an external read's result is recorded only once its receipt verifies.
 	var admit func(ToolResult) error
 	if held := receiptAdmissionOf(ctx); held != nil {
 		admit = held.admit
 	}
-	return invokeDurable(ctx, c.Persistence(role), "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
+	return invokeDurable(ctx, binding, "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
 			if err := c.session.Context.Authorize(ctx); err != nil {
 				return ToolResult{}, err
@@ -1886,8 +1961,16 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 				return ToolResult{}, err
 			}
 		}
+		if jobStart != nil && jobStart.job != "" {
+			answer, err := tool.job.start(withoutReceiptAdmission(ctx), JobStartInput{Job: jobStart.job, Request: bytes.Clone(raw)})
+			if err != nil {
+				return ToolResult{}, err
+			}
+			jobStart.answer = &answer
+			return ToolResult{}, nil
+		}
 		return execute(withoutReceiptAdmission(ctx), raw)
-	}, admit, func(result ToolResult) bool { return !result.Err() }, func(result ToolResult) []ArtifactObservation {
+	}, admit, func(result ToolResult) bool { return tool.job == nil && !result.Err() }, func(result ToolResult) []ArtifactObservation {
 		if tool.Artifacts != nil {
 			return tool.Artifacts(result, args)
 		}

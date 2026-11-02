@@ -419,7 +419,7 @@ func ReadWaitCondition(raw json.RawMessage) (WaitCondition, error) {
 	return condition, nil
 }
 func readWaitPending(raw json.RawMessage, reason string, redacted bool) (contract.RunWaitPending, error) {
-	probe, err := waitShape(raw, []string{"kind"}, []string{"callId", "name", "tool", "unit", "used", "limit", "event", "questionDigest", "question", "operation", "source", "connection", "cause"})
+	probe, err := waitShape(raw, []string{"kind"}, []string{"job", "generation", "callId", "name", "tool", "unit", "used", "limit", "event", "questionDigest", "question", "operation", "source", "connection", "cause"})
 	if err != nil {
 		return contract.RunWaitPending{}, err
 	}
@@ -460,6 +460,19 @@ func readWaitPending(raw json.RawMessage, reason string, redacted bool) (contrac
 			return contract.RunWaitPending{}, err
 		}
 		return contract.RunWaitPending{Budget: &budget}, nil
+	case "job":
+		m, err := waitShape(raw, []string{"kind", "job", "generation"}, nil)
+		if err != nil {
+			return contract.RunWaitPending{}, err
+		}
+		if text := string(bytes.TrimSpace(m["generation"])); text != "1" {
+			return contract.RunWaitPending{}, waitInvalid()
+		}
+		pending := contract.RunWaitPendingJob{Kind: "job", Generation: JobGeneration}
+		if pending.Job, err = m.digest("job"); err != nil {
+			return contract.RunWaitPending{}, err
+		}
+		return contract.RunWaitPending{Job: &pending}, nil
 	case "reauthorization":
 		// #226: the never-admitted operation of a trusted disposition, and its connection.
 		m, err := waitShape(raw, []string{"kind", "operation", "source", "tool", "connection", "cause"}, nil)
@@ -614,7 +627,11 @@ func readWaitResolution(raw json.RawMessage, question *contract.Question, redact
 
 var waitParkRequired = []string{"version", "resource", "wait", "reason", "pending", "condition", "continuation", "checkpoint", "pins", "wakeKeyDigest", "release"}
 var waitParkOptional = []string{"timeoutAt", "limits", "approval", "chat", "retainUntil", "reauthorization"}
-var waitReasons = []string{"approval", "budget", "question", "reauthorization"}
+var waitReasons = []string{"approval", "budget", "question", "reauthorization", "job"}
+
+// waitTimeoutContinues: a timeout ends these waits unanswered and the run goes on; any other reason's timeout
+// closes its run.
+func waitTimeoutContinues(reason string) bool { return reason == "question" || reason == "job" }
 
 // readWaitParkMembers reads a park's members; stored, a wait as the store keeps it, which may carry the
 // approval binding the store attached to a reauthorization wait (a park never does).
@@ -632,7 +649,7 @@ func readWaitParkMembers(m waitMembers, redacted, stored bool) (RunWait, error) 
 	}
 	// A question waits for its answer event, and a reauthorization for the host's or the person's action;
 	// a wake time would end either with neither.
-	if (wait.Reason == "question" || wait.Reason == "reauthorization") && (wait.Condition.Event == nil || wait.Condition.WakeAt != nil) {
+	if (wait.Reason == "question" || wait.Reason == "reauthorization" || wait.Reason == "job") && (wait.Condition.Event == nil || wait.Condition.WakeAt != nil) {
 		return RunWait{}, waitInvalid()
 	}
 	if wait.Resource, err = m.id("resource"); err != nil {
@@ -740,6 +757,11 @@ func readWaitParkMembers(m waitMembers, redacted, stored bool) (RunWait, error) 
 		return RunWait{}, waitInvalid()
 	}
 	if wait.Reason != "reauthorization" && wait.Reauthorization != nil {
+		return RunWait{}, waitInvalid()
+	}
+	// #229: a job wait waits for this job's completion and nothing else, and no chat binding can stay current
+	// that long.
+	if wait.Reason == "job" && (wait.Condition.Event.Kind != JobWaitEvent || wait.Condition.Event.Subject != wait.Pending.Job.Job || wait.Chat != nil) {
 		return RunWait{}, waitInvalid()
 	}
 	return wait, nil
@@ -1009,7 +1031,7 @@ func checkWakeEvidence(evidence WakeEvidence) (WakeEvidence, error) {
 	return ReadWakeEvidence(raw)
 }
 
-var waitNeeds = map[string]string{"approval": "approval-decision", "budget": "budget-grant", "question": "question-answer", "reauthorization": "reauthorization"}
+var waitNeeds = map[string]string{"approval": "approval-decision", "budget": "budget-grant", "question": "question-answer", "reauthorization": "reauthorization", "job": "job-completion"}
 
 // ReadAttentionEvent reads a version 1 needs_attention event.
 func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
@@ -1033,7 +1055,7 @@ func ReadAttentionEvent(raw []byte) (AttentionEvent, error) {
 		func() (err error) { event.Wait, err = m.id("wait"); return },
 		func() (err error) { event.Reason, err = m.enum("reason", waitReasons...); return },
 		func() (err error) {
-			event.Needs, err = m.enum("needs", "approval-decision", "budget-grant", "question-answer", "reauthorization")
+			event.Needs, err = m.enum("needs", "approval-decision", "budget-grant", "question-answer", "reauthorization", "job-completion")
 			return
 		},
 		func() (err error) { event.Condition, err = ReadWaitCondition(m["condition"]); return },
@@ -1356,6 +1378,9 @@ func AttentionFor(wait RunWait) AttentionEvent {
 	case wait.Pending.Reauthorization != nil:
 		subject := wait.Pending.Reauthorization.Connection
 		event.Subject = &subject
+	case wait.Pending.Job != nil:
+		subject := wait.Pending.Job.Job
+		event.Subject = &subject
 	}
 	if wait.TimeoutAt != nil {
 		at := *wait.TimeoutAt
@@ -1552,7 +1577,7 @@ func (t *WaitTable) attentionOf(resource, id string) AttentionEvent {
 // terminalWait: a terminal wait ends its run, a timed-out approval or budget wait, or one past its
 // deadline.
 func terminalWait(row *RunWait) bool {
-	return row.State == "expired" || row.State == "timed-out" && row.Reason != "question"
+	return row.State == "expired" || row.State == "timed-out" && !waitTimeoutContinues(row.Reason)
 }
 
 // holds refuses while a wait of the run is not yet resumed: closed for good after a terminal one.
@@ -1680,7 +1705,7 @@ func (t *WaitTable) Limit(input RunLimit) (RunLimit, error) {
 }
 
 // Park commits the wait and its attention event and releases the lease, or changes nothing.
-func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases *LeaseTable) (RunWait, AttentionEvent, error) {
+func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases *LeaseTable, jobs ...*JobTable) (RunWait, AttentionEvent, error) {
 	park, err := readWaitPark(input)
 	if err != nil {
 		return RunWait{}, AttentionEvent{}, err
@@ -1715,10 +1740,12 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 	}
 	// #265 M1: a wake key belongs to one wait. A park whose key digest any other wait of the store holds
 	// is refused.
-	for _, rows := range t.rows {
-		if slices.ContainsFunc(rows, func(row *RunWait) bool { return row.WakeKeyDigest == park.WakeKeyDigest }) {
-			return RunWait{}, AttentionEvent{}, waitRefused("key-reused")
-		}
+	var jobTable *JobTable
+	if len(jobs) > 0 {
+		jobTable = jobs[0]
+	}
+	if t.KeyHeld(park.WakeKeyDigest) || jobTable != nil && jobTable.KeyHeld(park.WakeKeyDigest) {
+		return RunWait{}, AttentionEvent{}, waitRefused("key-reused")
 	}
 	if !waitHeadMatches(head, park.Checkpoint) {
 		return RunWait{}, AttentionEvent{}, waitRefused("checkpoint-changed")
@@ -1736,6 +1763,16 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 		}
 		if held, ok := t.approvals[park.Resource]; ok {
 			unsettled = &held
+		}
+	}
+	// #229: the lost wake-up: a job that settled before this transaction has nothing to wait for, and one not
+	// proven to have started may have none coming. Only a store with the job port holds a job wait.
+	if pending := park.Pending.Job; pending != nil {
+		if jobTable == nil {
+			return RunWait{}, AttentionEvent{}, &WaitCapabilityRefused{Reason: "store-unsupported"}
+		}
+		if err := jobTable.AdmitPark(park.Resource, pending.Job); err != nil {
+			return RunWait{}, AttentionEvent{}, err
 		}
 	}
 	at, err := t.stamp()
@@ -1782,6 +1819,39 @@ func (t *WaitTable) Park(input RunWait, fence LeaseFence, head *RunHead, leases 
 }
 
 // Wake: the first valid wake wins; a duplicate returns the retained disposition.
+// KeyHeld (#229) is whether any wait of the store holds this key digest: a key belongs to one wait or one job.
+func (t *WaitTable) KeyHeld(keyDigest string) bool {
+	for _, rows := range t.rows {
+		if slices.ContainsFunc(rows, func(row *RunWait) bool { return row.WakeKeyDigest == keyDigest }) {
+			return true
+		}
+	}
+	return false
+}
+
+// WakeJob (#229): a job's completion, in its own transaction, wakes the wait parked on that job. Late evidence
+// wakes nothing: from the wait's timeout or deadline, or the run's, only those end it; a wait already woken or
+// resumed is left as it is.
+func (t *WaitTable) WakeJob(resource, job string, evidence JobWake) error {
+	for _, row := range t.rows[resource] {
+		if row.State != "parked" || row.Pending.Job == nil || row.Pending.Job.Job != job {
+			continue
+		}
+		now, err := t.stamp()
+		if err != nil {
+			return err
+		}
+		at := waitTimeMillis(now)
+		if row.Deadline != nil && at >= waitTimeMillis(row.Deadline.At) || t.passed(row.Resource, now) || row.TimeoutAt != nil && at >= waitTimeMillis(*row.TimeoutAt) {
+			return nil
+		}
+		row.Disposition = &WakeDisposition{Evidence: evidence.Evidence, Kind: "event", At: now, Digest: evidence.Digest}
+		row.State = "woken"
+		return nil
+	}
+	return nil
+}
+
 func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 	evidence, err := checkWakeEvidence(input)
 	if err != nil {
@@ -1885,6 +1955,10 @@ func (t *WaitTable) Wake(input WakeEvidence) (WakeDisposition, error) {
 		if expected == nil || expected.Kind != evidence.Event.Kind || expected.Subject != evidence.Event.Subject {
 			return WakeDisposition{}, waitRefused("mismatch")
 		}
+		// #229: only the job's own authenticated completion satisfies a job wait, through the store's CompleteJob.
+		if row.Reason == "job" {
+			return WakeDisposition{}, waitRefused("mismatch")
+		}
 		// An answer belongs to a question wait only, and must be a real answer to the retained question.
 		if row.Reason == "question" {
 			if question == nil || evidence.Answer == nil || !realAnswer(*evidence.Answer) {
@@ -1960,7 +2034,7 @@ func (t *WaitTable) Resume(claim WaitClaim, head *RunHead, leases *LeaseTable) (
 	if claim.Lease.Resource != row.Resource {
 		return RunWait{}, RunLease{}, &LeaseRefused{Reason: "resource-mismatch"}
 	}
-	if row.State == "timed-out" && row.Reason != "question" {
+	if row.State == "timed-out" && !waitTimeoutContinues(row.Reason) {
 		return RunWait{}, RunLease{}, waitRefused("timed-out")
 	}
 	now, err := t.stamp()
@@ -2129,7 +2203,7 @@ func (m *MemoryRunStore) headOf(resource string) *RunHead {
 }
 func (m *MemoryRunStore) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (wait RunWait, attention AttentionEvent, err error) {
 	err = m.leaseTransition(ctx, func() error {
-		wait, attention, err = m.waits.Park(park, fence, m.headOf(park.Resource), m.leases)
+		wait, attention, err = m.waits.Park(park, fence, m.headOf(park.Resource), m.leases, m.jobs)
 		return err
 	})
 	return wait, attention, err
@@ -2233,6 +2307,9 @@ type ParkInput struct {
 	// Question is the retained user_question event a question wait is for.
 	Question    string
 	RetainUntil *string
+	// Job (#229) is the started job of this run the wait waits for. Only its authenticated completion
+	// satisfies the wait.
+	Job string
 	// Reauthorization (#226) is the trusted re-authorization refusal the run's dispatch ended in
 	// (ReauthorizationOf on the fenced view the run used). It parks one reauthorization wait, under the same
 	// lease it was minted under.
@@ -2311,7 +2388,42 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		}
 		park.Limits = &limits
 	}
-	if input.Reauthorization != nil {
+	if input.Job != "" {
+		// #229: a job wait parks a checkpoint at rest. A pending decision is parked as that decision: its claim
+		// would carry none here.
+		if input.Question != "" || input.Reauthorization != nil {
+			return RunWait{}, AttentionEvent{}, waitInvalid()
+		}
+		if checkpoint.Status == "paused" || checkpoint.Approval != nil && checkpoint.Approval.State == "asked" || checkpoint.PlanState != nil && checkpoint.PlanState.Pending != nil {
+			return RunWait{}, AttentionEvent{}, waitRefused("decision-required")
+		}
+		if checkpoint.Status == "stopped" {
+			return RunWait{}, AttentionEvent{}, waitRefused("nothing-pending")
+		}
+		port, err := jobPortOf(input.Store)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, &WaitCapabilityRefused{Reason: "store-unsupported"}
+		}
+		held, err := port.ReadJob(ctx, input.Fence.Resource, input.Job)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, err
+		}
+		if held == nil {
+			return RunWait{}, AttentionEvent{}, jobRefused("no-job")
+		}
+		job, err := jobReadBack(*held, input.Fence.Resource, input.Job)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, err
+		}
+		switch job.State {
+		case "completed", "not-started":
+			return RunWait{}, AttentionEvent{}, jobRefused("job-settled")
+		case "unproven":
+			return RunWait{}, AttentionEvent{}, jobRefused("job-unproven")
+		}
+		park.Reason = "job"
+		park.Pending = contract.RunWaitPending{Job: &contract.RunWaitPendingJob{Kind: "job", Job: job.Job, Generation: JobGeneration}}
+	} else if input.Reauthorization != nil {
 		// #226: only a trusted, invocation-bound disposition parks a run for re-authorization: one the package
 		// minted from the run's proven effect host during that live dispatch, not yet used, under this park's
 		// own lease, for the never-admitted dispatch the head holds. Anything else keeps the operation's
@@ -2450,6 +2562,9 @@ type ResumedWait struct {
 	Resolution   *contract.RunWaitResolution
 	// Reauthorized (#226) is the refresh a reauthorization wait's claim recorded.
 	Reauthorized *Reauthorized
+	// Job (#229) is a job wait's job as its record says now; the host hands it to the continuation
+	// (Input.JobContinuation).
+	Job *RunJob
 }
 
 func waitDecision(wait RunWait, input ResumeInput) error {
@@ -2516,7 +2631,7 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if wait.State == "resumed" {
 		return ResumedWait{}, waitRefused("already-resumed")
 	}
-	if wait.State == "timed-out" && wait.Reason != "question" {
+	if wait.State == "timed-out" && !waitTimeoutContinues(wait.Reason) {
 		return ResumedWait{}, waitRefused("timed-out")
 	}
 	if wait.State == "expired" {
@@ -2562,6 +2677,25 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 	if resumed.Resolution != nil {
 		resolution := *cloneRunWait(resumed).Resolution
 		out.Resolution = &resolution
+	}
+	// #229: read through the reader and held to the job asked for.
+	if pending := resumed.Pending.Job; pending != nil {
+		port, err := jobPortOf(input.Store)
+		if err != nil {
+			return ResumedWait{}, err
+		}
+		held, err := port.ReadJob(ctx, wait.Resource, pending.Job)
+		if err != nil {
+			return ResumedWait{}, err
+		}
+		if held == nil {
+			return ResumedWait{}, jobRefused("no-job")
+		}
+		job, err := jobReadBack(*held, wait.Resource, pending.Job)
+		if err != nil {
+			return ResumedWait{}, err
+		}
+		out.Job = &job
 	}
 	return out, nil
 }
@@ -2666,6 +2800,8 @@ func ReportFromExport(source WaitExport, now time.Time) (WaitReport, error) {
 			park.Content = content(question.Question, nil, question.QuestionDigest)
 		case wait.Pending.Reauthorization != nil:
 			park.Subject = str(wait.Pending.Reauthorization.Connection)
+		case wait.Pending.Job != nil:
+			park.Subject = str(wait.Pending.Job.Job)
 		}
 		report.Entries = append(report.Entries, park)
 		if d := wait.Disposition; d != nil {

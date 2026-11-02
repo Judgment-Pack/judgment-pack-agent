@@ -1900,6 +1900,31 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		held.Execution.TaskCompletionProof = func() []TaskCompletionEvidence { return binding.Writer.TaskCompletionProof(*binding) }
 	}
+	// #229: with job tools offered, the run must have the job port, and plan evidence is held to the job records.
+	// Refused by name before anything is offered.
+	if slices.ContainsFunc(session.HostTools, func(tool HostTool) bool { return tool.job != nil }) {
+		binding := held.Persistence("author")
+		if binding == nil {
+			return nil, &JobCapabilityRefused{Reason: "store-unsupported"}
+		}
+		if err := binding.Writer.AttachJobs(ctx); err != nil {
+			return nil, err
+		}
+		held.Execution.PlanJobsHeld = binding.Writer.JobProof
+		held.Execution.PlanJobs = func(ctx context.Context) (map[string]RunJob, error) {
+			if err := binding.Writer.RefreshJobs(ctx); err != nil {
+				return nil, err
+			}
+			return binding.Writer.JobProof(), nil
+		}
+	}
+	// The record a resumed job wait hands on is this run's.
+	if continued := held.session.Context; continued != nil && continued.JobContinuation != nil {
+		binding := held.Persistence("author")
+		if binding == nil || binding.Writer.ID != continued.JobContinuation.Resource {
+			return nil, jobInvalid()
+		}
+	}
 	held.Execution.PlanProof = func() (*DurableBook, DurableScope) {
 		binding := held.Persistence("author")
 		if binding == nil {
@@ -2079,6 +2104,16 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			return nil, err
 		}
 		out.Prompt += "\n\n" + ApprovalContinuationText(*held.Execution.State().Approval, DataMarker())
+	}
+	// #229: a resumed job wait: one fixed line and one data block built from the job's record, and no checkpoint
+	// member.
+	if continued := held.session.Context; continued != nil && continued.JobContinuation != nil {
+		text, err := JobContinuationText(*continued.JobContinuation, DataMarker())
+		if err != nil {
+			held.Close()
+			return nil, err
+		}
+		out.Prompt += "\n\n" + text
 	}
 	return &Run{Context: held, Session: out}, nil
 }

@@ -459,6 +459,8 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
 }
 /** admitUnattended, then the fenced view the unattended run uses as its RunStore. */
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}
+/** @internal The store and fence behind a fenced view; undefined for any other store. */
+export function leasedViewOf(store:RunStore):{fence:LeaseFence;store:RunStore}|undefined{const lease=leased.get(store);return lease?{fence:lease.fence,store:lease.store}:undefined}
 /** @internal ADR-0029: a fenced store's lease holds the run's principals: a lease of others, a delegated run's without
  * them or an undelegated run's with them dispatches nothing. */
 export function holdLeasePrincipal(store:RunStore,record:PrincipalRecord|undefined):void{
@@ -499,6 +501,11 @@ export function attachReauthorizedDispatch(store:RunStore,operation:EffectOperat
  const lease=leased.get(store),held=readOperation(operation),bound=readLeaseFence(fence)
  if(!lease||lease.grant||canonicalJSON(lease.fence)!==canonicalJSON(bound)||held.run!==bound.resource)return invalid()
  lease.grant={operation:held,used:false}
+}
+/** @internal H2 of the #229 design review: whether takeReauthorizedDispatch would answer true, spending nothing. */
+export function reauthorizedDispatchOpen(store:RunStore,operation:EffectOperation,recorded:unknown):boolean{
+ const grant=leased.get(store)?.grant
+ return !!grant&&!grant.used&&isNeverAdmittedFailure(recorded)&&canonicalJSON(grant.operation)===canonicalJSON(operation)
 }
 /** @internal #226: the writer asks before it sends a dispatch again that its run holds as unknown. Only the one operation
  * a resumed re-authorization wait granted on this view, whose recorded failure is the typed never-admitted refusal, which

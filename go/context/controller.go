@@ -413,12 +413,16 @@ type ExecutionController struct {
 	PlanRefused         func()
 	TaskCompletionProof func() []TaskCompletionEvidence
 	PlanProof           func() (*DurableBook, DurableScope)
-	planDecisionEvent   *contract.RunEvent
-	PublishPlan         func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
-	session             Session
-	ledger              *ContextLedger
-	restored            bool
-	attempt             int
+	// PlanJobs (#229) is this run's jobs afresh, by their start's dispatch id, where the host offers job tools.
+	PlanJobs func(context.Context) (map[string]RunJob, error)
+	// PlanJobsHeld is the same as of the last read, for what is offered to the model; a close reads afresh.
+	PlanJobsHeld      func() map[string]RunJob
+	planDecisionEvent *contract.RunEvent
+	PublishPlan       func(context.Context, contract.Checkpoint, contract.RunEvent) (contract.RunEvent, error)
+	session           Session
+	ledger            *ContextLedger
+	restored          bool
+	attempt           int
 	// criticMu is the switch's lock: it also guards operation writers and snapshot serialisation.
 	criticMu *sync.Mutex
 

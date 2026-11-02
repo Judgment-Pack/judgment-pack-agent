@@ -6,6 +6,7 @@ import type {StorageRevision,StorageCursor} from './common'
 import {LeaseRefused,LeaseTable,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
 import {WaitTable,type AttentionDelivery,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import type {RunLimit} from './resume'
+import {JobRefused,JobTable,readJobRegistration,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStore} from './job'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
  runId:string;expectedRevision:StorageRevision|null;commitId:string
@@ -14,6 +15,9 @@ export interface RunCommit {
   * committed checkpoint's approval and refuses one that is not exactly the reviewed call (approval-changed), and it
   * settles the call in the same transaction as the commit that records it executed, refused or answered. */
  checkpoint:Uint8Array|null;events:Uint8Array[]
+ /** #229: a job start's registration, committed in this transaction or not at all. Only a store with the job port is handed
+  * one, and only through commitFenced or commitHistoryFenced; a commit carrying one with no fence is invalid. */
+ job?:JobRegistration
 }
 export interface RunReceipt {revision:StorageRevision;cursor:StorageCursor|null;commitId:string}
 export interface RunHead extends RunReceipt {runId:string;checkpoint:Uint8Array|null}
@@ -41,22 +45,22 @@ export interface MemoryRunStoreOptions {
  now?:()=>Date
 }
 function copyCommit(input:RunCommit):RunCommit {
- if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['runId','expectedRevision','commitId','checkpoint','events'].includes(k)))throw new StorageInputError()
+ if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['runId','expectedRevision','commitId','checkpoint','events','job'].includes(k)))throw new StorageInputError()
  requireId(input.runId);requireId(input.commitId)
  if(input.expectedRevision!==null)requireId(input.expectedRevision)
  if(!Array.isArray(input.events)||input.events.length>STORAGE_EVENT_LIMIT||input.checkpoint===null&&input.events.length===0)throw new StorageInputError()
  const checkpoint=input.checkpoint===null?null:bytesCopy(input.checkpoint),events:Uint8Array[]=[]
  let total=checkpoint?.length??0
  for(const raw of input.events){const event=bytesCopy(raw);total+=event.length;if(total>STORAGE_TRANSACTION_BYTES)throw new StorageInputError();events.push(event)}
- return {...input,checkpoint,events}
+ return {...input,checkpoint,events,...(input.job===undefined?{}:{job:readJobRegistration(input.job)})}
 }
-const identical=(a:RunCommit,b:RunCommit)=>a.expectedRevision===b.expectedRevision&&sameBytes(a.checkpoint,b.checkpoint)&&a.events.length===b.events.length&&a.events.every((e,i)=>sameBytes(e,b.events[i]!))
+const identical=(a:RunCommit,b:RunCommit)=>a.expectedRevision===b.expectedRevision&&canonicalJSON(a.job??null)===canonicalJSON(b.job??null)&&sameBytes(a.checkpoint,b.checkpoint)&&a.events.length===b.events.length&&a.events.every((e,i)=>sameBytes(e,b.events[i]!))
 const copyHead=(head:RunHead):RunHead=>({...head,checkpoint:head.checkpoint===null?null:new Uint8Array(head.checkpoint)})
 /** Conforms to the atomic port in one process; all data is ephemeral. Tokens are unique per instance.
  * Its leases follow the lease transitions within the same process only (leaseLifetime 'process'): it never qualifies for
  * unattended admission, and a new instance starts with no leases. Its waits (#224) likewise end with its process
  * (waitLifetime 'process'), so a park on it refuses store-lifetime. */
-export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
+export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobStore {
  readonly durability:RunStoreDurability='memory'
  readonly historyVersion=1 as const
  readonly leaseVersion=1 as const
@@ -64,12 +68,15 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  readonly leasePrincipals=true as const
  readonly waitVersion=1 as const
  readonly waitLifetime:WaitLifetime='process'
+ readonly jobVersion=1 as const
+ readonly jobLifetime:JobLifetime='process'
+ private readonly jobs:JobTable
  private readonly leases:LeaseTable
  private readonly waits:WaitTable
  private readonly journal:MemoryHistoryJournal
  private runs=new Map<string,HeldRun>()
  private tail:Promise<unknown>=Promise.resolve()
- constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date())}
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date());this.jobs=new JobTable(()=>this.options.now?.()??new Date())}
  private serial<T>(signal:AbortSignal|undefined,run:()=>T):Promise<T>{
   try{signal?.throwIfAborted()}catch(error){return Promise.reject(error)}
   const result=this.tail.then(()=>{signal?.throwIfAborted();return run()})
@@ -87,7 +94,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  checkFence(fence:LeaseFence,signal?:AbortSignal):Promise<void>{return this.serial(signal,()=>{this.leases.check(fence)})}
  // #224: every wait transition runs in the same serialized transaction order as the commits, against the same head.
  private head(resource:string){return this.runs.get(resource)?.head}
- parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.park(park,fence,park&&typeof park==='object'?this.head(park.resource):undefined,this.leases))}
+ parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.park(park,fence,park&&typeof park==='object'?this.head(park.resource):undefined,this.leases,this.jobs))}
  wakeWait(evidence:WakeEvidence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.wake(evidence))}
  resumeWait(claim:WaitClaim,signal?:AbortSignal){return this.serial(signal,()=>this.waits.resume(claim,claim&&typeof claim==='object'&&storageId(claim.resource)?this.head(claim.resource):undefined,this.leases))}
  limitRun(limit:RunLimit,signal?:AbortSignal){return this.serial(signal,()=>{const held=this.waits.limit(limit);this.leases.lower(held.resource,Date.parse(held.run));return held})}
@@ -95,6 +102,14 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
  exportWaits(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.export(resource))}
  recordDelivery(delivery:Omit<AttentionDelivery,'at'|'version'>,signal?:AbortSignal){return this.serial(signal,()=>this.waits.deliver(delivery))}
  redactWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.redact(resource,wait))}
+ // #229: the job transitions run in the same serialized order as the commits; a completion wakes its wait in its own transaction.
+ answerJob(answer:JobAnswer,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.answer(answer,fence))}
+ reconcileJob(evidence:JobReconciliation,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.reconcile(evidence))}
+ completeJob(evidence:JobCompletionEvidence,signal?:AbortSignal){return this.serial(signal,()=>{const done=this.jobs.complete(evidence);if(done.wake)this.waits.wakeJob(done.job.resource,done.job.job,done.wake);return done.job})}
+ reclaimJob(resource:string,job:string,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>{const held=readLeaseFence(fence);if(held.resource!==resource)throw new LeaseRefused('resource-mismatch');this.leases.check(held);return this.jobs.reclaim(resource,job,held)})}
+ readJob(resource:string,job:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.read(resource,job))}
+ listJobs(resource:string,after:string|null,limit:number,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.list(resource,after,limit))}
+ exportJobs(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.export(resource))}
  commitFenced(input:RunCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunReceipt>{return this.commitTransaction(input,signal,undefined,fence).then(value=>value.receipt)}
  commitHistoryFenced(input:RunHistoryCommit,fence:LeaseFence,signal?:AbortSignal):Promise<RunHistoryReceipt>{
   if(!input||typeof input!=='object')return Promise.reject(new StorageInputError())
@@ -127,6 +142,9 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
    // #225 H1 and M3: an unsettled approved call is committed only as the person reviewed it; the commit that records it
    // settled lifts its expiry from the run.
    const settles=this.waits.commitApproval(frozen.runId,frozen.checkpoint)
+   // #229: a registration commits with its claim or not at all, and only under a fence.
+   if(frozen.job&&!fence)throw new JobRefused('invalid')
+   const registration=frozen.job?this.jobs.admit(frozen.runId,frozen.job,this.waits.keyHeld(frozen.job.keyDigest)):undefined
    const preliminary={revision:crypto.randomUUID(),cursor:null,commitId:frozen.commitId}
    const prepared=this.journal.prepare(frozen,preliminary,frozen.checkpoint??held?.head.checkpoint??null,extra)
    await this.options.beforeCommit?.()
@@ -143,6 +161,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore {
    this.runs.set(frozen.runId,{head,events:[...(held?.events??[]),...events],commits})
    this.journal.publish(prepared)
    if(settles)this.waits.settleApproval(frozen.runId)
+   if(registration)this.jobs.register(frozen.runId,registration,fence!)
    await this.options.afterCommit?.()
    return {receipt:{...receipt},historyReceipt:structuredClone(historyReceipt)}
   })

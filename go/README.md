@@ -262,6 +262,14 @@ approval's expiry is ended there by the deadline wake (#266 N1), and `ResumeWait
 lease in the claim's own transaction, which `ResumeParked` reads back through the readers (#266 M6); `ParkInput` takes the host's `Model` and `Limits`, and
 `ResumeInput` the host's `Current` evidence. See `docs/design/storage.md`.
 
+### Run-owned jobs (#229)
+
+`context/run_job.go` is the Go twin of `storage/job.ts`: `JobStartTool`, `JobReadTool`, `CompleteJob`, `ReconcileJob`, `ReadJob`,
+`ListJobs`, `ExportJobs`, `JobReportOf`, `GatewayActionMembers`, `GatewayRefusalFinding` and the `JobStore` port, certified by
+`CheckRunStoreJobConformance`. `ParkInput.Job` parks a job wait, `ResumedWait.Job` carries the job on, and `Input.JobContinuation`
+tells the resumed run. A registration travels as `RunCommit.Job`; a store without the port is never handed one. Nothing changes
+unless a host offers a job tool.
+
 ### Re-authorization waits (#226)
 
 `context/run_reauth.go` is the Go twin of `storage/reauth.ts`: `NewReferenceEffectHostWith` with a

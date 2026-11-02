@@ -171,9 +171,11 @@ func (r ToolResult) Clone() ToolResult {
 type HostTool struct {
 	// Original-writer capability; absent from every public declaration and wire format.
 	taskDelegation *taskDelegationRegistration
-	Taxonomy       *wire.ToolTaxonomy
-	TaxonomyLimit  *TaxonomyLimit
-	Annotations    map[string]bool
+	// #229: a job tool's capability, absent from every public declaration and wire format as well.
+	job           *jobToolSeam
+	Taxonomy      *wire.ToolTaxonomy
+	TaxonomyLimit *TaxonomyLimit
+	Annotations   map[string]bool
 	// Artifacts authenticates artifact observations from an actual host result, never narration.
 	Artifacts func(ToolResult, json.RawMessage) []ArtifactObservation
 
@@ -381,6 +383,9 @@ type Input struct {
 	// checkpoint.json#/$defs/approvalDecision), the continuation input beside a request grant. A
 	// decision for any other call is refused before anything runs (stale-state).
 	Approval *contract.CheckpointApprovalDecision
+	// JobContinuation (#229) is the job a resumed job wait's run continues after (ResumedWait.Job), as its
+	// record says: one fixed line and one data block in the first request.
+	JobContinuation *RunJob
 	// Steer is the host-owned in-flight input queue. Adapters drain it only at request boundaries.
 	Steer <-chan SteerInput
 }

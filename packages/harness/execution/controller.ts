@@ -53,6 +53,8 @@ export class ExecutionController {
  taskProfiles?:()=>import('../subagents').SubagentRecord[]
  planRefused?:()=>void
  proof?:()=>import('./planActions').PlanProof|undefined
+ /** #229: fresh job records for the next proof, where the host offers job tools. */
+ refreshProof?:(signal:AbortSignal)=>Promise<void>
  publishPlan?: (state:ExecutionCheckpoint,event:PlanEvent)=>Promise<void>
  private planDecisionEvent?:Extract<AssistantEvent,{type:'plan_drift_decided'}>
  async publishPlanDecision(){if(this.planDecisionEvent){await this.publishPlan?.(this.snapshot(),this.planDecisionEvent);this.planDecisionEvent=undefined}}
@@ -394,6 +396,7 @@ export class ExecutionController {
  completionTool():HostTool{return {name:'complete_plan_step',taxonomy:{operation:'own-state',effect:'pure'},effect:'plan',description:'Close only the current active step with acknowledged execution evidence, or as not-needed with a reason. Pass its exact id and current planRevision.',inputSchema:{type:'object',properties:{id:{type:'string',maxLength:100},expectedRevision:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},outcome:{enum:['completed','not-needed']},reason:{type:'string',minLength:1,maxLength:1500},evidence:{type:'object',properties:{...(this.session.context?.taskSteps===true?{child:{type:'object',properties:{task:{type:'string',maxLength:100},checkpointDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},resultDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},eventDigest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},commitId:{type:'string',maxLength:100}},required:['task','checkpointDigest','resultDigest','eventDigest','commitId'],additionalProperties:false}}:{}),operations:{type:'array',maxItems:20,items:{type:'string',maxLength:256}},artifacts:{type:'array',maxItems:20,items:{type:'object',properties:{kind:{enum:['artifact','dialect']},id:{type:'string',maxLength:256},digest:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'}},required:['kind','id','digest'],additionalProperties:false}}},required:['operations','artifacts'],additionalProperties:false}},required:['id','expectedRevision','outcome'],additionalProperties:false,oneOf:[{"properties":{"outcome":{"const":"completed"}},"required":["evidence"],"not":{"required":["reason"]}},{"properties":{"outcome":{"const":"not-needed"}},"required":["reason"],"not":{"required":["evidence"]}}]},execute:async(args,signal)=>this.serialPlan(async()=>{
   signal.throwIfAborted()
   if(this.state.planState?.pending)throw toolInputFailure('PlanApprovalRequired: this run waits for its plan decision.')
+  await this.refreshProof?.(signal)
   const current=identifyPlan(this.state.plan,this.state.planState),result=closePlan(current,args,this.proof?.())
   if(result.reason){
    const next=appendRefusal(current,result.reason,typeof args.id==='string'?args.id:undefined);this.mutate(next)
