@@ -405,6 +405,7 @@ $pkg/storage/job.test.ts
 $pkg/storage/jobRecords.test.ts
 $pkg/storage/jobConformance.ts
 $pkg/storage/jobConformance.test.ts
+$pkg/storage/startRefusal.test.ts
 EOF
 }
 

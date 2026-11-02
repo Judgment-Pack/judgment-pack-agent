@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/adapter"
 	native "github.com/Judgment-Pack/judgment-pack-agent/go/adapter/agent"
@@ -62,7 +63,7 @@ type quarantineVector struct {
 // final answer: six requests.
 var quarantineSequence = []int{0, 1, 2, 4}
 
-func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMessage, receipt, verifier string, executions, verifications *atomic.Int32) runcontext.HostTool {
+func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMessage, receipt, verifier string, executions, verifications *atomic.Int32, waited *atomic.Int64) runcontext.HostTool {
 	t.Helper()
 	var declared struct {
 		Name, Description string
@@ -85,7 +86,9 @@ func quarantineDeclaration(t *testing.T, v quarantineVector, result json.RawMess
 	tool.Source.VerifyReceipt = func(ctx context.Context, _ runcontext.ReceiptEvidence) (bool, error) {
 		verifications.Add(1)
 		if verifier == "answers true after the deadline" {
+			began := time.Now()
 			<-ctx.Done()
+			waited.Store(int64(time.Since(began)))
 			return true, nil
 		}
 		return false, nil
@@ -158,7 +161,8 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 			check := func(t *testing.T) {
 				ctx := context.Background()
 				var executions, verifications atomic.Int32
-				tool := quarantineDeclaration(t, v, held.Result, held.Receipt, held.Verifier, &executions, &verifications)
+				var waited atomic.Int64
+				tool := quarantineDeclaration(t, v, held.Result, held.Receipt, held.Verifier, &executions, &verifications, &waited)
 				text := string(runcontext.ReadToolResult(runcontext.MustParseJSON(string(held.Result))).JSON())
 				digest := sha256.Sum256([]byte(text))
 				retained := v.Fixture.Scope + ":result-" + v.Fixture.WireName + "-" + hex.EncodeToString(digest[:]) + ":" + hex.EncodeToString(digest[:])[:16]
@@ -291,6 +295,10 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 				}
 				if executions.Load() != 1 || verifications.Load() != held.VerifierCalls {
 					t.Fatalf("executions %d, verifier calls %d", executions.Load(), verifications.Load())
+				}
+				// #293: the bubble's clock is exact, so the deadline came at exactly the vector's budget.
+				if held.Name == "expired-receipt" && time.Duration(waited.Load()) != time.Duration(v.Fixture.SourceCallMilliseconds)*time.Millisecond {
+					t.Fatalf("the verifier was stopped after %s, not the budget's %d ms", time.Duration(waited.Load()), v.Fixture.SourceCallMilliseconds)
 				}
 				head, err := store.Load(ctx, "receipt-quarantine")
 				if err != nil || head == nil {

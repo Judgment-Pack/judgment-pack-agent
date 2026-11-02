@@ -12559,6 +12559,56 @@
    "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
   },
   {
+   "name": "resume digest a malformed shownDigest is refused only on an approval",
+   "file": "storage/wait.ts",
+   "find": "||decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'",
+   "replace": "||decision.approved&&decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#293",
+   "note": "#293 F2, the #290 review's D4. Go twin (by hand): decision.Approved added to the ShownDigest clause of waitDecision; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+  },
+  {
+   "name": "start refusal the writer records a refusal it has no root for",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.root&&!this.latest&&(event.type==='error'||event.type==='usage'||event.type==='end'))return writeRunEvent(event);",
+   "replace": "",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#293",
+   "note": "#293 F3. TypeScript only: Go reports the refusal under a store."
+  },
+  {
+   "name": "start refusal the pass-through leaves the end out",
+   "file": "storage/writer.ts",
+   "find": "(event.type==='error'||event.type==='usage'||event.type==='end'))return writeRunEvent(event);",
+   "replace": "(event.type==='error'||event.type==='usage'))return writeRunEvent(event);",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#293",
+   "note": "#293 F3: a second error from the end. TypeScript only."
+  },
+  {
+   "name": "start refusal the pass-through takes a run with a head",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.root&&!this.latest&&(event.type==='error'",
+   "replace": "if(binding.root&&(event.type==='error'",
+   "tests": [
+    "storage/writer.test.ts",
+    "storage/lifecycle.test.ts",
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#293",
+   "note": "#293 F3: an ordinary run's end would not be recorded. TypeScript only."
+  },
+  {
    "name": "job J1 a reader takes any generation",
    "file": "storage/job.ts",
    "find": "const generation=(v:unknown):1=>v===JOB_GENERATION?JOB_GENERATION:invalid()",

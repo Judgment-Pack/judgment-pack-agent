@@ -28,6 +28,7 @@ const quarantineVectorFile = "contract/vectors/tool-result/receipt-quarantine.js
 // verifier says it was entered, and where release is set, it waits on it.
 type quarantineCalls struct {
 	executions, verifications atomic.Int32
+	waited                    atomic.Int64
 	entered                   chan struct{}
 	release                   chan struct{}
 	once                      sync.Once
@@ -65,7 +66,9 @@ func quarantineTool(t *testing.T, declaration, result *Value, receipt, verifier 
 		case "accepts its receipt for its result":
 			return e.Receipt == receipt && e.Result == CanonicalJSON(result), nil
 		case "answers true after the deadline":
+			began := time.Now()
 			<-ctx.Done()
+			calls.waited.Store(int64(time.Since(began)))
 			return true, nil
 		}
 		return false, nil
@@ -245,6 +248,10 @@ func TestAnUnverifiedReceiptLeavesNothingAReaderCanReach(t *testing.T) {
 			}
 			if calls.executions.Load() != 1 || calls.verifications.Load() != int32(held.Get("verifierCalls").Num()) {
 				t.Fatalf("executions %d, verifier calls %d", calls.executions.Load(), calls.verifications.Load())
+			}
+			// #293: the bubble's clock is exact, so the deadline came at exactly the vector's budget.
+			if waited := time.Duration(calls.waited.Load()); waited != time.Duration(milliseconds)*time.Millisecond {
+				t.Fatalf("the verifier was stopped after %s, not the budget's %d ms", waited, milliseconds)
 			}
 			if len(chat.EntryIDs()) != 0 {
 				t.Fatalf("the chat retained %v", chat.EntryIDs())
