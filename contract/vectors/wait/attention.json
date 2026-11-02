@@ -224,6 +224,25 @@
       "deadline": "2026-01-01T01:00:00.000Z",
       "releaseUncertain": false,
       "at": "2026-01-01T00:10:00.000Z"
+    },
+    {
+      "version": 1,
+      "type": "needs_attention",
+      "id": "sha256:49fa816b52c1854635bd7d95c8ecfb254dd96f44811c299d5236e55502fc6491",
+      "resource": "run-job",
+      "wait": "wait-1",
+      "reason": "job",
+      "needs": "job-completion",
+      "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb",
+      "condition": {
+        "event": {
+          "kind": "job-completion",
+          "subject": "sha256:7c00b63ed552c92aa15d0f9e8ba8b4355ea6a8ba191a4cfa9aaf0b5e412a29fb"
+        }
+      },
+      "timeoutAt": "2026-01-01T06:00:00.000Z",
+      "releaseUncertain": false,
+      "at": "2026-01-01T00:00:00.000Z"
     }
   ],
   "deliveries": [

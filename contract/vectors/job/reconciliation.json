@@ -1,0 +1,149 @@
+{
+ "description": "Handwritten job evidence: what both readers accept with its digest (the key left out, computed apart from the package), what fails the schema, and what only the readers refuse.",
+ "schema": "run-job.json#/$defs/reconciliation",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "find-1",
+   "finding": "started",
+   "handle": "ext-1",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "find-2",
+   "finding": "not-started",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "find-3",
+   "finding": "unknown",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "find-4",
+   "finding": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  }
+ ],
+ "digests": [
+  "sha256:6f6d89cb68935a80dc2eeab20e7fd8096ee316f4d691d005b96c396798d46464",
+  "sha256:35f70286624fd801fbc53b15309de4a381d8a2a4db6f5e48ddb7f65e1ec87063",
+  "sha256:b14db23bff5081d0ec906bc5f2bee0c444fddccdc9dcae709c50d4579782880b",
+  "sha256:eba35fbdfc37c4f38266045070266222745faf9ff53a164ec27ba938c4b337ab"
+ ],
+ "refused": [
+  {
+   "problem": "a short key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "find-2",
+    "finding": "not-started",
+    "key": "short"
+   }
+  },
+  {
+   "problem": "no key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "find-2",
+    "finding": "not-started"
+   }
+  },
+  {
+   "problem": "a finding not named",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "f",
+    "finding": "maybe",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "generation 2",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 2,
+    "evidence": "find-2",
+    "finding": "not-started",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  }
+ ],
+ "readerRefused": [
+  {
+   "problem": "started with no handle",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "f",
+    "finding": "started",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "not-started with a handle",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "f",
+    "finding": "not-started",
+    "handle": "h",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "unknown with a receipt",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "f",
+    "finding": "unknown",
+    "receipt": "r",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  }
+ ]
+}

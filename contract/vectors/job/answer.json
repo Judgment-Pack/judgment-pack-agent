@@ -1,0 +1,127 @@
+{
+ "description": "Handwritten job evidence: what both readers accept with its digest (the key left out, computed apart from the package), what fails the schema, and what only the readers refuse.",
+ "schema": "run-job.json#/$defs/answer",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "answer": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "answer": "not-started"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "answer": "started",
+   "handle": "ext-1"
+  }
+ ],
+ "digests": [
+  "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd",
+  "sha256:2dda49465896a5313c58c20885da21d905b1d0d107431180df1c86fa8c08eecc",
+  "sha256:67c8fe7a693dfbca0bf1bbc374fbfd39f1cfd8cf698693cb62b5cd39002690a2"
+ ],
+ "refused": [
+  {
+   "problem": "generation 2",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 2,
+    "answer": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1"
+   }
+  },
+  {
+   "problem": "an answer not named",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "maybe"
+   }
+  },
+  {
+   "problem": "version 2",
+   "record": {
+    "version": 2,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1"
+   }
+  },
+  {
+   "problem": "a key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  }
+ ],
+ "readerRefused": [
+  {
+   "problem": "started with no handle",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "started"
+   }
+  },
+  {
+   "problem": "not-started with a handle",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "not-started",
+    "handle": "ext-1"
+   }
+  },
+  {
+   "problem": "not-started with a receipt",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "answer": "not-started",
+    "receipt": "r"
+   }
+  }
+ ]
+}

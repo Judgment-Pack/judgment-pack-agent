@@ -10,6 +10,7 @@ import type {AssistantEvent,EngineSession,RequestSession,RequestSessionFor} from
 import {eventIterator,openRun,withAbort} from '../engines/contract'
 import {GateViolation} from '../toolGate'
 import {approvalContinuation} from '../toolSources'
+import {jobContinuation} from '../storage/job'
 import {contextualSession,type SessionContext} from './session'
 import {recordSession} from '../corpus'
 import {canonicalJSON} from './chat'
@@ -156,6 +157,8 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
    }
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
   }
+  // #229: a resumed job wait: one fixed line and one data block built from the job's record, and no checkpoint member.
+  if(session.context?.jobContinuation)ready.session.prompt=ready.session.prompt+'\n\n'+jobContinuation(session.context.jobContinuation)
   for await (let event of routedEvents(ready.session,run,context)){
    // Output is held before host delivery; dispatch independently guards tool arguments.
    if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue

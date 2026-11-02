@@ -53,7 +53,7 @@ func validRecordedStep(s *Value) bool {
 	}
 	return !s.Has("notNeededReason")
 }
-func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope) string {
+func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope, jobs ...map[string]RunJob) string {
 	if e.Has("child") {
 		return "wrong-scope"
 	}
@@ -86,6 +86,17 @@ func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope) string
 		if d.Scope != scope {
 			return "wrong-scope"
 		}
+		// #229: a start's row proves only that it was asked for. The job's own record decides: settled and
+		// succeeded proves it whatever the row says, and anything else does not. Rows of job tools record no
+		// observation, so with no job on record a start, and any read of a job, falls through to the refusal below.
+		if len(jobs) > 0 {
+			if job, ok := jobs[0][planText(id)]; ok {
+				if job.State != "completed" || job.Completion == nil || job.Completion.Outcome != "succeeded" {
+					return "unsuccessful-operation"
+				}
+				continue
+			}
+		}
 		observed := false
 		for _, o := range book.Observations {
 			if o.Kind == "operation" && o.DispatchID == planText(id) && o.Scope == scope {
@@ -110,6 +121,11 @@ func planEvidenceFailure(e *Value, book *DurableBook, scope DurableScope) string
 	return ""
 }
 func closePlan(plan, state, args *Value, book *DurableBook, scope DurableScope, verifiedChildren ...TaskCompletionEvidence) (*Value, *Value, string) {
+	return closePlanHeld(plan, state, args, book, scope, nil, verifiedChildren...)
+}
+
+// closePlanHeld is closePlan with this run's jobs by their start's dispatch id, where the host offers job tools.
+func closePlanHeld(plan, state, args *Value, book *DurableBook, scope DurableScope, jobs map[string]RunJob, verifiedChildren ...TaskCompletionEvidence) (*Value, *Value, string) {
 	if !args.IsObject() || !hasOnly(args, "id", "expectedRevision", "outcome", "evidence", "reason") || !isText(args.Get("id"), 256) || planText(args.Get("id")) == "" || !args.Get("expectedRevision").IsString() || !oneOf(args.Get("outcome"), "completed", "not-needed") {
 		return nil, nil, "invalid-input"
 	}
@@ -171,7 +187,7 @@ func closePlan(plan, state, args *Value, book *DurableBook, scope DurableScope, 
 			if evidence.Has("child") {
 				return nil, nil, "wrong-scope"
 			}
-			if reason := planEvidenceFailure(evidence, book, scope); reason != "" {
+			if reason := planEvidenceFailure(evidence, book, scope, jobs); reason != "" {
 				return nil, nil, reason
 			}
 		}
@@ -405,7 +421,13 @@ func (c *ExecutionController) CompletionTool() HostTool {
 		if c.TaskCompletionProof != nil {
 			children = c.TaskCompletionProof()
 		}
-		next, saved, reason := closePlan(plan, state, args, book, scope, children...)
+		var jobs map[string]RunJob
+		if c.PlanJobs != nil {
+			if jobs, err = c.PlanJobs(ctx); err != nil {
+				return ToolResult{}, err
+			}
+		}
+		next, saved, reason := closePlanHeld(plan, state, args, book, scope, jobs, children...)
 		if reason != "" {
 			row := ObjectOf("revision", state.Get("revision"), "reason", String(reason))
 			if id := args.Get("id"); isText(id, 100) && planText(id) != "" {
@@ -466,6 +488,10 @@ func validPlanInput(value *Value, configured ...bool) bool {
 func (c *ExecutionController) availablePlanEvidence() *Value {
 	var book *DurableBook
 	var scope DurableScope
+	var jobs map[string]RunJob
+	if c.PlanJobsHeld != nil {
+		jobs = c.PlanJobsHeld()
+	}
 	if c.PlanProof != nil {
 		book, scope = c.PlanProof()
 	}
@@ -474,7 +500,7 @@ func (c *ExecutionController) availablePlanEvidence() *Value {
 		return ObjectOf("available", Bool(false), "operations", operations, "artifacts", artifacts)
 	}
 	for _, d := range book.Dispatches {
-		if planEvidenceFailure(ObjectOf("operations", Array(String(d.ID)), "artifacts", Array()), book, scope) == "" {
+		if planEvidenceFailure(ObjectOf("operations", Array(String(d.ID)), "artifacts", Array()), book, scope, jobs) == "" {
 			operations.Append(ObjectOf("id", String(d.ID), "tool", String(d.Tool)))
 		}
 	}
