@@ -307,13 +307,16 @@ func TestAnApprovedCallRunsWhatThePersonApproved(t *testing.T) {
 				}
 				stored := false
 				for _, item := range page.Items {
+					var envelope struct {
+						Event json.RawMessage `json:"event"`
+					}
 					var event contract.RunEvent
-					if json.Unmarshal(item.Bytes, &event) == nil && event.ApprovalRequested != nil {
+					if json.Unmarshal(item.Bytes, &envelope) == nil && json.Unmarshal(envelope.Event, &event) == nil && event.ApprovalRequested != nil {
 						stored = true
 						if got := runcontext.ApprovalEventArguments(*event.ApprovalRequested); got != big {
 							t.Fatalf("a host renders %s from a stored event", got)
 						}
-						if err := contract.CheckRecord("event", item.Bytes); err != nil {
+						if err := contract.CheckRecord("event", envelope.Event); err != nil {
 							t.Fatal(err)
 						}
 					}
@@ -458,5 +461,19 @@ func TestAnApprovalAPublishedReleaseWroteRefusesRatherThanRunAnotherNumber(t *te
 				t.Fatalf("rows %q, want %q", rows, row.rows)
 			}
 		})
+	}
+}
+
+// A finished run that kept a text exports and reads as any other: its report is version 3 of its own checkpoint.
+func TestAKeptTextsRunExportsAnArchive(t *testing.T) {
+	s := &approvalScene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{}), engine: "api", answers: []string{"ask"}}
+	s.run(t, false, nil, []string{`{"id":9007199254740993}`})
+	s.approve(t)
+	result, err := runcontext.ExportRunArchive(context.Background(), s.store.(*runcontext.MemoryRunStore), "run-approval", runcontext.ArchiveExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = runcontext.ReadRunArchive(result.Bytes, result.Digest); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -292,7 +292,7 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		return nil, err
 	}
 	version := value.Get("version")
-	if version == nil || version.Kind() != KindNumber || (version.Num() != 1 && version.Num() != 2 && version.Num() != 3 && version.Num() != 4) ||
+	if version == nil || version.Kind() != KindNumber || (version.Num() != 1 && version.Num() != 2 && version.Num() != 3 && version.Num() != 4 && version.Num() != 5 && version.Num() != 6) ||
 		!isText(value.Get("id"), 100) || value.Get("id").Str() == "" ||
 		!isText(value.Get("requestKey"), 64) || !digest64.MatchString(value.Get("requestKey").Str()) ||
 		!oneOf(value.Get("phase"), "plan", "work") ||
@@ -300,8 +300,11 @@ func ReadExecution(value *Value) (*contract.Checkpoint, error) {
 		!oneOf(value.Get("unit"), "model-requests", "provider-managed") {
 		return nil, errSavedExecution
 	}
-	// ADR-0029: version 4 is a delegated run's, and carries exactly its principal.
-	if (version.Num() == 4) != value.Has("principal") || value.Has("principal") && !validPrincipalValue(value.Get("principal")) {
+	// ADR-0029, #275: each version holds exactly what it says: principal on 4 and 6, approval.request on 5 and 6.
+	if CheckpointHoldsRequest(int(version.Num())) != value.Get("approval").Has("request") {
+		return nil, errSavedExecution
+	}
+	if CheckpointHoldsPrincipal(int(version.Num())) != value.Has("principal") || value.Has("principal") && !validPrincipalValue(value.Get("principal")) {
 		return nil, errSavedExecution
 	}
 	if value.Get("approval").Has("runtime") && version.Num() < 3 {

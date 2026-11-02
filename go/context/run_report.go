@@ -88,9 +88,11 @@ func ProjectRunReport(checkpoint contract.Checkpoint) (*Value, error) {
 	out := ObjectOf("version", Number(1), "checkpointVersion", value.Get("version").Clone())
 	if checkpoint.Version >= 3 {
 		out.Set("version", Number(2))
-		// ADR-0029: checkpoint 4 (a delegated run's) is reported as version 3, with its principal.
-		if checkpoint.Version == 4 {
+		// ADR-0029, #275: checkpoints 4 to 6 are reported as version 3, with a principal where they hold one.
+		if checkpoint.Version >= 4 {
 			out.Set("version", Number(3))
+		}
+		if CheckpointHoldsPrincipal(int(checkpoint.Version)) {
 			out.Set("principal", value.Get("principal").Clone())
 		}
 		if route := value.Get("turnRoute"); route != nil {

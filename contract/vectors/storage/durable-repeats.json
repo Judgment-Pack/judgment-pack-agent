@@ -455,6 +455,11 @@
       {
         "call": "{\"unknown\":1}",
         "outcome": "unknown"
+      },
+      {
+        "call": "{\"new\":1}",
+        "outcome": "run",
+        "answer": "ran {\"new\":1}"
       }
     ]
   },

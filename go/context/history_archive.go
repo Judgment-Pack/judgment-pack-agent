@@ -1269,7 +1269,7 @@ func ReadRunArchive(raw []byte, expectedDigest string) (result *ImportedRunHisto
 	if checkpoint.Get("version").Num() >= 3 || feedbackPosition > 0 {
 		expectedVersion = 2
 	}
-	if checkpoint.Get("version").Num() == 4 {
+	if checkpoint.Get("version").Num() >= 4 {
 		expectedVersion = 3
 	}
 	if want, have := checkpoint.Get("principal"), report.Get("principal"); (want == nil) != (have == nil) || want != nil && CanonicalJSON(want) != CanonicalJSON(have) {

@@ -89,7 +89,8 @@ label. A run with no delegation writes the earlier versions and members byte for
 accept checkpoint 4 and event 3 against the current schemas; checkpoint 3 and event 2 are read
 against their inventory frozen at v0.12.0 (`contract/records/published-v012-shapes.json`, pinned
 by digest), so neither can carry a principal, and readers that predate these versions refuse
-them by ADR-0024 before reading the body.
+them by ADR-0024 before reading the body. Version 6 is a delegated run's checkpoint that also keeps an approval text
+(#275, ADR-0024), and holds its principal under the same rule.
 
 **A resume keeps its principals.** A delegated checkpoint resumes only with a delegation of the
 same subject, root actor and issuing host; a chain re-issued or narrowed for them replaces the record.

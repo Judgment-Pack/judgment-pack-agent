@@ -103,8 +103,12 @@ are one write. The decision is made from the text the row records (#275,
 `contract/vectors/storage/durable-repeats.json`). The same text is the same write, and so are two
 requests their parsed form says exactly (`exactArguments`), which differ only in whitespace, a
 string's escapes or the order of names that do not fold together: the record answers them and they do
-not run. Exact numbers that differ make a different write, which runs and gets its own row with the
-same fingerprint, so a legitimate integer past 2^53 runs beside its neighbour. The same values written
+not run. A request that is exact, beside a recorded text that is not, is refused with
+`DurableRequestConflict`: it is what that text reads as, so it may be a copy from the model's history, and
+running it would be a second write on another id. A legitimate neighbour written after the text pays for that
+with a named refusal in that run. Other exact numbers that differ make a different write, which runs and gets
+its own row with the same fingerprint, so a legitimate integer past 2^53 runs beside a neighbour written first.
+The same values written
 differently (`1.0` and `1`, `-0` and `0`, a repeated name, two names `encoding/json` folds together, in
 both orders) cannot be told apart: they are refused with `DurableRequestConflict`, neither run nor
 answered. A row a published release wrote is judged by the same rule, from the request it recorded, and
@@ -118,10 +122,17 @@ the write it would run is not the one the model wrote.
 
 Every Go wire reader hands on the model's argument text: the parsed value of an Anthropic or Gemini call
 keeps the source text it was read from, so the bytes that run and that a row records are the model's on
-every wire. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
+every wire. An API family writes a call back to the model from its parsed form, except where that form cannot
+say the text (`wire.Value`'s `lossy`): there it writes the text, so a model that copies its history copies the
+bytes that ran, on the next request and on a resumed run's first request. A call held for approval keeps its text where it must. `approval.args` is the parsed form, so
 where it cannot say the model's text (`approval.request`, version 3) the approved call runs that text once it
 reads back to `args`, and it goes through the same decision over the record as any other call. Whitespace and
-member order are not kept: the person is shown `args`, in the form the approved call runs. A record with no
+member order are not kept: `args` hold the canonical form at every depth, which the person is shown and the
+approved call runs. A host that renders or binds a stored approval reads `approvalShownArguments` and
+`approvalShownDigest` (`ApprovalShownArguments` and `ApprovalShownDigest` in Go): the text as a string, since a
+browser that parses and writes it again shows another number, and the digest of its bytes. The checkpoint's
+format says what it holds (ADR-0024, ADR-0029): `principal` on 4 and 6, `approval.request` on 5 and 6, and a
+reader refuses any other combination. A record with no
 `request` runs from `args` only where the parsed form cannot have changed what the model wrote; otherwise
 it is refused as stale, because a checkpoint a published release wrote holds nothing else. Text the record
 cannot hold is refused before anyone is asked.

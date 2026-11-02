@@ -365,7 +365,7 @@ func canonicalRepeatArgs(raw []byte) (string, error) {
 func validRepeatRecordCustody(value *Value) bool {
 	for _, held := range value.Get("durable").Get("dispatches").Items() {
 		if held.Has("repeatResultJson") {
-			if value.Get("version").Num() != 3 || !validRepeatTools(value.Get("repeatTools")) {
+			if value.Get("version").Num() < 3 || !validRepeatTools(value.Get("repeatTools")) {
 				return false
 			}
 			var row DurableDispatch

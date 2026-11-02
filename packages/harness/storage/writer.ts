@@ -48,7 +48,7 @@ export class HostOutcomeUnknown extends AIFailureError {constructor(){super({...
  * that write and it may not, so it is neither run, which could perform a write twice, nor answered from
  * that record, which could report a write nothing performed.
  */
-export class DurableRequestConflict extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:'DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. Repeat that write exactly for its result; a different write needs different values.'});this.name='DurableRequestConflict'}}
+export class DurableRequestConflict extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:'DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. To get that write\'s result, repeat its arguments exactly as your earlier call shows them. If this is a different write, it cannot be told apart in this run: tell the person.'});this.name='DurableRequestConflict'}}
 /**
  * A call whose arguments the durable record cannot hold as written (#275): a repeated member name, a
  * number out of range or past what JavaScript holds exactly, or a lone surrogate. Refused before anything is claimed, and the
@@ -71,6 +71,8 @@ export class ContinuationIdentityChanged extends AIFailureError {constructor(){s
  */
 export function compareDurableRequests(recorded:string,request:string):'same'|'different'|'conflict'{
  if(recorded===request||exactArgumentsText(recorded)&&exactArgumentsText(request))return 'same'
+ // Exact, beside a recorded text the parsed form does not say: this is what that text reads as, so it may be a copy of it.
+ if(exactArgumentsText(request))return 'conflict'
  try{return canonicalRepeatArgs(recorded)!==canonicalRepeatArgs(request)?'different':'conflict'}catch{return 'conflict'}
 }
 export {exactlyHeld}

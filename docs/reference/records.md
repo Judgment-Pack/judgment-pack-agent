@@ -27,7 +27,7 @@ Feature-free writer defaults remain checkpoint 2 and event/policy 1. Feature-bea
 
 | Record | Feature-free writer default | Current schema version |
 | --- | --- | --- |
-| checkpoint | `2` | `4` |
+| checkpoint | `2` | `6` |
 | event | `1` | `3` |
 | policy | `1` | `2` |
 
@@ -121,14 +121,14 @@ Conditions beyond the members (allOf) are in the schema file.
 
 ### Report 3
 
-Version 3 closed presentation of a delegated run's terminal checkpoint 4 (ADR-0029): version 2's members, and the principal the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the body.
+Version 3 closed presentation of a terminal checkpoint 4, 5 or 6 (ADR-0029, #275), with its principal exactly on 4 and 6: version 2's members, and the principal the run acted as and for, copied whole from the checkpoint. A run with no delegation keeps report 1 or 2 byte for byte; a reader that predates version 3 refuses it before reading the body.
 
 Closed: a member the schema does not name is refused.
 
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `version` | yes | const `3` |  |
-| `checkpointVersion` | yes | const `4` |  |
+| `checkpointVersion` | yes | enum `4`, `5`, `6` |  |
 | `id` | yes | `checkpoint.json properties/id` |  |
 | `phase` | yes | `checkpoint.json properties/phase` |  |
 | `status` | yes | enum `complete`, `stopped` |  |
@@ -167,7 +167,7 @@ Closed: a member the schema does not name is refused.
 | `repeatTools.policy.repeatTools.mode` | yes | `policy.json $defs/member` |  |
 | `repeatTools.policy.repeatTools.remindAt` | yes | `policy.json $defs/member` |  |
 | `repeatTools.policy.repeatTools.stopAt` | yes | `policy.json $defs/member` |  |
-| `principal` | yes | `run-principal.json` |  |
+| `principal` |  | `run-principal.json` |  |
 
 Conditions beyond the members (allOf) are in the schema file.
 

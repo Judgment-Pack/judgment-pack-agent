@@ -1410,6 +1410,9 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 			if _, err := readHistoryRequestJSON(nonEmptyArgs(args)); err != nil {
 				held = decision{answer: "closed", detail: (&DurableRequestUnrecordable{}).Error()}
 				answer = "closed"
+			} else if namesFoldTogether(nonEmptyArgs(args)) {
+				held = decision{answer: "closed", detail: "DurableRequestUnrecordable: this call's arguments cannot be shown for approval as written: two member names differ only in case, and a reader takes whichever comes last. Nothing was run. Write them again without one."}
+				answer = "closed"
 			}
 		}
 		if answer == "ask" {
@@ -1417,7 +1420,17 @@ func (g *SourceGate) Decide(ctx context.Context, name string, args json.RawMessa
 			if json.Unmarshal(nonEmptyArgs(args), &asked) != nil || asked == nil {
 				asked = map[string]json.RawMessage{}
 			}
-			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked", Request: approvalRequestOf(nonEmptyArgs(args))}) {
+			// With no text kept, the record and the event hold args' canonical form at every depth, which the
+			// approved call runs: what the person is shown is what runs.
+			request := approvalRequestOf(nonEmptyArgs(args))
+			if request == nil {
+				for key, value := range asked {
+					if parsed, err := ParseJSON(value); err == nil {
+						asked[key] = json.RawMessage(CanonicalJSON(parsed))
+					}
+				}
+			}
+			if !g.book.Ask(contract.CheckpointApproval{CallID: drawn, Name: name, Tool: *entry.Record.Tool, Source: copyRecord(entry.Record), Args: asked, State: "asked", Request: request}) {
 				// The run is already ending at a handoff or a question: the call is refused, never run.
 				held = decision{answer: "closed", detail: name + " acts on " + id + ", and this run is already ending; the call was not run and nothing was changed"}
 			} else if firstServiceAct {
@@ -1715,8 +1728,8 @@ const maxExactFloatInteger = 1<<53 - 1
 
 // approvalRequestOf is what a call held for approval keeps beside its args (#275): its text, where its
 // args cannot say it; nothing, where they can, so an ordinary call's record is what a published release
-// wrote. Whitespace and the order of names that do not fold together are not kept: approval_requested
-// shows the person args, in the form an approved call then runs, and no reader of values can tell them.
+// wrote. Whitespace and the order of names that do not fold together are not kept: args hold the canonical form at
+// every depth, which approval_requested shows and an approved call runs.
 func approvalRequestOf(raw []byte) *string {
 	if approvalArgsSay(raw) {
 		return nil

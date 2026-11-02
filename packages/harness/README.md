@@ -421,7 +421,10 @@ A declaration optionally carries `effectClass` (`read`, `propose`, `act`; `act` 
 `approval` (`none`, `required`; required for `act` where absent) and `approve({name, tool, source, args})`, the
 host's approval policy (ADR-0008), handed the wire name, the tool's own name, its source record and a copy of the
 arguments and answering at once `'allow'`, `'refuse'` or `'ask'` (no policy asks); on `'ask'` the run pauses
-(`approval_requested`, the call in the checkpoint's `approval`, `end`) and the host continues the paused checkpoint
+(`approval_requested`, the call in the checkpoint's `approval`, `end`). Render the call with `approvalShownArguments`
+from `@judgment-pack/harness/contract`: the text that runs, as a string, which is not to be parsed for display, because
+a stored `args` is the parsed form and JavaScript rounds past 2^53. Bind an approval reference to `approvalShownDigest`.
+The host continues the paused checkpoint
 with the person's decision, `context.approval` (`{callId, approved, note?}`), the continued run's first request
 carrying the result as one data block;
 `execute(args, signal, callId)` is handed the id of the call's events, where the run's events carry one. The host executes every call; `toolSources.ts` holds them at the boundary

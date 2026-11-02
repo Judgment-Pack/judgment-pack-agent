@@ -61,7 +61,7 @@ export interface ExecutionCheckpoint {
  /** ADR-0029: the principal a delegated run acts as and for (checkpoint 4 only). */
  principal?:PrincipalRecord;
  handoff?:import('../storage/handoff').DurableHandoff;
- version:1|2|3|4;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
+ version:1|2|3|4|5|6;id:string;requestKey:string;phase:'plan'|'work';status:'running'|'paused'|'complete'|'stopped';
  unit:'model-requests'|'provider-managed';used:number;limit:number;requestCap?:number;grants:{from:number;to:number;at:string}[];
  plan:TaskStep[];planState?:PlanState;explanation:string;operations:Operation[];
  completions?:CompletionRecord[];
@@ -203,7 +203,7 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value===undefined)return
  checkRecord('checkpoint',value)
  const fail=():never=>{throw Error('Saved execution progress is invalid. History was left untouched.')}
- if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3,4].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
+ if(!object(value)||utf8Bytes(JSON.stringify(value))>MAX_CHECKPOINT_BYTES||![1,2,3,4,5,6].includes(Number(value.version))||!text(value.id,100)||!value.id||!text(value.requestKey,64)||!/^[a-f0-9]{64}$/.test(value.requestKey)||!['plan','work'].includes(String(value.phase))||!['running','paused','complete','stopped'].includes(String(value.status))||!['model-requests','provider-managed'].includes(String(value.unit)))return fail()
  const metadata=['schema','digest','retainUntil'].some(name=>Object.hasOwn(value,name))
  if(metadata&&!validRecordHeader(value,CHECKPOINT_SCHEMA))return fail()
  if(value.repeatTools!==undefined&&(Number(value.version)<3||!validRepeatTools(value.repeatTools)))return fail()
@@ -243,8 +243,9 @@ export function readExecution(value:unknown):ExecutionCheckpoint|undefined {
  if(value.turnRoute!==undefined&&(Number(value.version)<3||!validTurnRoute(value.turnRoute)))return fail()
  if(value.usageBudget!==undefined&&(Number(value.version)<3||!validUsageJournal(value.usageBudget)))return fail()
  if(value.durable!==undefined&&!validDurable(value.durable)||value.handoff!==undefined&&!validHandoff(value.handoff))return fail()
- // ADR-0029: version 4 is a delegated run's, and carries exactly its principal.
- if((value.version===4)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()
+ // ADR-0029, #275: each version holds exactly what it says: principal on 4 and 6, approval.request on 5 and 6.
+ if((value.version===4||value.version===6)!==(value.principal!==undefined)||value.principal!==undefined&&!validPrincipalRecord(value.principal))return fail()
+ if((value.version===5||value.version===6)!==((value.approval as {request?:unknown}|undefined)?.request!==undefined))return fail()
  if(!Array.isArray(value.operations)||value.operations.length>400||new Set(value.operations.map(o=>o.id)).size!==value.operations.length)return fail()
  for(const op of value.operations){if(!object(op)||!text(op.id,100)||!text(op.name,150)||!['running','complete','failed','interrupted'].includes(String(op.status))||op.result!==undefined&&(!object(op.result)||(op.result.content!==undefined&&(!Array.isArray(op.result.content)||op.result.content.some(p=>!object(p)||p.type!==undefined&&typeof p.type!=='string'||p.text!==undefined&&typeof p.text!=='string')))))return fail()}
  if(!object(value.context)||!text(value.context.scope,100)||!Array.isArray(value.context.entries)||value.context.entries.length>800||new Set(value.context.entries.map(e=>e.id)).size!==value.context.entries.length)return fail()

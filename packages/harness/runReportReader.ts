@@ -164,7 +164,7 @@ function oldSourceTaskFacts(v:Record<string,unknown>):boolean{
 }
 function validRepeatReport(v:Record<string,unknown>):boolean {
  if(v.repeatTools===undefined)return true
- if(!(v.version===2&&v.checkpointVersion===3||v.version===3&&v.checkpointVersion===4)||!object(v.repeatTools)||!object(v.repeatTools.policy)||!Array.isArray(v.repeatTools.executions))return false
+ if(!(v.version===2&&v.checkpointVersion===3||v.version===3&&Number(v.checkpointVersion)>=4)||!object(v.repeatTools)||!object(v.repeatTools.policy)||!Array.isArray(v.repeatTools.executions))return false
  const p=v.repeatTools.policy,mode=p['repeatTools.mode'],remind=p['repeatTools.remindAt'],stop=p['repeatTools.stopAt']
  if(!object(mode)||mode.value!=='on'||!object(remind)||!object(stop)||!Number.isSafeInteger(remind.value)||!Number.isSafeInteger(stop.value)||Number(remind.value)<1||Number(stop.value)<Number(remind.value))return false
  const seen=new Set<string>()
@@ -186,6 +186,12 @@ function semantic(v:RunReportFacts):boolean{
 }
 /** Read untrusted report data or UTF-8 JSON bytes/text. Returns detached facts only, never resume authority.
  * Already-rounded object numbers cannot reveal the caller's original numeric spelling. */
+/** Report 3's own rule: it reports a checkpoint of version 4 to 6, with a principal exactly where that version holds one (ADR-0029, #275). */
+function validReportThree(held:Record<string,unknown>):boolean{
+ const version=held.checkpointVersion
+ if(version!==4&&version!==5&&version!==6)return false
+ return version===5?held.principal===undefined:validPrincipalRecord(held.principal)
+}
 export function readRunReport(input:unknown):RetainedRunReport{
  try{
   let held:unknown
@@ -201,10 +207,10 @@ export function readRunReport(input:unknown):RetainedRunReport{
   const v3=object(held)&&held.version===3,v2=object(held)&&held.version===2||v3
   const graph=v3?delegated:current
   if(!(v2?matches(graph.root as Shape,held,graph.definitions as unknown as Record<string,Shape>):matches(frozen.root as Shape,held))||!semantic(held as RunReportFacts))return invalid()
-  if(v3&&object(held)&&(held.checkpointVersion!==4||!validPrincipalRecord(held.principal)))return invalid()
+  if(v3&&object(held)&&!validReportThree(held))return invalid()
   if(v2&&object(held)&&!oldSourceTaskFacts(held)||v2&&object(held)&&!validRepeatReport(held))return invalid()
   if(v2&&object(held)&&held.route!==undefined&&!validTurnRoute(held.route))return invalid()
-  if(v2&&object(held)){if(held.checkpointVersion!==3&&held.checkpointVersion!==4&&(held.usageTotals!==undefined||held.route!==undefined||!Array.isArray(held.feedback)||held.feedback.length===0))return invalid();if(held.feedback!==undefined){if(!Array.isArray(held.feedback)||held.feedback.length<1||held.feedback.length>20000)return invalid();const prior=new Map<string,{sourceDigest:string;record:import('./history/types').RunFeedback}>();for(const item of held.feedback){if(!object(item)||Object.keys(item).length!==2||!historyDigestPattern.test(String(item.sourceDigest))||!validRunFeedback(item.record)||item.record.runId!==held.id)return invalid();const old=prior.get(item.record.id);if(item.record.sequence!==(old?old.record.sequence+1:1)||item.record.previous!==(old?.sourceDigest??null)||old&&canonicalJSON(old.record.target)!==canonicalJSON(item.record.target))return invalid();prior.set(item.record.id,item as never)}}}
+  if(v2&&object(held)){if(Number(held.checkpointVersion)<3&&(held.usageTotals!==undefined||held.route!==undefined||!Array.isArray(held.feedback)||held.feedback.length===0))return invalid();if(held.feedback!==undefined){if(!Array.isArray(held.feedback)||held.feedback.length<1||held.feedback.length>20000)return invalid();const prior=new Map<string,{sourceDigest:string;record:import('./history/types').RunFeedback}>();for(const item of held.feedback){if(!object(item)||Object.keys(item).length!==2||!historyDigestPattern.test(String(item.sourceDigest))||!validRunFeedback(item.record)||item.record.runId!==held.id)return invalid();const old=prior.get(item.record.id);if(item.record.sequence!==(old?old.record.sequence+1:1)||item.record.previous!==(old?.sourceDigest??null)||old&&canonicalJSON(old.record.target)!==canonicalJSON(item.record.target))return invalid();prior.set(item.record.id,item as never)}}}
   if(utf8Bytes(canonicalJSON(held))>MAX_RUN_REPORT_BYTES)throw new RunReportOverflow()
   return held as RetainedRunReport
  }catch(error){if(error instanceof RunReportOverflow||error instanceof RunReportInvalid)throw error;return invalid()}
@@ -215,7 +221,7 @@ export function readRunReport(input:unknown):RetainedRunReport{
 export function readRunReportDisplay(input:unknown):RetainedRunReport{
  try{const held=detached(input),v3=object(held)&&held.version===3,v2=object(held)&&held.version===2||v3,graph=v3?delegated:current
  if(!(v2?matches(graph.root as Shape,held,graph.definitions as unknown as Record<string,Shape>):matches(frozen.root as Shape,held))||utf8Bytes(canonicalJSON(held))>MAX_RUN_REPORT_BYTES)return invalid()
- if(v3&&object(held)&&(held.checkpointVersion!==4||!validPrincipalRecord(held.principal)))return invalid()
+ if(v3&&object(held)&&!validReportThree(held))return invalid()
  if(v2&&object(held)&&!oldSourceTaskFacts(held)||v2&&object(held)&&!validRepeatReport(held))return invalid()
  return held as RetainedRunReport
  }catch{return invalid()}

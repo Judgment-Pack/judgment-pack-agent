@@ -10,7 +10,7 @@ type Graph=Record<string,Shape>
 export type RecordKind='checkpoint'|'event'|'policy'
 export const RECORD_VERSIONS={checkpoint:2,event:1,policy:1} as const
 /** Read maxima are separate from feature-free writer defaults. */
-const READ_VERSIONS={checkpoint:4,event:3,policy:2} as const
+const READ_VERSIONS={checkpoint:6,event:3,policy:2} as const
 const files={checkpoint:'checkpoint.json',event:'run-event.json',policy:'policy.json'} as const
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 export class UnsupportedRecordVersion extends Error {
@@ -60,7 +60,7 @@ function checkRecordDepth(kind:RecordKind,value:unknown,recordDepth:number):void
  const version=versionOf(kind,value)
  if(recordDepth>4)return invalid()
  // ADR-0029: checkpoint 4 and event 3 read the current schemas; checkpoint 3 and event 2 the inventory frozen at v0.12.0.
- const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:kind==='checkpoint'&&version===4||kind==='event'&&version===3||kind==='policy'&&version===2?shapes.current:kind==='checkpoint'&&version===3||kind==='event'&&version===2?shapes.published012:shapes.published) as unknown as Graph
+ const graph=(version===0||kind==='checkpoint'&&version===1?shapes.historical:kind==='checkpoint'&&version>=4||kind==='event'&&version===3||kind==='policy'&&version===2?shapes.current:kind==='checkpoint'&&version===3||kind==='event'&&version===2?shapes.published012:shapes.published) as unknown as Graph
  let work=0
  function walk(file:string,s:Shape,v:unknown,path:string,depth:number):void{
   if(++work>200000||depth>64)return invalid()
@@ -104,8 +104,8 @@ export function checkRecordVersion(kind:RecordKind,value:unknown):void{versionOf
 export function readPolicyLayer(value:unknown):PolicyLayer{checkRecord('policy',value);return structuredClone(value) as PolicyLayer}
 /** Internal unversioned event bodies become current records at the delivery boundary. */
 export function writeRunEvent<T extends AssistantEvent>(event:T):T&{version:1|2|3}{
- // ADR-0029: an event that carries a delegated run's principal, or its checkpoint 4, is event 3.
- if(event.version===3||'principal'in event&&event.principal!==undefined||(event.type==='execution_checkpoint'||event.type==='budget_paused')&&event.checkpoint.version===4)return {...event,version:3}
+ // ADR-0029, #275: an event that holds a delegated run's principal, a checkpoint from version 4 or a kept approval text is event 3.
+ if(event.version===3||'principal'in event&&event.principal!==undefined||(event.type==='execution_checkpoint'||event.type==='budget_paused')&&event.checkpoint.version>=4||event.type==='approval_requested'&&'request'in event&&event.request!==undefined)return {...event,version:3}
  return {...event,version:event.version===2||event.type==='plan_drift_decided'&&event.nativeInvocation!==undefined||event.type==='repeat_detected'||event.type==='route_decided'||event.type==='route_widened'||event.type==='approval_requested'&&'runtime'in event&&event.runtime!==undefined||event.type==='execution_checkpoint'&&event.checkpoint.version===3||event.type==='budget_paused'&&event.checkpoint.version===3?2:1}}
 export function versionEvents(events:AsyncIterable<AssistantEvent>):AsyncIterable<AssistantEvent>{
  return {[Symbol.asyncIterator](){

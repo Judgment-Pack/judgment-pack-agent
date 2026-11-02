@@ -18,9 +18,13 @@ export function mutateCheckpoint(target:ExecutionCheckpoint,patch:CheckpointPatc
    Object.assign(candidate,{[key]:before+amount})
   }else Object.assign(candidate,{[key]:structuredClone(patch[key])})
  }
- // ADR-0029: a delegated run's checkpoint is version 4 whatever a feature writer stamps; an undelegated one is never 4.
- if(candidate.principal!==undefined)candidate.version=4
- else if(candidate.version===4)throw Error('A checkpoint of version 4 carries its principal')
+ // ADR-0029, #275: what a checkpoint holds selects its format, whatever a feature writer stamps: a principal 4, a kept
+ // approval text 5, both 6. One that keeps neither stays at the version it was; a text that goes leaves published 3.
+ const kept=candidate.approval?.request!==undefined
+ if(candidate.principal!==undefined)candidate.version=kept?6:4
+ else if(candidate.version===4||candidate.version===6)throw Error(`A checkpoint of version ${candidate.version} carries its principal`)
+ else if(kept)candidate.version=5
+ else if(candidate.version===5)candidate.version=3
  validate?.(structuredClone(candidate))
  if(canonicalJSON(candidate)===canonicalJSON(target))return false
  for(const key of Object.keys(target) as (keyof ExecutionCheckpoint)[])delete target[key]

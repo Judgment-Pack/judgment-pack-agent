@@ -72,6 +72,7 @@ export {MemoryUsageBudgetStore,UsageBudgetExceeded,UsageBudgetUnknown,UsageBudge
 export type {UsageDimension,UsageAmounts,UsageBudgetScope,UsageReservation,UsageSettlement,UsageBudgetReceipt,UsageReserveResult,UsageReservationHead,UsageBudgetStore,UsageBudgetSeed,MemoryUsageBudgetOptions} from '../storage/usageBudget'
 export type {UsageBudgetInput,UsageBoundRequest,UsageTotals} from '../storage/usageJournal'
 
+export {approvalShownArguments,approvalShownDigest} from '../toolSources'
 export type {RuntimeExecutionOwner,RuntimeApprovalBinding,RuntimeApprovalRequest,RuntimeActionPort} from '../runtimeActions'
 
 // Host-only history, display archives and feedback metadata; none grants execution authority.

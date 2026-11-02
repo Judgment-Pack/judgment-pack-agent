@@ -165,7 +165,7 @@ func (e *ContinuationIdentityChanged) Unwrap() error {
 type DurableRequestConflict struct{}
 
 func (*DurableRequestConflict) Error() string {
-	return "DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. Repeat that write exactly for its result; a different write needs different values."
+	return "DurableRequestConflict: this call reads the same as a write already recorded in this run but is written differently, so it may be that write. It was not run and was not answered from that record. To get that write's result, repeat its arguments exactly as your earlier call shows them. If this is a different write, it cannot be told apart in this run: tell the person."
 }
 func (e *DurableRequestConflict) Unwrap() error {
 	return storageNamedFailure("invalid-tool-input", "tool", "not-started", e.Error())
@@ -1155,16 +1155,24 @@ const (
 // (exactArguments, with no lone surrogate and no bytes that are not UTF-8, which ParseJSON reads as a
 // replacement character) are too: they differ only in whitespace, a string's escapes or the order of names
 // that do not fold together, which the fingerprint has always left out, so a resumed run's repeat of a write
-// is never performed twice. Otherwise, exact numbers that differ make a different write: this is what
-// lets a legitimate integer past 2^53 run beside its neighbour. What remains is the same values written
+// is never performed twice. A request that is exact, beside a recorded text that is not, is refused: it is what
+// that text reads as, whatever the numbers, and a neighbour written after it pays for that with a named refusal.
+// Otherwise, exact numbers that differ make a different write: this is what lets a legitimate integer past 2^53
+// run beside its neighbour, written first. What remains is the same values written
 // differently: another spelling of a number, a repeated name, two names that fold together. A reader may
 // tell those apart or may not, so nothing here says which they are.
 //
 // It reads only the row's request, which every published release has recorded byte for byte, so a row
 // from before this rule is judged by it and needs no migration.
 func compareDurableRequests(recorded, request []byte) durableRepeat {
-	if bytes.Equal(recorded, request) || validReportUnicode(recorded) && validReportUnicode(request) && exactArguments(recorded) && exactArguments(request) {
+	said := validReportUnicode(request) && exactArguments(request)
+	if bytes.Equal(recorded, request) || said && validReportUnicode(recorded) && exactArguments(recorded) {
 		return durableSame
+	}
+	// Exact, beside a recorded text the parsed form does not say: with one fingerprint, this is what that text
+	// reads as, so it may be a copy of it from the model's history. A write run for it would be a second write.
+	if said {
+		return durableConflict
 	}
 	left, leftErr := canonicalRepeatArgs(recorded)
 	right, rightErr := canonicalRepeatArgs(request)

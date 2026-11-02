@@ -106,6 +106,13 @@ function exactValue(value:unknown):boolean{
  return (prototype===null||Object.getPrototypeOf(prototype)===null)&&Object.values(value).every(exactValue)
 }
 
+/** True where an object in value holds two names Go's encoding/json folds together (#275): a person cannot be shown their order. */
+export function namesFoldTogether(value:unknown):boolean{
+ if(value===null||typeof value!=='object')return false
+ const names=Array.isArray(value)?[]:Object.keys(value)
+ return new Set(names.map(foldName)).size!==names.length||Object.values(value).some(namesFoldTogether)
+}
+
 /**
  * True where a call's arguments may key a cached read (#271): one JSON object whose JSON text says it
  * exactly. Go runs a tool with the bytes the model wrote and also refuses arguments its parsed form

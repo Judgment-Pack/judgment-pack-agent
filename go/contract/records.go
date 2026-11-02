@@ -102,7 +102,8 @@ func recordVersion(kind string, value any) (int64, error) {
 	if err != nil || f < 1 || f > 9007199254740991 || math.Trunc(f) != f {
 		return 0, errRecord
 	}
-	// ADR-0029: checkpoint 4 and event 3 carry a delegated run's principal.
+	// ADR-0029: checkpoint 4 and event 3 carry a delegated run's principal. #275: checkpoints 5 and 6 carry a kept
+	// approval text, with no principal and with one.
 	current := int64(1)
 	if kind == "policy" {
 		current = 2
@@ -111,7 +112,7 @@ func recordVersion(kind string, value any) (int64, error) {
 		current = 3
 	}
 	if kind == "checkpoint" {
-		current = 4
+		current = 6
 	}
 	version := int64(f)
 	if version > current {
@@ -275,12 +276,12 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 	if err != nil {
 		return err
 	}
-	// ADR-0029: checkpoint 4 and event 3 read the current schemas; checkpoint 3 and event 2 the
+	// ADR-0029: checkpoints from 4 and event 3 read the current schemas; checkpoint 3 and event 2 the
 	// inventory frozen at v0.12.0.
 	generation := "published"
 	if version == 0 || kind == "checkpoint" && version == 1 {
 		generation = "historical"
-	} else if kind == "checkpoint" && version == 4 || kind == "event" && version == 3 || kind == "policy" && version == 2 {
+	} else if kind == "checkpoint" && version >= 4 || kind == "event" && version == 3 || kind == "policy" && version == 2 {
 		generation = "current"
 	} else if kind == "checkpoint" && version == 3 || kind == "event" && version == 2 {
 		generation = "published012"
@@ -313,7 +314,7 @@ func checkRecordDepth(kind string, data []byte, normalized *[]byte, recordDepth 
 			generation := "published"
 			if version == 1 {
 				generation = "historical"
-			} else if version == 4 {
+			} else if version >= 4 {
 				generation = "current"
 			} else if version == 3 {
 				generation = "published012"
@@ -615,10 +616,10 @@ func StampFeatureEvent(event RunEvent) RunEvent {
 	return stampEvent(event, true)
 }
 
-// delegatedEvent reports an event that carries a delegated run's principal or its checkpoint 4
-// (ADR-0029): event 3.
+// delegatedEvent reports an event that holds what only event 3 does: a delegated run's principal, a checkpoint from
+// version 4, or a kept approval text (ADR-0029, #275).
 func delegatedEvent(event RunEvent) bool {
-	return event.ToolCall != nil && event.ToolCall.Principal != nil || event.ToolResult != nil && event.ToolResult.Principal != nil || event.Guardrail != nil && event.Guardrail.Principal != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version == 4 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version == 4
+	return event.ToolCall != nil && event.ToolCall.Principal != nil || event.ToolResult != nil && event.ToolResult.Principal != nil || event.Guardrail != nil && event.Guardrail.Principal != nil || event.ExecutionCheckpoint != nil && event.ExecutionCheckpoint.Checkpoint.Version >= 4 || event.BudgetPaused != nil && event.BudgetPaused.Checkpoint.Version >= 4 || event.ApprovalRequested != nil && event.ApprovalRequested.Request != nil
 }
 
 // stampEventVersion sets one version on the event's variant.

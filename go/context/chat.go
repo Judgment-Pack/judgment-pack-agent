@@ -135,6 +135,45 @@ func exactArguments(raw []byte) bool {
 	return err == io.EOF
 }
 
+// namesFoldTogether reports whether any object in raw holds two names encoding/json folds together. A person
+// cannot be shown their order, and a Go tool decoding into a struct reads whichever came last.
+func namesFoldTogether(raw []byte) bool {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var walk func() bool
+	walk = func() bool {
+		token, err := decoder.Token()
+		if err != nil {
+			return false
+		}
+		delim, ok := token.(json.Delim)
+		if !ok || delim == ']' || delim == '}' {
+			return false
+		}
+		names := map[string]bool{}
+		for decoder.More() {
+			if delim == '{' {
+				name, err := decoder.Token()
+				if err != nil {
+					return false
+				}
+				text, _ := name.(string)
+				folded := foldName(text)
+				if names[folded] {
+					return true
+				}
+				names[folded] = true
+			}
+			if walk() {
+				return true
+			}
+		}
+		_, _ = decoder.Token()
+		return false
+	}
+	return walk()
+}
+
 func exactValue(decoder *json.Decoder) bool {
 	token, err := decoder.Token()
 	if err != nil {

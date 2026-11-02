@@ -48,13 +48,13 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
 import type { SourceIdentityState } from './execution/state'
 import { admitCall, refusalDetail, type OpenedPrincipal, type PrincipalRefusal } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
-import { canonicalJSON, exactArgumentsText, exactlyHeld } from './context/chat'
+import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether } from './context/chat'
 import { sha256 } from './records'
 import { readHistoryRequestJSON } from './history/codec'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
 import { PROPOSE_PACK_TOOL, shownSchema, toolTimeout, withDeadline } from './engines/contract'
-import { AIFailureError, DURABLE_REQUEST_UNRECORDABLE, authoredFailure, toolFailureResult, toolInputFailure } from './failures'
+import { AIFailureError, DURABLE_REQUEST_FOLDED, DURABLE_REQUEST_UNRECORDABLE, authoredFailure, toolFailureResult, toolInputFailure } from './failures'
 import { dataMarker, frameBlock, frameData } from './framing'
 import { argumentProblem } from './sourceArguments'
 import { ASSISTANT_TOOLS } from './host'
@@ -1080,9 +1080,13 @@ export class SourceGate {
       if (answer === 'ask' && !heldForApproval(args)) {
         answer = 'closed'
         detail = DURABLE_REQUEST_UNRECORDABLE
+      } else if (answer === 'ask' && namesFoldTogether(args)) {
+        answer = 'closed'
+        detail = DURABLE_REQUEST_FOLDED
       }
       if (answer === 'ask') {
-        this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: structuredClone(args), state: 'asked' })
+        // The record and the event hold the canonical form at every depth, which the approved call runs: what is shown is what runs.
+        this.book!.ask({ callId: drawn, name, tool: entry.record.tool!, source: { ...entry.record }, args: JSON.parse(canonicalJSON(args)) as Record<string, unknown>, state: 'asked' })
         if (firstServiceAct) this.rememberService(id, entry.record.identityDigest)
       }
     }

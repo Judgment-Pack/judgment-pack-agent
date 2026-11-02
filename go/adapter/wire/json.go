@@ -42,6 +42,9 @@ type Value struct {
 	members []member
 	// source is an object's JSON text as Parse read it, byte for byte, until it is written to.
 	source string
+	// lossy says the parsed form cannot say that text: it holds a number not written as a float64 writes it, or a
+	// repeated name. Such an object is written back as its source, so the model reads what it wrote (#275).
+	lossy bool
 }
 
 type member struct {
@@ -139,7 +142,9 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 		if err != nil && !errors.Is(err, strconv.ErrRange) {
 			return nil, err
 		}
-		return Num(f), nil
+		number := Num(f)
+		number.lossy = err != nil || jsNumber(f) != string(t)
+		return number, nil
 	case string:
 		return Str(t), nil
 	case json.Delim:
@@ -151,6 +156,7 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 				if err != nil {
 					return nil, err
 				}
+				value.lossy = value.lossy || item.lossy
 				value.items = append(value.items, item)
 			}
 			if _, err := decoder.Token(); err != nil {
@@ -173,6 +179,7 @@ func readJSONValue(decoder *json.Decoder, text string) (*Value, error) {
 				if err != nil {
 					return nil, err
 				}
+				value.lossy = value.lossy || item.lossy || value.Get(key) != nil
 				value.Set(key, item)
 			}
 			if _, err := decoder.Token(); err != nil {
@@ -369,6 +376,10 @@ func (v *Value) UnmarshalJSON(data []byte) error {
 func (v *Value) write(b *bytes.Buffer) {
 	if v == nil {
 		b.WriteString("null")
+		return
+	}
+	if v.kind == KindObject && v.lossy && v.source != "" {
+		b.WriteString(v.source)
 		return
 	}
 	switch v.kind {
