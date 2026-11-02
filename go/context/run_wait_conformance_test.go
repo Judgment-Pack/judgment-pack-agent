@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
 // #265 M6: the wait conformance kit over the memory kind, a real restart over a fresh store instance, and
@@ -357,6 +359,66 @@ func TestWaitConformanceKitCertifiesTheMemoryKindRestartedOverACopy(t *testing.T
 	// The process-lifetime kind passes the same properties; its lifetime is declared, not certified.
 	if err := CheckRunStoreWaitConformance(ctx, memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return store })); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// dropsReauthPins is a store kind whose re-authorization wait keeps no principals in its pins.
+type dropsReauthPins struct{ durableWaitStore }
+
+func (s dropsReauthPins) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	if park.Reason == "reauthorization" {
+		park.Pins.Principal = nil
+	}
+	return s.durableWaitStore.ParkWait(ctx, park, fence)
+}
+
+// dropsProofFence is a store kind that writes a re-authorization wait's proof back under a version 1 fence.
+type dropsProofFence struct{ durableWaitStore }
+
+func (s dropsProofFence) ParkWait(ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+	wait, attention, err := s.durableWaitStore.ParkWait(ctx, park, fence)
+	if err == nil {
+		for _, row := range s.waits.rows[park.Resource] {
+			if row.Wait == park.Wait && row.Reauthorization != nil {
+				row.Reauthorization.Fence.Version = 1
+				row.Reauthorization.Fence.Principal = nil
+			}
+		}
+	}
+	return wait, attention, err
+}
+
+// claimTakesAnyone is a store kind whose claim of a re-authorization wait does not hold the principals.
+type claimTakesAnyone struct{ durableWaitStore }
+
+func (s claimTakesAnyone) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if claim.Resource == "reauth-p" {
+		claim.Lease.Principal = &PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+	}
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+func TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		create   WaitStoreFactory
+		property string
+	}{
+		{"a park that drops the pins' principal", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return dropsReauthPins{durableWaitStore{store}} }), "reauth.principal.pinned"},
+		{"a park that writes the proof's fence back as version 1", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return dropsProofFence{durableWaitStore{store}} }), "reauth.principal.proof-fence"},
+		{"a claim that does not hold the principals", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return claimTakesAnyone{durableWaitStore{store}} }), "reauth.principal.claim-actor"},
+		{"a restart that loses the principal", restarting(func(row *RunWait) {
+			if row.Reason == "reauthorization" {
+				row.Pins.Principal = nil
+			}
+		}), "reauth.restart.principal"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var failure *StorageConformanceFailure
+			if err := CheckRunStoreWaitConformance(context.Background(), c.create); !errors.As(err, &failure) || failure.Property != c.property {
+				t.Fatalf("got %v, want the property %s", err, c.property)
+			}
+		})
 	}
 }
 

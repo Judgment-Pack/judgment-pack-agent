@@ -362,10 +362,11 @@ func canonicalRepeatArgs(raw []byte) (string, error) {
 }
 
 // Consistency is not dispatch or completion authority: the original writer owns those ACK facts.
+// The record needs a checkpoint whose schema carries repeatTools: version 3 and every later one.
 func validRepeatRecordCustody(value *Value) bool {
 	for _, held := range value.Get("durable").Get("dispatches").Items() {
 		if held.Has("repeatResultJson") {
-			if value.Get("version").Num() != 3 || !validRepeatTools(value.Get("repeatTools")) {
+			if value.Get("version").Num() < 3 || !validRepeatTools(value.Get("repeatTools")) {
 				return false
 			}
 			var row DurableDispatch

@@ -3,6 +3,7 @@ import {resolvePolicy,PolicyRefusal} from './policy'
 import {readExecution} from './execution/state'
 import {checkRecord,readPolicyLayer,writeRunEvent} from './recordReader'
 import {writeRecord,CHECKPOINT_SCHEMA,RECORD_DEFAULTS} from './records'
+import {validRepeatRecordCustody} from './repeatTools'
 import {vercel} from './engines/vercel'
 import {MemoryRunStore} from './storage/run'
 import type {AssistantSession} from './engine'
@@ -34,6 +35,9 @@ it('#204 explicit off and absent policy produce identical request/result/checkpo
   }
   const explicit=await capture(true),absent=await capture(false);for(const key of ['bodies','checkpoint','events','stored'] as const){const a=JSON.stringify(explicit[key]),b=JSON.stringify(absent[key]);const at=[...a].findIndex((c,i)=>c!==b[i]);expect(at,`${key} first byte difference at ${at}: ${a.slice(Math.max(0,at-40),at+80)} / ${b.slice(Math.max(0,at-40),at+80)}`).toBe(-1);expect(a.length).toBe(b.length)}
  }finally{uuid.mockRestore();random.mockRestore();vi.useRealTimers()}
+})
+it('the custody needs a checkpoint that can hold the record: version 3 and every later one, not one of them',()=>{
+ for(const [version,valid] of [[1,false],[2,false],[3,true],[4,true],[5,true],[6,true]] as const)expect(validRepeatRecordCustody({...structuredClone(vectors.custodyCheckpoint),version}),`version ${version}`).toBe(valid)
 })
 it('#204 shared exact custody record rejects missing, changed, orphan and nonterminal evidence',()=>{
  const cp=vectors.custodyCheckpoint;expect(readExecution(cp)).toEqual(cp)
