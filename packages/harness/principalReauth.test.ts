@@ -4,8 +4,10 @@
 // dispatch, RFC 0030 §2's "a freed attempt counts once per dispatch", through the real engine, writer and effect host.
 import {describe,it,expect,vi} from 'vitest'
 import chains from '../../contract/vectors/principal/chains.json'
-import type {AssistantEvent,EngineSession,HostTool} from './engine'
+import type {AgentAssistantSession,AssistantEvent,EngineSession,HostTool} from './engine'
+import type {AgentRun} from './agent'
 import {vercel} from './engines/vercel'
+import {codex} from './engines/codex'
 import {withDelegation} from './delegation'
 import {answerWith} from './testing/scenarioDriver'
 import {toolListDigest} from './toolSources'
@@ -310,6 +312,44 @@ describe("a child's call at the effect host, under a delegation",()=>{
   const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
   expect(wait.pending).toMatchObject({kind:'reauthorization',source:'host',tool:name})
  })
+ // #278: vercel has no restored batch, so the rule above holds there whatever delegation.ts does; on the agent path a
+ // restored batch is real, the refused child's task comes back `running`, and only "it is not run again" keeps its row from the grant.
+ it('on the agent path too: the restored child is interrupted, not run again, and nobody takes the grant',async()=>{
+  const reads:AdmissionRead[]=[],ran:string[]=[],links:ChildLinkRequest[]=[],{clock,checks,view,given,store,fence,host,state}=await held(reads,links)
+  const tools=[await noteTool(ran)]
+  const root=(on:RunStore,run:AgentRun,resume=false):AgentAssistantSession=>({prompt:'Check.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',agent:{model:'fixture',run},context:{principal:given,currentRequest:{message:'Check.',input:'note'},runStore:{store:on,id:'run-r',...(resume?{resume:true}:{})}}} as unknown as AgentAssistantSession)
+  const collectAgent=async(session:AgentAssistantSession)=>{const out:AssistantEvent[]=[];for await(const event of withDelegation(codex).start(session))out.push(event);return out}
+  const children:string[]=[]
+  // Whoever runs: a parent delegates while it has not, a child lists its context, each ends.
+  const run=(delegates:boolean):AgentRun=>async(request,callbacks)=>{
+   try{
+    const delegate=request.tools.find(t=>t.description.startsWith('delegate_tasks:')),list=request.tools.find(t=>t.description.startsWith('list_context:'))
+    if(!delegate)children.push(request.prompt)
+    if(delegate&&delegates)await callbacks.tool({id:'delegate-wire',name:delegate.name,arguments:{tasks:[{title:'Check',profile:'review',objective:'Check the note.'}]}},callbacks.signal).catch(()=>undefined)
+    if(!delegate&&list)await callbacks.tool({id:'child-list',name:list.name,arguments:{}},callbacks.signal).catch(()=>undefined)
+    await callbacks.event({type:'message',id:'reply',text:'Done.',phase:'final'})
+   }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
+  }
+  await collectAgent(root(view,run(true)))
+  expect(children.length).toBe(1);expect(checks.n).toBe(1);expect(reauthorizationOf(view)).toBeDefined()
+  const stoppedRows=await rows(store)
+  expect(stoppedRows.map(row=>[row.state,row.scope.task!==undefined,row.failure?.outcome])).toEqual([['unknown',true,'not-started']])
+  const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
+  clock.at=T0+3*MINUTE
+  await wakeRun(store,wake)
+  const {model,...rest}=wait.pins
+  const current={version:1 as const,resource:'run-r',wait:'wait-r',...rest,model:{...model,status:'available' as const},policy:{digest:wait.pins.policy}}
+  const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current,reauthorization:action})
+  state.refusal=undefined
+  const continued=await reauthorizedRunStore({store,effectHost:host,resumed})
+  const linked=links.length,before=checks.n,ranBefore=children.length
+  const after=await collectAgent(root(continued,run(false),true))
+  // Not run again: no child's run, no new link, no check, and the refused row is as it was.
+  expect(children.length).toBe(ranBefore);expect(links.length).toBe(linked);expect(checks.n).toBe(before)
+  expect(lastTask(after).state).toBe('interrupted')
+  expect((await rows(store)).map(row=>[row.state,row.failure?.outcome])).toEqual([['unknown','not-started']])
+  expect(reads.filter(read=>read.call.count)).toEqual([])
+ },60_000)
  it('leaves the grant to nobody: the child is not run again, and the parent\'s own call is a new row',async()=>{
   const reads:AdmissionRead[]=[],ran:string[]=[],links:ChildLinkRequest[]=[],{clock,checks,view,given,store,fence,host,state}=await held(reads,links)
   const tools=[await noteTool(ran)]

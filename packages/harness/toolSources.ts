@@ -362,7 +362,9 @@ export async function declareSources(hostTools: readonly HostTool[], served: rea
   const modes = new Map<string, boolean>()
   const prepared: HostTool[] = []
   const declared: { tool: HostTool; wire: string }[] = []
-  for (const original of hostTools) {
+  for (const given of hostTools) {
+    // #278: each member is read once, so what is checked is what is kept: an accessor cannot pass the refusals and then store another value.
+    const original = { ...given }
     const taxonomyError = hostTaxonomyProblem(original)
     if (taxonomyError) throw authoredFailure('configuration', `Tool taxonomy refused: ${taxonomyError}. Nothing was sent.`, 'context')
     let tool = {...original, taxonomy: structuredClone(original.taxonomy!), annotations: taxonomyAnnotations(original.taxonomy!.effect)}

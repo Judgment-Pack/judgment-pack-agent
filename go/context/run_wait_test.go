@@ -573,6 +573,11 @@ func TestWaitResumeNeedsTheDecisionAndANewLease(t *testing.T) {
 		i := input
 		i.Grant = &contract.CheckpointGrant{From: 20, To: 30, At: waitTime(clock, 0)}
 		return i
+	}(), func() ResumeInput {
+		// #275: a digest that is not one is no decision; refused before anything is claimed.
+		i, malformed := input, "sha256:"+strings.Repeat("A", 64)
+		i.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true, ShownDigest: &malformed}
+		return i
 	}()} {
 		if _, err := ResumeParked(ctx, withCurrent(t, bad)); waitReasonOf(err) != "decision-required" {
 			t.Fatalf("decision: %v", err)
@@ -587,12 +592,14 @@ func TestWaitResumeNeedsTheDecisionAndANewLease(t *testing.T) {
 	if lease, _ := store.ReadLease(ctx, "run-approval"); lease.State != "released" || lease.Epoch != "1" {
 		t.Fatalf("a refused resume took a lease: %+v", lease)
 	}
-	input.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true}
+	// #275: the digest of what the person was shown goes through with the decision.
+	shown := "sha256:" + strings.Repeat("c", 64)
+	input.Approval = &contract.CheckpointApprovalDecision{CallID: "call_2_1", Approved: true, ShownDigest: &shown}
 	resumed, err := ResumeParked(ctx, withCurrent(t, input))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resumed.Lease.Epoch != "2" || resumed.Wait.State != "resumed" || resumed.Wait.Resumed.Owner != "worker-b" || resumed.Approval.CallID != "call_2_1" {
+	if resumed.Lease.Epoch != "2" || resumed.Wait.State != "resumed" || resumed.Wait.Resumed.Owner != "worker-b" || resumed.Approval.CallID != "call_2_1" || resumed.Approval.ShownDigest == nil || *resumed.Approval.ShownDigest != shown {
 		t.Fatalf("resumed %+v", resumed)
 	}
 	if _, err := ResumeParked(ctx, withCurrent(t, input)); waitReasonOf(err) != "already-resumed" {

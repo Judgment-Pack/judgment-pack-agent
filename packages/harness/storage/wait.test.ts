@@ -9,7 +9,7 @@ import {MemoryRunStore,checkpointCallbackRunStore,type RunStore} from './run'
 import {MemoryChatStore} from './chat'
 import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseFence,type LeaseLifetime} from './lease'
 import {approvalBinding,pinsFrom,revalidateResume} from './resume'
-import {readExecution} from '../execution/state'
+import {approvalShownDigest,readExecution} from '../execution/state'
 import {WAIT_CAPABILITY_REASONS,WAIT_REFUSAL_REASONS,WaitCapabilityRefused,WaitRefused,admitWaits,type WaitClaim,answerDigest,attentionFor,attentionId,checkpointBytesDigest,exportWaits,parkRun,questionDigest,readAttentionDelivery,readAttentionEvent,readRunWait,readWaitCapabilityRefusal,readWaitExport,readWaitRefusal,readWaitReport,readWakeEvidence,reportFromExport,resumeParked,wakeEvidenceDigest,wakeKeyDigest,waitReport,wakeRun,type WaitLifetime,type WakeEvidence} from './wait'
 import waitVector from '../../../contract/vectors/wait/wait.json'
 import evidenceVector from '../../../contract/vectors/wait/evidence.json'
@@ -144,12 +144,16 @@ describe('a durable approval wait across a new process over the same store (#224
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR})).rejects.toEqual(refusal('decision-required'))
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:'another-call',approved:true}})).rejects.toEqual(refusal('decision-required'))
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,grant:{from:20,to:30,at:iso(T0)}})).rejects.toEqual(refusal('decision-required'))
+  // #275: a digest that is not one is no decision; refused before anything is claimed, as the continuation would refuse it.
+  for(const shownDigest of ['not a digest','sha256:'+'A'.repeat(64),7])await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,shownDigest} as never})).rejects.toEqual(refusal('decision-required'))
   // An acknowledgement the store does not hold is reconciled by reading, never by dispatching.
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-unseen',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('unacknowledged'))
   expect(await store.readLease('run-approval')).toMatchObject({state:'released',epoch:'1'})
-  const resumed=await resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,note:'Go ahead.'}})
+  // #275: the digest of what the person was shown goes through with the decision, for the continuation to check.
+  const shownDigest=approvalShownDigest(asked as {args:Record<string,unknown>})
+  const resumed=await resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-b',durationMs:HOUR,approval:{callId:asked.callId,approved:true,note:'Go ahead.',shownDigest}})
   expect(resumed.lease).toMatchObject({owner:'worker-b',epoch:'2',state:'held'});expect(resumed.wait).toMatchObject({state:'resumed',resumed:{owner:'worker-b',epoch:'2',at:iso(T0+HOUR+MINUTE)}})
-  expect(resumed.approval).toEqual({callId:asked.callId,approved:true,note:'Go ahead.'})
+  expect(resumed.approval).toEqual({callId:asked.callId,approved:true,note:'Go ahead.',shownDigest})
   await expect(resume({store,resource:'run-approval',wait:'wait-1',evidence:'decision-1',owner:'worker-c',durationMs:HOUR,approval:{callId:asked.callId,approved:true}})).rejects.toEqual(refusal('already-resumed'))
   const second=provider([{say:'The issue was filed.'}])
   const continued=await drive(fencedRunStore(store,resumed.fence,host),'run-approval',[await actTool(execute)],second.call,{resume:true,approval:resumed.approval})

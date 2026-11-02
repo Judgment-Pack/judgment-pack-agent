@@ -8172,7 +8172,7 @@
   ],
   "status": "caught",
   "origin": "agent#253",
-  "note": "#257 re-check finding 1(a). A getter or Proxy trap shows the kit an enforcing dispatch and the capture a non-enforcing one, which is then certified, admitted and performs a fence the store never issued. Caught at lease.test.ts > a dispatch getter that changes between the kit and admission…, and a Proxy whose get trap changes dispatch…. TypeScript only."
+  "note": "#257 re-check finding 1(a). A getter or Proxy trap shows the kit an enforcing dispatch and the capture a non-enforcing one, which is then certified, admitted and performs a fence the store never issued. Caught at lease.test.ts > a dispatch getter that changes between the kit and admission…, and a Proxy whose get trap changes dispatch…. The fixture asks the kit for its last admission: #280 added admissions after the one it had named, the kit then refused the shifted host, and the row stopped catching (#278). TypeScript only."
 },
 {
   "name": "lease batch C2 the reference host reads a replaceable authority",
@@ -12365,6 +12365,198 @@
    "status": "caught",
    "origin": "agent#275",
    "note": "Go twin (by hand): version > 6 in newCorpusCheckpointView; caught at ^TestTheCorpusViewReadsEveryCheckpointFormat$."
+  },
+  {
+   "name": "resume digest a parked decision's shownDigest is taken and dropped",
+   "file": "storage/wait.ts",
+   "find": ",...(decision.shownDigest===undefined?{}:{shownDigest:decision.shownDigest})}}",
+   "replace": "}}",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #277 read's MEDIUM-14. Go hands the decision on whole: its twin (by hand) drops ShownDigest from the decision ResumeParked returns; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+  },
+  {
+   "name": "resume digest a parked decision's shownDigest is refused as an unknown member",
+   "file": "storage/wait.ts",
+   "find": "!['callId','approved','note','shownDigest'].includes(k)",
+   "replace": "!['callId','approved','note'].includes(k)",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #277 read's MEDIUM-14, the refusal itself. Go has no closed list of members here."
+  },
+  {
+   "name": "resume digest a malformed shownDigest is taken at the resume",
+   "file": "storage/wait.ts",
+   "find": "||decision.shownDigest!==undefined&&(typeof decision.shownDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(decision.shownDigest))",
+   "replace": "",
+   "tests": [
+    "storage/wait.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278. Go twin (by hand): the ShownDigest clause dropped from waitDecision; caught at ^TestWaitResumeNeedsTheDecisionAndANewLease$."
+  },
+  {
+   "name": "reauth N1 a dispatch that throws is not entered inside a promise",
+   "file": "storage/lease.ts",
+   "find": "new Promise<T>(resolve=>resolve(dispatch()))",
+   "replace": "dispatch()",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #272 re-read's N1. TypeScript only: Go returns its error."
+  },
+  {
+   "name": "reauth N2 only the outer error is checked for the typed shape",
+   "file": "storage/writer.ts",
+   "find": "const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "replace": "const error=effect&&!refused&&thrown instanceof AIFailureError&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #272 re-read's NM2: under it a nested typed failure executes twice. Go twin (by hand): caught at ^TestReauthAWrappedTypedFailureIsNoGrant$."
+  },
+  {
+   "name": "reauth N2b a typed failure on a read is left as it says",
+   "file": "storage/writer.ts",
+   "find": "const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "replace": "const error=effect&&!read&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #272 re-read's NM7. Go twin (by hand): caught at ^TestReauthAReadsTypedFailureSaysOnlyUnknown$."
+  },
+  {
+   "name": "reauth N2c the fence is looked at again only when the check allows",
+   "file": "storage/lease.ts",
+   "find": "     await this.#authority.checkFence(held.fence,signal)\n     if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n",
+   "replace": "     if(refused!==undefined)throw reauthorizationRequired(admission,refused)\n     await this.#authority.checkFence(held.fence,signal)\n",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #272 re-read's NM6. Go twin (by hand): the refusal before CheckFence in ReferenceEffectHost.admit; caught at ^TestReauthTheCredentialCheckDoesNotReopenTheFence$."
+  },
+  {
+   "name": "principal M16 a restored running child runs again on the agent path",
+   "file": "delegation.ts",
+   "find": "for(const task of tasks){if(task.state==='running'){task.state='interrupted';",
+   "replace": "for(const task of tasks){if(task.state==='running'){task.state='queued';",
+   "tests": [
+    "principalReauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's M16 (T8b): the child takes the grant and its row goes unknown to result. Go pins the rule at its own restored batch."
+  },
+  {
+   "name": "source approval a tool's members are read again after the refusal",
+   "file": "toolSources.ts",
+   "find": "const taxonomyError = hostTaxonomyProblem(original)",
+   "replace": "const taxonomyError = hostTaxonomyProblem(given)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #287 review's L5: an accessor that reads required once and none after passes the refusal and stores none. TypeScript only: Go's fields are plain."
+  },
+  {
+   "name": "agent#168 snapshot a selected tool's taxonomy is not compared with the approval",
+   "file": "descriptorSnapshot.ts",
+   "find": "  if (tool !== undefined && (snapshot.tools[tool] === undefined || owner === undefined || canonical(snapshot.tools[tool]!.taxonomy) !== canonical(owner))) return 'selected tool taxonomy differs from approval'\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #287 review: line 202 refuses first on every declared tool in snapshot mode, and no row held it. Go twin (by hand): the same refusal dropped from DescriptorApprovalProblem; caught at ^TestSnapshotSourceAdmissionAndCapturedOffer$ and ^TestTaxonomyIntegrationGatewayV2ActualAdmission$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.principal.claim-subject",
+   "file": "storage/waitConformance.ts",
+   "find": "  await refuses('reauth.principal.claim-subject',()=>store.resumeWait(claimP(OTHER_SUBJECT)),'principal-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.principal.claim-none",
+   "file": "storage/waitConformance.ts",
+   "find": "  await refuses('reauth.principal.claim-none',()=>store.resumeWait(claimP()),'principal-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.principal.claim-unchanged",
+   "file": "storage/waitConformance.ts",
+   "find": "  check('reauth.principal.claim-unchanged',(await store.readWait('reauth-p','wait-r'))?.state==='woken')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.principal.claim",
+   "file": "storage/waitConformance.ts",
+   "find": "  check('reauth.principal.claim',claimed.wait.state==='resumed'&&claimed.lease.version===2&&canonicalJSON(claimed.lease.principal)===canonicalJSON(BINDING)&&claimed.lease.epoch==='2')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.restart.principal-claim",
+   "file": "storage/waitConformance.ts",
+   "find": "  await holds('reauth.restart.principal-claim','reauth.restart.principal-claim-proof-fence')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "reauth L13 the kit drops reauth.restart.principal-fence",
+   "file": "storage/waitConformance.ts",
+   "find": "  await refuses('reauth.restart.principal-fence',()=>store.checkFence({...fenceOf(claimed.lease),principal:OTHER_ACTOR}),'principal-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#278",
+   "note": "#278, the #288 review's L13. Go twin (by hand): the same row dropped from the kit; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
   }
  ]
 }

@@ -384,7 +384,7 @@ async function claimed(make?:(now:()=>Date)=>DurableWaitStore,proofs:Reauthoriza
  r.state.refusal=undefined
  return {...r,resumed}
 }
-const hostRows=async(store:RunStore,id='run-r')=>JSON.parse(new TextDecoder().decode((await store.load(id))!.checkpoint!)).durable.dispatches.filter((row:{kind:string})=>row.kind==='host') as {id:string;state:string;failure?:Record<string,unknown>}[]
+const hostRows=async(store:RunStore,id='run-r')=>JSON.parse(new TextDecoder().decode((await store.load(id))!.checkpoint!)).durable.dispatches.filter((row:{kind:string})=>row.kind==='host') as {id:string;state:string;read?:boolean;failure?:Record<string,unknown>}[]
 const UNKNOWN_FAILURE={version:1,code:'authentication',source:'tool',outcome:'unknown'}
 /** A host certified for the store: the reference host's admission for the kit's operations (source host), the case's body for the run's. */
 const certifiedAs=(body:(admission:EffectAdmission,perform:()=>Promise<unknown>,inner:EffectHost)=>Promise<unknown>)=>(authority:import('./lease').LeaseAuthority):EffectHost=>{
@@ -410,6 +410,7 @@ describe('#226 H1: the typed failure means a refusal the package trusted, so not
   ['the exported class',()=>new ReauthorizationRequired()],
   ['a typed failure of the same shape',()=>new AIFailureError({...failure('authentication','tool','not-started'),detail:'SENTINEL-HOST-DETAIL the operation was not admitted'})],
   ['the run\'s own proof, kept and thrown again',proof=>proof],
+  ['a typed failure nested in the error',()=>new Error('wrapped',{cause:new AIFailureError({...failure('authentication','tool','not-started'),detail:'SENTINEL-HOST-DETAIL the operation was not admitted'})})],
  ]
  for(const [name,fails] of thrown)it(`the re-send is admitted, then fails with ${name}: no later view sends it again, whatever the effect host remembers`,async()=>{
   const proofs:ReauthorizationRequired[]=[]
@@ -459,16 +460,17 @@ describe('#226 H1: the typed failure means a refusal the package trusted, so not
 
 describe('#226 M1: the credential check does not reopen the fence',()=>{
  const operation={run:'run-t',operation:'op-1',source:'tracker',tool:'create_issue',requestDigest:'sha256:'+'2'.repeat(64)}
- it('the lease is lost during the check: nothing is admitted or performed, through the real engine and at the host',async()=>{
+ it.each([['allows',undefined],['refuses',REFUSED]] as const)('the lease is lost during a check that %s: nothing is admitted, performed or proved, through the real engine and at the host',async(_label,answer)=>{
   const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
   const host=new ReferenceEffectHost(store,{credentials:async()=>{
    clock.at=T0+2*HOUR
    await store.acquireLease({resource:'run-t',owner:'worker-b',expectedRevision:(await store.load('run-t'))!.revision,durationMs:HOUR})
-   return undefined
+   return answer
   }})
   const a=await store.acquireLease({resource:'run-t',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
-  await drive(unattendedRunStore({store,fence:fenceOf(a),effectHost:host}),'run-t',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
-  expect(execute).not.toHaveBeenCalled()
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:host})
+  await drive(view,'run-t',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
+  expect(execute).not.toHaveBeenCalled();expect(reauthorizationOf(view)).toBeUndefined()
   expect(host.refusals).toEqual([{version:1,reason:'stale-epoch'}])
  })
  it('the identity stays free: the takeover\'s own dispatch of it is admitted',async()=>{
@@ -505,6 +507,28 @@ describe('#226 M1: the credential check does not reopen the fence',()=>{
 })
 
 describe('#226 M2: a perform after the dispatch ended',()=>{
+ it('a plain function that throws the mint, as the guide says: the refusal is trusted, the run stops and it parks',async()=>{
+  const store=new DurableWaitStore(),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  const certified=await certifyEffectHost(certifiedAs((admission)=>{throw reauthorizationRequired(admission,REFUSED)}),store)
+  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:certified}),model=provider([CALL,{say:'.'}])
+  await drive(view,'run-r',[await actTool(execute)],model.call)
+  expect(execute).not.toHaveBeenCalled();expect(model.state.requests).toBe(1)
+  expect((await hostRows(store))[0]).toMatchObject({state:'unknown',failure:{code:'authentication',source:'tool',outcome:'not-started'}})
+  expect(reauthorizationOf(view)).toBeDefined()
+  await expect(parkRun(parkInput(store,fenceOf(a),reauthorizationOf(view)))).resolves.toBeDefined()
+ })
+ it('a plain function that schedules a perform and then throws the mint: nothing runs, and the refusal is no proof',async()=>{
+  const store=new DurableWaitStore(),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
+  let late:Promise<unknown>|undefined
+  const certified=await certifyEffectHost(certifiedAs((admission,perform)=>{const error=reauthorizationRequired(admission,REFUSED);setTimeout(()=>{late=perform().catch(reason=>reason)},0);throw error}),store)
+  const a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const view=unattendedRunStore({store,fence:fenceOf(a),effectHost:certified})
+  await drive(view,'run-r',[await actTool(execute)],provider([CALL,{say:'.'}]).call)
+  await new Promise(resolve=>setTimeout(resolve,20))
+  await expect(late).resolves.toEqual(expect.objectContaining({name:'LeaseRefused',reason:'invalid'}))
+  expect(execute).not.toHaveBeenCalled();expect(reauthorizationOf(view)).toBeUndefined()
+ })
  it('a refusal followed by a late perform: nothing runs, the refusal is no proof, and no re-send can run it twice',async()=>{
   const store=new DurableWaitStore(),execute=vi.fn(async()=>({content:[{type:'text' as const,text:'created'}]}))
   let late:Promise<unknown>|undefined
@@ -656,6 +680,16 @@ describe('#275: a re-send over a row a Go writer wrote: the grant is for the byt
   expect(answered(await write(row))).toBe('ran '+row)
   expect(ran).toEqual([row])
   expect((await hostRows(store)).map(held=>held.state)).toEqual(['result'])
+ })
+ it.each([
+  ['as itself',()=>new AIFailureError(failure('authentication','tool','not-started'))],
+  ['nested in the error',()=>new Error('wrapped',{cause:new AIFailureError(failure('authentication','tool','not-started'))})],
+ ])('a read that fails with the typed failure %s: the row says only unknown, as a write\'s does (#278)',async(_label,thrown)=>{
+  const store=new DurableWaitStore(),a=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR})
+  const writer=new RunWriter(unattendedRunStore({store,fence:fenceOf(a),effectHost:new ReferenceEffectHost(store)}),'run-r',undefined),binding:DurableBinding={writer,root:true,scope}
+  writer.bind(()=>writer.checkpoint??checkpointOf('run-r'),RECORD_DEFAULTS,()=>undefined)
+  await expect(writer.invoke(binding,'host','tracker','read_issue','{}',true,async()=>{throw thrown()},hostSucceeded)).rejects.toBeInstanceOf(AIFailureError)
+  expect((await hostRows(store))[0]).toMatchObject({read:true,failure:UNKNOWN_FAILURE})
  })
  it('different numbers are another write: its own row and identity, and the grant stands',async()=>{
   const {store,continued}=await refusedAs('{"q":0}'),{ran,write}=await writerOn(continued,true)

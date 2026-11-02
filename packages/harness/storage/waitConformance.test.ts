@@ -58,6 +58,19 @@ describe('the wait conformance kit (#265 M6)',()=>{
   await expect(runStoreWaitConformance(losing(row=>{if(row.reason==='reauthorization'&&row.pins.principal){delete row.pins.principal}}))).rejects.toEqual(fails('reauth.restart.principal'))
   class ClaimTakesAnyone extends DurableWaitStore {override resumeWait(claim:WaitClaim,signal?:AbortSignal){if(claim.resource!=='reauth-p')return super.resumeWait(claim,signal);const {principal:_,...lease}=claim.lease;return super.resumeWait({...claim,lease:{...lease,principal:{sub:{kind:'person',issuer:'https://kit.example/',subject:'kit-subject'},rootActor:'b1'.repeat(16),host:'kit-host'}}},signal)}}
   await expect(runStoreWaitConformance(memoryKind([],now=>new ClaimTakesAnyone({now})))).rejects.toEqual(fails('reauth.principal.claim-actor'))
+  // #278: each of the rest of the kit's principal rows names a store that fails only it.
+  const parked=async(store:DurableWaitStore,claim:WaitClaim)=>claim.resource==='reauth-p'?(await store.readWait(claim.resource,claim.wait))?.pins.principal:undefined
+  class ComparesTheActorOnly extends DurableWaitStore {override async resumeWait(claim:WaitClaim,signal?:AbortSignal){const held=await parked(this,claim);return super.resumeWait(held&&claim.lease.principal?.rootActor===held.rootActor?{...claim,lease:{...claim.lease,principal:held}}:claim,signal)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new ComparesTheActorOnly({now})))).rejects.toEqual(fails('reauth.principal.claim-subject'))
+  class ForgivesNone extends DurableWaitStore {override async resumeWait(claim:WaitClaim,signal?:AbortSignal){const held=await parked(this,claim);return super.resumeWait(held&&!claim.lease.principal?{...claim,lease:{...claim.lease,principal:held}}:claim,signal)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new ForgivesNone({now})))).rejects.toEqual(fails('reauth.principal.claim-none'))
+  class RefusalMovesTheWait extends DurableWaitStore {override async resumeWait(claim:WaitClaim,signal?:AbortSignal){try{return await super.resumeWait(claim,signal)}catch(error){if(claim.resource==='reauth-p'&&!claim.lease.principal)for(const row of (this as unknown as {waits:{rows:Map<string,RunWait[]>}}).waits.rows.get(claim.resource)??[])row.state='parked';throw error}}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new RefusalMovesTheWait({now})))).rejects.toEqual(fails('reauth.principal.claim-unchanged'))
+  class ClaimLeasesWithout extends DurableWaitStore {override async resumeWait(claim:WaitClaim,signal?:AbortSignal){const out=await super.resumeWait(claim,signal);if(claim.resource!=='reauth-p')return out;const {principal:_,...lease}=out.lease;return {...out,lease:{...lease,version:1}} as typeof out}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new ClaimLeasesWithout({now})))).rejects.toEqual(fails('reauth.principal.claim'))
+  await expect(runStoreWaitConformance(losing(row=>{if(row.reason==='reauthorization'&&row.state==='resumed'&&row.pins.principal){delete row.pins.principal}}))).rejects.toEqual(fails('reauth.restart.principal-claim'))
+  class FenceForgetsThePrincipal extends DurableWaitStore {override async checkFence(fence:LeaseFence,signal?:AbortSignal){return super.checkFence(fence.resource==='reauth-p'&&fence.principal?{...fence,principal:(await this.readLease(fence.resource))?.principal??fence.principal}:fence,signal)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new FenceForgetsThePrincipal({now})))).rejects.toEqual(fails('reauth.restart.principal-fence'))
  })
  it('#226: a store that leaves a re-authorization guarantee out fails the property that names it',async()=>{
   const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})

@@ -401,6 +401,20 @@ describe('identity per tool call (ADR-0019)', () => {
     expect(await gate.decide('expenses__submit', { amount: 13 }, 'later')).toMatchObject({ answer: 'allow' })
   })
 
+  it('reads a tool\'s approval once: an accessor cannot pass the refusal and then store another value (#278)', async () => {
+    const accessor = (first: string, then: string) => {
+      let reads = 0
+      const tool = { ...serviceTool(), source: { ...serviceTool().source!, identity: { kind: 'connection', label: 'tracker' } } } as Record<string, unknown>
+      delete tool.approval
+      Object.defineProperty(tool, 'approval', { enumerable: true, get: () => reads++ === 0 ? first : then })
+      return { tool: tool as never as HostTool, reads: () => reads }
+    }
+    const required = accessor('required', 'none')
+    const { entries } = await declareSources([required.tool], [])
+    expect([...entries.values()].map(entry => entry.approval)).toEqual(['required'])
+    expect(required.reads()).toBe(1)
+    await expect(declareSources([accessor('none', 'required').tool], [])).rejects.toMatchObject({ failure: { code: 'configuration' } })
+  })
   it('a service act cannot be declared with approval none, so no first act gets past its question that way (#285)', async () => {
     await expect(gateFor([serviceTool({ approval: 'none' })])).rejects.toMatchObject({ failure: { code: 'configuration' }, message: expect.stringContaining('host approval cannot widen the declared act effect') })
   })
