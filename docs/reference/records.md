@@ -202,7 +202,7 @@ Closed: a member the schema does not name is refused.
 | Member | Required | Type | Description |
 | --- | --- | --- | --- |
 | `schema` | yes | enum `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json`, `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/provenance.json`, `https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-event.json#/$defs/critique` |  |
-| `version` | yes | enum `1`, `2` |  |
+| `version` | yes | enum `1`, `2`, `3`, `4`, `5`, `6` |  |
 | `digest` | yes | `provenance.json $defs/recordDigest` |  |
 | `retainUntil` | yes | `provenance.json $defs/retainUntil` |  |
 | `bytes` | yes | integer (min 1) |  |

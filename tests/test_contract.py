@@ -488,6 +488,15 @@ class SchemaTests(unittest.TestCase):
                 self.assertEqual(table[name], (root, closed))
 
 
+class ExportManifestVersionTests(unittest.TestCase):
+    def test_a_checkpoint_record_takes_every_version_the_checkpoint_has(self):
+        # #278: ExportRecords writes a record's own version, so the manifest follows checkpoint.json.
+        exported = json.loads((ROOT / "contract/schemas/export.json").read_text(encoding="utf-8"))["$defs"]["record"]
+        versions = json.loads((ROOT / "contract/schemas/checkpoint.json").read_text(encoding="utf-8"))["properties"]["version"]["enum"]
+        self.assertEqual(exported["properties"]["version"]["enum"], versions)
+        self.assertEqual(exported["allOf"][0]["then"]["properties"]["version"]["enum"], versions)
+
+
 class DeskInventoryTests(unittest.TestCase):
     """The schemas against the Desk's own lists, copied in contract/desk/."""
 

@@ -398,6 +398,71 @@ func (s claimTakesAnyone) ResumeWait(ctx context.Context, claim WaitClaim) (RunW
 	return s.durableWaitStore.ResumeWait(ctx, claim)
 }
 
+// parkedPrincipal is the principals a claim's wait was parked with, if it holds any.
+func parkedPrincipal(ctx context.Context, store durableWaitStore, claim WaitClaim) *PrincipalBinding {
+	held, err := store.ReadWait(ctx, claim.Resource, claim.Wait)
+	if err != nil || held == nil || claim.Resource != "reauth-p" {
+		return nil
+	}
+	return held.Pins.Principal
+}
+
+// comparesTheActorOnly is a store kind whose claim compares the root actor and not the subject.
+type comparesTheActorOnly struct{ durableWaitStore }
+
+func (s comparesTheActorOnly) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if held := parkedPrincipal(ctx, s.durableWaitStore, claim); held != nil && claim.Lease.Principal != nil && claim.Lease.Principal.RootActor == held.RootActor {
+		claim.Lease.Principal = held
+	}
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+// forgivesNone is a store kind whose claim takes a lease with no principals.
+type forgivesNone struct{ durableWaitStore }
+
+func (s forgivesNone) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	if held := parkedPrincipal(ctx, s.durableWaitStore, claim); held != nil && claim.Lease.Principal == nil {
+		claim.Lease.Principal = held
+	}
+	return s.durableWaitStore.ResumeWait(ctx, claim)
+}
+
+// refusalMovesTheWait is a store kind whose refused claim changes the wait.
+type refusalMovesTheWait struct{ durableWaitStore }
+
+func (s refusalMovesTheWait) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	wait, lease, err := s.durableWaitStore.ResumeWait(ctx, claim)
+	if err != nil && claim.Resource == "reauth-p" && claim.Lease.Principal == nil {
+		for _, row := range s.waits.rows[claim.Resource] {
+			row.State = "parked"
+		}
+	}
+	return wait, lease, err
+}
+
+// claimLeasesWithout is a store kind whose claim answers with a lease that has lost its principals.
+type claimLeasesWithout struct{ durableWaitStore }
+
+func (s claimLeasesWithout) ResumeWait(ctx context.Context, claim WaitClaim) (RunWait, RunLease, error) {
+	wait, lease, err := s.durableWaitStore.ResumeWait(ctx, claim)
+	if err == nil && claim.Resource == "reauth-p" {
+		lease.Version, lease.Principal = 1, nil
+	}
+	return wait, lease, err
+}
+
+// fenceForgetsThePrincipal is a store kind whose fence check does not compare the principals.
+type fenceForgetsThePrincipal struct{ durableWaitStore }
+
+func (s fenceForgetsThePrincipal) CheckFence(ctx context.Context, fence LeaseFence) error {
+	if fence.Resource == "reauth-p" && fence.Principal != nil {
+		if lease, err := s.durableWaitStore.ReadLease(ctx, fence.Resource); err == nil && lease != nil && lease.Principal != nil {
+			fence.Principal = lease.Principal
+		}
+	}
+	return s.durableWaitStore.CheckFence(ctx, fence)
+}
+
 func TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait(t *testing.T) {
 	for _, c := range []struct {
 		name     string
@@ -412,6 +477,17 @@ func TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait(t *testing.T
 				row.Pins.Principal = nil
 			}
 		}), "reauth.restart.principal"},
+		// #278: each of the rest of the kit's principal rows names a store that fails only it.
+		{"a claim that compares the root actor only", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return comparesTheActorOnly{durableWaitStore{store}} }), "reauth.principal.claim-subject"},
+		{"a claim that takes no principals", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return forgivesNone{durableWaitStore{store}} }), "reauth.principal.claim-none"},
+		{"a refused claim that changes the wait", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return refusalMovesTheWait{durableWaitStore{store}} }), "reauth.principal.claim-unchanged"},
+		{"a claim that answers with no principals", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return claimLeasesWithout{durableWaitStore{store}} }), "reauth.principal.claim"},
+		{"a restart that loses a claimed wait's principal", restarting(func(row *RunWait) {
+			if row.Reason == "reauthorization" && row.State == "resumed" {
+				row.Pins.Principal = nil
+			}
+		}), "reauth.restart.principal-claim"},
+		{"a fence check that does not compare the principals", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return fenceForgetsThePrincipal{durableWaitStore{store}} }), "reauth.restart.principal-fence"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var failure *StorageConformanceFailure
