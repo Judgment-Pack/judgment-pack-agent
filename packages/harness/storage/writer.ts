@@ -20,7 +20,7 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
-import {JobRefused,jobIdentity,jobPortOfView,jobStartResult,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
+import {JOB_PAGE_LIMIT,JobRefused,heldStartNotShown,jobIdentity,jobPortOfView,jobStartResult,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -520,7 +520,7 @@ export class RunWriter {
   if(!this.jobRecords)return
   const port=jobPortOfView(this.store),next=new Map<string,RunJob>()
   for(let after:string|null=null;;){
-   const page:{jobs:RunJob[];next:string|null}=await port.store.listJobs(this.id,after,100,signal)
+   const page:{jobs:RunJob[];next:string|null}=await port.store.listJobs(this.id,after,JOB_PAGE_LIMIT,signal)
    for(const row of page.jobs){const job=readRunJob(structuredClone(row));if(job.resource===this.id)next.set(job.operation,job)}
    if(page.next===null||page.next===after)break
    after=page.next
@@ -786,7 +786,7 @@ export class RunWriter {
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
   if(binding.writer!==this)throw new ContinuationIdentityChanged()
-  let reused:DurableDispatch|undefined,refusal:AIFailureError|undefined,claim!:DurableDispatch,jobId:string|undefined
+  let reused:DurableDispatch|undefined,refusal:AIFailureError|undefined,claim!:DurableDispatch,jobId:string|undefined,registration:JobRegistration|undefined
   await this.enqueue(async()=>{
    this.assertRepeatAdmission(binding)
    if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution))canonicalRepeatArgs(request)
@@ -828,7 +828,7 @@ export class RunWriter {
     let keyDigest:unknown
     try{keyDigest=await jobStart.mint(jobId,signal)}catch{keyDigest=undefined}
     if(typeof keyDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(keyDigest)){refusal=new JobRefused('invalid');return}
-    this.jobRegistration={job:jobId,operation:id,source,tool,requestDigest:claim.requestDigest,keyDigest}
+    registration={job:jobId,operation:id,source,tool,requestDigest:claim.requestDigest,keyDigest}
    }
    if(!this.hasTaskSteps&&kind==='model'&&this.repeatState(binding)&&JSON.parse(request).method!=='GET'){
     const charge=this.repeatRequestCharges.get(binding.scope.execution);if(!charge)throw new ContinuationIdentityChanged()
@@ -838,7 +838,7 @@ export class RunWriter {
    this.claimRepeatReminder(binding,claim)
    this.capture?.enroll(claim,captureBindings);this.book.dispatches.push(claim)
    if(planAttempt){if(kind!=='agent'||!validNativePlanAttempt(planAttempt,binding))throw new ContinuationIdentityChanged();const state=this.root?.()??this.latest;if(!state)throw new ContinuationIdentityChanged();mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,signal);planAttempt.claim=structuredClone(claim)}
-   else if(this.jobRegistration){try{await this.publish(binding,undefined,undefined,undefined,signal)}catch(error){if(!(error instanceof JobRefused))throw error;this.book.dispatches.pop();refusal=error}finally{delete this.jobRegistration}}
+   else if(registration){this.jobRegistration=registration;try{await this.publish(binding,undefined,undefined,undefined,signal)}catch(error){if(!(error instanceof JobRefused))throw error;this.book.dispatches.pop();refusal=error}finally{delete this.jobRegistration}}
    else await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(refusal)throw refusal
@@ -862,6 +862,7 @@ export class RunWriter {
    // idempotency identity is the acknowledged claim's, never the epoch.
    const perform=()=>execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)
    try{value=await ((kind==='host'||kind==='runtime')&&!read?fencedEffect(this.store,{run:this.id,operation:claim.id,source,tool,requestDigest:claim.requestDigest},perform,signal):perform())}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
+   // #229 (M2): a stop does not lose a start's answer: it goes to the job below, then this holds.
    if(this.dispatchClosed&&!jobStart)throw new DOMException('The operation was aborted','AbortError')
    if(kind==='model'){
     if(!value||typeof value!=='object'||!(value as unknown as PendingModel)[modelClaim]||this.models.has(value))throw new AIFailureError(failure('invalid-response','model','unknown'))
@@ -870,8 +871,8 @@ export class RunWriter {
    finishRecovery()
    if(admit&&!signal?.aborted){live=undefined;await admit(value)}
    // #229 (M2, M15): after the receipt check, the host's typed answer goes to the job and the row holds what the package
-   // composed. It is recorded whatever has become of the lease or the call's signal: a stale worker can only add a fact about
-   // the start it admitted, and this may be the only copy of its handle. An untyped answer leaves the job unproven.
+   // composed. It is recorded whatever has become of the lease, the call's signal or the dispatch: a stale worker can only add
+   // a fact about the start it admitted, and this may be the only copy of its handle. An untyped answer leaves the job unproven.
    if(jobStart){
     const answer=readJobStartAnswer(value),port=jobPortOfView(this.store)
     value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
@@ -955,7 +956,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
  if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
- const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given):undefined
+ const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined
  if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()

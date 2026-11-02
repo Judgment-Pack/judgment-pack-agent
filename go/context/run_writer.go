@@ -1475,6 +1475,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		}
 	}
 	var claim DurableDispatch
+	var registration *JobRegistration
 	var usageTicketHeld *usageTicket
 	if reclaimed >= 0 {
 		w.book.Dispatches[reclaimed].State = "claimed"
@@ -1507,7 +1508,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				w.mu.Unlock()
 				return zero, jobInvalid()
 			}
-			w.jobRegistration = &JobRegistration{Job: jobStart.job, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest, KeyDigest: keyDigest}
+			registration = &JobRegistration{Job: jobStart.job, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest, KeyDigest: keyDigest}
 		}
 		if !w.taskSteps.Load() && kind == "model" && w.repeatStateLocked(binding.Scope.Execution) != nil && MustParseJSON(string(request)).Get("method").Str() != "GET" {
 			charge := w.repeatRequestCharges[binding.Scope.Execution]
@@ -1554,8 +1555,9 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		w.mu.Unlock()
 		return zero, claimErr
 	}
+	w.jobRegistration = registration
 	_, err := w.saveLocked(ctx, *binding, nil, claimEvent, nil, nil)
-	if w.jobRegistration != nil {
+	if registration != nil {
 		w.jobRegistration = nil
 		if asJobRefusal(err) != nil {
 			w.book.Dispatches = w.book.Dispatches[:len(w.book.Dispatches)-1]

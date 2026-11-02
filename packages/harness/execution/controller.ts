@@ -1,4 +1,3 @@
-import {jobSeamOf} from '../storage/job'
 import {closePlan,changedDepartures,appendRefusal,contentDigest,validPlanInput,availablePlanEvidence} from './planActions'
 import {resolvePlanReference} from '../planning/references'
 import {identifyPlan,revisePlan} from './plan'
@@ -12,7 +11,7 @@ import {exactArguments,readCacheKey,scalarValue,canonicalJSON as importCanonical
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
 import {frameBlock} from '../framing'
-import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,approvalNotShown,approvalShownArguments,readApprovalDecision,readExecution,refusedResult,unknownOutcome,type ExecutionCheckpoint} from './state'
+import {ExecutionPaused,RequestCapRefusal,MAX_CHECKPOINT_BYTES,MAX_PROMPT_DIGESTS,validRequestCap,approvalNotShown,readApprovalDecision,readExecution,refusedResult,unknownOutcome,type ExecutionCheckpoint} from './state'
 import {CHECKPOINT_SCHEMA,CRITIQUE_SCHEMA,PROVENANCE_SCHEMA,recordsPolicy,refuseExpired,writeRecord,type RecordGuard,type RecordsPolicy} from '../records'
 
 export type PlanEvent=Extract<AssistantEvent,{type:'plan_revised'|'plan_departed'|'plan_completion_refused'|'plan_drift_decided'|'approval_requested'}>
@@ -116,10 +115,6 @@ export class ExecutionController {
    if(asked&&decision===undefined)throw authoredFailure('stale-state',`This response waits for the person’s decision on ${restored.approval!.name}; continue it with that decision.`,'context')
    const notShown=asked&&decision!==undefined?approvalNotShown(restored.approval!,decision):undefined
    if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
-   // #229: job tools are a new surface, so no host has yet to move: every approved start proves what the person was shown, a text
-   // kept or not. Refused here, before the claim, so the pause stands and the call can be asked again.
-   const unproven=asked&&decision?.approved===true&&decision.shownDigest===undefined&&this.session.hostTools?.some(tool=>jobSeamOf(tool)?.kind==='start'&&tool.name===restored.approval!.name)?approvalNotShown({request:approvalShownArguments(restored.approval!)},decision):undefined
-   if(unproven!==undefined)throw authoredFailure('stale-state',unproven,'context')
    if((restored.status==='paused'&&!asked)||restored.used>=restored.limit)throw new ExecutionPaused()
    if(restored.unit!==('model'in this.session?'model-requests':'provider-managed'))throw toolInputFailure('Continue this response with the same connection type, or start a new response.')
    await this.ledger.restore(restored.context)

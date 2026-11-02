@@ -2,6 +2,7 @@ import {AIFailureError,failure} from '../failures'
 import {canonicalJSON} from '../context/chat'
 import {sha256} from '../records'
 import {dataMarker,frameData} from '../framing'
+import {approvalNotShown,approvalShownArguments} from '../execution/state'
 import {validPrincipalBinding,type PrincipalBinding} from '../principal'
 import {storageId} from './common'
 import {admitUnattended,leasedViewOf,readEffectAdmission,readLeaseFence,validLeaseEpoch,type EffectAdmission,type EffectHost,type LeaseFence} from './lease'
@@ -373,6 +374,12 @@ export interface JobStartSpec {
  mint:JobStartSeam['mint'];start:JobStartSeam['start']
  /** A `gateway` source only: the host presents gatewayActionMembers on its /act, so a takeover cannot send the write twice. */
  gatewayKeyScope?:true
+}
+/** #229: job tools are a new surface, so no host has yet to move: a decision approving a held start proves what the person
+ * was shown, a text kept or not. The words are #275's. It is refused before the claim, so the pause stands and nothing has run. */
+export function heldStartNotShown(tools:readonly HostTool[]|undefined,asked:{name:string;tool:string;source:{id:string};request?:string;args?:Record<string,unknown>},decision:{approved:boolean;shownDigest?:string}):string|undefined{
+ if(!decision.approved||decision.shownDigest!==undefined||!tools?.some(tool=>jobSeamOf(tool)?.kind==='start'&&(tool.name===asked.name||tool.name===asked.tool&&tool.source?.id===asked.source.id)))return undefined
+ return approvalNotShown({request:approvalShownArguments(asked)},decision)
 }
 const noBinding=async():Promise<McpToolResult>=>{throw new JobCapabilityRefused('store-unsupported')}
 /** A background job's start: an ordinary act tool with a source, under the ordinary approval, dispatch, idempotency and

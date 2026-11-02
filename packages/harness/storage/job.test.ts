@@ -8,6 +8,9 @@ import {evidenceFailure,availablePlanEvidence} from '../execution/planActions'
 import {planDigest} from '../execution/plan'
 import {approvalShownDigest,readExecution} from '../execution/state'
 import {MemoryRunStore,type RunStore} from './run'
+import {RECORD_DEFAULTS} from '../records'
+import type {ExecutionCheckpoint} from '../execution/state'
+import {RunWriter,type DurableBinding} from './writer'
 import {LeaseCapabilityRefused,ReferenceEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type LeaseLifetime} from './lease'
 import {admitJobs,completeJob,exportJobs,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob} from './job'
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
@@ -100,9 +103,14 @@ describe('a start is registered with its claim, before it is admitted (#229)',()
  })
  it('a key the host cannot mint, or one of another form, leaves no row and runs nothing (M5)',async()=>{
   for(const mint of [async()=>{throw Error('no key')},async()=>'not-a-digest']){
-   const held=await leased(),start=vi.fn(started),first=provider([CALL,{say:'refused'}])
+   const held=await leased(),start=vi.fn(started),first=provider([CALL,{say:'refused'}]),registered:unknown[]=[]
+   const fenced=held.store.commitFenced.bind(held.store),history=held.store.commitHistoryFenced.bind(held.store)
+   vi.spyOn(held.store,'commitFenced').mockImplementation(async(input,...rest)=>{if(input.job)registered.push(input.job);return fenced(input,...rest)})
+   vi.spyOn(held.store,'commitHistoryFenced').mockImplementation(async(input,...rest)=>{if(input.run.job)registered.push(input.run.job);return history(input,...rest)})
    const events=await drive(held.view,[await startTool(start,{mint})],first.call)
    expect(start).not.toHaveBeenCalled()
+   // The writer checks it itself: the store is never handed it.
+   expect(registered).toEqual([])
    expect(events.some(e=>e.type==='tool_result'&&e.isError===true&&JSON.stringify(e).includes('JobRefused: invalid'))).toBe(true)
    expect((await headRows(held.store)).dispatches.filter(d=>d.kind==='host')).toEqual([])
    expect((await listJobs(held.store,RUN)).jobs).toEqual([])
@@ -140,6 +148,15 @@ describe('a start is registered with its claim, before it is admitted (#229)',()
   const held=await leased(),stop=new AbortController(),first=provider([CALL,{say:'never'}])
   const tool=await startTool(async()=>{stop.abort();return started()})
   await drive(held.view,[tool],first.call,{signal:stop.signal}).catch(()=>undefined)
+  // The stop ends the run at once, and the writer keeps the answer as it lands.
+  await vi.waitFor(async()=>expect((await listJobs(held.store,RUN)).jobs[0]!.state).toBe('started'))
+  expect((await listJobs(held.store,RUN)).jobs[0]!.handle).toBe(SECRET)
+ })
+ it('M2: a typed answer is kept when the dispatch closed while it ran',async()=>{
+  const held=await leased(),writer=new RunWriter(held.view,RUN),binding:DurableBinding={writer,root:true,scope:{execution:RUN,role:'author'}}
+  writer.bind(()=>({version:2,id:RUN,requestKey:'a'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:0,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'fixture',entries:[]}}) as ExecutionCheckpoint,RECORD_DEFAULTS,()=>undefined)
+  await writer.attachJobs()
+  await expect(writer.invoke(binding,'host','source','start','{"n":1}',false,async()=>{writer.closeDispatch(binding);return started() as never},undefined,undefined,undefined,undefined,undefined,undefined,undefined,true,{mint:async()=>jobKeyDigest(KEY),bind:()=>undefined})).rejects.toMatchObject({name:'AbortError'})
   const job=(await listJobs(held.store,RUN)).jobs[0]!
   expect(job.state).toBe('started');expect(job.handle).toBe(SECRET)
  })
@@ -432,6 +449,20 @@ describe('the model\'s read and plan evidence (#229)',()=>{
   const unknown={...book,dispatches:book.dispatches.map(d=>d.id===startRow.id?{...d,state:'unknown' as const,result:undefined}:d)}
   expect(evidenceFailure({operations:[startRow.id],artifacts:[]},{book:unknown,scope,jobs:withJob(succeeded)})).toBeUndefined()
   expect(evidenceFailure({operations:[startRow.id],artifacts:[]},{book:unknown,scope:{execution:'other',role:'author'},jobs:withJob(succeeded)})).toBe('wrong-scope')
+ })
+ it('complete_plan_step reads the job afresh: a job that succeeded since the run opened closes its step',async()=>{
+  const held=await leased(),tool=await startTool(started),first=provider([CALL,{say:'running'}])
+  await drive(held.view,[tool],first.call)
+  const j=(await listJobs(held.store,RUN)).jobs[0]!
+  const list=held.store.listJobs.bind(held.store)
+  let opened=false
+  vi.spyOn(held.store,'listJobs').mockImplementation(async(...args)=>{const page=await list(...args);if(!opened){opened=true;await completeJob(held.store,completion(j.job))}return page})
+  const revision=planDigest([{step:'Run it',status:'in_progress',id:'step-1'}] as never)
+  const plan={call:{tool:'update_plan',arguments:{plan:[{step:'Run it',status:'in_progress'}],explanation:'start'}}}
+  const close={call:{tool:'complete_plan_step',arguments:{id:'step-1',expectedRevision:revision,outcome:'completed',evidence:{operations:[j.operation],artifacts:[]}}}}
+  const events=await drive(held.view,[tool],provider([plan,close,{say:'x'}]).call,{resume:true})
+  expect(events.some(e=>e.type==='plan_completion_refused')).toBe(false)
+  expect(events.some(e=>e.type==='plan_revised'&&JSON.stringify(e).includes('recorded evidence'))).toBe(true)
  })
  it('complete_plan_step reads the job afresh, so a job that failed since the turn began cannot close a step',async()=>{
   const held=await leased(),tool=await startTool(started),job=()=>listJobs(held.store,RUN).then(p=>p.jobs[0]!)

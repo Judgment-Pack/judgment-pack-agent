@@ -20,7 +20,7 @@ import (
 type JobStoreFactory func(now func() time.Time, restart JobRunStore) JobRunStore
 
 var jobKitKeys = []string{"kit.job-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "kit.job-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "kit.job-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "kit.job-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8", "kit.job-e.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf", "kit.job-f.Mb6Sj1Wg8Ku3Ne7Ax2Qo5Di", "kit.job-g.Ct9Fh4Lp7Xr2Gv6Jz1Ys3Em", "kit.job-h.Ur5Ib8Oa3Tk1Nw6Pd9Hc2Vl", "kit.job-i.Ge7Zq2My5Rf4Xs9Ku1Bn6Ta", "kit.job-j.Ld3Pv8Hj6Cw1Oi4Se7Gx9Fm"}
-var jobKitWakes = []string{"kit.wake-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "kit.wake-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "kit.wake-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "kit.wake-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8"}
+var jobKitWakes = []string{"kit.wake-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "kit.wake-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "kit.wake-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "kit.wake-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8", "kit.wake-f.Mb6Jt1Cw8Qa3Ne5Xk2Hr9Ug7"}
 
 const jobKitWrong = "kit.job-wrong.Ge7Zq2My5Rf4Xs9Ku1Bn6Ta"
 
@@ -153,15 +153,15 @@ func (k *jobKit) properties() {
 	job1 := k.job("run-a", first)
 	k.check("job.register.commits", job1 != nil && job1.State == "unproven" && job1.Operation == "op-1" && job1.KeyDigest == key0 && job1.Registered.Owner == "worker-a" && job1.Registered.Epoch == a.fence.Epoch && job1.Registered.At == k.stamp() && k.revision("run-a") == firstRevision)
 	head := firstRevision
-	_, err := store().Commit(ctx, k.claim("run-a", head, "op-unfenced", jobKitKeys[9]))
+	_, err := store().Commit(ctx, k.claim("run-a", head, "op-unfenced", jobKitWrong))
 	k.refuses("job.register.unfenced", err, "invalid")
 	k.check("job.register.unfenced", k.job("run-a", JobIdentity("run-a", "op-unfenced")) == nil && k.revision("run-a") == head)
 	other := a.fence
 	other.Owner = "worker-x"
-	_, err = store().CommitFenced(ctx, k.claim("run-a", head, "op-stale", jobKitKeys[9]), other)
+	_, err = store().CommitFenced(ctx, k.claim("run-a", head, "op-stale", jobKitWrong), other)
 	k.refuses("job.register.fence", err, "other-owner")
 	k.check("job.register.fence", k.job("run-a", JobIdentity("run-a", "op-stale")) == nil)
-	bad := k.claim("run-a", head, "op-bad", jobKitKeys[9])
+	bad := k.claim("run-a", head, "op-bad", jobKitWrong)
 	bad.Job.Job = JobIdentity("run-a", "op-other")
 	_, err = store().CommitFenced(ctx, bad, a.fence)
 	k.refuses("job.register.identity", err, "invalid")
@@ -375,6 +375,36 @@ func (k *jobKit) properties() {
 	reacquired, err := store().AcquireLease(ctx, LeaseAcquire{Resource: "run-j", Owner: "worker-c", ExpectedRevision: headJ, DurationMs: 3600000})
 	k.answers("job.timeout.continues", err)
 	k.check("job.timeout.continues", reacquired.State == "held")
+	// A completion after the wait ended reopens nothing.
+	m := k.open("run-m")
+	after, _ := k.register("run-m", "op-1", jobKitKeys[9], m)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-m", after, "kit-handle"), m.fence); err != nil {
+		panic(err)
+	}
+	timeoutM := k.at.Add(time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, _, err = store().ParkWait(ctx, k.park("run-m", after, jobKitWakes[1], &timeoutM), m.fence); err != nil {
+		panic(err)
+	}
+	k.at = k.at.Add(time.Minute)
+	if _, err = store().WakeWait(ctx, WakeEvidence{Version: 1, Resource: "run-m", Wait: "wait-1", Evidence: "timeout-1", Kind: "timeout", Key: jobKitWakes[1]}); err != nil {
+		panic(err)
+	}
+	_, resumedM, err := store().ResumeWait(ctx, k.claimOf("run-m", "timeout-1", "worker-b", k.revision("run-m")))
+	if err != nil {
+		panic(err)
+	}
+	// The run waits on the same job again: the completion wakes that wait, not the one that ended.
+	parkedAgain := k.park("run-m", after, jobKitWakes[4], nil)
+	parkedAgain.Wait = "wait-2"
+	if _, _, err = store().ParkWait(ctx, parkedAgain, FenceOf(resumedM)); err != nil {
+		panic(err)
+	}
+	if _, err = store().CompleteJob(ctx, jobKitComplete("run-m", after, jobKitKeys[9], "done-1", "succeeded")); err != nil {
+		panic(err)
+	}
+	k.check("job.wake.resumed", k.wait("run-m").State == "resumed")
+	wokenAgain, err := store().ReadWait(ctx, "run-m", "wait-2")
+	k.check("job.wake.again", err == nil && wokenAgain != nil && wokenAgain.State == "woken")
 	// The run's limit: its sixty-fifth job is refused, with its claim.
 	limit := k.open("run-k")
 	moving := limit.revision

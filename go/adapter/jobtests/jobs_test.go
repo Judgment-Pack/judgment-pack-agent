@@ -145,6 +145,7 @@ func modelFinal() *http.Response {
 
 // options are what a continuation of a run brings.
 type options struct {
+	ctx          context.Context
 	resume       bool
 	decision     *contract.CheckpointApprovalDecision
 	continuation *runcontext.RunJob
@@ -223,7 +224,11 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 			return modelFinal(), nil
 		}
 	}
-	out.err = implementation.Run(context.Background(), run)
+	ctx := with.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	out.err = implementation.Run(ctx, run)
 	return out
 }
 
@@ -389,9 +394,15 @@ func TestJobsAKeyTheHostCannotMintLeavesNoRowAndRunsNothing(t *testing.T) {
 			t.Run(engine+"/"+name, func(t *testing.T) {
 				l := newLeased(t, nil)
 				calls := &startCalls{}
-				result := drive(t, l.view, engine, []runcontext.HostTool{startTool(t, calls, answered(startedAnswer, nil), "allow", mint)}, []jobCall{{"start", jobArgs}}, options{})
-				if calls.count() != 0 || !strings.Contains(toolAnswer(result), "JobRefused: invalid") {
-					t.Fatal(calls.count(), toolAnswer(result))
+				// The writer checks it itself: the store is never handed it.
+				counting := countingStore{durableJobStore: l.store, calls: &atomic.Int32{}, registered: &atomic.Int32{}}
+				view, err := runcontext.FencedRunStore(counting, l.fence, runcontext.NewReferenceEffectHost(counting))
+				if err != nil {
+					t.Fatal(err)
+				}
+				result := drive(t, view, engine, []runcontext.HostTool{startTool(t, calls, answered(startedAnswer, nil), "allow", mint)}, []jobCall{{"start", jobArgs}}, options{})
+				if calls.count() != 0 || counting.registered.Load() != 0 || !strings.Contains(toolAnswer(result), "JobRefused: invalid") {
+					t.Fatal(calls.count(), counting.registered.Load(), toolAnswer(result))
 				}
 				rows, _ := headBook(t, l.store)
 				if len(rows.hosts()) != 0 {
@@ -432,11 +443,13 @@ func TestJobsAThrowLeavesTheJobUnprovenAndARepeatIsAnsweredFromTheJob(t *testing
 func TestJobsAnAnswerThatIsNotTypedLeavesTheJobUnproven(t *testing.T) {
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			l := newLeased(t, nil)
-			tool := startTool(t, &startCalls{}, answered(runcontext.JobStartAnswer{Started: true}, nil), "allow", nil)
-			drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
-			if job := onlyJob(t, l.store); job.State != "unproven" {
-				t.Fatalf("%+v", job)
+			for _, answer := range []runcontext.JobStartAnswer{{Started: true}, {Handle: "a handle on a refusal"}} {
+				l := newLeased(t, nil)
+				tool := startTool(t, &startCalls{}, answered(answer, nil), "allow", nil)
+				drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+				if job := onlyJob(t, l.store); job.State != "unproven" {
+					t.Fatalf("%+v", job)
+				}
 			}
 		})
 	}
@@ -775,7 +788,38 @@ func TestJobsAContinuationMustBeThisRunsJob(t *testing.T) {
 	}
 }
 
+func TestJobsATypedAnswerIsKeptWhenTheCallsContextEnded(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			tool := startTool(t, &startCalls{}, func(context.Context, runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+				cancel()
+				return startedAnswer, nil
+			}, "allow", nil)
+			drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{ctx: ctx})
+			job := onlyJob(t, l.store)
+			if job.State != "started" || job.Handle == nil || *job.Handle != jobSecret {
+				t.Fatalf("%+v", job)
+			}
+		})
+	}
+}
+
 func TestJobsACloseReadsTheJobAfresh(t *testing.T) {
+	for name, c := range map[string]struct {
+		outcome, want, not string
+	}{
+		"a job that failed since the run opened closes nothing":     {"failed", "unsuccessful-operation", "recorded evidence"},
+		"a job that succeeded since the run opened closes its step": {"succeeded", `\"status\":\"completed\"`, "unsuccessful-operation"},
+	} {
+		t.Run(name, func(t *testing.T) { closesAfresh(t, c.outcome, c.want, c.not) })
+	}
+}
+
+func closesAfresh(t *testing.T, outcome, want, not string) {
+	t.Helper()
 	ctx := context.Background()
 	l := newLeased(t, nil)
 	tool := startTool(t, &startCalls{}, answered(startedAnswer, nil), "allow", nil)
@@ -783,9 +827,9 @@ func TestJobsACloseReadsTheJobAfresh(t *testing.T) {
 	job := onlyJob(t, l.store)
 	revision := "sha256:" + runcontext.ContextDigest(`[{"id":"step-1","status":"in_progress","step":"Run it"}]`)
 	calls := []jobCall{{"update_plan", `{"plan":[{"step":"Run it","status":"in_progress"}],"explanation":"start"}`}, {"complete_plan_step", `{"id":"step-1","expectedRevision":"` + revision + `","outcome":"completed","evidence":{"operations":["` + job.Operation + `"],"artifacts":[]}}`}}
-	// The job fails while the turn runs: the close must read that, not what the turn began with.
+	// The job settles while the run is open: the close must read that, not what the run opened with.
 	counting := failsOnFirstList{durableJobStore: l.store, fail: func() {
-		if _, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, func(e *runcontext.JobCompletionEvidence) { e.Outcome = "failed" })); err != nil {
+		if _, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, func(e *runcontext.JobCompletionEvidence) { e.Outcome = outcome })); err != nil {
 			t.Fatal(err)
 		}
 	}, seen: &atomic.Int32{}}
@@ -794,7 +838,7 @@ func TestJobsACloseReadsTheJobAfresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := drive(t, view, "eino", []runcontext.HostTool{tool}, calls, options{resume: true})
-	if !strings.Contains(toolAnswer(result), "unsuccessful-operation") {
+	if !strings.Contains(toolAnswer(result), want) || strings.Contains(toolAnswer(result), not) {
 		t.Fatal(toolAnswer(result), result.err)
 	}
 }
@@ -980,6 +1024,13 @@ func (s countingStore) CommitFenced(ctx context.Context, input runcontext.RunCom
 		s.registered.Add(1)
 	}
 	return s.durableJobStore.CommitFenced(ctx, input, fence)
+}
+
+func (s countingStore) CommitHistoryFenced(ctx context.Context, input runcontext.RunHistoryCommit, fence runcontext.LeaseFence) (runcontext.RunHistoryReceipt, error) {
+	if input.Run.Job != nil {
+		s.registered.Add(1)
+	}
+	return s.durableJobStore.CommitHistoryFenced(ctx, input, fence)
 }
 
 func TestJobsWithNoJobToolOfferedTheStoreIsNeverAskedAboutJobs(t *testing.T) {

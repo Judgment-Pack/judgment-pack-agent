@@ -17,7 +17,7 @@ const T0=Date.parse('2026-01-01T00:00:00.000Z'),MINUTE=60_000,HOUR=60*MINUTE
 const iso=(ms:number)=>new Date(ms).toISOString()
 const bytes=(text:string)=>new TextEncoder().encode(text)
 const KEYS=['kit.job-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1','kit.job-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2','kit.job-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4','kit.job-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8','kit.job-e.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf','kit.job-f.Mb6Sj1Wg8Ku3Ne7Ax2Qo5Di','kit.job-g.Ct9Fh4Lp7Xr2Gv6Jz1Ys3Em','kit.job-h.Ur5Ib8Oa3Tk1Nw6Pd9Hc2Vl','kit.job-i.Ge7Zq2My5Rf4Xs9Ku1Bn6Ta','kit.job-j.Ld3Pv8Hj6Cw1Oi4Se7Gx9Fm'] as const
-const WAKES=['kit.wake-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1','kit.wake-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2','kit.wake-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4','kit.wake-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8','kit.wake-e.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf'] as const
+const WAKES=['kit.wake-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1','kit.wake-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2','kit.wake-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4','kit.wake-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8','kit.wake-e.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf','kit.wake-f.Mb6Jt1Cw8Qa3Ne5Xk2Hr9Ug7'] as const
 const WRONG='kit.job-wrong.Ge7Zq2My5Rf4Xs9Ku1Bn6Ta'
 const REQUEST=`sha256:${'a'.repeat(64)}`
 const check=(property:string,value:unknown)=>{if(!value)throw new StorageConformanceFailure(property)}
@@ -53,11 +53,11 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const job1=await store.readJob('run-a',first.job)
  check('job.register.commits',job1?.state==='unproven'&&job1.operation==='op-1'&&job1.keyDigest===jobKeyDigest(KEYS[0])&&job1.registered.owner==='worker-a'&&job1.registered.epoch===a.fence.epoch&&job1.registered.at===iso(at)&&(await store.load('run-a'))?.revision===first.revision)
  const unfencedHead=(await store.load('run-a'))!.revision
- await refuses('job.register.unfenced',()=>store.commit(claim('run-a',unfencedHead,'op-unfenced',KEYS[9])),'invalid')
+ await refuses('job.register.unfenced',()=>store.commit(claim('run-a',unfencedHead,'op-unfenced',WRONG)),'invalid')
  check('job.register.unfenced',(await store.readJob('run-a',jobIdentity('run-a','op-unfenced')))===undefined&&(await store.load('run-a'))?.revision===unfencedHead)
- await refuses('job.register.fence',()=>store.commitFenced(claim('run-a',unfencedHead,'op-stale',KEYS[9]),{...a.fence,owner:'worker-x'}),'other-owner')
+ await refuses('job.register.fence',()=>store.commitFenced(claim('run-a',unfencedHead,'op-stale',WRONG),{...a.fence,owner:'worker-x'}),'other-owner')
  check('job.register.fence',(await store.readJob('run-a',jobIdentity('run-a','op-stale')))===undefined)
- await refuses('job.register.identity',()=>store.commitFenced({...claim('run-a',unfencedHead,'op-bad',KEYS[9]),job:{...claim('run-a',unfencedHead,'op-bad',KEYS[9]).job,job:jobIdentity('run-a','op-other')}},a.fence),'invalid')
+ await refuses('job.register.identity',()=>store.commitFenced({...claim('run-a',unfencedHead,'op-bad',WRONG),job:{...claim('run-a',unfencedHead,'op-bad',WRONG).job,job:jobIdentity('run-a','op-other')}},a.fence),'invalid')
  check('job.register.identity',(await store.load('run-a'))?.revision===unfencedHead)
  // A digest another job holds: refused, and the claim did not commit either.
  await refuses('job.key.job',()=>store.commitFenced(claim('run-a',unfencedHead,'op-2',KEYS[0]),a.fence),'key-reused')
@@ -178,6 +178,19 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  check('job.timeout.continues',claimed.wait.state==='resumed')
  await store.releaseLease(fenceOf(claimed.lease))
  check('job.timeout.continues',(await answers('job.timeout.continues',()=>store.acquireLease({resource:'run-j',owner:'worker-c',expectedRevision:headJ.revision,durationMs:HOUR}))).state==='held')
+ // A completion after the wait ended reopens nothing.
+ const m=await open('run-m')
+ const after=await register('run-m','op-1',KEYS[9],m.fence,m.revision)
+ await store.answerJob(answerOf('run-m',after.job),m.fence)
+ await store.parkWait(await parkOf('run-m',after.job,WAKES[4],{timeoutAt:iso(at+MINUTE)}),m.fence)
+ at+=MINUTE
+ await store.wakeWait({version:1,resource:'run-m',wait:'wait-1',evidence:'timeout-1',kind:'timeout',key:WAKES[4]})
+ const resumedM=await store.resumeWait({resource:'run-m',wait:'wait-1',evidence:'timeout-1',lease:{resource:'run-m',owner:'worker-b',expectedRevision:(await store.load('run-m'))!.revision,durationMs:HOUR},reconciled:[],revalidation:{version:1,resource:'run-m',wait:'wait-1',pins:pinsDigest(PINS),evidence:`sha256:${'c'.repeat(64)}`,changes:[]}})
+ // The run waits on the same job again: the completion wakes that wait, not the one that ended.
+ await store.parkWait(await parkOf('run-m',after.job,WAKES[5],{wait:'wait-2'}),fenceOf(resumedM.lease))
+ await store.completeJob(complete('run-m',after.job,KEYS[9]))
+ check('job.wake.resumed',(await readWait('run-m')).state==='resumed')
+ check('job.wake.again',(await store.readWait('run-m','wait-2'))?.state==='woken')
  // The run's limit: its sixty-fifth job is refused, with its claim.
  const k=await open('run-k')
  let moving=k.revision

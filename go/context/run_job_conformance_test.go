@@ -422,6 +422,20 @@ var jobFaults = map[string]jobFault{
 		}
 		return job, err
 	}},
+	"job.wake.resumed": {complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+		job, err := s.durableJobStore.CompleteJob(ctx, input)
+		if row := s.waits.find(input.Resource, "wait-1"); input.Resource == "run-m" && row != nil && row.State == "resumed" {
+			row.State = "woken"
+		}
+		return job, err
+	}},
+	"job.wake.again": {complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+		job, err := s.durableJobStore.CompleteJob(ctx, input)
+		if row := s.waits.find(input.Resource, "wait-2"); input.Resource == "run-m" && row != nil && row.State == "woken" {
+			row.State, row.Disposition = "parked", nil
+		}
+		return job, err
+	}},
 	"job.wake.late": {complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
 		job, err := s.durableJobStore.CompleteJob(ctx, input)
 		if row := s.waits.find(input.Resource, "wait-1"); err == nil && row != nil && row.State == "parked" && row.Pending.Job != nil {

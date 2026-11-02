@@ -12376,7 +12376,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors|TestJobEvidenceVectors."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobRecordVectors."
   },
   {
    "name": "job J2 a record need not hold its own identity",
@@ -12448,7 +12448,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job J8 any fence may answer for a start",
@@ -12628,7 +12628,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job J23 the store parks on an unproven job",
@@ -12640,7 +12640,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job J24 what a store answers need not be the job asked for",
@@ -12652,7 +12652,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobReadBack."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobReadBackRefusesAStoreThatAnswersAnotherRun."
   },
   {
    "name": "job J25 contradictions grow without a bound",
@@ -12664,7 +12664,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReconciliationKeeps."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReconciliationKeepsAContradictionAndReportsIt."
   },
   {
    "name": "job J26 a model's id may bring other members",
@@ -12688,7 +12688,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAWaitIsWoken."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
   },
   {
    "name": "job J28 the model is shown the handle",
@@ -12760,7 +12760,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapability."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapabilityRefusalIsNamed."
   },
   {
    "name": "job J34 any lifetime will do",
@@ -12772,7 +12772,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapability."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobACapabilityRefusalIsNamed."
   },
   {
    "name": "job J35 a model's id may be another form",
@@ -12808,7 +12808,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies|TestJobARegistration."
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobARegistrationCommitsOnlyUnderAFence."
   },
   {
    "name": "job R2 a key digest a wait holds is taken",
@@ -12820,7 +12820,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job R3 a completion does not wake its wait",
@@ -12832,7 +12832,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job R4 a re-claim needs no current fence",
@@ -12844,7 +12844,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job R5 a registration does not commit with its claim",
@@ -12856,7 +12856,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job R6 a re-claim may name another run",
@@ -12868,7 +12868,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReclaim."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobAReclaimIsUnderTheCurrentFence."
   },
   {
    "name": "job R7 a repeated commit id may carry another registration",
@@ -12880,7 +12880,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobARepeatedCommit."
+   "note": "#229. Go twin (by hand, in run_store.go): caught at TestJobARepeatedCommitMustCarryTheSameRegistration."
   },
   {
    "name": "job W1 a job wait's timeout closes the run",
@@ -12892,7 +12892,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W2 a job wait may wait for something else",
@@ -12916,7 +12916,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W4 the park does not look at the job",
@@ -12928,7 +12928,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W5 a job wait may bind a chat",
@@ -12952,7 +12952,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAParkRefuses."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAParkRefusesASettledOrUnprovenJobOrAPendingDecision."
   },
   {
    "name": "job W7 a completion wakes past a timeout or a deadline",
@@ -12964,7 +12964,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W8 a completion re-opens a wait",
@@ -12976,7 +12976,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W9 a wake key digest a job holds is taken",
@@ -12988,7 +12988,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifies."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobConformanceKitCertifiesTheMemoryKindRestartedOverACopy."
   },
   {
    "name": "job W10 a resume hands on whatever job the store answers",
@@ -13000,7 +13000,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAResumeReads."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAResumeReadsTheJobThroughTheReader."
   },
   {
    "name": "job W11 a stopped checkpoint parks on a job",
@@ -13012,7 +13012,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAStoppedCheckpoint."
+   "note": "#229. Go twin (by hand, in run_wait.go): caught at TestJobsAStoppedCheckpointHasNothingToContinue."
   },
   {
    "name": "job W12 the package parks on a job it can see has settled",
@@ -13060,7 +13060,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartIsRegistered."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAStartIsRegisteredWithItsClaimBeforeItIsAdmitted."
   },
   {
    "name": "job W16 a key of another form is registered",
@@ -13072,7 +13072,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAKeyTheHost."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAKeyTheHostCannotMintLeavesNoRowAndRunsNothing."
   },
   {
    "name": "job W17 a grant re-sends a closed job",
@@ -13084,7 +13084,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAGrantResends."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAGrantResendsAStartOnlyWhileItsJobIsUnproven."
   },
   {
    "name": "job W18 a repeated start is answered with no job",
@@ -13096,13 +13096,25 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAThrowLeaves."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsAThrowLeavesTheJobUnprovenAndARepeatIsAnsweredFromTheJob."
   },
   {
    "name": "job W19 a typed answer is lost when the call's signal ended",
    "file": "storage/writer.ts",
-   "find": "   if(this.dispatchClosed&&!jobStart)throw new DOMException('The operation was aborted','AbortError')\n",
-   "replace": "   if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')\n",
+   "find": "},port.fence)))) as T\n",
+   "replace": "},port.fence,signal)))) as T\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#229",
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsATypedAnswerIsKeptWhenTheCallsContextEnded."
+  },
+  {
+   "name": "job W19b a typed answer is lost when the run stopped",
+   "file": "storage/writer.ts",
+   "find": "if(this.dispatchClosed&&!jobStart)throw new DOMException",
+   "replace": "if(this.dispatchClosed)throw new DOMException",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -13120,7 +13132,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAnswerThatIsNotTyped."
+   "note": "#229. Go twin (by hand, in run_job.go): caught at TestJobsAnAnswerThatIsNotTypedLeavesTheJobUnproven."
   },
   {
    "name": "job W21 a refused registration leaves its row",
@@ -13132,7 +13144,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARefusedRegistration."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsARefusedRegistrationLeavesNoRowAndTheRunGoesOn."
   },
   {
    "name": "job W22 the row keeps the host's answer",
@@ -13156,7 +13168,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsTheRowsOfJobTools."
+   "note": "#229. Go twin (by hand, in run_writer.go): caught at TestJobsTheRowsOfJobToolsAreNeverPlanEvidence."
   },
   {
    "name": "job S2 a job tool is offered with no durable run",
@@ -13168,7 +13180,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAToolOffered."
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAToolOfferedWithNoDurableStoreRefusesByName."
   },
   {
    "name": "job S3 a continuation may be another run's job",
@@ -13180,7 +13192,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAContinuationMustBe."
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAContinuationMustBeThisRunsJob."
   },
   {
    "name": "job P1 a start row proves itself",
@@ -13192,7 +13204,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeld."
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeldToTheJobsRecord."
   },
   {
    "name": "job P2 a job of any outcome proves it",
@@ -13204,7 +13216,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeld."
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobEvidenceIsHeldToTheJobsRecord."
   },
   {
    "name": "job C1 a close trusts the job records of the turn's start",
@@ -13228,7 +13240,7 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAWaitIsWoken."
+   "note": "#229. Go twin (by hand, in session.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
   },
   {
    "name": "job L1 a re-claim is asked of no grant",
@@ -13240,19 +13252,19 @@
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in run_reauth.go): caught at TestJobsAThrowLeaves."
+   "note": "#229. Go twin (by hand, in run_reauth.go): caught at TestJobsAThrowLeavesTheJobUnprovenAndARepeatIsAnsweredFromTheJob."
   },
   {
    "name": "job C2 a held start is approved with no proof of what was shown",
-   "file": "execution/controller.ts",
-   "find": "   if(unproven!==undefined)throw authoredFailure('stale-state',unproven,'context')\n",
-   "replace": "",
+   "file": "storage/writer.ts",
+   "find": "approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined",
+   "replace": "approvalNotShown(held,given):undefined",
    "tests": [
     "storage/job.test.ts"
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldStart."
+   "note": "#229. Go twin (by hand, in controller.go): caught at TestJobsAHeldStartGoesThroughTheOrdinaryApproval."
   }
  ]
 }
