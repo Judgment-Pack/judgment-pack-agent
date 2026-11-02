@@ -229,7 +229,7 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 		"context/run_principal.go":      {"HoldsDelegation": {"Principal"}},
 		"context/plan_validation.go":    {"*ExecutionController.seedAcceptedPlan": {"PlanResolver", "PlanDrift"}},
 		"context/plan_preparation.go":   {"PreparePlanDecision": {"PlanResolver", "RunStore"}, "validateOriginalPlan": {"PlanResolver"}},
-		"adapter/context_enrollment.go": {"EnrollContext": {"EnrollContext"}},
+		"adapter/context_enrollment.go": {"ContextEnrollment": {"EnrollContext"}, "EnrollContext": {"EnrollContext"}},
 		"adapter/eino/observation.go":   {"Observe": {"Model", "Agent", "RunStore", "Tools", "HostTools", "Skills", "Subagents", "Children", "RequestCap"}},
 	}
 	for _, tree := range trees {

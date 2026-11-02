@@ -347,3 +347,38 @@ func TestReceiptQuarantineThroughTheActualAdapters(t *testing.T) {
 		}
 	}
 }
+
+// #289: on the model path a run opens its context once, but a host that keeps its gate across runs opens it again on that
+// gate, and each open must present the bytes the gate enrolled.
+func TestAKeptGateTakesASourceToolOnASecondRun(t *testing.T) {
+	tool := runcontext.HostTool{Name: "read_note", Description: "read_note", InputSchema: json.RawMessage(`{"type":"object"}`), EffectClass: "read", Taxonomy: &runcontext.ToolTaxonomy{Operation: "read", Effect: "read"}, Execute: func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+		return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("note")}, nil), nil
+	}}
+	digest := runcontext.ToolListDigest([]runcontext.ListedTool{{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema, Taxonomy: tool.Taxonomy}})
+	tool.Source = &runcontext.ToolSource{Kind: "custom", ID: "notes", Trust: "person", Version: "1", ToolListDigest: digest, CurrentDigest: func(context.Context) (string, error) { return digest, nil }}
+	g := gate.New(gate.Options{})
+	g.SetOffer(contract.ToolOffer{})
+	enrolled := 0
+	for range 2 {
+		var failed []string
+		run := &adapter.Run{Prompt: "Read.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Gate: g.Calls(), HostTools: []runcontext.HostTool{tool}, Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Read.", Input: "note"}}, Emit: func(e contract.RunEvent) {
+			if e.Error != nil {
+				failed = append(failed, e.Error.Message)
+			}
+		}, EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
+			enrolled++
+			return g.EnrollContext(offer.ID, offer.HostTools)
+		}, Model: func(context.Context, string, relay.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Done.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))}, nil
+		}}
+		if err := eino.New().Run(context.Background(), run); err != nil {
+			t.Fatal(err)
+		}
+		if len(failed) != 0 {
+			t.Fatalf("refused: %v", failed)
+		}
+	}
+	if enrolled != 2 {
+		t.Fatalf("enrollments %d", enrolled)
+	}
+}

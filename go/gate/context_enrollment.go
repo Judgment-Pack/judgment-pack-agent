@@ -24,9 +24,32 @@ func detachedDeclarations(hosts []contract.ToolOfferHostTool) ([]contract.ToolOf
 	return copied, nil
 }
 
+// FramingMarker answers the marker this gate's contextual offers are framed with (#289): the first
+// drawn marker it is given, for as long as the gate lives. A source tool's description is framed with
+// the run's marker, and EnrollContext compares declarations byte for byte, so every open of a run's
+// context on this gate must frame with one marker. The gate never reads a marker out of a declaration,
+// so no tool's text can be taken for one, and FrameBlock removes the marker from every text it frames.
+// It is kept with the offer it frames, in memory: a new gate has no enrollment to match, and draws anew.
+func FramingMarker(calls *Calls, drawn string) string {
+	if calls == nil {
+		return drawn
+	}
+	g := calls.g
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.framingMarker == "" {
+		g.framingMarker = drawn
+	}
+	return g.framingMarker
+}
+
 // EnrollContext is a trusted-host operation. It replaces the gate's host metadata with
 // the complete offer from the actual contextual session; no executable registry changes.
 // Current phase policy is derived anew from that exact offer, never from reserved-name bypasses.
+// A declaration is compared byte for byte with what the host registered and with what any earlier
+// enrollment on this gate declared under its name. A later offer may narrow what an earlier enrollment
+// added (the package stops offering delegate_tasks once the batches are spent), which only takes
+// authority away; a host's registered declaration is never dropped.
 func (g *Gate) EnrollContext(id string, hosts []contract.ToolOfferHostTool) error {
 	if id == "" || len(id) > 256 || len(hosts) > 400 {
 		return enrollmentRefused()
@@ -50,6 +73,7 @@ func (g *Gate) EnrollContext(id string, hosts []contract.ToolOfferHostTool) erro
 			return enrollmentRefused()
 		}
 	}
+	enrolled := map[string][]byte{}
 	seen := map[string]bool{}
 	for _, tool := range g.offer.Tools {
 		seen[tool.Name] = true
@@ -59,16 +83,21 @@ func (g *Gate) EnrollContext(id string, hosts []contract.ToolOfferHostTool) erro
 		if tool.Name == "" || len(tool.Name) > 256 || seen[tool.Name] || tool.Description == "" || json.Unmarshal(tool.InputSchema, &schema) != nil || schema == nil || wire.TaxonomyProblem(wire.TaxonomyFromContract(tool.Taxonomy), false) != "" {
 			return enrollmentRefused()
 		}
-		if prior, ok := existing[tool.Name]; ok {
-			declared, marshalErr := json.Marshal(tool)
-			if marshalErr != nil || !bytes.Equal(prior, declared) {
-				return enrollmentRefused()
-			}
+		declared, marshalErr := json.Marshal(tool)
+		if marshalErr != nil {
+			return enrollmentRefused()
 		}
+		if prior, ok := existing[tool.Name]; ok && !bytes.Equal(prior, declared) {
+			return enrollmentRefused()
+		}
+		if prior, ok := g.contextDeclared[tool.Name]; ok && !bytes.Equal(prior, declared) {
+			return enrollmentRefused()
+		}
+		enrolled[tool.Name] = declared
 		seen[tool.Name] = true
 	}
 	for name := range existing {
-		if !seen[name] {
+		if !seen[name] && !g.contextAdded[name] {
 			return enrollmentRefused()
 		}
 	}
@@ -94,6 +123,18 @@ func (g *Gate) EnrollContext(id string, hosts []contract.ToolOfferHostTool) erro
 	}
 	if g.contextEnrollments == nil {
 		g.contextEnrollments = map[string]bool{}
+	}
+	if g.contextDeclared == nil {
+		g.contextDeclared = map[string][]byte{}
+		g.contextAdded = map[string]bool{}
+	}
+	for name, declared := range enrolled {
+		if _, registered := existing[name]; !registered {
+			if _, before := g.contextDeclared[name]; !before {
+				g.contextAdded[name] = true
+			}
+		}
+		g.contextDeclared[name] = declared
 	}
 	g.contextEnrollments[id] = true
 	g.contextEnrollment = id

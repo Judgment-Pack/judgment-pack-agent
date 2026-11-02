@@ -153,8 +153,9 @@ type SessionContext struct {
 	Execution *ExecutionController
 	// Marker is this run's closing marker for retrieved data (agent#12), drawn once, never written
 	// into the instructions. A run restored from an approval pause takes the marker the paused run
-	// drew (CarryMarker, ADR-0008), so the tool list it frames is the same bytes across the pause; it
-	// is never read from model output.
+	// drew (CarryMarker, ADR-0008), so the tool list it frames is the same bytes across the pause; a
+	// run whose host enrolls its offers takes the one its gate holds (gate.FramingMarker, #289),
+	// so the gate sees the bytes it enrolled. It is never read from model output.
 	Marker string
 	// CriticReading says the critic is reading: a preview then names the readers its allow-list
 	// admits. The narrowing itself is the gate's (gate.Calls.BeginCritic), not this package's.
@@ -1700,6 +1701,10 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			}
 		}
 		held.CarryMarker()
+		// #289: under enrollment the gate holds the marker, so that every open on it presents the bytes it enrolled.
+		if enroll != nil && session.RuntimeCalls != nil {
+			held.Marker = gate.FramingMarker(session.RuntimeCalls, held.Marker)
+		}
 		held.OpenMemories()
 		if err := held.OpenDrafts(); err != nil {
 			return err

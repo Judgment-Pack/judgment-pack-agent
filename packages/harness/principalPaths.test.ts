@@ -321,6 +321,42 @@ describe('a run resumed at its handoff',()=>{
    await callbacks.event({type:'message',id:'reply',text:'Findings.',phase:'final'})
   }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
  }
+ // #289: TypeScript has no enrollment. Its gate holds tool names on the wire and never compares a declaration, so a
+ // marker drawn per open refuses nothing, on a first run and on a resume, delegated or under task steps. Go's
+ // gate compares bytes, which is why its enrolling hosts hold the marker on the gate.
+ describe('each open of a run draws its own marker, and no offer is compared',()=>{
+  const markerOf=(request:{tools:{description:string}[]})=>/BEGIN RETRIEVED DATA ([0-9a-f]{32}) from /.exec(request.tools.find(t=>t.description.includes('notes__read_note'))?.description??'')?.[1]
+  const parents=(seen:string[],ran:string[]):AgentRun=>{
+   let delegated=false
+   return async(request,callbacks)=>{
+    try{
+     const delegate=request.tools.find(t=>t.description.startsWith('delegate_tasks:'))
+     const note=request.tools.find(t=>t.description.startsWith('notes__read_note:'))
+     if(delegate){
+      const marker=markerOf(request)
+      if(marker)seen.push(marker)
+      if(!delegated){delegated=true;await callbacks.tool({id:'delegate-wire',name:delegate.name,arguments:{tasks:[{title:'Check',profile:'review',objective:'Check the note.'}]}},callbacks.signal);return}
+     }else if(note){ran.push('child');await callbacks.tool({id:'child-read',name:note.name,arguments:{}},callbacks.signal)}
+     await callbacks.event({type:'message',id:'reply',text:'Done.',phase:'final'})
+    }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
+   }
+  }
+  for(const delegated of [false,true])it(`goes on past its child on a first run, ${delegated?'delegated':'undelegated'}`,async()=>{
+   const store=new MemoryRunStore(),ran:string[]=[],children:string[]=[],seen:string[]=[],reads:AdmissionRead[]=[],tools=[await noteTool(ran)]
+   const events=await collect(root(store,`markers-${delegated}`,parents(seen,children),tools,delegated?withChild(principal(reads)):undefined))
+   expect(events.filter(e=>e.type==='error')).toEqual([])
+   expect([children,ran]).toEqual([['child'],['read_note']])
+   expect(new Set(seen).size).toBe(2)
+  },30_000)
+  it('takes a resume at its handoff under task steps, with no delegation',async()=>{
+   const store=new MemoryRunStore(),ran:string[]=[],seen:string[]=[],tools=[await noteTool(ran)],id='markers-steps'
+   const saved=await stopped(id,'released',store,undefined as never,tools,{taskSteps:true})
+   expect(saved.handoff?.state).toBe('released')
+   const events=await collect(root(store,id,second(seen),tools,undefined,true,{taskSteps:true}))
+   expect(events.filter(e=>e.type==='error')).toEqual([])
+   expect([seen,ran]).toEqual([['child'],['read_note']])
+  },30_000)
+ })
  for(const state of ['released','children'] as const){
   describe(`state ${state}, task steps on a durable store`,()=>{
    const steps={taskSteps:true}

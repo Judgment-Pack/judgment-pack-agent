@@ -149,9 +149,7 @@ func Run(ctx context.Context, run *adapter.Run) error {
 	for _, tool := range run.Tools {
 		session.Tools = append(session.Tools, runcontext.RuntimeTool{Name: tool.Name, Meta: wire.TaxonomyFromContract(tool.Meta), Offer: &tool})
 	}
-	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
-		return adapter.EnrollContext(ctx, run, execution, declarations)
-	})
+	opened, err := runcontext.ContextualSessionWithEnrollment(ctx, session, adapter.ContextEnrollment(run))
 	if err != nil {
 		r.emitAll(runcontext.FailedToOpen(err))
 		return nil

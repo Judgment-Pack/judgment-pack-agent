@@ -144,6 +144,10 @@ never taken from it, and a run with no checkpoint, or a checkpoint written befor
 carried, draws a fresh one. The continuation's own data block, below, still has a marker drawn
 for it.
 
+A host that enrolls its offers in Go goes further (#289): the marker is held on the gate that enrolled
+them, for that gate's life, because the gate compares declarations byte for byte. The carried marker is
+what a new gate first holds; a kept gate keeps the one it holds, since that is what it enrolled.
+
 The run's first request then carries, after the request text, one line (`APPROVAL_CONTINUATION`,
 Go `runcontext.ApprovalContinuation`) and one data block under a marker drawn for it, from the tool
 the model called, whose data is `{callId, name, tool, approved, result, note}`

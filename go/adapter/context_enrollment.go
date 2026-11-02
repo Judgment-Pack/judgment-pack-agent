@@ -20,6 +20,17 @@ type ContextOffer struct {
 	HostTools []contract.ToolOfferHostTool
 }
 
+// ContextEnrollment is the callback ContextualSessionWithEnrollment takes for this run, or nil for a host with
+// no EnrollContext. A session opened with one frames with the marker its gate holds (gate.FramingMarker).
+func ContextEnrollment(run *Run) func(context.Context, string, []contract.ToolOfferHostTool) error {
+	if run.EnrollContext == nil {
+		return nil
+	}
+	return func(ctx context.Context, execution string, declarations []contract.ToolOfferHostTool) error {
+		return EnrollContext(ctx, run, execution, declarations)
+	}
+}
+
 // EnrollContext observes final real context declarations before approval continuation or adapter dispatch.
 func EnrollContext(ctx context.Context, run *Run, execution string, hosts []contract.ToolOfferHostTool) error {
 	if run.EnrollContext == nil {
