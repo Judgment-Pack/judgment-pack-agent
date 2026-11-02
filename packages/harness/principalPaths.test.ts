@@ -7,6 +7,7 @@ import chains from '../../contract/vectors/principal/chains.json'
 import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js'
 import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js'
 import {openAssistantConnection} from './session'
+import {readExecution} from './execution/state'
 import {managedContext} from './context/managed'
 import {vercel} from './engines/vercel'
 import {codex} from './engines/codex'
@@ -157,6 +158,24 @@ describe('a host tool with no source',()=>{
   expect(asked).toEqual(['ask_person'])
   expect(reads).toEqual([])
   expect(events.filter(e=>e.type==='guardrail'&&e.reason==='delegation refused')).toEqual([])
+ })
+})
+
+describe('a repeat record on a delegated checkpoint',()=>{
+ for(const [label,effect,taxonomy] of [['a read goes on to the next call','read',{operation:'read',effect:'read'}],['an effect is performed once and acknowledged','propose',{operation:'propose',effect:'propose'}]] as const)it(`is kept at version 4: ${label}`,async()=>{
+  const store=new MemoryRunStore(),ran:string[]=[],reads:AdmissionRead[]=[]
+  const tool={name:'lookup',description:'lookup',inputSchema:{type:'object',properties:{}},effect,taxonomy,execute:async()=>{ran.push('lookup');return {content:[{type:'text',text:'Value.'}]}}} as unknown as HostTool
+  let n=0
+  const turns=[{call:{tool:'lookup',arguments:{}}},{call:{tool:'lookup',arguments:{a:1}}},{say:'Done.'}]
+  const given={prompt:'Read.',testPrompt:'',tools:[],callTool:vi.fn(),hostTools:[tool],signal:new AbortController().signal,allowConversation:true,critic:'off',policy:{version:2,repeatTools:{mode:'on',stopAt:3}},context:{principal:principal(reads),currentRequest:{message:'Read.',input:'x'},runStore:{store,id:'r'}},model:{family:'openai-compatible',model:'fixture',call:async()=>{const turn=turns[n];n++;if(!turn)throw Error('no turn');return answerWith(turn as never,'stream',n-1)}}} as unknown as EngineSession
+  const events:AssistantEvent[]=[]
+  for await(const event of vercel.start(given))events.push(event)
+  expect(events.filter(event=>event.type==='error')).toEqual([])
+  const raw=JSON.parse(new TextDecoder().decode((await store.load('r'))!.checkpoint!)) as {version:number;status:string;repeatTools?:unknown;durable:{dispatches:{kind:string;state:string;repeatResultJson?:string}[]}}
+  expect(ran).toEqual(['lookup','lookup'])
+  expect([raw.version,raw.status,raw.repeatTools===undefined]).toEqual([4,'complete',false])
+  expect(readExecution(raw)?.version).toBe(4)
+  expect(raw.durable.dispatches.filter(row=>row.kind==='host').map(row=>[row.state,row.repeatResultJson!==undefined])).toEqual([['result',true],['result',true]])
  })
 })
 

@@ -12111,7 +12111,7 @@
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "Go twin (by hand): skip the hold in PrepareDurableInput; caught at ^TestARefusedChainIsRefusedBeforeTheStoreIsTouched$."
+   "note": "Go twin (by hand): skip only the hold in PrepareDurableInput, with the chain still opened; caught at ^TestAFenceOfOtherPrincipalsIsRefusedBeforeTheStoreIsTouched$, which counts 1 Load and two errors instead of none and one (#283). Skipping the whole block with the chain's opening leaves the writer to refuse a bad chain, and is what ^TestARefusedChainIsRefusedBeforeTheStoreIsTouched$ catches."
   },
   {
    "name": "principal P71 a resume reads its wait before its principals",
@@ -12136,6 +12136,67 @@
    "status": "caught",
    "origin": "agent#260",
    "note": "Go twin (by hand): a version 1 fence in ResumeParked's result; caught at ^TestReauthorizationWaitResumeUnderADelegation$."
+  },
+  {
+   "name": "principal P74 repeat custody holds to one checkpoint version",
+   "file": "repeatTools.ts",
+   "find": "if(cp.version<3||!cp.repeatTools?.executions",
+   "replace": "if(cp.version!==3||!cp.repeatTools?.executions",
+   "tests": [
+    "repeatTools.contract.test.ts",
+    "principalPaths.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#283",
+   "note": "A delegated run's checkpoint is version 4. Go twin (by hand): `!= 3` in validRepeatRecordCustody; caught at ^TestRepeatCustodyNeedsACheckpointThatCanHoldTheRecord$ and ^TestARepeatRecordOnADelegatedCheckpoint."
+  },
+  {
+   "name": "principal P75 a child's package tool is a read that never reaches the effect host",
+   "file": "storage/writer.ts",
+   "find": " if(tool.source!==undefined)return tool.effectClass==='read'\n return readingTool(tool)\n}",
+   "replace": " if(tool.source!==undefined)return tool.effectClass==='read'\n return true\n}",
+   "tests": [
+    "principalReauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#283",
+   "note": "Pins M11's corrected statement: a child's list_context reaches the credential check. Go twin (by hand): `return true` for ReadingTool in DurableReadingTool; caught at ^TestAChildRefusedForItsCredentialsStopsTheRunAndFailsClosed$."
+  },
+  {
+   "name": "principal P76 a proof minted by a child's row does not park",
+   "file": "storage/wait.ts",
+   "find": " return object(row)&&row.id===op.operation&&",
+   "replace": " return object(row)&&(row.scope as {task?:string}|undefined)?.task===undefined&&row.id===op.operation&&",
+   "tests": [
+    "principalReauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#283",
+   "note": "The run parks on its child's proof, whatever the row's scope. Go twin (by hand): refuse a row with a scope's task in HoldsNeverAdmitted; caught at ^TestAChild."
+  },
+  {
+   "name": "principal P77 the wait kit has no delegated re-authorization row",
+   "file": "storage/waitConformance.ts",
+   "find": " if(store.leasePrincipals===true){\n  const checkpoint=head('reauth-p')",
+   "replace": " if((false as boolean)&&store.leasePrincipals===true){\n  const checkpoint=head('reauth-p')",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#283",
+   "note": "A store dropping pins.principal on a re-authorization wait passed the kit. Go twin (by hand): `false &&` on the row in reauthConformance; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
+  },
+  {
+   "name": "principal P78 the wait kit does not read the proof's fence back",
+   "file": "storage/waitConformance.ts",
+   "find": "   check(proved,canonicalJSON(held?.reauthorization?.fence)===canonicalJSON(fence))\n",
+   "replace": "   void proved\n",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#283",
+   "note": "A store writing the proof's fence back as version 1 passed the kit, and nothing on the real path reads it. Go twin (by hand): drop the same check in reauthConformance; caught at ^TestWaitConformanceKitHoldsThePrincipalsOnAReauthorizationWait$."
   },
   {
    "name": "lease host kit K1 the kit fails the authority once in a row",

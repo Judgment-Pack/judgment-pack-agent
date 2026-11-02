@@ -332,6 +332,37 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  await refuses('reauth.deadline.closed',()=>store.acquireLease({resource:'reauth-d',owner:'worker-x',expectedRevision:d.revision,durationMs:HOUR}),'closed')
  await restart('reauth.restart.deadline')
  await refuses('reauth.restart.deadline',()=>store.acquireLease({resource:'reauth-d',owner:'worker-x',expectedRevision:d.revision,durationMs:HOUR}),'closed')
+
+ // ADR-0029: a store that declares it keeps a delegated run's principals keeps them on a re-authorization wait too, across
+ // a restart: the wait's pins hold them, its proof keeps the version 2 fence it was parked under, and its claim is a lease
+ // of the same principals.
+ if(store.leasePrincipals===true){
+  const checkpoint=head('reauth-p'),opened=await store.commit({runId:'reauth-p',expectedRevision:null,commitId:'reauth-p-open',checkpoint,events:[]})
+  const fence=fenceOf(await store.acquireLease({resource:'reauth-p',owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR,principal:BINDING}))
+  const pins={...PINS,principal:BINDING},evidence=disposition('reauth-p',fence)
+  check('reauth.principal.fixture',fence.version===2&&canonicalJSON(fence.principal)===canonicalJSON(BINDING))
+  await store.parkWait(parkOf('reauth-p',{revision:opened.revision,checkpoint},evidence,keyOf('reauth-p'),pins),fence)
+  const holds=async(pinned:string,proved:string)=>{
+   const held=await store.readWait('reauth-p','wait-r')
+   check(pinned,canonicalJSON(held?.pins.principal)===canonicalJSON(BINDING))
+   check(proved,canonicalJSON(held?.reauthorization?.fence)===canonicalJSON(fence))
+  }
+  await holds('reauth.principal.pinned','reauth.principal.proof-fence')
+  await restart('reauth.restart.principal')
+  await holds('reauth.restart.principal','reauth.restart.principal-proof-fence')
+  at+=MINUTE
+  await store.wakeWait(wake('reauth-p',keyOf('reauth-p')))
+  const claimP=(principal?:PrincipalBinding):WaitClaim=>{const base=claim('reauth-p',{lease:{resource:'reauth-p',owner:'worker-b',expectedRevision:opened.revision,durationMs:24*HOUR,...(principal?{principal}:{})}});return {...base,revalidation:{...base.revalidation,pins:pinsDigest(pins)}}}
+  await refuses('reauth.principal.claim-actor',()=>store.resumeWait(claimP(OTHER_ACTOR)),'principal-changed')
+  await refuses('reauth.principal.claim-subject',()=>store.resumeWait(claimP(OTHER_SUBJECT)),'principal-changed')
+  await refuses('reauth.principal.claim-none',()=>store.resumeWait(claimP()),'principal-changed')
+  check('reauth.principal.claim-unchanged',(await store.readWait('reauth-p','wait-r'))?.state==='woken')
+  const claimed=await store.resumeWait(claimP(BINDING))
+  check('reauth.principal.claim',claimed.wait.state==='resumed'&&claimed.lease.version===2&&canonicalJSON(claimed.lease.principal)===canonicalJSON(BINDING)&&claimed.lease.epoch==='2')
+  await restart('reauth.restart.principal-claim')
+  await holds('reauth.restart.principal-claim','reauth.restart.principal-claim-proof-fence')
+  await refuses('reauth.restart.principal-fence',()=>store.checkFence({...fenceOf(claimed.lease),principal:OTHER_ACTOR}),'principal-changed')
+ }
 }
 
 /** #265 M6: certify a host store kind's wait port. Properties: the key check (a key belongs to one wait; a wake presents
@@ -345,7 +376,7 @@ async function reauthProperties(create:WaitStoreFactory):Promise<void>{
  * after the store's time), the run's unsettled approval binding and expiry the store attaches (the claim's lease bounded
  * by it, refused from it, and limitRun keeping it), the timeout and the deadline wake of a reauthorization wait (each
  * terminal), and each across restarts; with leasePrincipals (ADR-0029), the principals a delegated run's wait pins, its
- * claim and a later takeover keep. Throws StorageConformanceFailure naming the first property broken. */
+ * claim and a later takeover keep, on an approval wait and on a re-authorization wait, whose proof keeps its version 2 fence. Throws StorageConformanceFailure naming the first property broken. */
 export async function runStoreWaitConformance(create:WaitStoreFactory):Promise<void>{
  try{await waitProperties(create);await reauthProperties(create)}catch(error){if(error instanceof StorageConformanceFailure)throw error;throw new StorageConformanceFailure('wait.operation')}
 }

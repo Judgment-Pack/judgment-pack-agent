@@ -67,7 +67,8 @@ func kitCheckpoint(change func(map[string]any)) []byte {
 // taken after the park and not after the store's time), the run's unsettled approval binding and expiry the
 // store attaches (the claim's lease bounded by it, refused from it, and LimitRun keeping it), the timeout and
 // the deadline wake of a reauthorization wait (each terminal), and each across restarts; with LeasePrincipals
-// (ADR-0029), the principals a delegated run's wait pins, its claim and a later takeover keep. It returns a
+// (ADR-0029), the principals a delegated run's wait pins, its claim and a later takeover keep, on an approval
+// wait and on a re-authorization wait, whose proof keeps its version 2 fence. It returns a
 // StorageConformanceFailure naming the first property broken.
 func CheckRunStoreWaitConformance(ctx context.Context, create WaitStoreFactory) (err error) {
 	defer func() {
@@ -701,5 +702,62 @@ func reauthConformance(ctx context.Context, create WaitStoreFactory) error {
 	restart("reauth.restart.deadline")
 	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-d", Owner: "worker-x", ExpectedRevision: dated.revision, DurationMs: hour})
 	refuses("reauth.restart.deadline", err, "closed")
+
+	// ADR-0029: a store that declares it keeps a delegated run's principals keeps them on a re-authorization
+	// wait too, across a restart: the wait's pins hold them, its proof keeps the version 2 fence it was parked
+	// under, and its claim is a lease of the same principals.
+	if keeps, ok := any(store).(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
+		binding := PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+		otherActor, otherSubject := binding, binding
+		otherActor.RootActor = strings.Repeat("b2", 16)
+		otherSubject.Sub.Subject = "other"
+		checkpoint := head(nil)
+		receipt, err := store.Commit(ctx, RunCommit{RunID: "reauth-p", CommitID: "reauth-p-open", Checkpoint: checkpoint})
+		check("reauth.open", err == nil)
+		lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "reauth-p", Owner: "worker-a", ExpectedRevision: receipt.Revision, DurationMs: hour, Principal: &binding})
+		check("reauth.open", err == nil)
+		fence := FenceOf(lease)
+		check("reauth.principal.fixture", fence.Version == 2 && SamePrincipalBinding(fence.Principal, &binding))
+		delegatedPins := pins
+		delegatedPins.Principal = &binding
+		delegatedDigest, err := PinsDigest(delegatedPins)
+		check("reauth.fixture", err == nil)
+		park := parkOf("reauth-p", opened{receipt.Revision, checkpoint, fence}, disposition("reauth-p", fence), keyOf("reauth-p"))
+		park.Pins = delegatedPins
+		_, _, err = store.ParkWait(ctx, park, fence)
+		check("reauth.principal.park", err == nil)
+		holds := func(pinned, proved string) {
+			held := readWait("reauth-p")
+			check(pinned, held != nil && SamePrincipalBinding(held.Pins.Principal, &binding))
+			check(proved, held.Reauthorization != nil && same(held.Reauthorization.Fence, fence))
+		}
+		holds("reauth.principal.pinned", "reauth.principal.proof-fence")
+		restart("reauth.restart.principal")
+		holds("reauth.restart.principal", "reauth.restart.principal-proof-fence")
+		at = at.Add(time.Minute)
+		_, err = store.WakeWait(ctx, wake("reauth-p", keyOf("reauth-p")))
+		check("reauth.principal.wake", err == nil)
+		claimP := func(principal *PrincipalBinding) WaitClaim {
+			base := claim("reauth-p", receipt.Revision, refreshed(nil))
+			base.Lease.Principal = principal
+			base.Revalidation.Pins = delegatedDigest
+			return base
+		}
+		_, _, err = store.ResumeWait(ctx, claimP(&otherActor))
+		refuses("reauth.principal.claim-actor", err, "principal-changed")
+		_, _, err = store.ResumeWait(ctx, claimP(&otherSubject))
+		refuses("reauth.principal.claim-subject", err, "principal-changed")
+		_, _, err = store.ResumeWait(ctx, claimP(nil))
+		refuses("reauth.principal.claim-none", err, "principal-changed")
+		held := readWait("reauth-p")
+		check("reauth.principal.claim-unchanged", held != nil && held.State == "woken")
+		claimed, claimedLease, err := store.ResumeWait(ctx, claimP(&binding))
+		check("reauth.principal.claim", err == nil && claimed.State == "resumed" && claimedLease.Version == 2 && SamePrincipalBinding(claimedLease.Principal, &binding) && claimedLease.Epoch == "2")
+		restart("reauth.restart.principal-claim")
+		holds("reauth.restart.principal-claim", "reauth.restart.principal-claim-proof-fence")
+		forged := FenceOf(claimedLease)
+		forged.Principal = &otherActor
+		refuses("reauth.restart.principal-fence", store.CheckFence(ctx, forged), "principal-changed")
+	}
 	return nil
 }

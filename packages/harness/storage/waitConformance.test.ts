@@ -7,7 +7,7 @@ import {StorageConformanceFailure} from './conformance'
 import {MemoryRunStore,type RunStore} from './run'
 import {ReferenceEffectHost,fenceOf,fencedRunStore,type LeaseAcquire,type LeaseFence,type LeaseLifetime} from './lease'
 import {ReauthorizationRefused} from './reauth'
-import {WaitRefused,checkpointBytesDigest,parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
+import {WaitRefused,checkpointBytesDigest,parkRun,resumeParked,waitReport,wakeKeyDigest,wakeRun,type WaitClaim,type WaitLifetime,type RunWait,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import {runStoreWaitConformance} from './waitConformance'
 
 /* #265 M6: the wait conformance kit over the memory kind, a real restart over a fresh store instance, and stores that
@@ -46,6 +46,18 @@ describe('the wait conformance kit (#265 M6)',()=>{
   await expect(runStoreWaitConformance(memoryKind(['waits.ceilings']))).rejects.toEqual(fails('wait.restart.earliest'))
   await expect(runStoreWaitConformance(memoryKind(['waits.rows','waits.events']))).rejects.toEqual(fails('wait.restart.parked'))
   await expect(runStoreWaitConformance(()=>{throw new Error('unavailable')})).rejects.toBeInstanceOf(StorageConformanceFailure)
+ })
+ it('ADR-0029: a store that loses the principals on a re-authorization wait fails the property that names it',async()=>{
+  const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
+  class DropsPins extends DurableWaitStore {override parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){if(park.reason!=='reauthorization'||!park.pins.principal)return super.parkWait(park,fence,signal);const {principal:_,...pins}=park.pins;return super.parkWait({...park,pins} as WaitPark,fence,signal)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new DropsPins({now})))).rejects.toEqual(fails('reauth.principal.pinned'))
+  // Written back as version 1: the principal's member is gone, and the store's own stale check still passes it.
+  class DropsProofFence extends DurableWaitStore {override async parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){const out=await super.parkWait(park,fence,signal);const self=this as unknown as {waits:{rows:Map<string,RunWait[]>}};for(const row of self.waits.rows.get(park.resource)??[])if(row.wait===park.wait&&row.reauthorization?.fence.version===2){const {principal:_,...rest}=row.reauthorization.fence;row.reauthorization={...row.reauthorization,fence:{...rest,version:1}}}return out}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new DropsProofFence({now})))).rejects.toEqual(fails('reauth.principal.proof-fence'))
+  const losing=(lose:(row:RunWait)=>void)=>(now:()=>Date,from?:WaitRunStore)=>{const next=memoryKind()(now,from);if(from)for(const rows of (next as unknown as {waits:{rows:Map<string,RunWait[]>}}).waits.rows.values())for(const row of rows)lose(row);return next}
+  await expect(runStoreWaitConformance(losing(row=>{if(row.reason==='reauthorization'&&row.pins.principal){delete row.pins.principal}}))).rejects.toEqual(fails('reauth.restart.principal'))
+  class ClaimTakesAnyone extends DurableWaitStore {override resumeWait(claim:WaitClaim,signal?:AbortSignal){if(claim.resource!=='reauth-p')return super.resumeWait(claim,signal);const {principal:_,...lease}=claim.lease;return super.resumeWait({...claim,lease:{...lease,principal:{sub:{kind:'person',issuer:'https://kit.example/',subject:'kit-subject'},rootActor:'b1'.repeat(16),host:'kit-host'}}},signal)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new ClaimTakesAnyone({now})))).rejects.toEqual(fails('reauth.principal.claim-actor'))
  })
  it('#226: a store that leaves a re-authorization guarantee out fails the property that names it',async()=>{
   const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})

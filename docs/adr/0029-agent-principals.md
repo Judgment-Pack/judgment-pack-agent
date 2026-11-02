@@ -109,9 +109,19 @@ other wait, and its proof keeps the version 2 fence it was parked under: evidenc
 `principal-changed`, before the action is read, so a replaced credential under the same principals stays
 #226's `identity-changed`. The claim's lease and fence hold them, and a continuation under others sends
 nothing, though the claim was held. While the run is parked it cannot be leased, so no child starts; after
-the resume a child starts from a delegation that stands, under its own link, and the grant stays the
-parent's alone. A child cannot itself be refused for its credentials: it admits reads, which do not reach
-the effect host.
+the resume a child starts from a delegation that stands, under its own link.
+
+**A child's read of a source does not reach the effect host; its other calls can.** `delegation` on a tool
+with a source requires a read, and a read has no credential check. A child's calls of the package's own tools
+that the durable record classes as effects (`list_context`, `update_plan`, `complete_plan_step`,
+`request_budget_increase`) do reach it, as a parent's do, and so does a tool with no source, `delegation` and a
+non-read effect. Refused for its credentials there, the child's task ends `interrupted` in TypeScript and `failed`
+in Go, the whole run stops, and the run parks on the child's proof, which names `source: host` and that tool. It
+fails closed: nothing is dispatched or counted, no delegation refusal is recorded, and nobody takes the grant,
+because the writer's fingerprint holds the row's scope and the child is not run again. After the resume the child's
+row stays unknown for good, and the parent's own call of that tool is a new row. Whether the package's own tools
+belong at the effect host is an earlier classification this decision leaves alone, since changing it moves a byte
+of a run with no delegation.
 
 **A run resumed at its handoff opens its parent first.** A restored batch runs its children before the
 next provider invocation, so a delegated run, or one restored from a delegated checkpoint, opens its
@@ -177,9 +187,12 @@ restart.
   `get_example`, `validate` and `experimental_test_cases`: they read the Runtime's own published schemas
   and examples, or check the arguments they are given, reach no source of the subject's and change
   nothing, and they carry no source record a scope could name.
+  `experimental_evaluate` is admitted as the Runtime serves it, `act`; served `pure` or `read`, which its
+  taxonomy permits, it is not.
 - **A host tool with no source is not matched against the scope**, though validity and the port's
   answer always apply (above). The read's `source: local` is the harness's: a port that applies scope
-  itself must not refuse it. The package's own tools (retained context, the plan, the budget request,
+  itself must not refuse it. A host source may itself be named `local` or `runtime`, and its reads then
+  carry that name, after the package's own scope check. The package's own tools (retained context, the plan, the budget request,
   memory and draft proposals, skills) reach no source and are not admitted; a child's are the same.
 - **A mapping is a gateway source's.** `gatewayScope` is refused at declaration on any other kind,
   since the host dispatches those itself and must count them, and when it names another authority than

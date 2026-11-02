@@ -228,6 +228,21 @@ func TestRepeat204SharedExactCustodyRecord(t *testing.T) {
 		t.Fatal("historical version admitted nested custody")
 	}
 }
+
+// The custody needs a checkpoint whose schema carries repeatTools, which is version 3 and every later one: a delegated
+// run writes version 4 (ADR-0029). The record is read by that need, so no later version needs another line here.
+func TestRepeatCustodyNeedsACheckpointThatCanHoldTheRecord(t *testing.T) {
+	raw, err := os.ReadFile("../../contract/testdata/repeat-tools/records.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := MustParseJSON(string(raw)).Get("custodyCheckpoint")
+	for version, want := range map[float64]bool{1: false, 2: false, 3: true, 4: true, 5: true, 6: true} {
+		if got := validRepeatRecordCustody(cp.Clone().Set("version", Number(version))); got != want {
+			t.Fatalf("version %v: custody valid %v, want %v", version, got, want)
+		}
+	}
+}
 func TestRepeat204CapacityAndDeliveredReminder(t *testing.T) {
 	state := repeat204State(400)
 	exact := "{}"
