@@ -1398,28 +1398,47 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		session.Context = &copied
 	}
+	// ADR-0029: the delegation the issuing host supplied, verified before anything is offered or
+	// asked and before a durable root's store is touched; a delegated child's is narrowed from its
+	// parent's, by exactly one link.
+	var principal *OpenedPrincipal
+	if session.Context != nil {
+		var parent *OpenedPrincipal
+		if linked, ok := session.Context.Link.(PrincipalLinked); ok {
+			parent = linked.ParentPrincipal()
+		}
+		if parent == nil {
+			if linked, ok := session.Context.Link.(SourceLinked); ok {
+				parent = linked.ParentSources().Principal()
+			}
+		}
+		principal = parent
+		if session.Context.Principal != nil {
+			opened, err := OpenRunPrincipal(session.Context.Principal, parent)
+			if err != nil {
+				return nil, err
+			}
+			principal = opened
+		}
+		var record *PrincipalRecord
+		if principal != nil {
+			record = &principal.Record
+		}
+		if durable := session.Context.RunStore; durable != nil {
+			if err := holdLeasePrincipal(durable.Store, record); err != nil {
+				return nil, err
+			}
+		}
+		if binding := session.Context.Persistence; binding != nil && binding.Writer != nil {
+			if err := holdLeasePrincipal(binding.Writer.Store, record); err != nil {
+				return nil, err
+			}
+		}
+	}
 	var admissionErr error
 	session.Context, admissionErr = PrepareDurableInput(ctx, session.Context)
 	if admissionErr != nil {
 		return nil, admissionErr
-	}
-	// ADR-0029: the delegation the issuing host supplied, verified before anything is offered or
-	// asked; a delegated child acts under its parent's principal.
-	var principal *OpenedPrincipal
-	if session.Context != nil && session.Context.Principal != nil {
-		opened, err := OpenPrincipal(session.Context.Principal)
-		var refused *DelegationRefused
-		switch {
-		case errors.As(err, &refused):
-			return nil, failure.Authored("configuration", "The run's delegation is refused ("+refused.Refusal.Name+"). Nothing was sent.", "context")
-		case err != nil:
-			return nil, failure.Authored("configuration", "The run's principal is invalid. Nothing was sent.", "context")
-		}
-		principal = opened
-	} else if session.Context != nil {
-		if linked, ok := session.Context.Link.(SourceLinked); ok {
-			principal = linked.ParentSources().Principal()
-		}
 	}
 	// ADR-0006: the tools with a source, read and named for the wire before anything else sees them.
 	served := make([]string, 0, len(session.Tools))

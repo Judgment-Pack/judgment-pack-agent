@@ -2546,7 +2546,7 @@ func ResumeParked(ctx context.Context, input ResumeInput) (ResumedWait, error) {
 		}
 		reauthorized = &refresh
 	}
-	claimedWait, claimedLease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs}, Reconciled: input.Reconciled, Revalidation: revalidation, Reauthorized: reauthorized})
+	claimedWait, claimedLease, err := store.ResumeWait(ctx, WaitClaim{Resource: wait.Resource, Wait: wait.Wait, Evidence: input.Evidence, Lease: LeaseAcquire{Resource: wait.Resource, Owner: input.Owner, ExpectedRevision: wait.Checkpoint.Revision, DurationMs: input.DurationMs, Principal: clonePrincipalBinding(wait.Pins.Principal)}, Reconciled: input.Reconciled, Revalidation: revalidation, Reauthorized: reauthorized})
 	if err != nil {
 		return ResumedWait{}, err
 	}
@@ -2615,7 +2615,7 @@ func readClaimed(claimed RunWait, claimedLease RunLease, wait RunWait, owner str
 		beyond = beyond || bound != nil && expiry > waitTimeMillis(*bound)
 	}
 	if held.Resource != wait.Resource || held.Wait != wait.Wait || held.State != "resumed" || held.Resumed == nil || held.Resumed.Owner != lease.Owner || held.Resumed.Epoch != lease.Epoch || !bytes.Equal(a, b) || held.Checkpoint != wait.Checkpoint ||
-		lease.Resource != wait.Resource || lease.Owner != owner || lease.State != "held" || beyond {
+		lease.Resource != wait.Resource || lease.Owner != owner || lease.State != "held" || !SamePrincipalBinding(lease.Principal, wait.Pins.Principal) || beyond {
 		return RunWait{}, RunLease{}, waitInvalid()
 	}
 	return held, lease, nil

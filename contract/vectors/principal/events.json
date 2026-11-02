@@ -1,5 +1,5 @@
 {
- "description": "Handwritten event 3 records of a delegated run (ADR-0029): a host source's call and its result carrying the run's principal, and the refusal of a call the chain does not admit, carrying its named refusal and the principal. A run with no delegation writes none of these members and keeps event 1.",
+ "description": "Handwritten event 3 records of a delegated run (ADR-0029): a host source's call and its result carrying the run's principal, and the refusal of a call the chain does not admit, carrying its named refusal and the principal. A run with no delegation writes none of these members and keeps event 1. A delegated child's task record names its narrowed chain.",
  "schema": "run-event.json",
  "source": {
   "harness": {
@@ -118,6 +118,47 @@
    "reason": "delegation refused",
    "refusal": {
     "name": "revoked"
+   },
+   "principal": {
+    "actor": {
+     "agent": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+     "host": "desk",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "subject": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "delegation": {
+     "id": "44444444444444444444444444444444",
+     "digest": "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+    },
+    "chain": [
+     "sha256:68cd7810dd91634757d2376deaab93a7425f03cb4c2759745c8b61948ed6ca4a",
+     "sha256:5a9fb734c1e21e1f76d93b0e806d434467cd654f2fe5a0dca77bdc1bf0a9769c"
+    ],
+    "rootActor": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+   }
+  },
+  {
+   "version": 3,
+   "type": "delegated_task",
+   "task": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "parentRunId": "22222222-2222-4222-8222-222222222222",
+    "title": "Check",
+    "objective": "Check the note.",
+    "profile": "review",
+    "state": "complete",
+    "createdAt": "2026-10-30T01:00:00.000Z",
+    "modelRequests": 1,
+    "toolCalls": 1,
+    "attempts": 1,
+    "steps": []
    },
    "principal": {
     "actor": {

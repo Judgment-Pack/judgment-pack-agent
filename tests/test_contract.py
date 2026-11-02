@@ -1219,7 +1219,7 @@ class VectorTests(unittest.TestCase):
         for name, member in (("lease/lease.json", "record"), ("lease/fence.json", "fence"), ("lease/admission.json", "admission")):
             check = validator(self.schemas, rows[name]["schema"])
             for refused in rows[name]["refused"]:
-                if refused["problem"] in ("the key of another operation",) or refused["problem"].startswith("an impossible expiry"):
+                if refused["problem"] in ("the key of another operation", "a version 2 lease names its principals", "a version 1 lease names no principals", "a version 2 fence names its principals", "a version 1 fence names no principals") or refused["problem"].startswith("an impossible expiry"):
                     continue  # a digest mismatch or an impossible date only the readers can see
                 with self.subTest(vector=name, problem=refused["problem"]):
                     self.assertNotEqual(problems(check, [refused[member]]), [])
@@ -1240,11 +1240,12 @@ class VectorTests(unittest.TestCase):
         # value is carried by a handwritten principal vector, every refused record the schema can
         # state fails it, and every chain digest is the one an independent canonical JSON gives.
         rows = {name: vector for name, vector in self.vectors.items() if name.startswith("principal/")}
-        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json"})
+        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json", "principal/binding.json", "principal/child.json"})
         schema = self.schemas["run-principal.json"]
 
         def invalid(changed):
-            return any(problems(validator(changed, row["schema"]), row["items"]) for row in rows.values())
+            answers = problems(validator(changed, "run-principal.json#/$defs/childLinkAnswer"), rows["principal/child.json"]["answers"])
+            return bool(answers) or any(problems(validator(changed, row["schema"]), row["items"]) for row in rows.values())
 
         self.assertFalse(invalid(self.schemas))
         paths = [["properties", member] for member in schema["properties"]]
@@ -1269,7 +1270,7 @@ class VectorTests(unittest.TestCase):
                     target = target[step]
                 target["enum"] = [other for other in target["enum"] if other != value]
                 self.assertTrue(invalid(changed), (path, value))
-        for name, member in (("principal/record.json", "record"), ("principal/refusal.json", "refusal"), ("principal/report.json", "report")):
+        for name, member in (("principal/record.json", "record"), ("principal/refusal.json", "refusal"), ("principal/report.json", "report"), ("principal/binding.json", "binding")):
             check = validator(self.schemas, rows[name]["schema"])
             for refused in rows[name]["refused"]:
                 if refused["problem"] in ("a chain that does not end with the leaf", "a report whose chain does not end with its leaf"):
@@ -1279,6 +1280,7 @@ class VectorTests(unittest.TestCase):
         check = validator(self.schemas, rows["principal/answer.json"]["schema"])
         for refused in rows["principal/answer.json"]["refused"]:
             self.assertNotEqual(problems(check, [refused]), [])
+        self.assertEqual(problems(validator(self.schemas, "run-principal.json#/$defs/childLinkAnswer"), rows["principal/child.json"]["answers"]), [])
         chains = rows["principal/chains.json"]
         root, child = chains["items"][1]
 
