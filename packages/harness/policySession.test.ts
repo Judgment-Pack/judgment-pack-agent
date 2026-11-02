@@ -146,6 +146,7 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
  return unexpected
 }
 describe('ADR policy table review',()=>{
+ // #285: this reads the package's sources: most of the suite's 20 s default on a quiet machine, and over it under load.
  it('keeps raw session reasoning reads inside resolution and conversion',()=>{
   const root=process.env.JP_REASONING_GUARD_ROOT??process.cwd()
 	 const harness=process.env.JP_REASONING_GUARD_ROOT?join(root,'packages','harness'):root
@@ -155,7 +156,7 @@ describe('ADR policy table review',()=>{
 	 try{
    expect(rawReasoningReads(harness,files,snapshot)).toEqual([])
   }finally{snapshot.dispose();api.close()}
- })
+ },120_000)
  it('catches typed raw reasoning keys while allowing resolved and unrelated members',()=>{
   const harness=resolve(process.cwd()),directory=mkdtempSync(join(tmpdir(),'reasoning-guard-')),path=join(directory,'probe.ts')
   const source=`import type {AgentAssistantSession,AssistantSession} from ${JSON.stringify(join(harness,'engine'))}

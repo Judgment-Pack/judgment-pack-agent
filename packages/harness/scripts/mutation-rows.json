@@ -4481,7 +4481,8 @@
    "tests": [
     "toolSources.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "retired by #285: this clause cannot change anything. An act always has approval required since tool taxonomies: declaring approval none on one is refused (host approval cannot widen the declared act effect), so no service act reaches this line without it. toolSources.test.ts > a service act cannot be declared with approval none holds that. The row was reported caught only by failures that had nothing to do with its mutant.",
    "origin": "agent#102 review #127"
   },
   {
@@ -4841,11 +4842,11 @@
     "name": "dropped agent critic reasoning uses the author effort default parameter",
     "file": "engines/codex/index.ts",
     "find": "effort?: CodexEffort) => {",
-    "replace": "effort: CodexEffort | undefined = session.reasoning) => {",
+    "replace": "effort: CodexEffort | undefined = session.values.forRole('author').reasoning) => {",
     "tests": ["policySession.test.ts"],
     "status": "caught",
     "origin": "agent#142-release-audit-2",
-    "note": "Go twin: set an empty critic effort back to r.run.Reasoning(\"author\") in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
+    "note": "#285: re-anchored; the mutant read session.reasoning, a member that no longer exists, so it changed nothing. Go twin: set an empty critic effort back to r.run.Reasoning(\"author\") in adapter/agent/invoke.go; TestDroppedTableDefaultsStayOmittedAcrossAgentResume fails on the critic request."
   },
   {
     "name": "request session boundary exposes raw effort",
@@ -6085,7 +6086,8 @@
    "tests": [
     "toolSources.test.ts"
    ],
-   "status": "caught",
+   "status": "retired",
+   "reason": "retired by #285: this check cannot be reached. descriptorApprovalProblem already refuses a declared tool its approved snapshot does not hold, with the whole declaration, before the source is grouped; toolSources.test.ts > refuses a declared tool its approved snapshot does not hold holds that. The row was reported caught only by failures that had nothing to do with its mutant.",
    "origin": "agent#168",
    "note": "Shared handwritten snapshot vector; Go twin recorded in the issue handoff."
   },
@@ -8079,14 +8081,14 @@
 {
   "name": "lease batch B3 the host kit never makes the authority fail",
   "file": "storage/lease.ts",
-  "find": "  await refuses('host.authority-unavailable',effectAdmission(a,op('op-0')),'any')\n",
-  "replace": "",
+  "find": "  const unavailable=async(property:string,point:string)=>{\n   kit.failing=true\n",
+  "replace": "  const unavailable=async(property:string,point:string)=>{\n   return\n   kit.failing=true\n",
   "tests": [
     "storage/lease.test.ts"
   ],
   "status": "caught",
   "origin": "agent#253",
-  "note": "#253 R2(a). A host that performs while its authority errors would be certified. Caught at lease.test.ts > a host that performs while the authority is unavailable fails the kit and certification. Go twin (by hand, dropping the host.authority-unavailable check of exerciseEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-unavailable."
+  "note": "#253 R2(a), re-anchored by #258, where the kit fails the authority at three points: at none of them here. A host that performs while its authority errors would be certified. Caught at lease.test.ts > a host that performs while the authority is unavailable fails the kit and certification. Go twin (by hand, dropping the host.authority-unavailable check of exerciseEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-unavailable."
 },
 {
   "name": "lease batch B4 certification checks one product and admits another",
@@ -8151,14 +8153,14 @@
 {
   "name": "lease batch B9 a subclass of the reference host carries its evidence",
   "file": "storage/lease.ts",
-  "find": "if(Object.getPrototypeOf(this)===ReferenceEffectHost.prototype)references.set(this,authority)",
-  "replace": "references.set(this,authority)",
+  "find": "  if(new.target!==ReferenceEffectHost)throw new LeaseCapabilityRefused('effect-host-unfenced','ReferenceEffectHost cannot be subclassed: delegate to one from a host of your own, and certify that host.')\n",
+  "replace": "",
   "tests": [
     "storage/lease.test.ts"
   ],
   "status": "caught",
   "origin": "agent#253",
-  "note": "#253 R2. Caught at lease.test.ts > … evidence does not pass to another instance or a subclass. Go twin (by hand, accepting any type that embeds *ReferenceEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-is-the-store."
+  "note": "#253 R2, re-anchored by #258: the class refuses a subclass at construction. Without the refusal a subclass is built, its dispatch override never runs and it carries the evidence. Caught at lease.test.ts > a subclass, one overriding dispatch and one declaring effectFencing are refused by name at construction. Go twin (by hand, accepting any type that embeds *ReferenceEffectHost): caught at TestLeaseCertificationIsBoundToTheInstanceItChecked/authority-is-the-store."
 },
 {
   "name": "lease batch C1 certification runs the kit through fresh reads of dispatch",
@@ -9018,11 +9020,12 @@
   "find": "   if(row.state==='resumed'||terminal(row))throw new WaitRefused('stale')\n",
   "replace": "",
   "tests": [
-    "storage/resume.test.ts"
+    "storage/resume.test.ts",
+    "storage/waitReview.test.ts"
   ],
   "status": "caught",
   "origin": "agent#225",
-  "note": "Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
+  "note": "#285: resume.test.ts does not notice it; storage/waitReview.test.ts > a settled call is never ended by it does, so the row names that file. Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
 },
 {
   "name": "deadline D19 a question its deadline ends keeps no resolution",
@@ -12133,6 +12136,90 @@
    "status": "caught",
    "origin": "agent#260",
    "note": "Go twin (by hand): a version 1 fence in ResumeParked's result; caught at ^TestReauthorizationWaitResumeUnderADelegation$."
+  },
+  {
+   "name": "lease host kit K1 the kit fails the authority once in a row",
+   "file": "storage/lease.ts",
+   "find": "const AUTHORITY_FAILURES=5\n",
+   "replace": "const AUTHORITY_FAILURES=1\n",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs after three failures in a row. Go twin (by hand, const authorityFailures = 1): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-after-three-failures-in-a-row."
+  },
+  {
+   "name": "lease host kit K2 the kit never retries one operation while the authority is down",
+   "file": "storage/lease.ts",
+   "find": "   for(let n=0;n<AUTHORITY_FAILURES;n++)await refuses(property,effectAdmission(a,op(`${point}-retried`)),'any')\n",
+   "replace": "",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs on the fourth try of one operation. Go twin (by hand, dropping the -retried loop): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-on-the-fourth-try-of-one-operation."
+  },
+  {
+   "name": "lease host kit K3 the kit never presents new operations while the authority is down",
+   "file": "storage/lease.ts",
+   "find": "   for(let n=0;n<AUTHORITY_FAILURES;n++)await refuses(property,effectAdmission(a,op(`${point}-${n}`)),'any')\n",
+   "replace": "",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs once three different operations failed. Go twin (by hand, dropping the numbered loop): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-once-three-different-operations-failed."
+  },
+  {
+   "name": "lease host kit K4 the authority never fails before the first dispatch",
+   "file": "storage/lease.ts",
+   "find": "  await unavailable('host.authority-unavailable','before-any-dispatch')\n  await admits('host.admit.current'",
+   "replace": "  await admits('host.admit.current'",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs until the authority has answered once. Go twin (by hand, dropping the before-any-dispatch point): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-until-the-authority-has-answered-once."
+  },
+  {
+   "name": "lease host kit K5 the authority never fails right after a success",
+   "file": "storage/lease.ts",
+   "find": "  await unavailable('host.authority-unavailable.after-success','after-success')\n",
+   "replace": "",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs on the good answer just before. Go twin (by hand, dropping the after-success point): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-on-the-good-answer-just-before."
+  },
+  {
+   "name": "lease host kit K6 the authority never fails between dispatches",
+   "file": "storage/lease.ts",
+   "find": "  await unavailable('host.authority-unavailable.between-dispatches','between-dispatches')\n",
+   "replace": "",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that performs right after it refused an operation. Go twin (by hand, dropping the between-dispatches point): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/performs-right-after-it-refused-an-operation."
+  },
+  {
+   "name": "lease host kit K7 the kit never admits again after the authority came back",
+   "file": "storage/lease.ts",
+   "find": "  await admits('host.admit.recovered',effectAdmission(a,op('op-10')),2)\n",
+   "replace": "  performed++\n",
+   "tests": [
+    "storage/lease.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#258",
+   "note": "#258. Caught at lease.test.ts > a host that stays closed once the authority failed repeatedly fails the kit. Go twin (by hand, performed++ in place of the host.admit.recovered dispatch): caught at TestLeaseHostKitFailsTheAuthorityRepeatedly/stays-closed."
   }
  ]
 }

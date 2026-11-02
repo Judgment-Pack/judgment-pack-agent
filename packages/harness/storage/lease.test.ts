@@ -401,8 +401,6 @@ describe('certification is bound to the instance it checked (#253 R2)',()=>{
   expect(()=>admitUnattended({store,effectHost:new ReferenceEffectHost(other)})).toThrow(capability('effect-host-unfenced'))
   const foreign=await certifyEffectHost(performs,other)
   expect(()=>admitUnattended({store,effectHost:foreign})).toThrow(capability('effect-host-unfenced'))
-  class Sub extends ReferenceEffectHost {}
-  expect(()=>admitUnattended({store,effectHost:new Sub(store)})).toThrow(capability('effect-host-unfenced'))
   const certified=await certifyEffectHost(performs,store)
   expect(()=>admitUnattended({store,effectHost:{effectFencing:'enforced',dispatch:certified.dispatch}})).toThrow(capability('effect-host-unfenced'))
  })
@@ -450,5 +448,85 @@ describe('certification admits exactly the function it ran, and the reference ho
   await expect(host.dispatch(once,perform)).rejects.toEqual(refusal('already-admitted'))
   await expect(host.dispatch(stale,perform)).rejects.toEqual(refusal('no-lease'))
   expect(perform).toHaveBeenCalledOnce()
+ })
+})
+
+describe('the host kit fails the authority repeatedly (#258)',()=>{
+ type History={failures:number;inARow:number;tries:Map<string,number>;admitted:number;last:'none'|'performed'|'refused'|'unavailable'}
+ // A host over the reference host, which breaks the rule only when the authority errors and `opens` says so.
+ const degrades=(opens:(history:History)=>boolean)=>(authority:import('./lease').LeaseAuthority):EffectHost=>{
+  const inner=new ReferenceEffectHost(authority),history:History={failures:0,inARow:0,tries:new Map(),admitted:0,last:'none'}
+  return {effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{
+   try{
+    const done=await inner.dispatch(admission,perform,signal)
+    history.inARow=0;history.admitted++;history.last='performed'
+    return done
+   }catch(error){
+    if(error instanceof LeaseRefused){history.last='refused';throw error}
+    const key=admission.operation.operation
+    history.failures++;history.inARow++;history.tries.set(key,(history.tries.get(key)??0)+1)
+    if(opens(history))return perform(signal)
+    history.last='unavailable'
+    throw error
+   }
+  }}
+ }
+ const hosts:Record<string,[(authority:import('./lease').LeaseAuthority)=>EffectHost,string]>={
+  'refuses only the first failure':[degrades(history=>history.failures>1),'host.authority-unavailable'],
+  'performs after three failures in a row':[degrades(history=>history.inARow>3),'host.authority-unavailable'],
+  'performs on the fourth try of one operation':[degrades(history=>[...history.tries.values()].some(tries=>tries>3)),'host.authority-unavailable'],
+  'performs once three different operations failed':[degrades(history=>history.tries.size>3),'host.authority-unavailable'],
+  'performs until the authority has answered once':[degrades(history=>history.admitted===0),'host.authority-unavailable'],
+  'performs on the good answer just before':[degrades(history=>history.last==='performed'),'host.authority-unavailable.after-success'],
+  'performs right after it refused an operation':[degrades(history=>history.last==='refused'),'host.authority-unavailable.between-dispatches'],
+ }
+ for(const [name,[create,property]] of Object.entries(hosts))it(`a host that ${name} fails the kit and certification at ${property}`,async()=>{
+  await expect(effectHostConformance(create)).rejects.toMatchObject({property})
+  await expect(certifyEffectHost(create,new DurableLeaseStoreFixture())).rejects.toMatchObject({property})
+ })
+ it('a host that stays closed once the authority failed repeatedly fails the kit: it must admit again',async()=>{
+  const closes=(authority:import('./lease').LeaseAuthority):EffectHost=>{
+   const inner=new ReferenceEffectHost(authority);let failures=0
+   return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch(admission,failures>10?async()=>{throw new Error('closed')}:perform,signal).catch(error=>{if(!(error instanceof LeaseRefused))failures++;throw error})}
+  }
+  await expect(effectHostConformance(closes)).rejects.toMatchObject({property:'host.admit.recovered'})
+ })
+ it('the authority fails ten times in a row at each of the three points, and a host that refuses every time passes',async()=>{
+  const failures:string[]=[]
+  await effectHostConformance(authority=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch(admission,perform,signal).catch(error=>{if(!(error instanceof LeaseRefused))failures.push(admission.operation.operation);throw error})}})
+  const points=['before-any-dispatch','after-success','between-dispatches']
+  expect(failures).toEqual(points.flatMap(point=>[...Array.from({length:5},()=>`${point}-retried`),...Array.from({length:5},(_,n)=>`${point}-${n}`)]))
+  await effectHostConformance(authority=>new ReferenceEffectHost(authority))
+ })
+})
+
+describe('the reference host cannot be subclassed (#258)',()=>{
+ const named=(act:()=>unknown)=>{
+  let thrown:unknown
+  try{act()}catch(error){thrown=error}
+  expect(thrown).toBeInstanceOf(LeaseCapabilityRefused)
+  expect(thrown).toEqual(capability('effect-host-unfenced'))
+  expect((thrown as Error).message).toMatch(/cannot be subclassed/)
+ }
+ const store=new DurableLeaseStoreFixture()
+ class Plain extends ReferenceEffectHost {}
+ class OverridesDispatch extends ReferenceEffectHost {override dispatch<T>(_admission:EffectAdmission,perform:(signal?:AbortSignal)=>Promise<T>,signal?:AbortSignal){return perform(signal)}}
+ class DeclaresFencing extends ReferenceEffectHost {override readonly effectFencing='enforced' as const}
+ it('a subclass, one overriding dispatch and one declaring effectFencing are refused by name at construction',()=>{
+  named(()=>new Plain(store))
+  named(()=>new OverridesDispatch(store))
+  named(()=>new DeclaresFencing(store))
+  named(()=>Reflect.construct(ReferenceEffectHost,[store],class Other {}))
+ })
+ it('the refusal is the versioned capability record',()=>{
+  try{new Plain(store)}catch(error){expect((error as LeaseCapabilityRefused).record()).toEqual({version:1,reason:'effect-host-unfenced'})}
+  expect(readLeaseCapabilityRefusal({version:1,reason:'effect-host-unfenced'})).toEqual({version:1,reason:'effect-host-unfenced'})
+ })
+ it('the kit and certification fail a factory that subclasses; delegating to a reference host is the way, and is certified',async()=>{
+  await expect(effectHostConformance(authority=>new Plain(authority))).rejects.toMatchObject({property:'host.operation'})
+  await expect(certifyEffectHost(authority=>new Plain(authority),store)).rejects.toMatchObject({property:'host.operation'})
+  const certified=await certifyEffectHost(authority=>{const inner=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:(admission,perform,signal)=>inner.dispatch(admission,perform,signal)}},store)
+  expect(()=>admitUnattended({store,effectHost:certified})).not.toThrow()
+  expect(()=>admitUnattended({store,effectHost:new ReferenceEffectHost(store)})).not.toThrow()
  })
 })
