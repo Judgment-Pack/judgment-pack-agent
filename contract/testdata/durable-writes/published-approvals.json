@@ -1,5 +1,5 @@
 {
-  "description": "Checkpoints v0.12.0 wrote with an act call held for the person's decision (#275), kept byte for byte as the text of each member: the output of that tag's own code through its adapters, not hand-written, because what is under test is how this release treats what that release recorded. In each, approval.args is the parsed form of what the model wrote, and the model's text is gone. Each was written with records.retainDays 36500 so that none expires. The tool is go/adapter/eino/durable_approvals_test.go's update_work_item, answering 'wrote' and the bytes it ran with. tests/test_contract.py reads each again.",
+  "description": "Checkpoints v0.12.0 wrote with an act call held for the person's decision (#275), kept byte for byte as the text of each member: the output of that tag's own code through its adapters, not hand-written, because what is under test is how this release treats what that release recorded. In each, approval.args is the parsed form of what the model wrote, and the model's text is gone. Each was written with records.retainDays 36500 so that none expires. The tool is go/adapter/durableapprovaltests/durable_approvals_test.go's update_work_item, answering 'wrote' and the bytes it ran with. tests/test_contract.py reads each again.",
   "calls": {
     "repeat past 2^53": {
       "allowed": [
