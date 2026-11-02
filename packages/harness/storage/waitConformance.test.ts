@@ -125,6 +125,7 @@ async function drive(store:RunStore,id:string,tools:HostTool[],call:()=>Promise<
 }
 
 describe('a durable approval wait across real store restarts (#265 M6)',()=>{
+ // #285: two whole runs with real restarts, about 15 s on a quiet machine against the suite's 20 s default: under load it failed with nothing wrong.
  it('parks, restarts, wakes, restarts, claims, restarts and runs the call once: nothing but the copied state survives each restart',async()=>{
   const clock={at:T0},now=()=>new Date(clock.at),key='wk.restart.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K'
   let store=new DurableWaitStore({now})
@@ -161,5 +162,5 @@ describe('a durable approval wait across real store restarts (#265 M6)',()=>{
   await store.releaseLease(resumed.fence)
   clock.at=T0+2*HOUR
   await expect(store.acquireLease({resource:'run-r',owner:'worker-c',expectedRevision:(await store.load('run-r'))!.revision,durationMs:HOUR})).resolves.toMatchObject({epoch:'3',expiry:new Date(T0+3*HOUR).toISOString()})
- })
+ },120_000)
 })

@@ -659,7 +659,7 @@ against the recorded runtime is a command a person runs with that binary.
 `scripts/mutation-rows.json` is the table of rows, one deliberate break of one safeguard each (the
 file, the text found once and the text put in its place, the test files that catch it, where the
 row came from, and `caught` or `retired`). `scripts/mutation-check.mjs` applies one row at a time to
-a scratch copy of the package, runs the row's tests, and fails on a row no test fails under:
+a scratch copy of the repository, runs the row's tests, and fails on a row no test fails under:
 
 ```sh
 npm run mutation --workspace @judgment-pack/harness -- --list
@@ -681,7 +681,12 @@ preview every engine builds). Nine of the Desk's needles no longer matched the m
 re-anchored on the same safeguard (a row's `note` says why), and one row is retired, with its
 reason in the table, because the code it broke is gone. A row's `tests` are the files that
 import the mutated file or a module that does, and those that name it in a string; a run in which
-nothing fails is run again against the whole suite, which decides. `.github/workflows/mutation.yml`
+nothing fails is run again against the whole suite, which decides. A failure counts only if the
+mutant caused it (agent#285): a test file that fails under a mutant is run once with no mutant and
+what fails then counts for nothing, and a failure only the whole suite found must fail again in a
+run of its own file under the mutant. A row whose mutant changes nothing a test reads comes back
+`NOT CAUGHT`, which fails the run. `--no-mutant` runs the whole suite in the scratch copy and names
+what fails. `.github/workflows/mutation.yml`
 runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
 request's number, and the whole table on every push to `main`, weekly and on demand, in ten shards.
 A run prints a `mutation-row` line with each row's seconds on the standard error stream as it ends.

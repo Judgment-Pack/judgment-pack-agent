@@ -32,7 +32,11 @@ for(const engine of [vercel,deepagents])describe(`${engine.id} fixed request cap
   const events=await pending
   expect(f.bodies).toHaveLength(1);expect(f.bodies[0]!.tools??[]).toHaveLength(0);expect(f.execute).not.toHaveBeenCalled()
   expect(events.some(e=>e.type==='end')).toBe(true)
-  if(kind==='late-helper')expect(events.some(e=>e.type==='error'&&e.failure?.code==='configuration')).toBe(true)
+  if(kind==='late-helper'){
+   expect(events.some(e=>e.type==='error'&&e.failure?.code==='configuration')).toBe(true)
+   // #285: a refused cap still ends the stream whole: its usage, then its end.
+   expect(events.slice(-2).map(e=>e.type)).toEqual(['usage','end'])
+  }
   for(const cp of f.saved)expect(readExecution(cp)?.requestCap).toBe(1)
   expect(f.saved.at(-1)).toMatchObject({used:1,limit:1,requestCap:1})
  })

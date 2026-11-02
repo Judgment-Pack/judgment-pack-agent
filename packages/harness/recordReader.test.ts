@@ -27,11 +27,14 @@ describe('versioned record readers',()=>{
  }
  it('bounds structural visits and depth',()=>{
   expect(()=>readPolicyLayer({version:1,outputAllow:Array(200001).fill('kept')})).toThrow()
+  // #285: a self-reference in the policy's own graph, so that only the depth can refuse: the shallow chain is admitted.
   const properties=shapes.current['policy.json'].properties as Record<string,unknown>
   properties.next={$ref:'policy.json'}
-  let value:Record<string,unknown>={version:1}
-  for(let i=0;i<100;i++)value={version:1,next:value}
-  try{expect(()=>readPolicyLayer(value)).toThrow()}finally{delete properties.next}
+  const chain=(links:number)=>{let value:Record<string,unknown>={version:2};for(let i=0;i<links;i++)value={version:2,next:value};return value}
+  try{
+   expect(()=>checkRecord('policy',chain(10))).not.toThrow()
+   expect(()=>checkRecord('policy',chain(100))).toThrow()
+  }finally{delete properties.next}
  })
  it('keeps the checkpoint size bound separate from ordinary events',()=>{
   const text='x'.repeat(4*1024*1024+1)

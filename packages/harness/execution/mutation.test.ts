@@ -176,11 +176,12 @@ describe('canonical checkpoint mutation',()=>{
   expect(store.read().used).toBe(2)
   expect(store.revision).toBe(2)
  })
+ // #285: this reads the package's sources: most of the suite's 20 s default on a quiet machine, and over it under load.
  it('keeps every production aggregate writer behind the API',()=>{
   const root=process.env.JP_CHECKPOINT_GUARD_ROOT?join(process.env.JP_CHECKPOINT_GUARD_ROOT,'packages/harness'):resolve(process.cwd())
   const paths=files(root),api=new API({cwd:process.cwd()}),snapshot=api.updateSnapshot({openFiles:paths})
   try{expect(checkpointWrites(paths,snapshot,root)).toEqual([])}finally{snapshot.dispose();api.close()}
- })
+ },120_000)
  it('catches a newly introduced writer, aliases, computed members and nested writes',()=>{
   const directory=mkdtempSync(join(tmpdir(),'checkpoint-guard-')),path=join(directory,'new-writer.ts')
   writeFileSync(path,`import type {ExecutionCheckpoint} from ${JSON.stringify(join(resolve(process.cwd()),'execution/state'))}
@@ -367,6 +368,14 @@ it('refuses unknown structural members on read and on patch',async()=>{const sav
 it('detaches the validated initial checkpoint',()=>{const initial=seed(),store=new CheckpointMutation(initial);initial.context.scope='changed';expect(store.read().context.scope).toBe('mutation')})
 
 describe('declared arbitrary checkpoint payloads',()=>{
+ it('an own __proto__ member of the checkpoint stays data and never sets its prototype (#285)',()=>{
+  const target=structuredClone(memberSeed()) as ExecutionCheckpoint
+  Object.defineProperty(target,'__proto__',{value:{probe:'opaque'},enumerable:true,writable:true,configurable:true})
+  expect(mutateCheckpoint(target,{explanation:'a new explanation'})).toBe(true)
+  expect(Object.getPrototypeOf(target)).toBe(Object.prototype)
+  expect(Object.hasOwn(target,'__proto__')).toBe(true)
+  expect((target as unknown as {probe?:unknown}).probe).toBeUndefined()
+ })
  it('preserves an own __proto__ member as serialized data through unrelated patches',()=>{
   const fixture=memberSeed()
   delete fixture.policy;delete fixture.completions
