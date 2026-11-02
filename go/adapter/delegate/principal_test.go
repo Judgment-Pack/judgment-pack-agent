@@ -272,6 +272,58 @@ func (s countingStore) Commit(ctx context.Context, in runcontext.RunCommit) (run
 	return s.RunStore.Commit(ctx, in)
 }
 
+// fenceCountingStore counts the reads of a store with its lease port.
+type fenceCountingStore struct {
+	reauthStore
+	loads *int
+}
+
+func (s fenceCountingStore) Load(ctx context.Context, id string) (*runcontext.RunHead, error) {
+	*s.loads++
+	return s.reauthStore.Load(ctx, id)
+}
+
+// A fence of other principals is held in PrepareDurableInput, before the run touches its store: nothing is read, and the
+// run has the one error that names it (#283). Past the hold the writer's own check still refuses, after a Load and with a
+// second error, so the count is what pins the hold; nothing is dispatched either way.
+func TestAFenceOfOtherPrincipalsIsRefusedBeforeTheStoreIsTouched(t *testing.T) {
+	v := readPrincipalChains(t)
+	ctx := context.Background()
+	given := v.input(v.Items[0], nil)
+	opened, err := runcontext.OpenPrincipal(given)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := *opened.Record.Binding()
+	other.RootActor = strings.Repeat("d1", 16)
+	loads := 0
+	store := fenceCountingStore{reauthStore{runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}, &loads}
+	lease, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: "other", Owner: "worker-a", DurationMs: 3_600_000, Principal: &other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := runcontext.UnattendedRunStore(store, runcontext.FenceOf(lease), runcontext.NewReferenceEffectHost(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []contract.RunEvent
+	run := lifecycleRun(view, "other", false, func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks) error {
+		t.Error("the provider was reached")
+		return nil
+	}, func(event contract.RunEvent) { events = append(events, event) })
+	run.Context.Principal = given
+	lifecycleExecute(t, ctx, run)
+	errors := []string{}
+	for _, event := range events {
+		if event.Error != nil {
+			errors = append(errors, event.Error.Message)
+		}
+	}
+	if loads != 0 || len(errors) != 1 || !strings.Contains(errors[0], "principal-changed") {
+		t.Fatalf("loads %d, errors %v", loads, errors)
+	}
+}
+
 func TestARefusedChainIsRefusedBeforeTheStoreIsTouched(t *testing.T) {
 	v := readPrincipalChains(t)
 	loads, commits := 0, 0

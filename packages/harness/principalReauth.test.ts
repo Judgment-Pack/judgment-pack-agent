@@ -275,3 +275,61 @@ describe('a child under a run that parked for re-authorization',()=>{
   expect(last.task).toMatchObject({state:'failed',problem:expect.stringContaining('revoked')})
  })
 })
+
+describe("a child's call at the effect host, under a delegation",()=>{
+ const READ={name:'read_note',description:'Read one note.',inputSchema:{type:'object'},taxonomy:{operation:'read',effect:'read'} as const}
+ const noteTool=async(ran:string[]):Promise<HostTool>=>({...READ,effectClass:'read',source:{kind:'custom',id:'notes',trust:'person',version:'1',toolListDigest:await toolListDigest([READ] as never)},delegation:'read',execute:async()=>{ran.push('read_note');return {content:[{type:'text',text:'note'}]}}}) as unknown as HostTool
+ const proposeTool=(ran:string[])=>({name:'local_propose',description:'local_propose',inputSchema:{type:'object'},delegation:'read',taxonomy:{operation:'propose',effect:'propose'},execute:async()=>{ran.push('local_propose');return {content:[{type:'text',text:'proposed'}]}}}) as unknown as HostTool
+ const DELEGATE={call:{tool:'delegate_tasks',arguments:{tasks:[{title:'Check',profile:'review',objective:'Check the note.'}]}}}
+ const delegated=async(store:RunStore,tools:HostTool[],given:RunPrincipal,turns:Parameters<typeof answerWith>[0][],resume=false)=>{
+  const session={prompt:'Check.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:new AbortController().signal,allowConversation:true,interactive:true,critic:'off',context:{principal:given,currentRequest:{message:'Check.',input:'note'},runStore:{store,id:'run-r',...(resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',...provider(turns)}} as unknown as EngineSession
+  const out:AssistantEvent[]=[];for await(const event of withDelegation(vercel).start(session))out.push(event);return out
+ }
+ const held=async(reads:AdmissionRead[],links:ChildLinkRequest[]=[])=>{
+  const clock={at:T0},store=new DurableWaitStore({now:()=>new Date(clock.at)}),checks={n:0},state:{refusal:CredentialRefusal|undefined}={refusal:REFUSED}
+  const host=new ReferenceEffectHost(store,{credentials:async()=>{checks.n++;return state.refusal}})
+  const lease=await store.acquireLease({resource:'run-r',owner:'worker-a',expectedRevision:null,durationMs:HOUR,principal:BINDING})
+  const given:RunPrincipal={...principal(reads),child:request=>{links.push(request);return {chain:JSON.stringify(chains.items[1])}}}
+  return {clock,store,host,state,checks,given,fence:fenceOf(lease),view:unattendedRunStore({store,fence:fenceOf(lease),effectHost:host})}
+ }
+ const lastTask=(events:AssistantEvent[])=>([...events].reverse().find(e=>e.type==='delegated_task') as Extract<AssistantEvent,{type:'delegated_task'}>).task
+ const rows=async(store:RunStore)=>(JSON.parse(new TextDecoder().decode((await store.load('run-r'))!.checkpoint!)) as {durable:{dispatches:{kind:string;tool:string;state:string;scope:{task?:string};failure?:{outcome?:string}}[]}}).durable.dispatches.filter(row=>row.kind==='host'&&row.tool==='list_context')
+
+ it("does not reach the credential check when it is a source's read",async()=>{
+  const reads:AdmissionRead[]=[],ran:string[]=[],{checks,view,given}=await held(reads)
+  const events=await delegated(view,[await noteTool(ran)],given,[DELEGATE,{call:{tool:'notes__read_note',arguments:{}}},{say:'One finding.'},{say:'Done.'}])
+  expect([checks.n,reauthorizationOf(view),ran,lastTask(events).state]).toEqual([0,undefined,['read_note'],'complete'])
+ })
+ for(const [name,args] of [['list_context',{}],['update_plan',{plan:[{step:'One',status:'pending'}],explanation:'x'}],['complete_plan_step',{step:'One'}],['request_budget_increase',{requests:1,reason:'x'}],['local_propose',{}]] as const)it(`stops the whole run and parks on the child's proof when it is ${name}, and fails closed`,async()=>{
+  const reads:AdmissionRead[]=[],ran:string[]=[],{checks,view,given,store,fence}=await held(reads)
+  const events=await delegated(view,[await noteTool(ran),...(name==='local_propose'?[proposeTool(ran)]:[])],given,[DELEGATE,{call:{tool:name,arguments:args}},{say:'One finding.'},{say:'Done.'}])
+  expect([checks.n,ran,lastTask(events).state,delegationRefusals(events)]).toEqual([1,[],'interrupted',[]])
+  expect(reads.filter(read=>read.call.count)).toEqual([])
+  expect(events.some(e=>e.type==='message'&&(e as {text?:string}).text==='Done.')).toBe(false)
+  expect(events.some(e=>e.type==='error')).toBe(true)
+  const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
+  expect(wait.pending).toMatchObject({kind:'reauthorization',source:'host',tool:name})
+ })
+ it('leaves the grant to nobody: the child is not run again, and the parent\'s own call is a new row',async()=>{
+  const reads:AdmissionRead[]=[],ran:string[]=[],links:ChildLinkRequest[]=[],{clock,checks,view,given,store,fence,host,state}=await held(reads,links)
+  const tools=[await noteTool(ran)]
+  await delegated(view,tools,given,[DELEGATE,{call:{tool:'list_context',arguments:{}}},{say:'One finding.'},{say:'Done.'}])
+  const {wait}=await parkRun(parkInput(store,fence,reauthorizationOf(view)!))
+  clock.at=T0+3*MINUTE
+  await wakeRun(store,wake)
+  const {model,...rest}=wait.pins
+  const current={version:1 as const,resource:'run-r',wait:'wait-r',...rest,model:{...model,status:'available' as const},policy:{digest:wait.pins.policy}}
+  const resumed=await resumeParked({store,resource:'run-r',wait:'wait-r',evidence:'refreshed-1',owner:'worker-b',durationMs:HOUR,current,reauthorization:action})
+  state.refusal=undefined
+  const continued=await reauthorizedRunStore({store,effectHost:host,resumed})
+  const linked=links.length,before=checks.n
+  const after=await delegated(continued,tools,given,[{call:{tool:'list_context',arguments:{}}},{say:'Done.'}],true)
+  expect(links.length).toBe(linked)
+  expect(after.filter(e=>e.type==='delegated_task'&&e.task.state==='running')).toEqual([])
+  expect(checks.n-before).toBe(1)
+  const kept=await rows(store)
+  expect(kept.map(row=>[row.tool,row.state,row.scope.task!==undefined])).toEqual([['list_context','unknown',true],['list_context','result',false]])
+  expect(kept[0]!.failure?.outcome).toBe('not-started')
+  expect(reads.filter(read=>read.call.count)).toEqual([])
+ })
+})
