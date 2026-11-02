@@ -666,7 +666,7 @@ npm run mutation --workspace @judgment-pack/harness -- --list
 npm run mutation --workspace @judgment-pack/harness -- --check            # every row still applies; no test run
 npm run mutation --workspace @judgment-pack/harness -- --row "any relay 401"
 npm run mutation --workspace @judgment-pack/harness -- --changed origin/main --sample 15
-npm run mutation --workspace @judgment-pack/harness -- --shard 1/4         # the full table, in four parts
+npm run mutation --workspace @judgment-pack/harness -- --shard 1/10        # the full table, in ten parts
 ```
 
 The first 111 rows are the ones the Desk's `mutation-check.sh` held over the files that moved here,
@@ -683,7 +683,8 @@ reason in the table, because the code it broke is gone. A row's `tests` are the 
 import the mutated file or a module that does, and those that name it in a string; a run in which
 nothing fails is run again against the whole suite, which decides. `.github/workflows/mutation.yml`
 runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
-request's number, and the whole table weekly, in four shards, and on demand.
+request's number, and the whole table on every push to `main`, weekly and on demand, in ten shards.
+A run prints a `mutation-row` line with each row's seconds on the standard error stream as it ends.
 
 ### The certified scenarios (agent#13)
 

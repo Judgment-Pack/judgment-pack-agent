@@ -4,8 +4,9 @@ name: Mutation check
 # copy, and a test must fail (agent#37). A row costs a few test files, and the table has more than a
 # hundred, so CI time is bounded two ways: a pull request runs the rows whose file it changes, capped,
 # and a sample; the full table runs on every push to main, in shards, and weekly and on demand.
-# release.yml takes the evidence of the four full shards of a push or dispatch run on main at the
-# tagged commit (docs/ci-evidence.md). That every row still applies (each row's text occurs once in
+# release.yml takes the evidence of every full shard of a push or dispatch run on main at the tagged
+# commit (docs/ci-evidence.md): .github/ci-evidence.json lists them too, and a change to their number
+# changes both. Their number is measured against the slowest runner (#281). That every row still applies (each row's text occurs once in
 # its file, each test it names exists) is the `mutation-rows` step of dev.json, which the CI `check`
 # job runs (on a push to main it may instead reuse the merged pull request's passed result, which
 # the release admits again): this workflow does not run it a second time.
@@ -59,14 +60,14 @@ jobs:
         run: node packages/harness/scripts/mutation-check.mjs --sample 5 --seed "$SEED"
 
   full:
-    name: every row (shard ${{ matrix.shard }} of 4)
+    name: every row (shard ${{ matrix.shard }} of 10)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -81,7 +82,10 @@ jobs:
       - name: The rows of this shard
         env:
           SHARD: ${{ matrix.shard }}
-        run: node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/4"
+        run: |
+          node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/10"
+          # Past three quarters of the job's limit it is time to add shards (docs/ci-evidence.md).
+          if [ "$SECONDS" -gt 5400 ]; then echo "::warning::shard $SHARD of 10 took ${SECONDS}s, past three quarters of its 120-minute limit"; fi
 
       # Evidence is recorded for a push or a dispatch on main: the weekly schedule run is not
       # evidence (the gate still requires every run at the commit to have finished, and a newer

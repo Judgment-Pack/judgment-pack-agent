@@ -19,7 +19,8 @@
  *   --changed <git-ref>  only the rows whose file differs from the ref (`git diff --name-only`)
  *   --sample <n>         of the rows chosen, n of them, picked by --seed (default 0); the
  *                        same seed picks the same rows
- *   --shard <k>/<n>     every n-th row from the k-th (a scheduled run's shards)
+ *   --shard <k>/<n>     every n-th row from the k-th (the full table's shards)
+ *   --names              print the names of the rows chosen, one a line, and stop
  *   --whole              run the whole suite for every row instead of the row's tests
  *   --timeout <seconds>  the bound on one run (default 900)
  *   --verbose            name every test that failed, not the first
@@ -48,11 +49,11 @@ const TABLE = join(HERE, 'mutation-rows.json')
 
 function usage(message) {
   if (message) console.error(message)
-  console.error('usage: mutation-check.mjs [--list] [--check] [--row <text>]... [--changed <git-ref>] [--sample <n>] [--seed <k>] [--shard <k>/<n>] [--whole] [--timeout <seconds>] [--verbose]')
+  console.error('usage: mutation-check.mjs [--list] [--check] [--names] [--row <text>]... [--changed <git-ref>] [--sample <n>] [--seed <k>] [--shard <k>/<n>] [--whole] [--timeout <seconds>] [--verbose]')
   process.exit(2)
 }
 
-const options = { verbose: false, list: false, check: false, rows: [], changed: null, sample: null, seed: 0, shard: [1, 1], whole: false, timeout: 900 }
+const options = { verbose: false, list: false, check: false, names: false, rows: [], changed: null, sample: null, seed: 0, shard: [1, 1], whole: false, timeout: 900 }
 const argv = process.argv.slice(2)
 for (let at = 0; at < argv.length; at++) {
   const flag = argv[at]
@@ -63,6 +64,7 @@ for (let at = 0; at < argv.length; at++) {
   }
   if (flag === '--list') options.list = true
   else if (flag === '--check') options.check = true
+  else if (flag === '--names') options.names = true
   else if (flag === '--whole') options.whole = true
   else if (flag === '--verbose') options.verbose = true
   else if (flag === '--row') options.rows.push(value())
@@ -123,6 +125,11 @@ if (options.sample !== null && chosen.length > options.sample) {
   chosen = chosen.filter((row) => kept.has(row.name))
 }
 chosen = chosen.filter((_, at) => at % options.shard[1] === options.shard[0] - 1)
+
+if (options.names) {
+  for (const row of chosen) console.log(row.name)
+  process.exit(0)
+}
 
 const retired = chosen.filter((row) => row.status === 'retired')
 const runnable = chosen.filter((row) => row.status === 'caught')
@@ -225,12 +232,20 @@ function run(files, report) {
 
 const results = []
 let reportNumber = 0
+/** One line per row as it ends, on the standard error stream: a shard stopped at its limit prints no
+ * table, and a row's cost runs from seconds to many minutes (agent#281). */
+const finished = (row, started) => {
+  const last = results[results.length - 1]
+  console.error(`mutation-row ${((Date.now() - started) / 1000).toFixed(1)} ${last.verdict.replace(/ /g, '-')} ${row.name}`)
+}
 for (const row of runnable) {
+  const started = Date.now()
   const path = join(copy, row.file)
   const original = readFileSync(path, 'utf8')
   const count = occurrences(original, row.find)
   if (count !== 1) {
     results.push({ row, verdict: 'DID NOT APPLY', detail: `${count} matches of the row's find text in ${row.file}` })
+    finished(row, started)
     continue
   }
   writeFileSync(path, original.replace(row.find, () => row.replace))
@@ -248,6 +263,7 @@ for (const row of runnable) {
   } finally {
     writeFileSync(path, original)
   }
+  finished(row, started)
 }
 
 console.log('| row | file | result |')

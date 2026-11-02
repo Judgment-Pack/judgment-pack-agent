@@ -37,7 +37,7 @@ agent's gate is held either by the gate's own contract or by this repository's c
 | Coverage: every job and matrix leg, every check, the PR-only job skipped | `workflows.*.jobs`, `checks`, `setup`, `skipped_jobs` |
 | Freshness: 48 hours from the selected attempt's start | `max_age_hours: 48`; the reused pull request run is held to it too |
 | Advisory: only `dependency-audit-live` may be skipped, which proves nothing about advisories | `optional_skips`; the live query stays fresh (below) |
-| Mutation: all four full shards of a main run at the commit | the `mutation` workflow's four jobs |
+| Mutation: every full shard of a main run at the commit | the `mutation` workflow's jobs, one per shard |
 | Approval, provenance, the paired Go tag | unchanged jobs of `release.yml`, outside the gate; named in `fresh_at_release` |
 | The runner and tools, resolved again on the release runner | every profile `compare: release-runner`, now with the reported identity |
 
@@ -97,9 +97,9 @@ No timing after it has been measured.
 | the rows-applicability check | `dev.json`'s `mutation-rows` in `check` (under 1 s) and the mutation workflow's `every row applies` job (7 s) | `mutation-rows` in `check` only, which also covers the row that names `docs/reference/providers.md`; the `every row applies` job is removed |
 | the offline `dependency-audit` test | in `check` and again in the audit workflow | in `check` only; the audit workflow runs the live query alone, fresh |
 
-The status names `contract`, `check`, `dependency-audit` and the four `every row (shard N of 4)`
-jobs are unchanged. Branch protection requires `DCO` and `contract`. Since #254 `go-race` is a status
-as well.
+The status names `contract`, `check` and `dependency-audit` are unchanged. The shards' are
+`every row (shard N of 10)` since #281. Branch protection requires `DCO` and `contract`. Since #254
+`go-race` is a status as well.
 
 **Pull-request-to-branch reuse.** The `check` and `go-race` jobs (one job of 45 minutes on the run
 above, `go-race` 1,341 s and `unit-tests` 484 s of it, before #254) may each take from the same job
@@ -134,7 +134,7 @@ Not reusable, run on every branch push:
 | `dependency-audit-live` | a live advisory query, kept fresh (and optional on main) |
 
 The four `contract` steps run in their own job on every event and plan no reuse. The mutation
-table plans none: a pull request's mutation sample is not shard coverage, and the four full shards
+table plans none: a pull request's mutation sample is not shard coverage, and the full shards
 run on every push to `main`.
 
 `tests/test_release_evidence.py` holds every check of the two jobs to one of the two lists, so a
@@ -169,6 +169,32 @@ every hosted run (also a test).
 
 **Main-to-release reuse** (#213) is unchanged in kind: the release takes the exact commit's main
 evidence, now under the gate's contract.
+
+## The mutation table's shards (#281)
+
+The full table runs on every push to `main` in ten shards. Two pushes in a row lost shard 4 of four
+to its 120-minute limit, so no commit had the evidence the release requires. A shard's job limit stays
+120 minutes and every row still runs.
+
+What decides a shard's time, over the rows of `2107a63` (209 rows measured, and most others estimated
+from a measured row with the same test files):
+
+- **The rows' cost is concentrated, and every-n-th spreads it evenly enough.** A row costs from
+  seconds to many minutes: 18 percent of the rows carry 72 percent of the cost. Yet the four old
+  shards were within 11 percent of their mean by cost. So the difference between shards on hosted runs
+  (shard 2 took 47 to 92 minutes across runs) is mostly runner speed, which no division of the rows can
+  balance. A table balanced by measured cost would need a costs file kept up to date for a gain of
+  about 10 percent, so the shards stay every n-th row.
+- **The total crossed the limit.** The 48 rows of #272 added about 20 minutes to a shard already at
+  about 100 on a slow runner. The number of shards is the remedy.
+
+The number is this repository's, not the kit's: the gate reads the jobs from `.github/ci-evidence.json`
+and `release.yml` does not name them. To change it, change the matrix, the job's name and `--shard` in
+`.github/workflows/mutation.yml`, the `full-N` jobs in the configuration and `SHARDS` in
+`tests/test_release_evidence.py`, together: a run and its evidence are of one commit, so an older run
+at another number is never read for a newer commit. A shard warns past three quarters of its limit, and
+a run prints each row's seconds as it ends (`mutation-row`), so a shard stopped at its limit still says
+what it ran.
 
 ## The race step on its own runner (#254)
 
@@ -205,7 +231,8 @@ quarters of the 40-minute limit. That warning is the sign that the next split is
 
 A required check does not change: branch protection requires `DCO` and `contract`. The release
 requires `go-race` by its job name in `.github/ci-evidence.json`, as it required the step inside
-`check`. No per-job timing after this change has been measured on a hosted runner.
+`check`. The first hosted run of the new job took 2,017 s, `./adapter` 1,937 s of it: 81 percent of the
+limit, past the warning, so #254 stays open for the reauthorization tests' own binary.
 
 ## The release
 
