@@ -44,7 +44,7 @@ const FAULTS:Record<string,Fault>={
  'job.owner.complete':store=>wrap(store,'completeJob',original=>(evidence,signal)=>original({...evidence,resource:'run-a'},signal)),
  'job.owner.reconcile':store=>wrap(store,'reconcileJob',original=>(evidence,signal)=>original({...evidence,resource:'run-a'},signal)),
  'job.answer.other':(_,{jobs})=>{const original=jobs.answer.bind(jobs);jobs.answer=(input:Held,fence:LeaseFence)=>original(input,{...fence,owner:'worker-a'})},
- 'job.answer.late':(store,{leases})=>wrap(store,'answerJob',original=>(input,fence,signal)=>{if(fence.owner==='worker-a'&&fence.resource===input.resource)leases.check(fence);return original(input,fence,signal)}),
+ 'job.answer.late':(store,{leases,jobs})=>wrap(store,'answerJob',original=>(input,fence,signal)=>{if(fence.owner==='worker-a'&&fence.resource===input.resource&&jobs.read(input.resource,input.job)?.registered.epoch===fence.epoch)leases.check(fence);return original(input,fence,signal)}),
  'job.answer.conflict':(_,{jobs})=>{const original=jobs.answer.bind(jobs);jobs.answer=(input:Held,fence:LeaseFence)=>{try{return original(input,fence)}catch(error){if(error instanceof JobRefused&&error.reason==='conflict')return structuredClone(jobs.read(input.resource,input.job));throw error}}},
  'job.answer.same':store=>{const seen=new Set<string>();wrap(store,'answerJob',original=>async(input,fence,signal)=>{if(seen.has(input.job+input.handle))throw new JobRefused('stale');const answer=await original(input,fence,signal);seen.add(input.job+input.handle);return answer})},
  'job.complete.key':(_,{jobs})=>{const original=jobs.complete.bind(jobs);jobs.complete=(input:Held)=>{const held=jobs.authenticate;jobs.authenticate=()=>undefined;try{return original(input)}finally{jobs.authenticate=held}}},
@@ -123,6 +123,26 @@ const STORES:[string,string,Fault][]=[
  ['E13 readJob answers as of the first read','job.read.fresh',firstReads('readJob',(resource,job)=>`${resource}/${job}`)],
  ['A repeated contradiction id with other content is taken','job.contradiction.conflict',store=>wrap(store,'completeJob',original=>async(evidence,signal)=>{try{return await original(evidence,signal)}catch(error){if(evidence.resource==='run-d'&&error instanceof JobRefused&&error.reason==='conflict')return store.readJob(evidence.resource,evidence.job);throw error}})],
 ]
+/** The third instance is the one the second restart builds. */
+const afterTheLastRestart=(by:Fault):Fault=>{let instance=0;return (store,tables)=>{if(++instance===3)by(store,tables)}}
+const tookEffect=(method:string,when:(input:Held)=>boolean,effect:(row:Held,input:Held)=>void):Fault=>(store,{jobs})=>wrap(store,method,original=>async(input,...rest)=>{
+ try{return await original(input,...rest)}catch(error){if(when(input)){const row=jobs.rows.get(input.resource)?.find((r:Held)=>r.job===input.job);if(row)effect(row,input)};throw error}
+})
+const WRONG_KEY=(input:Held)=>input.key!==undefined&&!/^job\.|^kit\./.test(String(input.key))||String(input.key).startsWith('kit.job-wrong')
+const staleOnceSettled=(settled:string):Fault=>store=>{const last=new Map<string,unknown>();wrap(store,'readJob',original=>async(resource,job,signal)=>{const held=await original(resource,job,signal);if(held?.state!==settled){last.set(job,held);return held};return structuredClone(last.get(job)??held)})}
+STORES.push(
+ ['R-3 a completion with the wrong key is refused and took effect','job.complete.key',tookEffect('completeJob',WRONG_KEY,(row,input)=>{row.state='completed';row.completion={evidence:input.evidence,outcome:input.outcome,at:'2026-01-01T00:00:00.000Z',digest:`sha256:${'a'.repeat(64)}`}})],
+ ['R-3 a reconciliation with the wrong key is refused and took effect','job.reconcile.key',tookEffect('reconcileJob',WRONG_KEY,(row,input)=>{row.state='not-started';row.closed={by:'reconcile',at:'2026-01-01T00:00:00.000Z',digest:`sha256:${'a'.repeat(64)}`,evidence:input.evidence}})],
+ ['R-3 an answer from another owner is refused and took effect','job.answer.other',(store,{jobs})=>wrap(store,'answerJob',original=>async(input,fence,signal)=>{try{return await original(input,fence,signal)}catch(error){if(fence.owner==='worker-x'){const row=jobs.rows.get(input.resource)?.find((r:Held)=>r.job===input.job);if(row){row.state='started';row.handle=input.handle;row.started={by:'answer',at:'2026-01-01T00:00:00.000Z',digest:`sha256:${'a'.repeat(64)}`}}};throw error}})],
+ ['R-3 a completion wakes the run\'s parked wait, whichever job it is for','job.wake.other',(_,{waits})=>{const original=waits.wakeJob.bind(waits);waits.wakeJob=(resource:string,_job:string,evidence:Held)=>{for(const row of waits.rows.get(resource)??[])if(row.state==='parked'&&row.pending.kind==='job')return original(resource,row.pending.job,evidence)}}],
+ ['R-3 readJob is stale once a job is completed','job.read.completed',staleOnceSettled('completed')],
+ ['R-3 readJob is stale once a job is not-started','job.read.closed',staleOnceSettled('not-started')],
+ ['R-3 an answer ignores the epoch: any fence of the first owner answers','job.answer.epoch',(store,{jobs})=>wrap(store,'answerJob',original=>(input,fence,signal)=>{const row=jobs.rows.get(input.resource)?.find((r:Held)=>r.job===input.job);return original(input,row&&fence.owner===(row.reclaimed??row.registered).owner?{...fence,epoch:(row.reclaimed??row.registered).epoch}:fence,signal)})],
+ ['R-3 after a restart a repeated commit id is forgotten','job.restart.commit',afterTheLastRestart(store=>wrap(store,'commitFenced',original=>async(input,fence,signal)=>input.commitId==='run-after-op-1'?{commitId:input.commitId}:original(input,fence,signal)))],
+ ['R-3 after a restart a wake key is free for a job','job.restart.wakekey',afterTheLastRestart((store,{jobs})=>wrap(store,'commitFenced',original=>async(input,fence,signal)=>{if(input.commitId==='run-after-op-wake'){jobs.register(input.runId,input.job,fence);return {commitId:input.commitId}};return original(input,fence,signal)}))],
+ ['R-3 after a restart a job key is free for a wait','job.restart.jobkey',afterTheLastRestart(store=>wrap(store,'parkWait',original=>async(park,fence,signal)=>park.resource==='run-after'?{wait:park}:original(park,fence,signal)))],
+ ['R-3 after a restart a completion is unauthenticated','job.restart.auth',afterTheLastRestart(store=>wrap(store,'completeJob',original=>async(input,signal)=>input.resource==='run-after'?store.readJob(input.resource,input.job):original(input,signal)))],
+)
 /** What a restart loses, each naming the property the kit must fail it on. */
 const LOST:[string,string,NonNullable<Parameters<typeof kind>[1]>][]=[
  ['E1 jobs registered through the history path do not survive','job.restart.job',{then:fresh=>{fresh.jobs.rows.delete('run-history')}}],
@@ -130,6 +150,7 @@ const LOST:[string,string,NonNullable<Parameters<typeof kind>[1]>][]=[
  ['E2b a restart loses the handle','job.restart.record',{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)if(row.state==='started'){row.handle='another-handle'}}}],
  ['E2b a restart loses who re-claimed','job.restart.record',{then:fresh=>{for(const list of fresh.jobs.rows.values())for(const row of list)delete row.reclaimed}}],
  ['An open wait does not survive','job.restart.wait',{then:fresh=>{fresh.waits.rows.clear()}}],
+ ['R-3 a restart turns a woken, resumed or timed-out wait back to parked','job.restart.wait',{then:fresh=>{for(const list of fresh.waits.rows.values())for(const row of list)if(row.state!=='parked'){row.state='parked';delete row.disposition}}}],
 ]
 const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
 describe('the job conformance kit (#229)',()=>{

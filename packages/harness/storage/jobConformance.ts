@@ -23,7 +23,7 @@ const REQUEST=`sha256:${'a'.repeat(64)}`
 const check=(property:string,value:unknown)=>{if(!value)throw new StorageConformanceFailure(property)}
 const named=(error:unknown)=>error instanceof JobRefused||error instanceof LeaseRefused||error instanceof WaitRefused?error.reason:undefined
 async function refuses(property:string,attempt:()=>Promise<unknown>,reason:string):Promise<void>{
- try{await attempt()}catch(error){check(property,named(error)===reason);return}
+ try{await attempt()}catch(error){check(property,reason===''||named(error)===reason);return}
  throw new StorageConformanceFailure(property)
 }
 const same=(a:unknown,b:unknown)=>canonicalJSON(a)===canonicalJSON(b)
@@ -47,6 +47,8 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const reconcile=(run:string,job:string,key:string,over:Partial<JobReconciliation>={}):JobReconciliation=>({version:1,resource:run,job,generation:1,evidence:'find-1',finding:'not-started',key,...over})
  const parkOf=async(run:string,job:string,wake:string,over:Partial<WaitPark>={}):Promise<WaitPark>=>{const head=(await store.load(run))!;return {version:1,resource:run,wait:'wait-1',reason:'job',pending:{kind:'job',job,generation:1},condition:{event:{kind:'job-completion',subject:job}},continuation:'k',checkpoint:{revision:head.revision,digest:checkpointBytesDigest(head.checkpoint!)},pins:PINS,wakeKeyDigest:wakeKeyDigest(wake),release:[],...over}}
  const readWait=async(run:string):Promise<RunWait>=>(await store.readWait(run,'wait-1'))!
+ /** A refusal changes nothing: the job reads as it did. */
+ const unchanged=async(run:string,job:string,property:string,attempt:()=>Promise<unknown>,reason:string)=>{const before=await store.readJob(run,job);await refuses(property,attempt,reason);check(property,same(await store.readJob(run,job),before))}
 
  // Registration: with its claim or not at all, only under a fence.
  const a=await open('run-a')
@@ -105,39 +107,42 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const c=await open('run-c')
  const late=await register('run-c','op-1',KEYS[1],c.fence,c.revision)
  await store.readJob('run-c',late.job);await store.listJobs('run-c',null,10)
- await refuses('job.answer.other',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,owner:'worker-x'}),'unauthenticated')
- await refuses('job.answer.run',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,resource:'run-other'}),'unauthenticated')
- await refuses('job.answer.across',()=>store.answerJob(answerOf('run-other',late.job),c.fence),'no-job')
+ await unchanged('run-c',late.job,'job.answer.other',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,owner:'worker-x'}),'unauthenticated')
+ await unchanged('run-c',late.job,'job.answer.epoch',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,epoch:String(Number(c.fence.epoch)+1)}),'unauthenticated')
+ await unchanged('run-c',late.job,'job.answer.run',()=>store.answerJob(answerOf('run-c',late.job),{...c.fence,resource:'run-other'}),'unauthenticated')
+ await unchanged('run-c',late.job,'job.answer.across',()=>store.answerJob(answerOf('run-other',late.job),c.fence),'no-job')
  at+=2*HOUR
  const answered=await answers('job.answer.late',()=>store.answerJob(answerOf('run-c',late.job),c.fence))
  check('job.answer.late',answered.state==='started'&&answered.handle==='kit-handle'&&answered.started?.by==='answer')
  check('job.read.fresh',same(await store.readJob('run-c',late.job),answered))
  check('job.list.fresh',same((await store.listJobs('run-c',null,10)).jobs[0],answered))
- await refuses('job.answer.conflict',()=>store.answerJob(answerOf('run-c',late.job,'kit-other'),c.fence),'conflict')
+ await unchanged('run-c',late.job,'job.answer.conflict',()=>store.answerJob(answerOf('run-c',late.job,'kit-other'),c.fence),'conflict')
  check('job.answer.same',same(await answers('job.answer.same',()=>store.answerJob(answerOf('run-c',late.job),c.fence)),answered))
  // Completion and its refusals, with no lease at all.
  const held=(await store.readLease('run-c'))!
  check('job.answer.late',held.expiry<=iso(at))
- await refuses('job.complete.key',()=>store.completeJob(complete('run-c',late.job,WRONG)),'unauthenticated')
+ await unchanged('run-c',late.job,'job.complete.key',()=>store.completeJob(complete('run-c',late.job,WRONG)),'unauthenticated')
  const done=await store.completeJob(complete('run-c',late.job,KEYS[1]))
  check('job.complete.settles',done.state==='completed'&&done.completion?.outcome==='succeeded'&&done.completion.at===iso(at))
+ check('job.read.completed',same(await store.readJob('run-c',late.job),done))
  check('job.complete.duplicate',same(await answers('job.complete.duplicate',()=>store.completeJob(complete('run-c',late.job,KEYS[1]))),done))
- await refuses('job.complete.conflict',()=>store.completeJob(complete('run-c',late.job,KEYS[1],{outcome:'failed'})),'conflict')
- await refuses('job.complete.stale',()=>store.completeJob(complete('run-c',late.job,KEYS[1],{evidence:'done-2'})),'stale')
+ await unchanged('run-c',late.job,'job.complete.conflict',()=>store.completeJob(complete('run-c',late.job,KEYS[1],{outcome:'failed'})),'conflict')
+ await unchanged('run-c',late.job,'job.complete.stale',()=>store.completeJob(complete('run-c',late.job,KEYS[1],{evidence:'done-2'})),'stale')
  // Reconciliation: the key and no lease; first write wins; a contradiction is kept. H1, M1.
  const d=await open('run-d')
  const closing=await register('run-d','op-1',KEYS[2],d.fence,d.revision)
  await store.releaseLease(d.fence)
  const unknown=await answers('job.reconcile.no-lease',()=>store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{evidence:'find-0',finding:'unknown'})))
  check('job.reconcile.unknown',unknown.state==='unproven')
- await refuses('job.reconcile.key',()=>store.reconcileJob(reconcile('run-d',closing.job,WRONG)),'unauthenticated')
+ await unchanged('run-d',closing.job,'job.reconcile.key',()=>store.reconcileJob(reconcile('run-d',closing.job,WRONG)),'unauthenticated')
  const closed=await store.reconcileJob(reconcile('run-d',closing.job,KEYS[2]))
  check('job.reconcile.no-lease',closed.state==='not-started'&&closed.closed?.evidence==='find-1')
+ check('job.read.closed',same(await store.readJob('run-d',closing.job),closed))
  check('job.reconcile.same',same(await answers('job.reconcile.same',()=>store.reconcileJob(reconcile('run-d',closing.job,KEYS[2]))),closed))
- await refuses('job.reconcile.conflict',()=>store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{finding:'started',handle:'h'})),'conflict')
+ await unchanged('run-d',closing.job,'job.reconcile.conflict',()=>store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{finding:'started',handle:'h'})),'conflict')
  const contradicted=await answers('job.contradiction.completion',()=>store.completeJob(complete('run-d',closing.job,KEYS[2])))
  check('job.contradiction.completion',contradicted.state==='not-started'&&contradicted.contradictions?.[0]?.kind==='completed'&&contradicted.contradictions[0].evidence==='done-1'&&contradicted.contradictions[0].outcome==='succeeded')
- await refuses('job.contradiction.conflict',()=>store.completeJob(complete('run-d',closing.job,KEYS[2],{outcome:'failed'})),'conflict')
+ await unchanged('run-d',closing.job,'job.contradiction.conflict',()=>store.completeJob(complete('run-d',closing.job,KEYS[2],{outcome:'failed'})),'conflict')
  const twice=await store.reconcileJob(reconcile('run-d',closing.job,KEYS[2],{evidence:'find-2',finding:'started',handle:'late'}))
  check('job.contradiction.start',twice.state==='not-started'&&twice.contradictions?.length===2&&twice.contradictions[1]?.handle==='late')
  // A key belongs to one job or one wait, whichever came first.
@@ -147,23 +152,23 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  // The re-claim of a grant. H2.
  const e=await open('run-e')
  const reclaim=await register('run-e','op-1',KEYS[3],e.fence,e.revision)
- await refuses('job.reclaim.fence',()=>store.reclaimJob('run-e',reclaim.job,{...e.fence,owner:'worker-x'}),'other-owner')
+ await unchanged('run-e',reclaim.job,'job.reclaim.fence',()=>store.reclaimJob('run-e',reclaim.job,{...e.fence,owner:'worker-x'}),'other-owner')
  check('job.reclaim.fence',(await store.readJob('run-e',reclaim.job))?.reclaimed===undefined)
  const taken=await store.reclaimJob('run-e',reclaim.job,e.fence)
  check('job.reclaim.records',taken.reclaimed?.owner==='worker-a'&&taken.reclaimed.epoch===e.fence.epoch&&taken.state==='unproven')
  await store.reconcileJob(reconcile('run-e',reclaim.job,KEYS[3]))
- await refuses('job.reclaim.settled',()=>store.reclaimJob('run-e',reclaim.job,e.fence),'job-settled')
+ await unchanged('run-e',reclaim.job,'job.reclaim.settled',()=>store.reclaimJob('run-e',reclaim.job,e.fence),'job-settled')
  // Under an expired and a stale fence of the same owner.
  const ex=await open('run-expired')
  const lapsed=await register('run-expired','op-1',keyFor(130),ex.fence,ex.revision)
  at+=2*HOUR
- await refuses('job.reclaim.expired',()=>store.reclaimJob('run-expired',lapsed.job,ex.fence),'expired')
+ await unchanged('run-expired',lapsed.job,'job.reclaim.expired',()=>store.reclaimJob('run-expired',lapsed.job,ex.fence),'expired')
  check('job.reclaim.expired',(await store.readJob('run-expired',lapsed.job))?.reclaimed===undefined)
  const st=await open('run-stale')
  const staled=await register('run-stale','op-1',keyFor(131),st.fence,st.revision)
  await store.releaseLease(st.fence)
  await store.acquireLease({resource:'run-stale',owner:'worker-a',expectedRevision:staled.revision,durationMs:HOUR})
- await refuses('job.reclaim.stale',()=>store.reclaimJob('run-stale',staled.job,st.fence),'stale-epoch')
+ await unchanged('run-stale',staled.job,'job.reclaim.stale',()=>store.reclaimJob('run-stale',staled.job,st.fence),'stale-epoch')
  check('job.reclaim.stale',(await store.readJob('run-stale',staled.job))?.reclaimed===undefined)
  // The answer follows the re-claim: the fence that re-sent it answers, and the first one no longer does.
  const f=await open('run-f')
@@ -171,7 +176,7 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await store.releaseLease(f.fence)
  const later=fenceOf(await store.acquireLease({resource:'run-f',owner:'worker-b',expectedRevision:moved.revision,durationMs:HOUR}))
  await store.reclaimJob('run-f',moved.job,later)
- await refuses('job.reclaim.answer',()=>store.answerJob(answerOf('run-f',moved.job),f.fence),'unauthenticated')
+ await unchanged('run-f',moved.job,'job.reclaim.answer',()=>store.answerJob(answerOf('run-f',moved.job),f.fence),'unauthenticated')
  check('job.reclaim.answer',(await store.answerJob(answerOf('run-f',moved.job),later)).state==='started')
  // The park: the job in the park's own transaction. The lost wake-up.
  const g=await open('run-g')
@@ -200,18 +205,21 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  check('job.wake.event',(await readWait('run-i')).state==='parked')
  // A restart keeps every job and every wait as they were, all of each: a job completed before it is read after it.
  const allJobs=async(run:string)=>{const out:RunJob[]=[];for(let after:string|null=null;;){const page:JobPage=await store.listJobs(run,after,100);out.push(...page.jobs);if(page.next===null)return out;after=page.next}}
- const before=new Map<string,{jobs:RunJob[];waits:unknown}>()
- for(const run of touched)before.set(run,{jobs:await allJobs(run),waits:await store.exportWaits(run)})
- await restart('job.restart.instance')
- for(const [run,held] of before){
-  for(const job of held.jobs){
-   const after=await store.readJob(run,job.job)
-   check('job.restart.job',after!==undefined)
-   check('job.restart.contradiction',same(after?.contradictions,job.contradictions))
-   check('job.restart.record',same(after,job))
+ const restartWhole=async()=>{
+  const before=new Map<string,{jobs:RunJob[];waits:unknown}>()
+  for(const run of touched)before.set(run,{jobs:await allJobs(run),waits:await store.exportWaits(run)})
+  await restart('job.restart.instance')
+  for(const [run,held] of before){
+   for(const job of held.jobs){
+    const after=await store.readJob(run,job.job)
+    check('job.restart.job',after!==undefined)
+    check('job.restart.contradiction',same(after?.contradictions,job.contradictions))
+    check('job.restart.record',same(after,job))
+   }
+   check('job.restart.wait',same(await store.exportWaits(run),held.waits))
   }
-  check('job.restart.wait',same(await store.exportWaits(run),held.waits))
  }
+ await restartWhole()
  check('job.restart.contradiction',same((await store.readJob('run-d',closing.job))?.contradictions,twice.contradictions))
  const r=await open('run-r')
  await refuses('job.restart.key',()=>store.commitFenced(claim('run-r',r.revision,'op-after',KEYS[0]),r.fence),'key-reused')
@@ -260,6 +268,14 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  at+=MINUTE
  await store.completeJob(complete('run-deadline',dated.job,keyFor(133)))
  check('job.wake.deadline',(await readWait('run-deadline')).state==='parked')
+ // A completion wakes the wait on its own job, not the run's parked wait whichever job it is for.
+ const two=await open('run-two')
+ const one=await register('run-two','op-1',keyFor(135),two.fence,two.revision)
+ const another=await register('run-two','op-2',keyFor(136),two.fence,one.revision)
+ await store.answerJob(answerOf('run-two',one.job),two.fence);await store.answerJob(answerOf('run-two',another.job),two.fence)
+ await store.parkWait(await parkOf('run-two',one.job,keyFor(137)),two.fence)
+ await store.completeJob(complete('run-two',another.job,keyFor(136)))
+ check('job.wake.other',(await readWait('run-two')).state==='parked')
  // The run's limit: its sixty-fifth job is refused, with its claim.
  const k=await open('run-k')
  let moving=k.revision
@@ -280,6 +296,24 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
   const exported=(await store.exportJobs(run)).jobs
   check('job.export.reads',same(exported,await allJobs(run)))
  }
+ // One more restart, with waits woken, resumed and timed out by now: all read as they were, and every key and commit id holds.
+ const timedLast=await open('run-timed')
+ const lastJob=await register('run-timed','op-1',keyFor(140),timedLast.fence,timedLast.revision)
+ await store.answerJob(answerOf('run-timed',lastJob.job),timedLast.fence)
+ await store.parkWait(await parkOf('run-timed',lastJob.job,keyFor(141),{timeoutAt:iso(at+MINUTE)}),timedLast.fence)
+ at+=MINUTE
+ await store.wakeWait({version:1,resource:'run-timed',wait:'wait-1',evidence:'timeout-1',kind:'timeout',key:keyFor(141)})
+ check('job.timeout.state',(await readWait('run-timed')).state==='timed-out')
+ const again=await open('run-after')
+ const kept=await register('run-after','op-1',keyFor(142),again.fence,again.revision)
+ await store.answerJob(answerOf('run-after',kept.job),again.fence)
+ await restartWhole()
+ const headAfter=(await store.load('run-after'))!.revision
+ await refuses('job.restart.commit',()=>store.commitFenced(claim('run-after',again.revision,'op-other',keyFor(143),'run-after-op-1'),again.fence),'')
+ check('job.restart.commit',(await store.readJob('run-after',jobIdentity('run-after','op-other')))===undefined&&(await store.load('run-after'))?.revision===headAfter)
+ await refuses('job.restart.wakekey',()=>store.commitFenced(claim('run-after',headAfter,'op-wake',keyFor(141)),again.fence),'key-reused')
+ await refuses('job.restart.jobkey',async()=>store.parkWait(await parkOf('run-after',kept.job,keyFor(142)),again.fence),'key-reused')
+ await unchanged('run-after',kept.job,'job.restart.auth',()=>store.completeJob(complete('run-after',kept.job,WRONG)),'unauthenticated')
 }
 /** Sixty-five keys, each a fresh printable secret with at least sixteen distinct characters. */
 const keyFor=(n:number)=>`kit.limit.${String(n).padStart(3,'0')}.Q7z2Xm9LpV4cR8tNb3Yh6Df1`
