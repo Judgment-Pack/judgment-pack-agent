@@ -138,6 +138,8 @@ describe('the decision over two requests that read alike (#275)', () => {
       expect(report.checkpointVersion).toBe((formats.items[at] as { version: number }).version)
       expect('principal' in report).toBe(delegated)
       expect(() => readRunReport(report)).not.toThrow()
+      // A principal is exactly where the version holds one.
+      expect(() => readRunReport({ ...report, checkpointVersion: delegated ? 5 : 6 })).toThrow()
     }
   })
 

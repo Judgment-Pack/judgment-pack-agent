@@ -538,6 +538,16 @@ func TestAKeptTextsCheckpointIsReported(t *testing.T) {
 		if _, err = ReadRunReport(report); err != nil {
 			t.Fatal(err)
 		}
+		// A principal is exactly where the version holds one.
+		other := report.Clone()
+		if want {
+			other.Set("checkpointVersion", Number(5))
+		} else {
+			other.Set("checkpointVersion", Number(6))
+		}
+		if _, err = ReadRunReport(other); err == nil {
+			t.Fatalf("a report that does not hold what checkpoint %v holds reads", other.Get("checkpointVersion").Num())
+		}
 	}
 }
 
