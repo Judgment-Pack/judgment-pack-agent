@@ -1,4 +1,4 @@
-package delegate_test
+package enrollmenttests
 
 // #289: a run under a host that enrolls its contextual offers (adapter.Run.EnrollContext). Every open of the run's context
 // on one gate frames what its tools declare with the marker that gate holds, so the gate sees the bytes it enrolled and
@@ -119,12 +119,14 @@ func finishedWithDone(events []contract.RunEvent) bool {
 }
 
 func TestAFirstRunUnderEnrollmentGoesOnPastItsChild(t *testing.T) {
+	t.Parallel()
 	for _, delegated := range []bool{false, true} {
 		name := "undelegated"
 		if delegated {
 			name = "delegated"
 		}
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newResumeFixture(t)
 			e := newEnrollingHost(f)
 			var events []contract.RunEvent
@@ -148,6 +150,7 @@ func TestAFirstRunUnderEnrollmentGoesOnPastItsChild(t *testing.T) {
 // The package narrows what a later parent invocation is offered: the batches spent, delegate_tasks goes. Narrowing is not a
 // changed description, and the gate takes it, while a host's own declaration is still never dropped.
 func TestAParentInvocationThatSpentItsBatchesIsNotRefused(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	var events []contract.RunEvent
@@ -211,6 +214,7 @@ var resumeShapes = []struct {
 }{{"plain", false, false}, {"task steps", true, false}, {"delegated", false, true}}
 
 func TestAResumeUnderEnrollmentIsNotRefused(t *testing.T) {
+	t.Parallel()
 	for _, shape := range resumeShapes {
 		for _, state := range []string{"released", "children"} {
 			for _, kept := range []bool{true, false} {
@@ -219,6 +223,7 @@ func TestAResumeUnderEnrollmentIsNotRefused(t *testing.T) {
 					name = shape.name + "/" + state + "/the same gate"
 				}
 				t.Run(name, func(t *testing.T) {
+					t.Parallel()
 					f := newResumeFixture(t)
 					e := newEnrollingHost(f)
 					memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
@@ -284,6 +289,7 @@ func guardrailCount(events []contract.RunEvent) int {
 // which has no reopened parent. A new gate holds nothing to compare. Under the approved digest the source is withheld, and
 // the run goes on without it and with one guardrail, on any gate: the gate is not what stops it.
 func TestAChangedDescriptionBeforeAResume(t *testing.T) {
+	t.Parallel()
 	for _, shape := range resumeShapes {
 		for _, state := range []string{"released", "children"} {
 			const first = 1 // the restored batch's child, where nothing stopped it
@@ -300,6 +306,7 @@ func TestAChangedDescriptionBeforeAResume(t *testing.T) {
 				{"under the approved digest, a new gate", false, false, false, 0, -1, 1},
 			} {
 				t.Run(shape.name+"/"+state+"/"+row.name, func(t *testing.T) {
+					t.Parallel()
 					f := newResumeFixture(t)
 					e := newEnrollingHost(f)
 					memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
@@ -339,6 +346,7 @@ func TestAChangedDescriptionBeforeAResume(t *testing.T) {
 // A change that happens during a batch cannot be refused before what the batch already dispatched: enrollment precedes
 // each child's dispatch, and the next parent invocation is where the gate first sees the new text. It is refused there.
 func TestAChangeDuringABatchIsRefusedAtTheNextParentInvocation(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	var events []contract.RunEvent
@@ -367,6 +375,7 @@ func TestAChangeDuringABatchIsRefusedAtTheNextParentInvocation(t *testing.T) {
 // A result is where a source could use what it learned, so the hold stops at what enrollment compares: each open's results
 // keep their own marker, and the offers keep the gate's.
 func TestUnderEnrollmentOnlyTheOffersHoldTheMarker(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	var events []contract.RunEvent
@@ -418,6 +427,7 @@ func TestUnderEnrollmentOnlyTheOffersHoldTheMarker(t *testing.T) {
 
 // What an approval carries is what the tool list was framed with (ADR-0008), also when this open's results have another.
 func TestAnApprovalOnALaterOpenCarriesTheOffersMarker(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
@@ -468,6 +478,7 @@ var framedMarker = regexp.MustCompile(`^BEGIN RETRIEVED DATA ([0-9a-f]{32}) from
 
 // The marker is the gate's only under enrollment. A host with no EnrollContext draws one per open, as it always did.
 func TestAHostThatDoesNotEnrollDrawsAMarkerPerOpen(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	markers := []string{}
 	var events []contract.RunEvent
@@ -512,6 +523,7 @@ func TestAHostThatDoesNotEnrollDrawsAMarkerPerOpen(t *testing.T) {
 // A tool's text cannot close its own quarantine by knowing the marker: under a held marker its occurrences are removed
 // from the description, whatever the source wrote, and the block has one close, the package's.
 func TestASourcesTextCannotCloseItsDescriptionUnderAHeldMarker(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	held := strings.Repeat("c", 32)
@@ -556,6 +568,7 @@ func TestASourcesTextCannotCloseItsDescriptionUnderAHeldMarker(t *testing.T) {
 
 // A sub-agent's purpose is framed into delegate_tasks' own description, so it is offered text and holds the gate's marker.
 func TestSubagentLinesUnderEnrollment(t *testing.T) {
+	t.Parallel()
 	f := newResumeFixture(t)
 	e := newEnrollingHost(f)
 	var events []contract.RunEvent

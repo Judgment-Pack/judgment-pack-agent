@@ -87,10 +87,10 @@ GO_MODULE = 'github.com/Judgment-Pack/judgment-pack-agent/go'
 
 
 def packages_under_the_race_patterns():
-    """What `go list ./context/... ./adapter/...` names, by Go's own rules, from the tree: each directory
-    holding a Go file, leaving out testdata and directories starting with a dot or an underscore."""
+    """What `go list ./context/... ./adapter/... ./gate/...` names, by Go's own rules, from the tree: each
+    directory holding a Go file, leaving out testdata and directories starting with a dot or an underscore."""
     found = []
-    for top in ('context', 'adapter'):
+    for top in ('context', 'adapter', 'gate'):
         for directory, children, files in os.walk(ROOT / 'go' / top):
             children[:] = [name for name in children if name != 'testdata' and name[0] not in '._']
             if any(name.endswith('.go') and name[0] not in '._' for name in files):
@@ -590,11 +590,12 @@ class Workflows(unittest.TestCase):
         return parts
 
     def test_the_two_race_steps_together_test_every_package_once(self):
-        """Together they run what `go test ./context/... ./adapter/...` ran, over this tree: no package
-        left out, none twice, and neither step empty."""
+        """Together they run what `go test ./context/... ./adapter/...` ran and `./gate`, over this tree:
+        no package left out, none twice, and neither step empty."""
         every = packages_under_the_race_patterns()
         self.assertIn(GO_MODULE + '/context', every)
         self.assertIn(GO_MODULE + '/adapter', every)
+        self.assertIn(GO_MODULE + '/gate', every)
         parts = self.race_parts(every)
         self.assertTrue(all(parts.values()))
         self.assertEqual(sorted(sum(parts.values(), [])), sorted(every))
