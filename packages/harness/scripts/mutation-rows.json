@@ -9020,11 +9020,11 @@
   "replace": "",
   "tests": [
     "storage/resume.test.ts",
-    "storage/waitConformance.test.ts"
+    "storage/waitReview.test.ts"
   ],
   "status": "caught",
   "origin": "agent#225",
-  "note": "#285: resume.test.ts does not notice it; storage/waitConformance.test.ts does, so the row names that file. Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
+  "note": "#285: resume.test.ts does not notice it; storage/waitReview.test.ts > a settled call is never ended by it does, so the row names that file. Go twin (by hand): the same break in go/context/run_wait.go; caught at ^TestResumeARunLimitSetByAParkBoundsTheClaim$."
 },
 {
   "name": "deadline D19 a question its deadline ends keeps no resolution",
