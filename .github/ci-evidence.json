@@ -214,8 +214,8 @@
     "mutation": {
       "path": ".github/workflows/mutation.yml",
       "name": "Mutation check",
-      "events": ["push", "workflow_dispatch"],
-      "skipped_jobs": ["rows of the files this pull request changes, and a sample"],
+      "events": ["workflow_dispatch"],
+      "skipped_jobs": ["rows of the files this pull request changes, and a sample", "report a failed nightly table"],
       "jobs": {
         "full-1": {"name": "every row (shard 1 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},
         "full-2": {"name": "every row (shard 2 of 10)", "job_id": "full", "labels": ["ubuntu-latest"], "profile": "mutation", "checks": []},

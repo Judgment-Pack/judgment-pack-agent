@@ -193,7 +193,35 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/dev/release_evidence.py verify --output "${{ runner.temp }}/release-evidence.json"
-      # The decision record, reuse or refusal, is also in the log of the step above.
+      # The gate's refusal says what is wrong; this says what to do about it, for the refusals a release
+      # meets in the ordinary way since the full mutation table stopped running on a push (#299).
+      - name: Say what to do about a refusal
+        if: ${{ failure() && steps.gate.outcome == 'failure' }}
+        env:
+          RECORD: ${{ runner.temp }}/release-evidence.json
+        run: |
+          python3 -I - <<'PYCURE'
+          import json, os
+          refusal = json.load(open(os.environ['RECORD'], encoding='utf-8'))['refusal']
+          code, detail = refusal['code'], refusal['detail'] or ''
+          repo = os.environ['GITHUB_REPOSITORY']
+          then = "When it has passed, re-run this run's failed jobs (docs/ci-evidence.md#the-fresh-route)."
+          if code == 'run-missing' and 'mutation.yml' in detail:
+              print("::error::This commit has no full mutation table. A release takes a dispatch run at the exact "
+                    "commit, and a nightly run is not evidence. While main names this commit, run "
+                    "gh workflow run mutation.yml --repo %s --ref main. %s If main has moved on, no dispatch "
+                    "reaches this commit: release a new version from main (docs/releasing.md)." % (repo, then))
+          elif code == 'run-unfinished':
+              print('::error::A run at this commit has not finished, perhaps the nightly table. Wait for it, '
+                    "then re-run this run's failed jobs (docs/ci-evidence.md#the-fresh-route).")
+          elif code == 'run-newer-failed':
+              print('::error::A run at this commit started after the evidence and did not pass. Read it. If the '
+                    'fault is real, fix it on main and release a new version. If not, re-run its failed jobs, or '
+                    're-run all jobs of the evidence run with gh run rerun <run id> --repo %s. %s' % (repo, then))
+          else:
+              print('::error::See docs/ci-evidence.md#the-fresh-route for what to do about %s.' % code)
+          PYCURE
+      # The decision record, reuse or refusal, is also in the log of the gate's step.
       - name: Keep the decision record
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
