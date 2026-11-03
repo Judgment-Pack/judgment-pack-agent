@@ -14760,7 +14760,7 @@
   {
    "name": "job B20 F-10 an abandon on a run never seen takes a lease",
    "file": "storage/run.ts",
-   "find": "  if(!this.runs.has(input.resource)&&!this.leases.read(input.resource)&&!this.waits.export(input.resource).waits.length&&!this.jobs.export(input.resource).jobs.length)return {jobs:[]}\n",
+   "find": "  if(!this.runs.has(input.resource)&&!this.leases.read(input.resource)&&!this.waits.export(input.resource).waits.length&&!this.jobs.export(input.resource).jobs.length&&!this.goals.read(input.resource))return {jobs:[]}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts",
@@ -14768,7 +14768,7 @@
    ],
    "status": "caught",
    "origin": "agent#303",
-   "note": "#303/#310; repointed in #316's review round to the widened condition. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.unknown); it was caught before at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
+   "note": "#303/#310; repointed in #316's review round and again in #325 to the widened condition. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.unknown); it was caught before at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
   },
   {
    "name": "job BK1 F-2b the kit takes another handle on a cancel",
@@ -15034,6 +15034,174 @@
    "status": "caught",
    "origin": "agent#303",
    "note": "#316's review round. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job AB11 #325 an abandon sends from its store's answer unchecked",
+   "file": "storage/job.ts",
+   "find": "   if(answered.resource!==input.resource||job.resource!==input.resource||job.job!==answered.job||answered.source!==job.source||answered.tool!==job.tool||answered.handle!==undefined&&(answered.handle!==job.handle||answered.handleDigested!==job.handleDigested))return 'invalid'\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325; repointed in #326's review round to the per-job decision from the record. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB12 #325 an abandon sends a handle the record does not hold",
+   "file": "storage/job.ts",
+   "find": "answered.handle!==job.handle||",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325; repointed in #326's review round to the per-job decision from the record. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB13 #325 an abandon sends under a marker the record does not hold",
+   "file": "storage/job.ts",
+   "find": "||answered.handleDigested!==job.handleDigested",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325; repointed in #326's review round to the per-job decision from the record. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB14 #325 an abandon sends to a source the record does not name",
+   "file": "storage/job.ts",
+   "find": "||answered.source!==job.source",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325; repointed in #326's review round to the per-job decision from the record. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB15 #325 an abandon sends for a tool the record does not name",
+   "file": "storage/job.ts",
+   "find": "||answered.tool!==job.tool",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325; repointed in #326's review round to the per-job decision from the record. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job BK22 #325 the kit's abandoned run has no marked handle",
+   "file": "storage/jobConformance.ts",
+   "find": "await store.answerJob({...answerOf('run-abandon',abSecond.job,`sha256:${'e'.repeat(64)}`),handleDigested:true},ab.fence)",
+   "replace": "await store.answerJob(answerOf('run-abandon',abSecond.job,'kit-handle-4'),ab.fence)",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job B23 #325 LOW-6 an abandon takes a goal's unleased run for one never seen",
+   "file": "storage/run.ts",
+   "find": "&&!this.goals.read(input.resource))return {jobs:[]}",
+   "replace": ")return {jobs:[]}",
+   "tests": [
+    "storage/goalJobs.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#325. Go twin (by hand, in run_job.go): caught at TestGoalAnAbandonOnARunNoWorkerLeasedTakesTheLease."
+  },
+  {
+   "name": "job AB16 #326 an abandon sends from another job's record",
+   "file": "storage/job.ts",
+   "find": "||job.job!==answered.job",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB17 #326 one job the record does not bear out refuses the whole abandon",
+   "file": "storage/job.ts",
+   "find": "handleDigested!==job.handleDigested))return 'invalid'\n",
+   "replace": "handleDigested!==job.handleDigested))return invalid()\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB18 #326 an abandon reads a late start as its answer says",
+   "file": "storage/job.ts",
+   "find": "   if(job.state==='unproven')return 'no-handle'\n",
+   "replace": "   if(answered.state==='unproven')return 'no-handle'\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonSendsAStartThatAnsweredAfterItsTransaction."
+  },
+  {
+   "name": "job AB19 #326 LOW-1 an abandon sends to a settled job its answer calls started",
+   "file": "storage/job.ts",
+   "find": "   if(job.state!=='started')return job.contradictions?'contradicted':'settled'\n",
+   "replace": "   if(answered.state!=='started')return job.contradictions?'contradicted':'settled'\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonDecidesEachJobFromItsRecord."
+  },
+  {
+   "name": "job AB20 #326 a late start is sent with no cancel asked",
+   "file": "storage/job.ts",
+   "find": "   if(!job.cancel){\n    try{\n     const asked=readRunJob(structuredClone(await port.requestJobCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation,command:input.command},fence!,input.signal)))\n     if(asked.resource!==input.resource||asked.job!==job.job||asked.handle!==job.handle||asked.handleDigested!==job.handleDigested||asked.source!==job.source||asked.tool!==job.tool)return 'invalid'\n    }catch(error){return error instanceof JobRefused&&error.reason==='job-settled'?'settled':'failed'}\n   }\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonSendsAStartThatAnsweredAfterItsTransaction."
+  },
+  {
+   "name": "job AB21 #326 a late start's asked cancel is not held to its record",
+   "file": "storage/job.ts",
+   "find": "     if(asked.resource!==input.resource||asked.job!==job.job||asked.handle!==job.handle||asked.handleDigested!==job.handleDigested||asked.source!==job.source||asked.tool!==job.tool)return 'invalid'\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_job.go): caught at TestAnAbandonSendsNothingToALateStartWhoseAskIsNotItsRecord."
+  },
+  {
+   "name": "goal GK1 #326 the goal kit leaves out an objective's unleased run",
+   "file": "storage/goalConformance.ts",
+   "find": " // #325 LOW-6: an objective's run is a run seen before any commit or lease. Its abandon takes the lease, and a worker after it is\n // refused until that lease lapses.\n const uCreated=await answers('goal.abandon.unleased',()=>send(command('run-u','create',null,{objective:'objective-u'})))\n const uAbandon=command('run-u','abandon',uCreated.goal.revision)\n await answers('goal.abandon.unleased',()=>send(uAbandon))\n const uTaken=await answers('goal.abandon.unleased',()=>store.abandonJobs({version:1,resource:'run-u',command:uAbandon.command,durationMs:HOUR}))\n check('goal.abandon.unleased',uTaken.lease?.owner===JOB_ABANDON_OWNER&&uTaken.jobs.length===0&&(await store.readLease('run-u'))?.owner===JOB_ABANDON_OWNER)\n await refuses('goal.abandon.unleased',()=>store.acquireLease({resource:'run-u',owner:'worker-b',expectedRevision:null,durationMs:HOUR}),'held')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#326's review round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
   },
   {
    "name": "job B21 #314 the history observation reader reads members of what is no object",
@@ -16102,14 +16270,14 @@
   {
    "name": "goal J5 #321's review: the goal record drifts one delivery from the job's",
    "file": "storage/goal.ts",
-   "find": "'settled','contradicted','acknowledged']",
-   "replace": "'settled','contradiction' as JobDelivery,'acknowledged']",
+   "find": "'settled','contradicted','acknowledged','invalid']",
+   "replace": "'settled','contradiction' as JobDelivery,'acknowledged','invalid']",
    "tests": [
     "storage/goalRecords.test.ts"
    ],
    "status": "caught",
    "origin": "agent#318",
-   "note": "Merging main into #316 (#321's review): the goal's copy of the deliveries is tied to the job's JobDelivery and to the schema. Go twin (by hand, in run_goal.go): caught at TestGoalDeliveriesAreTheAbandonsOwn, which reads AbandonJobs' own deliveries."
+   "note": "Merging main into #316 (#321's review): the goal's copy of the deliveries is tied to the job's JobDelivery and to the schema; repointed in #326's review round for invalid. Go twin (by hand, in run_goal.go): caught at TestGoalDeliveriesAreTheAbandonsOwn, which reads the abandon's own deliveries."
   },
   {
    "name": "goal JK1 #318 M-4 the kit takes a create over an unfinished abandon",

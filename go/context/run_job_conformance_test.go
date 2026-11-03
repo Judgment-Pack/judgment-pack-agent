@@ -863,6 +863,13 @@ func jobCancelStores() map[string]struct {
 			}
 			return s.durableJobStore.AbandonJobs(ctx, input)
 		}}},
+		"#325 K3 an abandon's answer drops the marker the record keeps": {"job.abandon.jobs", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for i := range taken.Jobs {
+				taken.Jobs[i].HandleDigested = nil
+			}
+			return taken, err
+		}}},
 		"F-6 C21 an abandon asks under another operation": {"job.abandon.operation", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
 			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
 			for _, row := range s.jobs.rows[input.Resource] {

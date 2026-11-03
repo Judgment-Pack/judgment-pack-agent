@@ -40,7 +40,7 @@ const LEFT_WAIT_STATES:readonly WaitState[]=['parked','woken','timed-out']
 const JOB_STATES:readonly JobState[]=['unproven','started','not-started','completed']
 /** A job a goal lists is one that did not succeed: its outcome is never succeeded. */
 const JOB_OUTCOMES:readonly JobOutcome[]=['failed','cancelled','unknown']
-const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-admitted','failed','undelivered','no-handle','settled','contradicted','acknowledged']
+const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-admitted','failed','undelivered','no-handle','settled','contradicted','acknowledged','invalid']
 export interface GoalStamp {command:string;actor:string;at:string}
 /** A required step: its plan step id and its origin's index in the accepted Plan, which survives a reorder. */
 export interface GoalStep {step:string;index:number}

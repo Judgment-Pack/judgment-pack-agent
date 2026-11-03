@@ -237,7 +237,9 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const abDone=await register('run-abandon','op-3',keyFor(155),ab.fence,abUnproven.revision)
  const abSecond=await register('run-abandon','op-4',keyFor(167),ab.fence,abDone.revision)
  await store.answerJob(answerOf('run-abandon',abStarted.job),ab.fence)
- await store.answerJob(answerOf('run-abandon',abSecond.job,'kit-handle-4'),ab.fence)
+ // #325: one started job's handle is a marked digest, so an abandon's answer that drops the marker is not the record
+ // (job.abandon.jobs).
+ await store.answerJob({...answerOf('run-abandon',abSecond.job,`sha256:${'e'.repeat(64)}`),handleDigested:true},ab.fence)
  await store.answerJob(answerOf('run-abandon',abDone.job),ab.fence)
  await store.completeJob(complete('run-abandon',abDone.job,keyFor(155)))
  const beforeAbandon=(await store.load('run-abandon'))!.revision

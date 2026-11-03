@@ -624,10 +624,17 @@ func (k *jobKit) properties() {
 	abUnproven, abRevision := k.register("run-abandon", "op-2", jobKitKey(154), jobKitRun{revision: abRevision, fence: ab.fence})
 	abDone, abRevision := k.register("run-abandon", "op-3", jobKitKey(155), jobKitRun{revision: abRevision, fence: ab.fence})
 	abSecond, abRevision := k.register("run-abandon", "op-4", jobKitKey(167), jobKitRun{revision: abRevision, fence: ab.fence})
-	for _, held := range [][2]string{{abStarted, "kit-handle"}, {abSecond, "kit-handle-4"}, {abDone, "kit-handle"}} {
+	for _, held := range [][2]string{{abStarted, "kit-handle"}, {abDone, "kit-handle"}} {
 		if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon", held[0], held[1]), ab.fence); err != nil {
 			panic(err)
 		}
+	}
+	// #325: one started job's handle is a marked digest, so an abandon's answer that drops the marker is not the record
+	// (job.abandon.jobs).
+	abSecondAnswer, abSecondMarked := jobKitAnswer("run-abandon", abSecond, "sha256:"+strings.Repeat("e", 64)), true
+	abSecondAnswer.HandleDigested = &abSecondMarked
+	if _, err = store().AnswerJob(ctx, abSecondAnswer, ab.fence); err != nil {
+		panic(err)
 	}
 	if _, err = store().CompleteJob(ctx, jobKitComplete("run-abandon", abDone, jobKitKey(155), "done-1", "succeeded")); err != nil {
 		panic(err)

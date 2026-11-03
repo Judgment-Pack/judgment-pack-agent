@@ -69,6 +69,14 @@ type goalFault struct {
 	commit  func(s *goalFault, ctx context.Context, input RunCommit) (RunReceipt, error)
 	fenced  func(s *goalFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error)
 	history func(s *goalFault, ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error)
+	abandon func(s *goalFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error)
+}
+
+func (s *goalFault) AbandonJobs(ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+	if s.abandon != nil {
+		return s.abandon(s, ctx, input)
+	}
+	return s.durableGoalStore.AbandonJobs(ctx, input)
 }
 
 func (s *goalFault) CommitHistory(ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error) {
@@ -242,6 +250,17 @@ var goalFaults = map[string]func(*goalFault){
 			input.Read = &read
 		}
 	}),
+	// #325 LOW-6: an abandon that counts only a commit, a lease, a wait or a job as a run seen.
+	"goal.abandon.unleased": func(f *goalFault) {
+		f.abandon = func(s *goalFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			head, err := s.Load(ctx, input.Resource)
+			lease, _ := s.ReadLease(ctx, input.Resource)
+			if err == nil && head == nil && lease == nil {
+				return JobAbandonTaken{Jobs: []RunJob{}}, nil
+			}
+			return s.durableGoalStore.AbandonJobs(ctx, input)
+		}
+	},
 	"goal.repeat.current": func(f *goalFault) {
 		seen := map[string]GoalAnswer{}
 		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {

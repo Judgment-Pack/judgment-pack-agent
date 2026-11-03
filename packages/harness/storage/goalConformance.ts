@@ -1,7 +1,7 @@
 import {canonicalJSON} from '../context/chat'
 import {StorageConformanceFailure} from './conformance'
 import {GOAL_JOURNAL_LIMIT,GOAL_OBJECTIVE_LIMIT,GoalRefused,type GoalCommand,type GoalFinding,type GoalPlanSteps,type GoalStore,type RunGoal} from './goal'
-import {JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence} from './job'
+import {JOB_ABANDON_OWNER,JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence} from './job'
 import type {JobRunStore} from './jobConformance'
 import {LeaseRefused,fenceOf} from './lease'
 import {pinsDigest,type ResumePins} from './resume'
@@ -316,6 +316,15 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const exhausted=command('run-x','create',xRevision,{objective:'objective-x-last'})
  await journaled('goal.exhausted',exhausted,()=>send(exhausted),'goals-exhausted')
  void p2
+
+ // #325 LOW-6: an objective's run is a run seen before any commit or lease. Its abandon takes the lease, and a worker after it is
+ // refused until that lease lapses.
+ const uCreated=await answers('goal.abandon.unleased',()=>send(command('run-u','create',null,{objective:'objective-u'})))
+ const uAbandon=command('run-u','abandon',uCreated.goal.revision)
+ await answers('goal.abandon.unleased',()=>send(uAbandon))
+ const uTaken=await answers('goal.abandon.unleased',()=>store.abandonJobs({version:1,resource:'run-u',command:uAbandon.command,durationMs:HOUR}))
+ check('goal.abandon.unleased',uTaken.lease?.owner===JOB_ABANDON_OWNER&&uTaken.jobs.length===0&&(await store.readLease('run-u'))?.owner===JOB_ABANDON_OWNER)
+ await refuses('goal.abandon.unleased',()=>store.acquireLease({resource:'run-u',owner:'worker-b',expectedRevision:null,durationMs:HOUR}),'held')
 
  // A restart keeps every record, every disposition and every rule.
  const records:Record<string,RunGoal|undefined>={}

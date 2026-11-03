@@ -6,7 +6,7 @@ import {readExecution} from '../execution/state'
 import {MemoryRunStore,type RunStore} from './run'
 import {ReferenceEffectHost,fenceOf,unattendedRunStore,type LeaseLifetime} from './lease'
 import {checkpointBytesDigest,parkRun,wakeKeyDigest,type WaitLifetime} from './wait'
-import {completeJob,jobKeyDigest,jobStartTool,listJobs,type JobLifetime,type JobStartAnswer} from './job'
+import {JOB_ABANDON_OWNER,completeJob,jobKeyDigest,jobStartTool,listJobs,type JobLifetime,type JobStartAnswer} from './job'
 import {toolListDigest} from '../toolSources'
 import type {GoalCommand,GoalLifetime} from './goal'
 import {abandonGoal,goalCommand,readGoal} from './goalCommands'
@@ -113,6 +113,15 @@ describe('jobs and the abandon at the objective (#230)',()=>{
   const sends=sent.length,leaseNow=await held.store.readLease(RUN),goalNow=(await readGoal(held.store,RUN))!
   await expect(abandonGoal({store:held.store,effectHost:held.host,command:abandonCmd,durationMs:HOUR,cancel})).rejects.toEqual(refusal('revision-changed'))
   expect(sent).toHaveLength(sends);expect(await held.store.readLease(RUN)).toEqual(leaseNow);expect(await readGoal(held.store,RUN)).toEqual(goalNow)
+ })
+ it('#325 LOW-6: a goal\'s run no worker has leased is a run seen: its abandon takes the lease, and a worker after it is refused',async()=>{
+  const store=new DurableGoalStore({now:()=>new Date(T0)}),host=new ReferenceEffectHost(store)
+  const created=await goalCommand({store,command:command('create',null,{objective:'objective-fresh'})})
+  const gone=await abandonGoal({store,effectHost:host,command:command('abandon',created.goal.revision),durationMs:HOUR,cancel:async()=>undefined})
+  expect(gone.goal.objectives.at(-1)).toMatchObject({id:'objective-fresh',state:'abandoned'})
+  expect(gone.fence).toMatchObject({owner:JOB_ABANDON_OWNER,resource:RUN});expect(gone.jobs).toEqual([])
+  expect(await store.readLease(RUN)).toMatchObject({owner:JOB_ABANDON_OWNER,state:'held',epoch:gone.fence!.epoch})
+  await expect(store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR})).rejects.toMatchObject({name:'LeaseRefused',reason:'held'})
  })
  it('M10: a wait parked before the abandon holds the next create until it is resumed or ended',async()=>{
   const held=await withJobs(),revision=held.bound.goal.revision

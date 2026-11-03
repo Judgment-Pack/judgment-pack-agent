@@ -972,3 +972,200 @@ func TestAnAbandonFencesALeasedRunWithNoCommitYet(t *testing.T) {
 		})
 	}
 }
+
+// #325: a run with two started jobs, A under a marked digest and B under a plain handle, or B left in flight.
+type abandonPair struct {
+	mem        *MemoryRunStore
+	fence      LeaseFence
+	a, b       string
+	digest     string
+	keyA, keyB string
+	sent       []JobCancelInput
+}
+
+func newAbandonPair(t *testing.T, completeA, bInFlight bool) *abandonPair {
+	t.Helper()
+	ctx := context.Background()
+	p := &abandonPair{mem: NewMemoryRunStore(MemoryRunStoreOptions{}), a: JobIdentity("run-a", "op-1"), b: JobIdentity("run-a", "op-2"), digest: "sha256:" + strings.Repeat("d", 64), keyA: "kit.job-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", keyB: "kit.job-b.Q7z2Xm9LpV4cR8tNb3Yh6Df1"}
+	store := durableJobStore{p.mem}
+	lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-a", Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.fence = FenceOf(lease)
+	revision := ""
+	for _, job := range [][3]string{{p.a, "op-1", p.keyA}, {p.b, "op-2", p.keyB}} {
+		key, _ := JobKeyDigest(job[2])
+		receipt, err := store.CommitFenced(ctx, RunCommit{RunID: "run-a", ExpectedRevision: revision, CommitID: "c-" + job[1], Checkpoint: []byte(`{}`), Events: [][]byte{}, Job: &JobRegistration{Job: job[0], Operation: job[1], Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, p.fence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision = receipt.Revision
+	}
+	marked := true
+	if _, err = store.AnswerJob(ctx, JobAnswer{Version: 1, Resource: "run-a", Job: p.a, Generation: 1, Answer: "started", Handle: &p.digest, HandleDigested: &marked}, p.fence); err != nil {
+		t.Fatal(err)
+	}
+	// A completed A was asked a cancel first, so only its state tells an abandon not to send it.
+	if completeA {
+		if _, err = store.RequestJobCancel(ctx, JobCancelAsk{Version: JobRecordVersion, Resource: "run-a", Job: p.a, Generation: JobGeneration, By: "tool", Operation: "cancel-a"}, p.fence); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = store.CompleteJob(ctx, JobCompletionEvidence{Version: 1, Resource: "run-a", Job: p.a, Generation: 1, Evidence: "done-1", Outcome: "succeeded", Key: p.keyA}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !bInFlight {
+		p.answerB(t)
+	}
+	return p
+}
+func (p *abandonPair) answerB(t *testing.T) {
+	handle := "kit-handle-b"
+	if _, err := (durableJobStore{p.mem}).AnswerJob(context.Background(), JobAnswer{Version: 1, Resource: "run-a", Job: p.b, Generation: 1, Answer: "started", Handle: &handle}, p.fence); err != nil {
+		t.Fatal(err)
+	}
+}
+func (p *abandonPair) abandon(t *testing.T, store JobRunStore, host EffectHost) JobAbandonAnswer {
+	t.Helper()
+	answer, err := AbandonJobs(context.Background(), store, host, "run-a", "cmd-1", 3600000, func(_ context.Context, input JobCancelInput) error {
+		p.sent = append(p.sent, input)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return answer
+}
+func (p *abandonPair) sentTo(job string) *JobCancelInput {
+	for i := range p.sent {
+		if p.sent[i].Job == job {
+			return &p.sent[i]
+		}
+	}
+	return nil
+}
+
+// #325: an abandon decides each job from its record. One whose answer the record does not bear out is sent nothing,
+// and the others still go.
+func TestAnAbandonDecidesEachJobFromItsRecord(t *testing.T) {
+	for _, fault := range []struct {
+		name      string
+		completeA bool
+		answer    func(*RunJob)
+		read      func(p *abandonPair) (*RunJob, error)
+		delivery  string
+	}{
+		{name: "the record", delivery: "sent"},
+		{name: "drops the marker", answer: func(job *RunJob) { job.HandleDigested = nil }, delivery: "invalid"},
+		{name: "another handle", answer: func(job *RunJob) { other := "sha256:" + strings.Repeat("f", 64); job.Handle = &other }, delivery: "invalid"},
+		{name: "another source", answer: func(job *RunJob) { job.Source = "kit-other-source" }, delivery: "invalid"},
+		{name: "another tool", answer: func(job *RunJob) { job.Tool = "kit-other-tool" }, delivery: "invalid"},
+		// Another job's record, bearing the answer out in all else: only its identity tells it apart.
+		{name: "a record of another job", read: func(p *abandonPair) (*RunJob, error) {
+			other, err := p.mem.ReadJob(context.Background(), "run-a", p.b)
+			if other != nil {
+				marked := true
+				other.Handle, other.HandleDigested = &p.digest, &marked
+			}
+			return other, err
+		}, delivery: "invalid"},
+		{name: "no record", read: func(*abandonPair) (*RunJob, error) { return nil, nil }, delivery: "invalid"},
+		// LOW-1: an answer that calls a completed job started sends it nothing: its record says it has settled.
+		{name: "a completed job called started", completeA: true, answer: func(job *RunJob) { job.State, job.Completion, job.Closed = "started", nil, nil }, delivery: "settled"},
+	} {
+		t.Run(fault.name, func(t *testing.T) {
+			p := newAbandonPair(t, fault.completeA, false)
+			store := &jobFault{durableJobStore: durableJobStore{p.mem}, abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+				taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+				for i := range taken.Jobs {
+					if taken.Jobs[i].Job == p.a && fault.answer != nil {
+						fault.answer(&taken.Jobs[i])
+					}
+				}
+				return taken, err
+			}, read: func(s jobFault, ctx context.Context, resource, job string) (*RunJob, error) {
+				if job == p.a && fault.read != nil {
+					return fault.read(p)
+				}
+				return s.durableJobStore.ReadJob(ctx, resource, job)
+			}}
+			answer := p.abandon(t, store, NewReferenceEffectHost(store))
+			if len(answer.Jobs) != 2 || answer.Jobs[0] != (JobAbandonDelivery{Job: p.a, Delivery: fault.delivery}) || answer.Jobs[1] != (JobAbandonDelivery{Job: p.b, Delivery: "sent"}) {
+				t.Fatal(answer.Jobs)
+			}
+			toB, toA := p.sentTo(p.b), p.sentTo(p.a)
+			if toB == nil || toB.Handle == nil || *toB.Handle != "kit-handle-b" {
+				t.Fatal(p.sent)
+			}
+			if fault.delivery == "sent" {
+				if len(p.sent) != 2 || toA == nil || toA.Handle != nil || toA.HandleDigest == nil || *toA.HandleDigest != p.digest {
+					t.Fatal(p.sent)
+				}
+			} else if len(p.sent) != 1 {
+				t.Fatal(p.sent)
+			}
+		})
+	}
+}
+
+// #325 MEDIUM-1: a start that answers between the store's transaction and the read-back is decided by its record, and
+// its cancel is asked and sent. A retry of the command sends nothing twice.
+func TestAnAbandonSendsAStartThatAnsweredAfterItsTransaction(t *testing.T) {
+	p := newAbandonPair(t, false, true)
+	unproven, raced := "", false
+	store := &jobFault{durableJobStore: durableJobStore{p.mem}, abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+		taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+		if raced {
+			return taken, err
+		}
+		raced = true
+		for _, job := range taken.Jobs {
+			if job.Job == p.b {
+				unproven = job.State
+			}
+		}
+		// A stale worker's start answers under its own fence, as M2 lets it.
+		p.answerB(t)
+		return taken, err
+	}}
+	host := NewReferenceEffectHost(store)
+	answer := p.abandon(t, store, host)
+	if unproven != "unproven" || len(answer.Jobs) != 2 || answer.Jobs[0] != (JobAbandonDelivery{Job: p.a, Delivery: "sent"}) || answer.Jobs[1] != (JobAbandonDelivery{Job: p.b, Delivery: "sent"}) {
+		t.Fatal(unproven, answer.Jobs)
+	}
+	toB := p.sentTo(p.b)
+	if len(p.sent) != 2 || toB == nil || toB.Handle == nil || *toB.Handle != "kit-handle-b" || toB.Operation != JobCancelOperation("cmd-1", p.b) {
+		t.Fatal(p.sent)
+	}
+	held, err := p.mem.ReadJob(context.Background(), "run-a", p.b)
+	if err != nil || held == nil || held.Cancel == nil || held.Cancel.Requested.By != "command" || held.Cancel.Requested.Command == nil || *held.Cancel.Requested.Command != "cmd-1" || held.Cancel.Requested.Owner == nil || *held.Cancel.Requested.Owner != JobAbandonOwner || held.Cancel.Requested.Epoch == nil || *held.Cancel.Requested.Epoch != answer.Fence.Epoch || held.Cancel.Requested.Operation != JobCancelOperation("cmd-1", p.b) {
+		t.Fatal(held, err)
+	}
+	again := p.abandon(t, store, host)
+	if len(p.sent) != 2 || len(again.Jobs) != 2 || again.Jobs[0].Delivery != "already-admitted" || again.Jobs[1].Delivery != "already-admitted" {
+		t.Fatal(again.Jobs, p.sent)
+	}
+}
+
+// #325 MEDIUM-1: a late start whose asked cancel the store answers with another handle is sent nothing; the others
+// still go.
+func TestAnAbandonSendsNothingToALateStartWhoseAskIsNotItsRecord(t *testing.T) {
+	p := newAbandonPair(t, false, true)
+	store := &jobFault{durableJobStore: durableJobStore{p.mem}, abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+		taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+		p.answerB(t)
+		return taken, err
+	}, ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+		asked, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		if input.Job == p.b {
+			other := "kit-other-handle"
+			asked.Handle = &other
+		}
+		return asked, err
+	}}
+	answer := p.abandon(t, store, NewReferenceEffectHost(store))
+	if len(answer.Jobs) != 2 || answer.Jobs[0] != (JobAbandonDelivery{Job: p.a, Delivery: "sent"}) || answer.Jobs[1] != (JobAbandonDelivery{Job: p.b, Delivery: "invalid"}) || len(p.sent) != 1 || p.sentTo(p.a) == nil {
+		t.Fatal(answer.Jobs, p.sent)
+	}
+}

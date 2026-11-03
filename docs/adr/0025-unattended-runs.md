@@ -603,8 +603,15 @@ The rows of cancel tools are not evidence, and no child is offered one: they car
 **Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
 transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
 holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
-same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen (no commit, lease, wait or job)
-it takes no lease; a worker's lease before its first commit is a run seen, so its first claim gets `stale-epoch` too. Cancels go
+same fence serves what follows. What the store refuses (an invalid command, F-9) it refuses before it moves anything, and on a run the
+store has never seen (no commit, lease, wait, job or goal record) it takes no lease; a worker's lease before its first commit is a run
+seen, so its first claim gets `stale-epoch` too, and so is a goal's run no worker has leased yet (#325). Whether a cancel is sent, and what
+it carries, are the record's, as for a tool's cancel (F-2b): the package reads each job back after the store's transaction and decides it
+from that record, never from the answer alone (#325). A job the record does not bear out (none held, another job's, or an answer whose
+source, tool, or handle and marker are not the record's) is answered `invalid` and sent nothing; the others still go. A start that
+answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses the abandon whole only
+where it cannot read the store's answer (a malformed job, or a lease that is not the abandon's): the lease is then taken and nothing is
+sent, and a retry of the same command finishes it. Cancels go
 through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`, admitted under the tool `job-abandon` and
 the job's source, and no run commit, so a retry of the command is admitted once by the same effect host; `cancel` gets that operation. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
@@ -612,7 +619,7 @@ the lease. An `unproven` job has no handle and is reported `no-handle`. A job th
 or on a closed run, no lease can be granted: `requested` is recorded `undelivered` unless a tool asked first (that request stands), nothing
 is sent, and the answer says so. A parked run's wait
 stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-admitted`, `failed`, `undelivered`,
-`no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
+`no-handle`, `settled`, `contradicted`, `acknowledged`, `invalid`), and none of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
@@ -620,7 +627,8 @@ must be idempotent by `operation`. `already-admitted` means the effect host has 
 delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
-approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
+approved; and a start that answers after the abandon read its record can become `started` with no cancel asked, which only a retry of
+the abandon sends.
 
 **The objective (#230, built).** The record is `contract/schemas/run-goal.json` (version 1, at no tag) with handwritten vectors
 in `contract/vectors/goal/`; TypeScript is `packages/harness/storage/goal.ts` with `goalCommands.ts`, Go `go/context/run_goal.go`

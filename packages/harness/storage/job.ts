@@ -604,7 +604,7 @@ export const JOB_ABANDON_OWNER='job-abandon'
 /** A stable identity for an abandon's cancel of a job: a host's retry of the command is the same operation, and the effect host
  * admits it once. */
 export const jobCancelOperation=(command:string,job:string)=>`sha256:${sha256(canonicalJSON({command:id(command),job:digest(job),generation:JOB_GENERATION}))}`
-export type JobDelivery='sent'|'already-admitted'|'failed'|'undelivered'|'no-handle'|'settled'|'contradicted'|'acknowledged'
+export type JobDelivery='sent'|'already-admitted'|'failed'|'undelivered'|'no-handle'|'settled'|'contradicted'|'acknowledged'|'invalid'
 export interface JobAbandonAnswer {fence?:LeaseFence;jobs:{job:string;delivery:JobDelivery}[]}
 /** ADR-0025 decision 8: a host's command to stop what the run owns. The command stands for the person's approval, the one stated
  * exception to decision 7's approval boundary, so a source's policy is not asked. It takes the lease under a reserved owner at a new
@@ -617,10 +617,18 @@ export async function abandonJobs(input:{store:RunStore;effectHost:EffectHost;re
  const fence=taken.lease===undefined?undefined:fenceOf(readRunLease(taken.lease))
  if(fence&&(fence.owner!==JOB_ABANDON_OWNER||fence.resource!==input.resource))throw new LeaseRefused('invalid')
  const view=fence?fencedRunStore(input.store,fence,input.effectHost):undefined,jobs:JobAbandonAnswer['jobs']=[]
+ // #325: whether a cancel is sent, and what it carries, are the record's, read back after the store's transaction, never the
+ // answer's alone (as a tool's cancel is, F-2b). Each job is decided on its own: one whose answer the record does not bear out
+ // is reported `invalid` and sent nothing, and the others still go.
  for(const row of taken.jobs){
-  const job=readRunJob(structuredClone(row))
-  if(job.resource!==input.resource)return invalid()
+  const answered=readRunJob(structuredClone(row))
   const delivery=async():Promise<JobDelivery>=>{
+   let job:RunJob
+   try{const held=await port.readJob(input.resource,answered.job,input.signal);if(held===undefined)return 'invalid';job=readRunJob(structuredClone(held))}
+   catch(error){if(error instanceof JobRefused)return 'invalid';throw error}
+   // The record of this run's job, and an answer that agrees with it: source and tool never move, and a handle, once held, is
+   // the record's with its marker. A start that answered since the transaction holds a handle its answer did not.
+   if(answered.resource!==input.resource||job.resource!==input.resource||job.job!==answered.job||answered.source!==job.source||answered.tool!==job.tool||answered.handle!==undefined&&(answered.handle!==job.handle||answered.handleDigested!==job.handleDigested))return 'invalid'
    if(job.state==='unproven')return 'no-handle'
    // `not-started` is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing to stop.
    if(job.state!=='started')return job.contradictions?'contradicted':'settled'
@@ -628,10 +636,18 @@ export async function abandonJobs(input:{store:RunStore;effectHost:EffectHost;re
    if(!view)return 'undelivered'
    // F-14: admitted as the abandon's, so an effect host's log tells a cancel from its start; F-3: `cancel` gets the identity.
    const operation=jobCancelOperation(input.command,job.job)
+   // A start that answered after the store's transaction has no cancel asked: it is asked now, under the abandon's fence, as
+   // the transaction would have asked it, so what is sent is on the record and can be acknowledged.
+   if(!job.cancel){
+    try{
+     const asked=readRunJob(structuredClone(await port.requestJobCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation,command:input.command},fence!,input.signal)))
+     if(asked.resource!==input.resource||asked.job!==job.job||asked.handle!==job.handle||asked.handleDigested!==job.handleDigested||asked.source!==job.source||asked.tool!==job.tool)return 'invalid'
+    }catch(error){return error instanceof JobRefused&&error.reason==='job-settled'?'settled':'failed'}
+   }
    try{await fencedEffect(view,{run:job.resource,operation,source:job.source,tool:JOB_ABANDON_OWNER,requestDigest:`sha256:${sha256(canonicalJSON({job:job.job,generation:JOB_GENERATION}))}`},()=>input.cancel(jobCancelInput(job,operation,input.signal)),input.signal);return 'sent'}
    catch(error){return error instanceof LeaseRefused&&error.reason==='already-admitted'?'already-admitted':'failed'}
   }
-  jobs.push({job:job.job,delivery:await delivery()})
+  jobs.push({job:answered.job,delivery:await delivery()})
  }
  return {...(fence?{fence}:{}),jobs}
 }

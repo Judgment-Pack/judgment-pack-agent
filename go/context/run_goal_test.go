@@ -294,8 +294,8 @@ func TestGoalTransitionVectors(t *testing.T) {
 
 // #321's review: the goal record keeps its own copy of the deliveries an abandon answers (goalDeliveries). A value the job
 // adds that the copy lacks could never be journaled, and every later create would refuse abandon-unfinished. The values are
-// read from AbandonJobs' own source, every string it assigns to its delivery, and the goal's list, its reader and the
-// schema must hold exactly those.
+// read from the abandon's own source: every string AbandonJobs assigns to its delivery, and every string abandonCancel (its
+// send, #325) returns. The goal's list, its reader and the schema must hold exactly those.
 func TestGoalDeliveriesAreTheAbandonsOwn(t *testing.T) {
 	file, err := goparser.ParseFile(token.NewFileSet(), "run_job.go", nil, 0)
 	if err != nil {
@@ -304,10 +304,20 @@ func TestGoalDeliveriesAreTheAbandonsOwn(t *testing.T) {
 	answered := []string{}
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Recv != nil || fn.Name.Name != "AbandonJobs" {
+		if !ok || fn.Recv != nil || fn.Name.Name != "AbandonJobs" && fn.Name.Name != "abandonCancel" {
 			continue
 		}
 		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			if back, ok := node.(*ast.ReturnStmt); ok && fn.Name.Name == "abandonCancel" && len(back.Results) == 1 {
+				if value, ok := back.Results[0].(*ast.BasicLit); ok && value.Kind == token.STRING {
+					text, err := strconv.Unquote(value.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					answered = append(answered, text)
+				}
+				return true
+			}
 			assign, ok := node.(*ast.AssignStmt)
 			if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
 				return true
@@ -326,7 +336,7 @@ func TestGoalDeliveriesAreTheAbandonsOwn(t *testing.T) {
 	}
 	slices.Sort(answered)
 	answered = slices.Compact(answered)
-	if len(answered) < 8 {
+	if len(answered) < 9 {
 		t.Fatalf("AbandonJobs assigns %q: the scan no longer reads its deliveries", answered)
 	}
 	held := slices.Clone(goalDeliveries)

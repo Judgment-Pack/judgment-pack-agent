@@ -581,6 +581,20 @@ func (k *goalKit) properties() {
 	exhausted := goalKitWith(k.command("run-x", "create", xRevision), func(c *GoalCommand) { c.Objective = goalKitString("objective-x-last") })
 	k.journaled("goal.exhausted", exhausted, func() error { _, err := k.send(exhausted, nil, nil); return err }, "goals-exhausted", "")
 
+	// #325 LOW-6: an objective's run is a run seen before any commit or lease. Its abandon takes the lease, and a worker
+	// after it is refused until that lease lapses.
+	uCreated, err := k.send(goalKitWith(k.command("run-u", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-u") }), nil, nil)
+	k.answers("goal.abandon.unleased", err)
+	uAbandon := k.command("run-u", "abandon", uCreated.Goal.Revision)
+	_, err = k.send(uAbandon, nil, nil)
+	k.answers("goal.abandon.unleased", err)
+	uTaken, err := k.store.AbandonJobs(k.ctx, JobAbandon{Resource: "run-u", Command: uAbandon.Command, DurationMs: goalKitHour})
+	k.answers("goal.abandon.unleased", err)
+	uLease, _ := k.store.ReadLease(k.ctx, "run-u")
+	k.check("goal.abandon.unleased", uTaken.Lease != nil && uTaken.Lease.Owner == JobAbandonOwner && len(uTaken.Jobs) == 0 && uLease != nil && uLease.Owner == JobAbandonOwner)
+	_, err = k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-u", Owner: "worker-b", DurationMs: goalKitHour})
+	k.refuses("goal.abandon.unleased", err, "held")
+
 	// A restart keeps every record, every disposition and every rule.
 	records := map[string]*RunGoal{}
 	for _, run := range []string{"run-p", "run-j", "run-w", "run-q", "run-m", "run-x"} {
