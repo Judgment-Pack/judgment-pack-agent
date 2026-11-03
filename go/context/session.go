@@ -1795,6 +1795,12 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		if session.Context != nil {
 			documents = session.Context.Documents
 		}
+		// #311: a host's document under an id the package keeps for its own would be read as the package's.
+		for _, document := range documents {
+			if PackageDocumentID(document.ID) {
+				return failure.Authored("configuration", "A host document’s id is one the package keeps for what it retains itself. Give the document another id. Nothing was sent.", "context")
+			}
+		}
 		if err := held.Initialize(documents, true); err != nil {
 			return err
 		}
