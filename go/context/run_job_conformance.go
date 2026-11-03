@@ -496,8 +496,15 @@ func (k *jobKit) properties() {
 		_, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), otherCan)
 		return err
 	})
+	// A second job of the run: the answer must be the job asked for.
+	otherCanJob, _ := k.register("run-cancel", "op-2", jobKitKey(159), jobKitRun{revision: k.revision("run-cancel"), fence: can.fence})
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel", otherCanJob, "kit-handle-2"), can.fence); err != nil {
+		panic(err)
+	}
 	asked, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), can.fence)
 	k.answers("job.cancel.records", err)
+	otherAfter := k.job("run-cancel", otherCanJob)
+	k.check("job.cancel.which", asked.Job == canJob && asked.Resource == "run-cancel" && otherAfter != nil && otherAfter.Cancel == nil)
 	k.check("job.cancel.records", asked.State == "started" && asked.Cancel != nil && asked.Cancel.Requested.By == "tool" && asked.Cancel.Requested.Operation == "cancel-1" && asked.Cancel.Requested.Owner != nil && *asked.Cancel.Requested.Owner == "worker-a" && asked.Cancel.Requested.Epoch != nil && *asked.Cancel.Requested.Epoch == can.fence.Epoch && asked.Cancel.Requested.At == k.stamp())
 	askedAgain, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-2"), can.fence)
 	k.answers("job.cancel.first", err)

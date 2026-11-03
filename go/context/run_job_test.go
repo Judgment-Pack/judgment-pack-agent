@@ -333,7 +333,7 @@ func TestJobModelVectors(t *testing.T) {
 	for _, row := range jobVectorRows(t, file["cancelResults"]) {
 		var text string
 		_ = json.Unmarshal(row["text"], &text)
-		result := JobCancelResult(jobOf(row["record"]))
+		result := jobCancelResultOf(jobOf(row["record"]), string(row["sent"]) != "false")
 		got := MustParseJSON(string(result.JSON())).Get("content").Items()[0].Get("text").Str()
 		if got != text || result.Err() != (string(row["isError"]) == "true") {
 			t.Fatalf("%s, want %s", got, text)

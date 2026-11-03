@@ -583,6 +583,15 @@ func jobCancelStores() map[string]struct {
 		}}},
 		"completed": {"job.cancel.settled", takes("completed")},
 		"closed":    {"job.cancel.closed", takes("not-started")},
+		"another job of the run": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Job != input.Job {
+					return cloneRunJob(*row), err
+				}
+			}
+			return job, err
+		}}},
 		"moves the state": {"job.cancel.records", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
 			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
 			job.State = "completed"

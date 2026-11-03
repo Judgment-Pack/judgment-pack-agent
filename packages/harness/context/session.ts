@@ -1039,16 +1039,17 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded
   let started:string|undefined
   let cancelRecord:RunJob|undefined
+  const cancelDispatch=job?.kind==='cancel'?{job:readJobCancelArgument(args),held:(record:RunJob)=>{cancelRecord=record},sent:false}:undefined
   if(job?.kind==='cancel'){
    const refused=await context.cancelRefusal(job,args,signal)
    if(refused!==undefined)throw new JobRefused(refused)
-   tool={...tool,execute:async()=>{if(cancelRecord===undefined)throw new JobCapabilityRefused('store-unsupported');try{await job.cancel(jobCancelInput(cancelRecord,signal))}catch{throw jobCancelUnrecorded()};return undefined as unknown as McpToolResult}}
+   tool={...tool,execute:async()=>{if(cancelRecord===undefined)throw new JobCapabilityRefused('store-unsupported');cancelDispatch!.sent=true;try{await job.cancel(jobCancelInput(cancelRecord,signal))}catch{throw jobCancelUnrecorded()};return undefined as unknown as McpToolResult}}
   }
   if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');try{return await job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}catch{return undefined as unknown as McpToolResult}}}
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
   if(!binding)return invoke(canonicalJSON(args))
   const identity=source?`sha256:${await contextDigest(canonicalJSON(source))}`:'host'
-  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined,job?.kind==='cancel'?{job:readJobCancelArgument(args),held:record=>{cancelRecord=record}}:undefined)
+  return binding.writer.invoke(scopeFor(binding,context.storageRole),'host',identity,tool.name,canonicalJSON(args),durableReadingTool(tool),invoke,hostSucceeded,result=>tool.artifacts?.(result,args)??[],signal,undefined,undefined,undefined,admission?result=>admission.admit(result):undefined,durableReadingTool(tool)||exactlyHeld(args),job?.kind==='start'?{mint:job.mint,bind:id=>{started=id}}:undefined,cancelDispatch)
  }
  // update_plan publishes its exact guarded checkpoint/event before answering the call.
  context.execution.planRefused=()=>context.memoryNotice({type:'guardrail',tool:'update_plan',action:'refused',reason:'plan update refused',detail:'The plan update is invalid or exceeds its bounds. The plan was left untouched.'})

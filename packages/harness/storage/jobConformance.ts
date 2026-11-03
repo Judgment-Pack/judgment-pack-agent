@@ -180,7 +180,11 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  await store.answerJob(answerOf('run-cancel',canJob.job),can.fence)
  await unchanged('run-cancel',canJob.job,'job.cancel.none',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,keyFor(150))),'no-cancel')
  await unchanged('run-cancel',canJob.job,'job.cancel.fence',()=>store.requestJobCancel(askOf('run-cancel',canJob.job),{...can.fence,owner:'worker-x'}),'other-owner')
+ // A second job of the run: the answer must be the job asked for.
+ const otherCan=await register('run-cancel','op-2',keyFor(159),can.fence,canJob.revision)
+ await store.answerJob(answerOf('run-cancel',otherCan.job,'kit-handle-2'),can.fence)
  const asked=await answers('job.cancel.records',()=>store.requestJobCancel(askOf('run-cancel',canJob.job),can.fence))
+ check('job.cancel.which',asked.job===canJob.job&&asked.resource==='run-cancel'&&(await store.readJob('run-cancel',otherCan.job))?.cancel===undefined)
  check('job.cancel.records',asked.state==='started'&&asked.cancel?.requested.by==='tool'&&asked.cancel.requested.operation==='cancel-1'&&asked.cancel.requested.owner==='worker-a'&&asked.cancel.requested.epoch===can.fence.epoch&&asked.cancel.requested.at===iso(at))
  check('job.cancel.first',same(await answers('job.cancel.first',()=>store.requestJobCancel(askOf('run-cancel',canJob.job,'cancel-2'),can.fence)),asked))
  await unchanged('run-cancel',canJob.job,'job.cancel.key',()=>store.acknowledgeJobCancel(wordOf('run-cancel',canJob.job,WRONG)),'unauthenticated')

@@ -1575,9 +1575,12 @@ func readJobStartAnswer(answer *JobStartAnswer) error {
 }
 
 const (
-	jobCancelRequested = "cancel requested: that does not say it stopped, only its completion does; do not poll"
-	jobCancelAccepted  = "cancel accepted by the host: that does not say it stopped, only its completion does; do not poll"
-	jobCancelRefused   = "the host refused this cancel: it may still be running; tell the person"
+	jobCancelRequested = "cancel requested; it may not have been delivered, and only a completion says the job stopped; do not poll"
+	// F-1: where the cancel never left (refused or failed before it was handed to the host), whatever its record
+	// says it asked.
+	jobCancelNotSentNote = "this cancel was not sent: the job may still be running; tell the person"
+	jobCancelAccepted    = "cancel accepted by the host: that does not say it stopped, only its completion does; do not poll"
+	jobCancelRefused     = "the host refused this cancel: it may still be running; tell the person"
 	// A cancel's fixed failures: no host text reaches the row, and neither reads as the job refusal's invalid input.
 	jobCancelUnrecordedDetail = "JobCancelUnrecorded: this cancel may have been sent, and what came of it could not be recorded. It was not sent again. Read its job."
 	jobCancelNotSentDetail    = "JobCancelNotSent: this cancel was not sent, because of what its job says now. It will not be sent. Read its job."
@@ -1598,8 +1601,15 @@ func jobCancelNotSent() error {
 
 // JobCancelResult is a cancel's row and answer, composed from the job as it reads now. A row says nothing about its
 // job.
-func JobCancelResult(job RunJob) ToolResult {
+func JobCancelResult(job RunJob) ToolResult { return jobCancelResultOf(job, true) }
+
+func jobCancelResultOf(job RunJob, sent bool) ToolResult {
 	view := JobProjectionOf(job)
+	if !sent {
+		note := jobCancelNotSentNote
+		view.Note = &note
+		return jobTextResult(view, true)
+	}
 	note := ""
 	if job.State == "started" && job.Cancel != nil {
 		switch {
@@ -2129,6 +2139,8 @@ type jobCancelKey struct{}
 type jobCancelDispatch struct {
 	job    string
 	record *RunJob
+	// sent is set the moment the cancel is handed to the host.
+	sent bool
 }
 
 func jobCancelDispatchOf(ctx context.Context) *jobCancelDispatch {
@@ -2137,7 +2149,7 @@ func jobCancelDispatchOf(ctx context.Context) *jobCancelDispatch {
 }
 
 // jobCancelAnswer is a cancel's answer: its job as it reads now, or nil where it cannot be read.
-func (w *RunWriter) jobCancelAnswer(ctx context.Context, job string) *ToolResult {
+func (w *RunWriter) jobCancelAnswer(ctx context.Context, job string, sent bool) *ToolResult {
 	port, err := jobPortOfView(w.Store)
 	if err != nil {
 		return nil
@@ -2150,7 +2162,7 @@ func (w *RunWriter) jobCancelAnswer(ctx context.Context, job string) *ToolResult
 	if err != nil {
 		return nil
 	}
-	result := JobCancelResult(record)
+	result := jobCancelResultOf(record, sent)
 	return &result
 }
 

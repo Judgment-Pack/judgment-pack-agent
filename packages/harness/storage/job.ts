@@ -425,11 +425,14 @@ export function jobStartResult(job:RunJob):McpToolResult{
  const note=job.state==='started'?JOB_NOT_FINISHED:job.state==='unproven'?JOB_UNPROVEN:job.state==='not-started'?job.contradictions?JOB_CONTRADICTED:JOB_NOT_STARTED:undefined
  return textResult({...jobProjection(job),...(note===undefined?{}:{note})},job.state==='not-started'||job.state==='unproven')
 }
-export const JOB_CANCEL_REQUESTED='cancel requested: that does not say it stopped, only its completion does; do not poll'
+export const JOB_CANCEL_REQUESTED='cancel requested; it may not have been delivered, and only a completion says the job stopped; do not poll'
+/** F-1: where the cancel never left (refused or failed before it was handed to the host), whatever its record says it asked. */
+export const JOB_CANCEL_NOT_SENT_NOTE='this cancel was not sent: the job may still be running; tell the person'
 export const JOB_CANCEL_ACCEPTED='cancel accepted by the host: that does not say it stopped, only its completion does; do not poll'
 export const JOB_CANCEL_REFUSED='the host refused this cancel: it may still be running; tell the person'
 /** A cancel's row and answer are composed here, from the job as it reads now. A row says nothing about its job. */
-export function jobCancelResult(job:RunJob):McpToolResult{
+export function jobCancelResult(job:RunJob,sent=true):McpToolResult{
+ if(!sent)return textResult({...jobProjection(job),note:JOB_CANCEL_NOT_SENT_NOTE},true)
  const said=job.state!=='started'?undefined:job.cancel?.acknowledged?.outcome==='refused'?JOB_CANCEL_REFUSED:job.cancel?.acknowledged?JOB_CANCEL_ACCEPTED:job.cancel?JOB_CANCEL_REQUESTED:undefined
  return textResult({...jobProjection(job),...(said===undefined?{}:{note:said})},job.state!=='started'&&job.state!=='completed')
 }

@@ -16,6 +16,8 @@ import {declareSubagents,type SubagentDeclaration} from '../subagents'
 import {CONTEXT_DEFAULTS} from '../context/policy'
 import declaration from '../../../contract/vectors/subagents/declaration.json'
 import modelVector from '../../../contract/vectors/job/model.json'
+import chains from '../../../contract/vectors/principal/chains.json'
+import type {AdmissionAnswer,PrincipalBinding,RunPrincipal} from '../principal'
 import {RECORD_DEFAULTS} from '../records'
 import type {ExecutionCheckpoint} from '../execution/state'
 import {RunWriter,type DurableBinding} from './writer'
@@ -709,7 +711,66 @@ describe('a cancel asks; only a completion says it stopped (#229)',()=>{
   const job=(await readJob(held.store,RUN,held.job.job))!,rows=(await headRows(held.store)).dispatches
   expect(tools.sent).not.toHaveBeenCalled();expect(job.state).toBe('completed');expect(job.cancel).toBeUndefined()
   expect(rows.find(d=>d.tool==='runner__cancel_job')).toMatchObject({state:'unknown',failure:modelVector.cancelFailures.notSent})
-  expect(toolResultOf(events)?.text).toBe(jobCancelResult(job).content![0]!.text)
+  expect(toolResultOf(events)).toMatchObject({isError:true,text:jobCancelResult(job,false).content![0]!.text})
+ })
+ it('F-1: a cancel that never left says it was not sent: an acknowledgement lost after requested, and an effect host that fails',async()=>{
+  // An acknowledgement lost after `requested` is recorded: what a crash there leaves.
+  const lost=await pair(),held=await started2(lost),call=cancelCall(held.job.job),ask=held.store.requestJobCancel.bind(held.store)
+  vi.spyOn(held.store,'requestJobCancel').mockImplementationOnce(async(...args)=>{await ask(...args);throw Error('acknowledgement lost')})
+  const first=await drive(held.view,[lost.start,lost.cancel],provider([call,{say:'x'}]).call,{resume:true})
+  const job=(await readJob(held.store,RUN,held.job.job))!
+  expect(lost.sent).not.toHaveBeenCalled();expect(job.cancel?.requested.by).toBe('tool')
+  expect(toolResultOf(first)).toMatchObject({isError:true,text:jobCancelResult(job,false).content![0]!.text})
+  // A repeat is answered from the job, and its note claims no send.
+  const repeat=await drive(held.view,[lost.start,lost.cancel],provider([call,{say:'x'}]).call,{resume:true})
+  expect(lost.sent).not.toHaveBeenCalled();expect(toolResultOf(repeat)?.text).toContain('may not have been delivered')
+  // An effect host that fails before anything is handed to the host.
+  const failing={on:false},clock={at:T0},store=new DurableJobStore({now:()=>new Date(clock.at)})
+  const host=await certifyEffectHost(authority=>{const own=new ReferenceEffectHost(authority);return {effectFencing:'enforced',dispatch:async(admission,perform,signal)=>{if(failing.on)throw Error('the authority is down');return own.dispatch(admission,perform,signal)}} as EffectHost},store)
+  const lease=await store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR}),view=fencedRunStore(store,fenceOf(lease),host)
+  const down=await pair()
+  await drive(view,[down.start,down.cancel],provider([{call:{tool:'runner__start_job',arguments:{name:'nightly'}}},{say:'x'}]).call)
+  const downJob=(await listJobs(store,RUN)).jobs[0]!;failing.on=true
+  const events=await drive(view,[down.start,down.cancel],provider([cancelCall(downJob.job),{say:'x'}]).call,{resume:true})
+  const after=(await readJob(store,RUN,downJob.job))!
+  expect(down.sent).not.toHaveBeenCalled();expect(after.cancel?.requested.by).toBe('tool')
+  expect(toolResultOf(events)).toMatchObject({isError:true,text:jobCancelResult(after,false).content![0]!.text})
+ })
+ it('F-1: a delegation that refuses at the counted read: the cancel was not sent, and the model is told so',async()=>{
+  const BINDING={sub:chains.items[0]![0]!.sub,rootActor:chains.items[0]![0]!.act.agent,host:chains.items[0]![0]!.host} as PrincipalBinding
+  const TT=Date.parse('2026-10-30T01:00:00.000Z'),store=new DurableJobStore({now:()=>new Date(TT)}),host=new ReferenceEffectHost(store)
+  const lease=await store.acquireLease({resource:RUN,owner:'worker-a',expectedRevision:null,durationMs:HOUR,principal:BINDING}),view=unattendedRunStore({store,fence:fenceOf(lease),effectHost:host})
+  const principal=(answer:()=>AdmissionAnswer=()=>({admission:'admit'})):RunPrincipal=>({chain:JSON.stringify(chains.items[0]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>TT,admission:()=>Promise.resolve(answer())} as never)
+  // The vectors' chain admits source notes, tools write_note and read_note: the pair takes those names.
+  const WS={name:'write_note',description:'Start one background job.',inputSchema:{type:'object'},taxonomy:{operation:'run',effect:'act'} as const},CS={name:'read_note',description:'Cancel one background job.',inputSchema:JOB_CANCEL_SCHEMA,taxonomy:{operation:'run',effect:'act'} as const}
+  const notes={kind:'custom',id:'notes',trust:'person',version:'1',toolListDigest:await toolListDigest([WS,CS] as never),identity:{kind:'connection',label:'notes'}} as never
+  const sent=vi.fn(async(_:JobCancelInput)=>undefined),start=jobStartTool({...WS,source:notes,approve:(()=>'allow') as never,mint:async()=>jobKeyDigest(KEY),start:started as never})
+  const cancel=jobCancelTool({name:CS.name,description:CS.description,source:notes,start,approve:(()=>'allow') as never,cancel:sent})
+  const go=async(p:RunPrincipal,call:(...a:never[])=>Promise<Response>,resume=false)=>{
+   const session={prompt:'Write.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[start,cancel],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{principal:p,currentRequest:{message:'Write.',input:'n'},runStore:{store:view,id:RUN,...(resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as never as EngineSession
+   const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
+  }
+  await go(principal(),provider([{call:{tool:'notes__write_note',arguments:{name:'n'}}},{say:'x'}]).call)
+  const job=(await listJobs(store,RUN)).jobs[0]!
+  // The reads before the claim admit; the counted read, after `requested`, refuses.
+  let nth=0
+  const events=await go(principal(()=>{nth++;return nth>=3?({admission:'refuse',refusal:'revoked'} as never):{admission:'admit'}}),provider([{call:{tool:'notes__read_note',arguments:{job:job.job,generation:1}}},{say:'x'}]).call,true)
+  const after=(await readJob(store,RUN,job.job))!
+  expect(sent).not.toHaveBeenCalled();expect(after.cancel?.requested.by).toBe('tool')
+  expect(toolResultOf(events)).toMatchObject({isError:true,text:jobCancelResult(after,false).content![0]!.text})
+ })
+ it('F-2: what is sent is the record of the job asked for: a store that answers another job sends nothing',async()=>{
+  const tools=await pair({mint:'job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K'}),held=await leased()
+  let n=0
+  const two=jobStartTool({...START,source:tools.start.source!,approve:(()=>'allow') as never,mint:async()=>jobKeyDigest(n++===0?KEY:'job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U'),start:(async()=>({started:true,handle:n===1?'H-ONE':'H-TWO'})) as never})
+  const cancel=jobCancelTool({...CANCEL,source:tools.start.source!,start:two,approve:(()=>'allow') as never,cancel:tools.sent})
+  await drive(held.view,[two,cancel],provider([{call:{tool:'runner__start_job',arguments:{name:'one'}}},{call:{tool:'runner__start_job',arguments:{name:'two'}}},{say:'x'}]).call)
+  const [first,second]=(await listJobs(held.store,RUN)).jobs
+  const ask=held.store.requestJobCancel.bind(held.store)
+  vi.spyOn(held.store,'requestJobCancel').mockImplementation(async(...args)=>{await ask(...args);return (await readJob(held.store,RUN,second!.job))!})
+  const events=await drive(held.view,[two,cancel],provider([cancelCall(first!.job),{say:'x'}]).call,{resume:true})
+  expect(tools.sent).not.toHaveBeenCalled()
+  expect(toolResultOf(events)).toMatchObject({isError:true,text:expect.stringContaining('not sent')})
  })
  it('the host\'s word by key moves no state; job_read shows it; only a completion with cancelled says it stopped',async()=>{
   const tools=await pair(),held=await started2(tools)
