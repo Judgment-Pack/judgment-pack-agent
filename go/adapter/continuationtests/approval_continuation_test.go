@@ -1,7 +1,7 @@
 package continuationtests
 
-// ADR-0008 on the agent wire: after the person's decision the approved call runs once, and the invocation that continues
-// the response carries the continuation block (#309); a continuation that delegates goes on past its batch (#305).
+// ADR-0008 on the agent wire: an approved continuation that delegates goes on past its batch (#305), and a decision is
+// taken by the response's first open only.
 
 import (
 	"context"
@@ -72,12 +72,15 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 	t.Helper()
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})
+	var child *gate.Gate
+	var parentHosts []contract.ToolOfferHostTool
 	parents := 0
 	run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Gate: g.Calls(), Thinking: "off", Prompt: "Write the note.", AllowConversation: true, Interactive: true, Critic: "off", HostTools: []runcontext.HostTool{s.tool()},
 		EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
 			if offer.Mode == gate.PhaseChild {
-				return nil
+				return child.EnrollContext(offer.ID, offer.HostTools)
 			}
+			parentHosts = offer.HostTools
 			return g.EnrollContext(offer.ID, offer.HostTools)
 		},
 		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "note"}, RunStore: &runcontext.DurableRunInput{Store: s.store, ID: "run-c", Resume: resume}, Approval: decision},
@@ -86,9 +89,10 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 			s.events = append(s.events, event)
 			s.mu.Unlock()
 		},
-		Children: func(context.Context, contract.DelegatedTaskProfile, func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
-			child := gate.New(gate.Options{Granted: gate.Ceiling})
+		Children: func(_ context.Context, profile contract.DelegatedTaskProfile, emit func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
+			child = gate.New(gate.Options{Granted: gate.Ceiling, Emit: emit})
 			child.SetOffer(contract.ToolOffer{})
+			child.Enter(gate.ChildPhase(profile, contract.ToolOffer{}, gate.LoopPhase(contract.ToolOffer{HostTools: parentHosts})))
 			return child.Calls(), nil, nil
 		}}
 	run.Agent = &adapter.Agent{Model: "fixture", Run: func(ctx context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks) error {
@@ -168,55 +172,6 @@ func paused(t *testing.T, s *scene, delegating bool) *contract.CheckpointApprova
 	return &contract.CheckpointApprovalDecision{CallID: saved.Approval.CallID, Approved: true, ShownDigest: &proof}
 }
 
-// #309: the continuing invocation is told the approved call's result, and the act runs once.
-func TestTheContinuingInvocationCarriesTheApprovedResult(t *testing.T) {
-	for _, delegating := range []bool{false, true} {
-		name := "plain"
-		if delegating {
-			name = "through the coordinator"
-		}
-		t.Run(name, func(t *testing.T) {
-			s := &scene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
-			decision := paused(t, s, delegating)
-			before := len(s.parents)
-			if err := s.run(t, context.Background(), true, decision, delegating); err != nil {
-				t.Fatal(err)
-			}
-			continued := s.parents[before:]
-			if s.ran != 1 || len(continued) != 1 || !strings.Contains(continued[0], runcontext.ApprovalContinuation) || !strings.Contains(continued[0], answerWords) || !strings.Contains(continued[0], decision.CallID) {
-				t.Fatalf("ran %d, invocations %d, errors %v, prompt %.400q", s.ran, len(continued), s.errors(), continued)
-			}
-			if len(s.errors()) != 0 || !s.finished() {
-				t.Fatalf("errors %v, finished %v", s.errors(), s.finished())
-			}
-		})
-	}
-}
-
-// The replay of a lost invocation is kept: a continuing invocation whose outcome is unknown is sent again as recorded.
-func TestALostContinuingInvocationIsSentAgainAsRecorded(t *testing.T) {
-	s := &scene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
-	decision := paused(t, s, false)
-	ctx, cancel := context.WithCancel(context.Background())
-	lose := func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks, int) error {
-		cancel()
-		return context.Canceled
-	}
-	_ = s.run(t, ctx, true, decision, false, lose)
-	before := len(s.parents)
-	if before < 2 || !strings.Contains(s.parents[before-1], answerWords) {
-		t.Fatalf("the continuation was not sent: %v, errors %v", len(s.parents), s.errors())
-	}
-	lost := s.parents[before-1]
-	if err := s.run(t, context.Background(), true, nil, false); err != nil {
-		t.Fatal(err)
-	}
-	again := s.parents[before:]
-	if s.ran != 1 || len(again) != 1 || again[0] != lost {
-		t.Fatalf("ran %d, the request sent again is not the recorded one: %d, errors %v", s.ran, len(again), s.errors())
-	}
-}
-
 // #305: a continuation that delegates goes on past its batch: the decision is the first open's, not the next parent's.
 func TestAnApprovedContinuationThatDelegatesGoesOn(t *testing.T) {
 	s := &scene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
@@ -240,8 +195,36 @@ func TestAnApprovedContinuationThatDelegatesGoesOn(t *testing.T) {
 			tasks++
 		}
 	}
-	// The batch ran and ended, and the parent's next invocation answered: no "already decided".
-	if s.ran != 1 || tasks != 1 || len(s.errors()) != 0 || !s.finished() {
-		t.Fatalf("ran %d, tasks ended %d, errors %v, finished %v", s.ran, tasks, s.errors(), s.finished())
+	// The child ran, the batch ended, and the parent's next invocation answered: no "already decided".
+	if s.ran != 1 || s.children != 1 || tasks != 1 || len(s.errors()) != 0 || !s.finished() {
+		t.Fatalf("ran %d, children %d, tasks ended %d, errors %v, finished %v", s.ran, s.children, tasks, s.errors(), s.finished())
+	}
+}
+
+// #312's review, LOW-3: a decision given again for a call already decided is refused, as it was before #305's reset, through
+// the coordinator and plain alike. Only a later parent open of the response that took it goes on without it.
+func TestADecisionGivenAgainIsRefused(t *testing.T) {
+	for _, delegating := range []bool{false, true} {
+		name := "plain"
+		if delegating {
+			name = "through the coordinator"
+		}
+		t.Run(name, func(t *testing.T) {
+			s := &scene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
+			decision := paused(t, s, delegating)
+			if err := s.run(t, context.Background(), true, decision, delegating); err != nil {
+				t.Fatal(err)
+			}
+			if s.ran != 1 || len(s.errors()) != 0 {
+				t.Fatalf("the decision: ran %d, errors %v", s.ran, s.errors())
+			}
+			s.events = nil
+			if err := s.run(t, context.Background(), true, decision, delegating); err != nil {
+				t.Fatal(err)
+			}
+			if errors := s.errors(); s.ran != 1 || len(errors) != 1 || !strings.Contains(errors[0], "already decided") {
+				t.Fatalf("given again: ran %d, errors %v", s.ran, errors)
+			}
+		})
 	}
 }

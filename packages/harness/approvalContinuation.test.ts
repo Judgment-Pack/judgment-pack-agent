@@ -1,14 +1,14 @@
 // @vitest-environment node
-// ADR-0008 on the agent wire: after the person's decision the approved call runs once, and the invocation that continues
-// the response carries the continuation block (#309); a continuation that delegates goes on past its batch (#305).
+// ADR-0008 on the agent wire: an approved continuation that delegates goes on past its batch (#305), and a decision is
+// taken by the response's first open only.
 import {describe,it,expect,vi} from 'vitest'
 import type {AgentAssistantSession,AssistantEvent,Engine,HostTool} from './engine'
 import type {AgentRun} from './agent'
 import {codex} from './engines/codex'
 import {withDelegation} from './delegation'
 import {MemoryRunStore,type RunStore} from './storage/run'
-import {toolListDigest,APPROVAL_CONTINUATION} from './toolSources'
-import {approvalShownDigest} from './execution/state'
+import {toolListDigest} from './toolSources'
+import {approvalShownDigest,decisionForParentOpen} from './execution/state'
 
 const ANSWER='THE-APPROVED-ANSWER'
 const WRITE={name:'write_note',description:'write_note',inputSchema:{type:'object'},taxonomy:{operation:'act',effect:'act'} as const}
@@ -45,34 +45,6 @@ async function paused(s:Scene,engine:Engine){
 const errors=(s:Scene)=>s.events.filter(e=>e.type==='error').map(e=>(e as {message?:string}).message)
 const finished=(s:Scene)=>s.events.some(e=>e.type==='message'&&(e as {text?:string}).text==='Done.')
 
-describe('the invocation that continues an approved response on the agent wire (#309)',()=>{
- for(const [label,engine] of [['plain',codex],['through the coordinator',withDelegation(codex)]] as const)it(`carries the approved result, and the act runs once: ${label}`,async()=>{
-  const s=scene(),decision=await paused(s,engine),before=s.prompts.length
-  await drive(s,engine,s.store,true,decision)
-  const continued=s.prompts.slice(before)
-  expect(errors(s)).toEqual([])
-  expect(s.ran).toBe(1)
-  expect(continued).toHaveLength(1)
-  expect(continued[0]).toContain(APPROVAL_CONTINUATION)
-  expect(continued[0]).toContain(ANSWER)
-  expect(continued[0]).toContain(decision.callId)
-  expect(finished(s)).toBe(true)
- },30_000)
-})
-
-describe('a lost continuing invocation',()=>{
- it('is sent again as recorded, and the act still runs once',async()=>{
-  const s=scene(),decision=await paused(s,codex),abort=new AbortController()
-  await drive(s,codex,s.store,true,decision,[async()=>{abort.abort();throw new DOMException('The operation was aborted','AbortError')}],abort).catch(()=>undefined)
-  const lost=s.prompts.at(-1)!
-  expect(lost).toContain(ANSWER)
-  const before=s.prompts.length
-  await drive(s,codex,s.store,true,undefined)
-  expect(s.ran).toBe(1)
-  expect(s.prompts.slice(before)).toEqual([lost])
- },30_000)
-})
-
 describe('an approved continuation that delegates (#305)',()=>{
  it('goes on past its batch: the decision is the first open’s, not the next parent’s',async()=>{
   const s=scene(),engine=withDelegation(codex),decision=await paused(s,engine)
@@ -83,4 +55,31 @@ describe('an approved continuation that delegates (#305)',()=>{
   expect(s.events.some(e=>e.type==='delegated_task'&&['complete','failed'].includes((e as {task:{state:string}}).task.state))).toBe(true)
   expect(finished(s)).toBe(true)
  },30_000)
+})
+
+describe('a decision given again (#312\u2019s review, LOW-3)',()=>{
+ for(const [label,engine] of [['plain',codex],['through the coordinator',withDelegation(codex)]] as const)it(`is refused for a call already decided: ${label}`,async()=>{
+  const s=scene(),decision=await paused(s,engine)
+  await drive(s,engine,s.store,true,decision)
+  expect([s.ran,errors(s)]).toEqual([1,[]])
+  s.events.length=0
+  await drive(s,engine,s.store,true,decision)
+  expect(s.ran).toBe(1)
+  expect(errors(s)).toHaveLength(1)
+  expect(errors(s)[0]).toContain('already decided')
+ },30_000)
+})
+
+describe('the decision a parent open is given (#305, narrowed after #312\u2019s review, MEDIUM-1)',()=>{
+ const act={callId:'act',approved:true},plan={callId:'plan',approved:true}
+ const taken={approval:{callId:'act',state:'answered'}},asked={approval:{callId:'act',state:'asked'}}
+ for(const [label,given,execution,opened,want] of [
+  ['a later open, the act\u2019s decision taken',act,taken,true,undefined],
+  ['the first open: refused there if stale',act,taken,false,act],
+  ['a later open, a Plan decision',plan,taken,true,plan],
+  ['a later open, the call still asked',act,asked,true,act],
+  ['a later open, no approval record',act,{},true,act],
+  ['a later open, no checkpoint',act,undefined,true,act],
+  ['no decision',undefined,taken,true,undefined],
+ ] as const)it(label,()=>{expect(decisionForParentOpen(given as never,execution as never,opened)).toBe(want)})
 })

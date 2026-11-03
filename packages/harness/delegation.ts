@@ -8,7 +8,7 @@ import {SUBAGENT_RESULT_MIN_BYTES,SUBAGENT_CHANGED} from './subagents'
 import {subagentProfile,subagentRecord,recordSubagents,type Subagent} from './subagents'
 import {failure,failureError,failureEvent,normalizeFailure,canRetryAdmission,canRetryRefusal,readFailure,refusalCode,failureMessage,toolInputFailure,toolFailureResult,RETRYABLE_OVERLOAD_CODES,RETRYABLE_REFUSAL_CLASSES,type AIFailure} from './failures'
 import {asksApproval,wireName} from './toolSources'
-import {ExecutionPaused,type BatchFigures,type ChildFigures,type DelegationFigures,type ExecutionCheckpoint,type FiguresTotal,type TokenFigures} from './execution/state'
+import {ExecutionPaused,decisionForParentOpen,type BatchFigures,type ChildFigures,type DelegationFigures,type ExecutionCheckpoint,type FiguresTotal,type TokenFigures} from './execution/state'
 import type { AssistantEvent, AssistantSession, Engine, EngineSession, HostTool, McpToolResult, ModelCall } from './engine'
 import type { UserQuestion } from './questions'
 import { MAX_TURNS, isCancelled, reportBlocks, textOf, withAbort, eventIterator, openRun } from './engines/contract'
@@ -1024,12 +1024,15 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       let continued=handoff?.continuation??''
       if(handoff&&['answered','continued'].includes(handoff.state)&&!continued)throw new ContinuationNotRecoverable()
       let execution=session.context?.execution
+      // #305: a parent open of this response was made with the host's decision, which takes it.
+      let opened=false
       // A restored batch precedes the next provider invocation. Reopen the existing parent
       // controller first so child claims still charge the original root and step together.
       // ADR-0029: a delegated run's parent is opened first whatever else holds: its resume check runs, and its children start under its opened principal.
       if((persistence&&session.context?.taskSteps===true||holdsDelegation(session.context))&&handoff&&(handoff.state==='released'||handoff.state==='children')){
-        const opened=await contextualSession(bind({...session,context:{...session.context,chat,link:parentLink},hostTools:[...session.hostTools,delegate,...(taskDelegate?[taskDelegate]:[])]}),engine.id)
-        restoredParent=opened.context
+        opened=true
+        const reopened=await contextualSession(bind({...session,context:{...session.context,chat,link:parentLink},hostTools:[...session.hostTools,delegate,...(taskDelegate?[taskDelegate]:[])]}),engine.id)
+        restoredParent=reopened.context
       }
       for(;;){
         if(handoff&&(handoff.state==='released'||handoff.state==='children')){
@@ -1052,10 +1055,10 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         const offered=batches<batchLimit()&&(!agent||shared.mayDelegate())
         const prompt=session.prompt+'\n\n'+(offered?DELEGATION_INSTRUCTIONS+(agent?' '+AGENT_DELEGATION_INSTRUCTIONS:''):DELEGATION_SPENT)+continued
         const hostTools=agent&&!shared.mayAct()?session.hostTools.filter(tool=>!asksApproval(tool)):session.hostTools
-        // #305: the person's decision is for the act call the response paused on. Once an open has taken it, the call is no
-        // longer asked, and a later parent invocation of the same response continues without it.
-        const decided=execution?.approval!==undefined&&execution.approval.state!=='asked'
-        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate,...(taskDelegate?[taskDelegate]:[])]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{}),...(decided?{approval:undefined}:{})}})
+        // #305: the person's decision is for the act call the response paused on, and the response's first open takes it.
+        const approval=decisionForParentOpen(session.context?.approval,execution,opened)
+        opened=true
+        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate,...(taskDelegate?[taskDelegate]:[])]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{}),...(approval===session.context?.approval?{}:{approval})}})
         try{
           for await(let event of engine.start(parent)){
             if(!persistence&&(event.type==='execution_checkpoint'||event.type==='budget_paused'))event={...event,checkpoint:decorate(event.checkpoint)}

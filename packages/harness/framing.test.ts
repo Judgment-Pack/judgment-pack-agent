@@ -853,3 +853,11 @@ describe('a host document under an id the package keeps', () => {
     expect(listed).not.toContain(HOSTILE_WORDS)
   })
 })
+
+/** #312's review, LOW-4: every document is held to the refusal, not the first only. */
+it('refuses a host document under a package id wherever it comes in the list', async () => {
+  const { events, requests } = await vercelTurn({ hostTools: [], session: { context: { currentRequest: { message: 'Read.', input: 'Read.' }, documents: [{ id: 'doc', kind: 'artifact', label: 'Doc', value: 'text' }, { id: 'notes:request', kind: 'artifact', label: 'Doc', value: 'text' }] } } as never,
+    answer: () => streamed(sseTurn({ text: 'Checked.' })) })
+  expect(ofType(events, 'error').some(e => String((e as { message?: string }).message).includes('keeps for what it retains itself'))).toBe(true)
+  expect(requests).toHaveLength(0)
+})
