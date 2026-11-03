@@ -12340,7 +12340,7 @@
    ],
    "status": "caught",
    "origin": "agent#275",
-   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so only the test at the session itself can tell them apart."
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so the test at the session itself tells them apart by place, and the stored-chat case (#303) by what the check is kept for: without it, the controller refuses only after the resume's claim has moved the run's revision and the chat's context, which that case asserts unmoved."
   },
   {
    "name": "a decision with no run store proves nothing",
@@ -15008,6 +15008,42 @@
    "status": "caught",
    "origin": "agent#303",
    "note": "#303/#310. Go twin (by hand, in history_view.go): caught at TestHistoryReadersRefuseEveryShapeTheyCannotRead."
+  },
+  {
+   "name": "pass-through #303 the writer passes a refusal through on its root, not the bind's policy",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'",
+   "replace": "if(binding.root&&!this.root&&(event.type==='error'",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303 (#301's review). The TypeScript path only: Go's writer has no pass-through before its bind. Caught at the writer's port: after a coordinator hands the root back, its usage and end leave the log."
+  },
+  {
+   "name": "receipt verifier #303 the verifier gets the whole limit",
+   "file": "toolSources.ts",
+   "find": "Math.max(1, limit - (Date.now() - started))",
+   "replace": "limit",
+   "tests": [
+    "receiptQuarantine.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in sources.go): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach."
+  },
+  {
+   "name": "receipt verifier #303 the verifier gets twice what the call left",
+   "file": "toolSources.ts",
+   "find": "Math.max(1, limit - (Date.now() - started))",
+   "replace": "Math.max(1, 2 * (limit - (Date.now() - started)))",
+   "tests": [
+    "receiptQuarantine.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in sources.go): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach."
   },
   {
    "name": "job CA16 a cancel is sent from another job's record",
