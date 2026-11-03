@@ -22,7 +22,7 @@ import {RECORD_DEFAULTS} from '../records'
 import type {ExecutionCheckpoint} from '../execution/state'
 import {RunWriter,type DurableBinding} from './writer'
 import {LeaseCapabilityRefused,LeaseRefused,ReferenceEffectHost,certifyEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type EffectOperation,type LeaseLifetime} from './lease'
-import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer,JOB_ABANDON_OWNER,JOB_CANCEL_SCHEMA,abandonJobs,acknowledgeJobCancel,jobCancelCard,jobCancelOperation,jobCancelResult,jobCancelTool,jobReportFromExport,type JobCancelInput,admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob,type JobDelivery} from './job'
+import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer,JOB_ABANDON_OWNER,JOB_CANCEL_SCHEMA,abandonJobs,acknowledgeJobCancel,jobCancelCard,jobCancelOperation,jobCancelResult,jobCancelTool,jobReportFromExport,type JobCancelInput,admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,jobPortOfView,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob,type JobDelivery} from './job'
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
 
 /* #229: run-owned jobs through the real Vercel engine, the package's writer and the reference effect host. The Go twins are
@@ -44,7 +44,21 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0,bodies:[] as string[]}
  return {state,call:async(_path?:unknown,init?:{body?:unknown})=>{state.bodies.push(String(init?.body??''));const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
+/** #328: a finished run resumes only as a job wait's continuation, so a later turn of a complete run here is the one
+ * resumeParked hands on: the run's last job as its record says. The park and the claim themselves are the wait tests'. A run
+ * whose job record is lost has none to hand on: its head is left running, as a run stopped before its end leaves it. */
+async function laterTurn(store:RunStore,extra:{resume?:boolean;jobContinuation?:RunJob}):Promise<RunJob|undefined>{
+ if(!extra.resume||extra.jobContinuation)return extra.jobContinuation
+ const head=await store.load(RUN),saved=head?.checkpoint?JSON.parse(new TextDecoder().decode(head.checkpoint)):undefined
+ if(saved?.status!=='complete')return undefined
+ let port:RunStore=store
+ try{port=jobPortOfView(store).store as unknown as RunStore}catch{}
+ const job=(await listJobs(port,RUN)).jobs.at(-1)
+ if(!job)await store.commit({runId:RUN,expectedRevision:head!.revision,commitId:crypto.randomUUID(),checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
+ return job
+}
 async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;approval?:{callId:string;approved:boolean;shownDigest?:string};jobContinuation?:RunJob;signal?:AbortSignal}={}):Promise<AssistantEvent[]>{
+ extra={...extra,jobContinuation:await laterTurn(store,extra)}
  const session:EngineSession={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:extra.signal??new AbortController().signal,allowConversation:true,critic:'off',
   context:{currentRequest:{message:'Run the job.',input:'job'},runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})},...(extra.approval?{approval:extra.approval}:{}),...(extra.jobContinuation?{jobContinuation:extra.jobContinuation}:{})},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
@@ -747,7 +761,7 @@ describe('a cancel asks; only a completion says it stopped (#229)',()=>{
   const sent=vi.fn(async(_:JobCancelInput)=>undefined),start=jobStartTool({...WS,source:notes,approve:(()=>'allow') as never,mint:async()=>jobKeyDigest(KEY),start:started as never})
   const cancel=jobCancelTool({name:CS.name,description:CS.description,source:notes,start,approve:(()=>'allow') as never,cancel:sent})
   const go=async(p:RunPrincipal,call:(...a:never[])=>Promise<Response>,resume=false)=>{
-   const session={prompt:'Write.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[start,cancel],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{principal:p,currentRequest:{message:'Write.',input:'n'},runStore:{store:view,id:RUN,...(resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as never as EngineSession
+   const session={prompt:'Write.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[start,cancel],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{principal:p,currentRequest:{message:'Write.',input:'n'},runStore:{store:view,id:RUN,...(resume?{resume:true}:{})},...(resume?{jobContinuation:(await listJobs(store,RUN)).jobs.at(-1)}:{})},model:{family:'openai-compatible',model:'fixture',call}} as never as EngineSession
    const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
   }
   await go(principal(),provider([{call:{tool:'notes__write_note',arguments:{name:'n'}}},{say:'x'}]).call)

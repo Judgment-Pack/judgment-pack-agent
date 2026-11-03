@@ -254,6 +254,12 @@ describe('a call made while another waits for the person',()=>{
 })
 
 describe('a durable resume under other principals',()=>{
+ /** #328: a finished head is resumed by no plain resume, so the refusal is read at a head left running, as a run stopped
+  * before its end leaves it. */
+ async function interrupted(store:MemoryRunStore,id:string){
+  const head=(await store.load(id))!,saved=JSON.parse(new TextDecoder().decode(head.checkpoint!))
+  await store.commit({runId:id,expectedRevision:head.revision,commitId:'interrupted',checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
+ }
  async function notes(ran:string[]):Promise<HostTool[]>{
   const t={name:'read_note',description:'read_note',inputSchema:{type:'object'},taxonomy:{operation:'read',effect:'read'} as const}
   return [{...t,delegation:'read',execute:async()=>{ran.push('read_note');return {content:[{type:'text',text:'note'}]}},source:{kind:'custom',id:'notes',trust:'first-party',toolListDigest:await toolListDigest([t] as never)}} as unknown as HostTool]
@@ -261,6 +267,7 @@ describe('a durable resume under other principals',()=>{
  for(const [label,next] of [['another subject',4],['another root actor',3],['no delegation at all',undefined]] as const)it(`names principal-changed: ${label}`,async()=>{
   const store=new MemoryRunStore(),ran:string[]=[],reads:AdmissionRead[]=[],tools=await notes(ran),id='durable-resume'
   await drive(session(tools,principal(reads),{runStore:{store,id}}),'notes__read_note')
+  await interrupted(store,id)
   const before=ran.length
   const events=await drive(session(tools,next===undefined?undefined:principal(reads,{chain:next}),{runStore:{store,id,resume:true}}),'notes__read_note')
   expect(ran.length).toBe(before)
@@ -276,6 +283,7 @@ describe('a durable resume under other principals',()=>{
   let authorized=0
   const extra=(resume:boolean)=>({runStore:{store,id,...(resume?{resume:true}:{})},chat,authorize:async()=>{authorized++}})
   await drive(session(tools,principal(reads),extra(false)),'notes__read_note')
+  await interrupted(store,id)
   const asked=authorized,held=JSON.stringify({size:chat.size,entries:[...chat.entries.keys()],chat})
   const events=await drive(session(tools,principal(reads,{chain:4}),extra(true)),'notes__read_note')
   expect(events.map(e=>e.type)).toEqual(['error','end'])

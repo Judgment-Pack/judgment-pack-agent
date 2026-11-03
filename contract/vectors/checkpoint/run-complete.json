@@ -1,0 +1,33 @@
+{
+  "description": "#328: the refusal of a resume of a run whose run-store head is complete, refused by name before anything of the run is bound: no model request, no tool call and no record write. Both languages emit exactly this error event, once, and then end; Go reports an empty usage between them (go/context/run_writer.go, RunComplete, PrepareDurableInput; go/adapter/completetests). Two continuations resume a complete head: a job wait's (resumeParked, then the job continuation) and a re-authorization claim's (reauthorizedRunStore).",
+  "schema": "run-event.json",
+  "source": {
+    "issue": 328,
+    "harness": {
+      "repository": "Judgment-Pack/judgment-pack-agent",
+      "package": "packages/harness"
+    },
+    "files": [
+      "packages/harness/storage/writer.ts (RunComplete, durableSession)",
+      "packages/harness/storage/startRefusal.test.ts"
+    ]
+  },
+  "items": [
+    {
+      "version": 1,
+      "type": "error",
+      "message": "RunComplete: the run is complete, and a finished run is not resumed. Only a job wait's or a re-authorization's continuation resumes it.",
+      "failure": {
+        "version": 1,
+        "code": "stale-state",
+        "source": "context",
+        "outcome": "not-started",
+        "detail": "RunComplete: the run is complete, and a finished run is not resumed. Only a job wait's or a re-authorization's continuation resumes it."
+      }
+    },
+    {
+      "version": 1,
+      "type": "end"
+    }
+  ]
+}

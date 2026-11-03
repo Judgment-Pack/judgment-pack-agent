@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
+import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
@@ -58,6 +58,25 @@ export class DurableRequestConflict extends AIFailureError {constructor(){super(
  */
 export class DurableRequestUnrecordable extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:DURABLE_REQUEST_UNRECORDABLE});this.name='DurableRequestUnrecordable'}}
 export class ContinuationIdentityChanged extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:'ContinuationIdentityChanged: the admitted continuation identity differs.'});this.name='ContinuationIdentityChanged'}}
+/** #328: the detail of a refused resume of a finished run. */
+export const RUN_COMPLETE='RunComplete: the run is complete, and a finished run is not resumed. Only a job wait\'s or a re-authorization\'s continuation resumes it.'
+/**
+ * #328: a resume of a run whose run-store head is `complete` is refused by name, before anything of the run is bound: no model
+ * request, no tool call and no record write. A finished run asked again would make new requests and could act again. Two
+ * continuations resume a complete head: a job wait's (`resumeParked`, then `context.jobContinuation`), since a job wait parks a
+ * checkpoint at rest, and a re-authorization claim's (`reauthorizedRunStore`), whose grant may send the never-admitted
+ * operation once more. A question's answer and a chat's next turn are new runs. An execution the host holds itself, with no
+ * run store, is the host's own record and is not refused.
+ */
+export class RunComplete extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:RUN_COMPLETE});this.name='RunComplete'}}
+/** #328: a resumed re-authorization claim's view, its grant unspent, over a head that holds the granted operation as its
+ * never-admitted row: the host may open another view of the claim, which sends it once more. */
+const reauthorizedContinuation=(store:RunStore,execution:ExecutionCheckpoint)=>{
+ const grant=reauthorizedGrant(store),row=grant&&execution.durable?.dispatches.find(row=>row.id===grant.operation&&row.state==='unknown'&&(row.kind==='host'||row.kind==='runtime'))
+ return !!row&&isNeverAdmittedFailure(row.failure)
+}
+/** #328: a complete head resumes only as a job wait's continuation or a re-authorization claim's. */
+const finished=(store:RunStore,execution:ExecutionCheckpoint|undefined,input:EngineSession['context'])=>execution?.status==='complete'&&input?.jobContinuation===undefined&&!reauthorizedContinuation(store,execution)
 /**
  * What a request with a recorded row's fingerprint is to that row (#275), from the exact text. The
  * fingerprint is published, persisted and re-derived when a book is read; it says two requests read alike,
@@ -987,6 +1006,8 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(head&&!head.checkpoint)throw new ContinuationNotRecoverable()
  const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
+ // #328: decided as soon as the head is read, before anything of the run is bound, as in Go.
+ if(head&&finished(store,execution,input))throw new RunComplete()
  if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
  const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined

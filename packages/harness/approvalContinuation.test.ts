@@ -66,7 +66,9 @@ describe('a decision given again (#312\u2019s review, LOW-3)',()=>{
   await drive(s,engine,s.store,true,decision)
   expect(s.ran).toBe(1)
   expect(errors(s)).toHaveLength(1)
-  expect(errors(s)[0]).toContain('already decided')
+  // #328: the decision's continuation finished the run, so the head is complete and the resume is refused RunComplete before
+  // the decision is read: nothing runs again.
+  expect(errors(s)[0]).toContain('RunComplete')
  },30_000)
 })
 

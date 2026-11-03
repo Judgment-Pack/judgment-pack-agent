@@ -11,6 +11,7 @@ import {answerWith} from '../testing/scenarioDriver'
 import {RECORD_DEFAULTS} from '../records'
 import {MemoryRunStore} from './run'
 import {ContinuationNotRecoverable,RunWriter,type DurableBinding} from './writer'
+import runComplete from '../../../contract/vectors/checkpoint/run-complete.json'
 
 const LOCAL={name:'write_note',description:'Write one note.',inputSchema:{type:'object'},execute:async()=>({content:[]})}
 const REFUSED:[string,Record<string,unknown>,string,string[]][]=[
@@ -26,8 +27,9 @@ const run=async(engine:string,extra:Record<string,unknown>,store:MemoryRunStore|
  const session={prompt:'Write it.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{currentRequest:{message:'Write it.',input:'note'},...(store?{runStore:{store,id:'run-s',...(resume?{resume:true}:{})}}:{})},...engineCall(engine,call),...extra} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of named(engine).start(session))out.push(event);return out
 }
-/** A real head: an ordinary run of that engine, finished and recorded. */
-async function withHead(engine:string){
+/** A real head: an ordinary run of that engine, finished and recorded. `interrupted` leaves it running instead, as a run
+ * stopped mid-way would: a finished head is resumed by no plain resume (#328), so the refusals below are read at one that is. */
+async function withHead(engine:string,interrupted=false){
  const store=new MemoryRunStore()
  const fine=engine==='codex'
   ?vi.fn(async(_request:unknown,callbacks:{event:(event:unknown)=>Promise<void>;providerRelease?:{acknowledge:(invocation:unknown)=>void;invocation:unknown}})=>{try{await callbacks.event({type:'message',id:'reply',text:'Done.',phase:'final'})}finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}})
@@ -37,7 +39,10 @@ async function withHead(engine:string){
  expect(events.filter(e=>e.type==='error')).toEqual([])
  const head=await store.load('run-s')
  expect(head?.checkpoint).toBeDefined()
- return {store,revision:head!.revision}
+ if(!interrupted)return {store,revision:head!.revision}
+ const running={...JSON.parse(new TextDecoder().decode(head!.checkpoint!)),status:'running'}
+ const left=await store.commit({runId:'run-s',expectedRevision:head!.revision,commitId:'interrupted',checkpoint:new TextEncoder().encode(JSON.stringify(running)),events:[]})
+ return {store,revision:left.revision}
 }
 const heard=(events:AssistantEvent[],says:string)=>{
  const errors=events.filter(e=>e.type==='error') as Extract<AssistantEvent,{type:'error'}>[]
@@ -60,7 +65,7 @@ describe('a refusal before the writer is bound, under a run store',()=>{
    expect((await run(engine,extra,undefined,call)).map(e=>e.type)).toEqual(events.map(e=>e.type))
   })
   it(`${engine}, a resume with a head: ${name} is reported as configuration, once, and the head does not move`,async()=>{
-   const {store,revision}=await withHead(engine),call=vi.fn()
+   const {store,revision}=await withHead(engine,true),call=vi.fn()
    const events=await run(engine,extra,store,call,true)
    heard(events,says)
    expect(events.map(e=>e.type).filter(type=>first.includes(type))).toEqual(first)
@@ -77,6 +82,23 @@ describe('a refusal before the writer is bound, under a run store',()=>{
  })
 })
 
+// #328: a finished run is not asked again. A resume of a run whose head is complete is refused by name before anything of the
+// run is bound, on every engine: the vector's one error event, then the run ends; no model, no tool, no write and no event.
+describe('a resume of a complete head (#328)',()=>{
+ for(const [engine] of ENGINES){
+  it(`${engine}: RunComplete, once, and nothing is asked, called or written`,async()=>{
+   const {store,revision}=await withHead(engine),logged=(await store.readEvents('run-s',null,100)).items.length
+   const call=vi.fn(),write=vi.fn(async()=>({content:[]}))
+   const tool={...LOCAL,taxonomy:{operation:'own-state',effect:'pure'},execute:write} as unknown as HostTool
+   const events=await run(engine,{hostTools:[tool]},store,call,true)
+   expect(events.filter(e=>e.type==='error')).toEqual(runComplete.items.slice(0,1));expect(events.at(-1)).toEqual(runComplete.items.at(-1))
+   expect(events.filter(e=>!['error','usage','end'].includes(e.type))).toEqual([])
+   expect(events.at(-1)?.type).toBe('end');expect(events.filter(e=>e.type==='end')).toHaveLength(1)
+   expect(call).not.toHaveBeenCalled();expect(write).not.toHaveBeenCalled()
+   expect((await store.load('run-s'))!.revision).toBe(revision);expect((await store.readEvents('run-s',null,100)).items.length).toBe(logged)
+  })
+ }
+})
 describe("the writer's pass-through, at its own port (#297)",()=>{
  const scope={execution:'run-w',role:'author'}
  const checkpointOf=()=>({version:2,id:'run-w',requestKey:'a'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:0,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'fixture',entries:[]}}) as never

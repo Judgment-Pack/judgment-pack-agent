@@ -222,7 +222,9 @@ func TestADecisionGivenAgainIsRefused(t *testing.T) {
 			if err := s.run(t, context.Background(), true, decision, delegating); err != nil {
 				t.Fatal(err)
 			}
-			if errors := s.errors(); s.ran != 1 || len(errors) != 1 || !strings.Contains(errors[0], "already decided") {
+			// #328: the decision's continuation finished the run, so the head is complete and the resume is refused
+			// RunComplete before the decision is read: nothing runs again.
+			if errors := s.errors(); s.ran != 1 || len(errors) != 1 || !strings.Contains(errors[0], "RunComplete") {
 				t.Fatalf("given again: ran %d, errors %v", s.ran, errors)
 			}
 		})

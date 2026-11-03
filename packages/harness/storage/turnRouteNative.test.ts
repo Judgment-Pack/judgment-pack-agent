@@ -24,6 +24,9 @@ it('records exact superseded claim, restores the full request and rejects late c
  const cp=await saved(store),marker=cp.turnRoute.widenedInvocation,row=cp.durable.dispatches.find((d:{id:string})=>d.id===marker.dispatchId)
  expect(row).toMatchObject({kind:'agent',state:'unknown',requestDigest:marker.requestDigest});expect(events.filter(e=>e.type==='route_widened')).toHaveLength(1)
  await expect(prior!.capabilityNeeded!({kind:'tool',name:'lookup'})).rejects.toThrow();expect(prior!.providerRelease!.acknowledge(prior!.providerRelease!.invocation)).toBe(false)
+ // #328: a finished head is resumed by no plain resume, so the restore is read at a head left running, as a run stopped before
+ // its end leaves it.
+ {const head=(await store.load('native-route'))!,held=JSON.parse(new TextDecoder().decode(head.checkpoint!));await store.commit({runId:'native-route',expectedRevision:head.revision,commitId:'interrupted',checkpoint:new TextEncoder().encode(JSON.stringify({...held,status:'running'})),events:[]})}
  const read=store.readHistoryPage.bind(store);let metadataChanged=false
  const probe=vi.spyOn(store,'readHistoryPage').mockImplementationOnce(async(...args)=>{const page=await read(...args);const head=(await store.readHistoryHead('native-route'))!
  await store.commitHistoryMetadata({runId:'native-route',expectedHistoryRevision:head.revision,expectedMetadataRevision:null,commitId:'feedback-1',record:{version:1,kind:'feedback',feedback:{version:1,id:'rating',runId:'native-route',sequence:1,previous:null,target:{kind:'run'},rating:'good',actor:'user',recordedAt:'2026-10-25T01:02:03.000Z'}}});metadataChanged=true;return page})

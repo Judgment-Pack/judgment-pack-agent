@@ -151,6 +151,62 @@ func (e *ContinuationNotRecoverable) Unwrap() error {
 
 type ContinuationIdentityChanged struct{}
 
+// RunCompleteDetail is the detail of a refused resume of a finished run (#328).
+const RunCompleteDetail = "RunComplete: the run is complete, and a finished run is not resumed. Only a job wait's or a re-authorization's continuation resumes it."
+
+// RunComplete (#328): a resume of a run whose run-store head is complete is refused by name, before anything of the run
+// is bound: no model request, no tool call and no record write. A finished run asked again would make new requests and
+// could act again. Two continuations resume a complete head: a job wait's (ResumeParked, then Input.JobContinuation),
+// since a job wait parks a checkpoint at rest, and a re-authorization claim's (ReauthorizedRunStore), whose grant may
+// send the never-admitted operation once more. A question's answer and a chat's next turn are new runs. An execution
+// the host holds itself, with no run store, is the host's own record and is not refused.
+type RunComplete struct{}
+
+func (*RunComplete) Error() string { return RunCompleteDetail }
+func (e *RunComplete) Unwrap() error {
+	return storageNamedFailure("stale-state", "context", "not-started", e.Error())
+}
+
+// reauthorizedContinuation (#328): a resumed re-authorization claim's view, its grant unspent, over a head that holds
+// the granted operation as its never-admitted row: the host may open another view of the claim, which sends it once
+// more.
+func reauthorizedContinuation(store RunStore, checkpoint []byte) bool {
+	view := leaseViewOf(store)
+	if view == nil {
+		return false
+	}
+	view.mu.Lock()
+	grant := view.grant
+	var operation EffectOperation
+	open := grant != nil && !grant.used
+	if open {
+		operation = grant.operation
+	}
+	view.mu.Unlock()
+	if !open {
+		return false
+	}
+	var head struct {
+		Durable *struct {
+			Dispatches []struct {
+				ID      string            `json:"id"`
+				Kind    string            `json:"kind"`
+				State   string            `json:"state"`
+				Failure *contract.Failure `json:"failure"`
+			} `json:"dispatches"`
+		} `json:"durable"`
+	}
+	if json.Unmarshal(checkpoint, &head) != nil || head.Durable == nil {
+		return false
+	}
+	for _, row := range head.Durable.Dispatches {
+		if row.ID == operation.Operation && row.State == "unknown" && (row.Kind == "host" || row.Kind == "runtime") && isNeverAdmittedFailure(row.Failure) {
+			return true
+		}
+	}
+	return false
+}
+
 func (*ContinuationIdentityChanged) Error() string {
 	return "ContinuationIdentityChanged: the admitted continuation identity differs."
 }
@@ -1980,6 +2036,10 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				}
 			}
 			copy.Execution = saved
+			// #328: a complete head resumes only as a job wait's continuation or a re-authorization claim's.
+			if saved.Status == "complete" && copy.JobContinuation == nil && !reauthorizedContinuation(store, head.Checkpoint) {
+				return nil, &RunComplete{}
+			}
 		}
 	} else {
 		store = NewCheckpointCallbackRunStore(copy.Checkpoint, func(raw []byte) (contract.Checkpoint, error) {

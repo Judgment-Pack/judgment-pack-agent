@@ -15204,6 +15204,42 @@
    "note": "#326's review round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
   },
   {
+   "name": "resume #328 a resume of a complete head is not refused",
+   "file": "storage/writer.ts",
+   "find": " if(head&&finished(store,execution,input))throw new RunComplete()\n",
+   "replace": "",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328. Go twin (by hand, in run_writer.go): caught at TestAResumeOfACompleteHeadIsRefusedBeforeAnything, on eino and the agent adapter, plain and through the coordinator."
+  },
+  {
+   "name": "resume #328 a job wait's continuation is refused at a complete head",
+   "file": "storage/writer.ts",
+   "find": "&&input?.jobContinuation===undefined&&",
+   "replace": "&&",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328. The designed path: a job wait parked on a complete head, resumed through resumeParked with its job. Go twin (by hand, in run_writer.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
+  },
+  {
+   "name": "resume #328 a re-authorization claim's continuation is refused at a complete head",
+   "file": "storage/writer.ts",
+   "find": "&&!reauthorizedContinuation(store,execution)",
+   "replace": "",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328. Another view of a re-authorization claim sends the never-admitted operation once more. Go twin (by hand, in run_writer.go): caught at TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent."
+  },
+  {
    "name": "job B21 #314 the history observation reader reads members of what is no object",
    "file": "history/metadata.ts",
    "find": " if(!object(value)||value.version!==1||!scope(value.scope))return fail()\n",

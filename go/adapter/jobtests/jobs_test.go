@@ -158,10 +158,38 @@ type options struct {
 	plan         *runcontext.Value
 }
 
+// laterTurn is the continuation a resume of a complete head here runs as (#328): a finished run resumes only as a job
+// wait's continuation, so a later turn of the run is the one ResumeParked hands on, the run's last job as its record says.
+// The park and the claim themselves are the wait tests'.
+func laterTurn(t *testing.T, store runcontext.RunStore, with options) *runcontext.RunJob {
+	t.Helper()
+	if !with.resume || with.continuation != nil {
+		return with.continuation
+	}
+	head, err := store.Load(context.Background(), jobRun)
+	if err != nil || head == nil || head.Checkpoint == nil {
+		return nil
+	}
+	value, err := runcontext.ParseJSON(head.Checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := runcontext.ReadExecution(value)
+	if err != nil || saved.Status != "complete" {
+		return nil
+	}
+	page, err := runcontext.ListJobs(context.Background(), store, jobRun, "", runcontext.JobPageLimit)
+	if err != nil || len(page.Jobs) == 0 {
+		return nil
+	}
+	return &page.Jobs[len(page.Jobs)-1]
+}
+
 // drive runs the tools: the model or the agent makes each call, then ends.
 func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runcontext.HostTool, calls []jobCall, with options) *runResult {
 	t.Helper()
 	out := &runResult{}
+	with.continuation = laterTurn(t, store, with)
 	var mu sync.Mutex
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})

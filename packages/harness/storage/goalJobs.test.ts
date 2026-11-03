@@ -23,7 +23,16 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0}
  return {state,call:async()=>{const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
+/** #328: a finished run is resumed by no plain resume. A later leg here resumes the run as one stopped before its end would be:
+ * its head is left running, under the run's own fence. */
+async function laterLeg(store:RunStore,resume?:boolean){
+ if(!resume)return
+ const head=await store.load(RUN)
+ const saved=head?.checkpoint?JSON.parse(new TextDecoder().decode(head.checkpoint)):undefined
+ if(saved?.status==='complete')await store.commit({runId:RUN,expectedRevision:head!.revision,commitId:crypto.randomUUID(),checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
+}
 async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean}={}):Promise<AssistantEvent[]>{
+ await laterLeg(store,extra.resume)
  const session:EngineSession={prompt:'Work.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:new AbortController().signal,allowConversation:true,critic:'off',
   context:{currentRequest:{message:'Work.',input:'work'},plan:PLAN,runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
