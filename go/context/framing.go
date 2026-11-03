@@ -29,6 +29,7 @@ package runcontext
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"regexp"
 	"strings"
 )
 
@@ -90,6 +91,69 @@ func UnframeData(text, marker string) (string, bool) {
 		return "", false
 	}
 	return text[start+1 : len(text)-len(closing)], true
+}
+
+// resultMembers are the paths of a retained tool result that name the result's own members, not a tool's.
+var resultMembers = regexp.MustCompile(`^/(content|structuredContent|isError)$|^/content/[0-9]+(/(type|text|data|mimeType))?$`)
+
+// A listed entry's context id is its scope, its document's id and a digest prefix. The package's own documents are these,
+// and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>.
+var (
+	contextDigestSuffix = regexp.MustCompile(`:[0-9a-f]{16}$`)
+	ownDocument         = regexp.MustCompile(`:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+)$`)
+	resultDocument      = regexp.MustCompile(`:result-[^:]+$`)
+)
+
+// ListingNamesToolKeys reports whether this answer is a page of list_context that shows text the package did not write
+// (#302): a key a tool's result holds, or anything of a document the host gave the run (its keys, label, revision and id),
+// which may hold a source's words. A key is that text however it reads, so the test is where it sits and not what it says.
+// A page over the result bound comes back as a reference to the page retained, and is data too. So is a page the package
+// could not have written. It reads the answer itself, so a durable replay of the same answer decides the same way.
+func ListingNamesToolKeys(name string, result ToolResult) bool {
+	page := result.StructuredContent
+	if name != "list_context" || page == nil || !page.IsObject() {
+		return false
+	}
+	if id := page.Get("contextId"); id != nil && id.IsString() && strings.Contains(id.Str(), ":result-list_context-") {
+		return true
+	}
+	items := page.Get("items")
+	if items == nil {
+		return false
+	}
+	if !items.IsArray() {
+		return true
+	}
+	for _, item := range items.Items() {
+		id := item.Get("contextId")
+		if !item.IsObject() || id == nil || !id.IsString() || !contextDigestSuffix.MatchString(id.Str()) {
+			return true
+		}
+		document := strings.TrimSuffix(id.Str(), contextDigestSuffix.FindString(id.Str()))
+		if ownDocument.MatchString(document) {
+			continue
+		}
+		if !resultDocument.MatchString(document) {
+			return true
+		}
+		sections := item.Get("sections")
+		if sections == nil || !sections.IsArray() {
+			return true
+		}
+		for _, section := range sections.Items() {
+			path := section.Get("path")
+			if !section.IsObject() || path == nil || !path.IsString() || !resultMembers.MatchString(path.Str()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AnswerIsData reports whether a tool's answer goes to the model as one data block: a reading tool's always, and
+// list_context's where it names a key a tool wrote. The durable record's class of the tool is not this, and does not move.
+func AnswerIsData(host *HostTool, name string, result ToolResult) bool {
+	return ReadingTool(host) || ListingNamesToolKeys(name, result)
 }
 
 // ReadingTool reports whether a tool's answer is retrieved text: every runtime tool (host nil), a

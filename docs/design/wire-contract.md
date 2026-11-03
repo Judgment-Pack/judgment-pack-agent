@@ -218,7 +218,7 @@ result depends on the Runtime serving it) and `presentation`. The boundary adds
 `list_context`, `read_context`, `read_window` and `search` to every session and, in a conversation,
 `update_plan` and `request_budget_increase`; an offered tool may not take those names.
 (`read_window`, the reader below, is this harness's, agent#1, and so is `search`, agent#5; the Desk
-takes both in its swap.)
+takes both in its swap.) A page of `list_context` that shows text the package did not write (a key a retained tool result holds, or anything of a document the host gave the run) reaches the model as one data block, as a reading tool's answer does, and so does a page over the bound, which comes back as a reference; any other page does not, and the tool's durable class is the same either way (#302).
 
 An adapter shows the model the schema the runtime serves or nothing: a tool served without one ends
 the session. The one exception is an endpoint whose capability record says it takes the Gemini

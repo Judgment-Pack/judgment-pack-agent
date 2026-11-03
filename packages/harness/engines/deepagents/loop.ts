@@ -44,7 +44,7 @@ import { EXECUTION_INSTRUCTIONS } from '../../execution/controller'
 import { managedContext, contextOf } from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions } from '../../host'
-import { DATA_RULE, readingTool } from '../../framing'
+import { DATA_RULE, answerIsData } from '../../framing'
 import { GateViolation } from '../../toolGate'
 import { APPROVAL_HELD } from '../../toolSources'
 import { readModelQuestion } from '../../questions'
@@ -539,7 +539,7 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
       const separated = await separateImages(answer, routing)
       const bounded = await context.result(tool.name, separated.result)
       // A reading tool's answer is data (agent#12); propose_pack's acknowledgement is the adapter's own.
-      return readingTool(tool) && tool.name !== PROPOSE_PACK_TOOL ? asData(tool.name, bounded, separated.images) : { result: bounded, images: separated.images }
+      return answerIsData(tool, tool.name, bounded) && tool.name !== PROPOSE_PACK_TOOL ? asData(tool.name, bounded, separated.images) : { result: bounded, images: separated.images }
     }
 
     /**

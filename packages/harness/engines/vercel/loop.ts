@@ -7,7 +7,7 @@ import {EXECUTION_INSTRUCTIONS} from '../../execution/controller'
 import {managedContext,contextOf} from '../../context/managed'
 import { readDelegationRequest } from '../../delegationContract'
 import { assistantLanguageInstructions } from '../../host'
-import { DATA_RULE, readingTool } from '../../framing'
+import { DATA_RULE, answerIsData } from '../../framing'
 import { GateViolation } from '../../toolGate'
 import { APPROVAL_HELD } from '../../toolSources'
 /**
@@ -1012,7 +1012,7 @@ export function runVercelLoop(
       const separated = await separateImages(answer, routing)
       const projected = await context.result(tool.name, separated.result)
       // A reading tool's answer is data (agent#12); propose_pack's acknowledgement is the adapter's own.
-      return readingTool(tool) && tool.name !== PROPOSE_PACK_TOOL ? asData(tool.name, projected, separated.images) : { result: projected, images: separated.images }
+      return answerIsData(tool, tool.name, projected) && tool.name !== PROPOSE_PACK_TOOL ? asData(tool.name, projected, separated.images) : { result: projected, images: separated.images }
     }
     /**
      * A call the SDK made: its images are shown after the tool message that

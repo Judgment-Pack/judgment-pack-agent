@@ -173,6 +173,28 @@ func runtimeActionHead(t *testing.T, store runcontext.RunStore) *runcontext.Valu
 	}
 	return value
 }
+
+// #298's L25: a Runtime action's pause carries the marker the tool list is framed with, as any approval does (ADR-0008), on a
+// gate that holds one from an earlier open.
+func TestARuntimeActionOnALaterOpenCarriesTheOffersMarker(t *testing.T) {
+	for _, engine := range []string{"eino", "native"} {
+		t.Run(engine, func(t *testing.T) {
+			f := newRuntimeActionFixture(t)
+			held := strings.Repeat("c", 32)
+			if got := gate.FramingMarker(f.gate.Calls(), held); got != held {
+				t.Fatal(got)
+			}
+			store := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			if _, err := f.run(t, store, engine, false, nil, true); err != nil {
+				t.Fatal(err)
+			}
+			if got := runtimeActionHead(t, store).Get("approval").Get("marker").Str(); got != held {
+				t.Fatalf("the approval carries %q, and the gate holds %q", got, held)
+			}
+		})
+	}
+}
+
 func TestRuntimeActionActualExportedAdapters(t *testing.T) {
 	for _, engine := range []string{"eino", "native"} {
 		t.Run(engine, func(t *testing.T) {

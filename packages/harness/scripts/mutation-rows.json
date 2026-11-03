@@ -12579,7 +12579,7 @@
    ],
    "status": "caught",
    "origin": "agent#289",
-   "note": "TypeScript's gate compares no declaration, so a marker per open refuses nothing and stays as it was. Go's enrolling hosts hold the offers' marker on the gate instead. Go twins (by hand), in ./adapter/enrollmenttests unless named: no hold, caught at ^TestAFirstRunUnderEnrollment and ^TestAResumeUnderEnrollment, at ^TestAChildsGrant in ./adapter/delegate and at ^TestAKeptGate in ./adapter/durableapprovaltests; results under the hold, at ^TestUnderEnrollmentOnlyTheOffersHoldTheMarker; an approval carrying the results' marker, at ^TestAnApprovalOnALaterOpen; the gate not holding, at ^TestFramingMarker in ./gate; a gate forgiving a framed description, at ^TestContextEnrollmentComparesEveryByte in ./gate; a narrowed tool escaping the comparison, also at the same length, at ^TestContextEnrollmentMayNarrow in ./gate; both comparisons off, at ^TestAChangedDescriptionBeforeAResume and ^TestAChangeDuringABatch; a host's declaration droppable, at ^TestContextEnrollmentRejects in ./gate; no narrowing, at ^TestAParentInvocationThatSpent; SetOffer keeping the comparison, at ^TestANewRegistration in ./gate; a hold with no enrollment, and one marker for every open, at ^TestAHostThatDoesNotEnroll; the marker kept in framed text, at ^TestASourcesTextCannot; the enrollment block skipped with no EnrollContext, at ^TestAStopDuringTheOpen and ^TestAnInputSchema in ./adapter/durableapprovaltests."
+   "note": "TypeScript's gate compares no declaration, so a marker per open refuses nothing and stays as it was. Go's enrolling hosts hold the offers' marker on the gate instead. Go twins (by hand), in ./adapter/enrollmenttests unless named: no hold, caught at ^TestAFirstRunUnderEnrollment and ^TestAResumeUnderEnrollment, at ^TestAChildsGrant in ./adapter/delegate and at ^TestAKeptGate in ./adapter/durableapprovaltests; results under the hold, at ^TestUnderEnrollmentOnlyTheOffersHoldTheMarker; an approval carrying the results' marker, at ^TestAnApprovalOnALaterOpen; the gate not holding, at ^TestFramingMarker in ./gate; a gate forgiving a framed description, at ^TestContextEnrollmentComparesEveryByte in ./gate; a narrowed tool escaping the comparison, also at the same length, at ^TestContextEnrollmentMayNarrow in ./gate; both comparisons off, at ^TestAChangedDescriptionBeforeAResume and ^TestAChangeDuringABatch; a host's declaration droppable, at ^TestContextEnrollmentRejects in ./gate; no narrowing, at ^TestAParentInvocationThatSpent; SetOffer keeping the comparison, at ^TestANewRegistration in ./gate; a hold with no enrollment, and one marker for every open, at ^TestAHostThatDoesNotEnroll; the marker kept in framed text, at ^TestASourcesTextCannot; the enrollment block skipped with no EnrollContext, at ^TestAStopDuringTheOpen and ^TestAnInputSchema in ./adapter/framingtests."
   },
   {
    "name": "resume digest a malformed shownDigest is refused only on an approval",
@@ -13794,6 +13794,162 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsARestart."
+  },
+  {
+   "name": "list_context L1 a page that names a tool's key is not data",
+   "file": "framing.ts",
+   "find": "  return readingTool(host) || listingNamesToolKeys(name, result)\n",
+   "replace": "  void listingNamesToolKeys\n  return readingTool(host)\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): AnswerIsData returns ReadingTool only; caught at ^TestListContextIsData in ./context and ^TestAToolsKey in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L2 every page is data",
+   "file": "framing.ts",
+   "find": "  if (name !== 'list_context' || !isObject(page)) return false\n",
+   "replace": "  if (name === 'list_context') return true\n  if (name !== 'list_context' || !isObject(page)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Bytes where no key is involved. Go twin (by hand): the same; caught at ^TestListContextIsData in ./context and ^TestAListingThatNames in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L3 any tool's answer is read as a listing",
+   "file": "framing.ts",
+   "find": "  if (name !== 'list_context' || !isObject(page)) return false\n",
+   "replace": "  if (!isObject(page)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same; caught at ^TestOnlyListContext in ./context."
+  },
+  {
+   "name": "list_context L4 a content part's other members are the result's own",
+   "file": "framing.ts",
+   "find": "^\\/content\\/[0-9]+(\\/(type|text|data|mimeType))?$/",
+   "replace": "^\\/content(\\/.*)?$/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L5 keys under structuredContent are the result's own",
+   "file": "framing.ts",
+   "find": "const RESULT_MEMBERS = /^\\/(content|structuredContent|isError)$|",
+   "replace": "const RESULT_MEMBERS = /^\\/(content|structuredContent|isError)$|^\\/structuredContent\\/|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L6 the vercel engine does not read the listing",
+   "file": "engines/vercel/loop.ts",
+   "find": "return answerIsData(tool, tool.name, projected) && tool.name !== PROPOSE_PACK_TOOL",
+   "replace": "return answerIsData(tool, '', projected) && tool.name !== PROPOSE_PACK_TOOL",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): eino's calls.go passes no name to AnswerIsData; caught at ^TestAToolsKey/api in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L7 the deepagents engine does not read the listing",
+   "file": "engines/deepagents/loop.ts",
+   "find": "return answerIsData(tool, tool.name, bounded) && tool.name !== PROPOSE_PACK_TOOL",
+   "replace": "return answerIsData(tool, '', bounded) && tool.name !== PROPOSE_PACK_TOOL",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go has no deepagents engine; its twin is L6's."
+  },
+  {
+   "name": "list_context L8 the agent wire does not read the listing",
+   "file": "engines/codex/index.ts",
+   "find": "answerIsData(route.host,route.name,projected)",
+   "replace": "answerIsData(route.host,'',projected)",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the agent's invoke.go passes no name to AnswerIsData; caught at ^TestAToolsKey/native in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L9 a page past the bound is not data",
+   "file": "framing.ts",
+   "find": "  if (typeof page.contextId === 'string' && page.contextId.includes(':result-list_context-')) return true\n",
+   "replace": "",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M22. Go twin (by hand): drop the same check; caught at ^TestListContextIsData in ./context and ^TestABigPageIsABlockToo in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L10 a host's document is the package's",
+   "file": "framing.ts",
+   "find": "    if (!RESULT_DOCUMENT.test(document)) return true\n",
+   "replace": "    if (!RESULT_DOCUMENT.test(document)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M23. Go twin (by hand): continue instead of true; caught at ^TestListContextIsData in ./context and ^TestAHostsDocumentInAListingIsABlock in ./adapter/framingtests."
+  },
+  {
+   "name": "list_context L11 any document is the package's own",
+   "file": "framing.ts",
+   "find": "const OWN_DOCUMENT = /:(request|",
+   "replace": "const OWN_DOCUMENT = /|:(request|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M23. Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L12 a page the package could not have written is not data",
+   "file": "framing.ts",
+   "find": "    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return true\n",
+   "replace": "    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M24: TypeScript decides as Go does on a damaged page. Go twin (by hand): read contextId unguarded, as before; caught at ^TestListContextIsData in ./context and ^TestAStoredPageThePackageNeverWrote in ./adapter/framingtests, by the panic the guard prevents."
+  },
+  {
+   "name": "list_context L13 a package id is a prefix",
+   "file": "framing.ts",
+   "find": "task-result-[^:]+|task-proposal-[^:]+)$/",
+   "replace": "task-result-[^:]+|task-proposal-[^:]+)/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's re-read M28: the own-id rule's end anchor. Go twin (by hand): drop the same $; caught at ^TestListContextIsData in ./context."
   },
   {
    "name": "job R-1a a repeat of a start answers its row while its job says otherwise",
