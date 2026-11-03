@@ -7392,7 +7392,7 @@
   ],
   "status": "caught",
   "origin": "agent#237",
-  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 decided retained missing-pause evidence cannot restore the private exemption. Missing retained pause evidence restores an exemption and permits a third provider call (3 rather than 2). Go counterpart caught: incomplete decided proof restored native exemption:. Restored focused checks pass."
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 decided retained missing-pause evidence cannot restore the private exemption. Missing retained pause evidence restores an exemption and permits a third provider call (3 rather than 2). Go counterpart caught: incomplete decided proof restored native exemption:. Restored focused checks pass. Since #328 a complete head is refused RunComplete before this restore, so both tests read the decided proof again at a head left running, as a run stopped before its end leaves it; the Go twin is caught there again."
 },
 {
   "name": "native Plan pause R1 single-unknown-exemption",
