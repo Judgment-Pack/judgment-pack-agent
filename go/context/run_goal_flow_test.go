@@ -590,11 +590,20 @@ func (s goalIgnoresRead) CommandGoal(ctx context.Context, input GoalTransition) 
 	return s.goalReadsBefore.CommandGoal(ctx, input)
 }
 
-// H-1 (#313): an achievement whose read of the record precedes the bind it follows is refused, sent together with it
-// or read just before it lands, and under a store that does not compare the revision read the package's own finding,
-// plan-unbound, still refuses it. Nothing of the objective is achieved, and the steps stay as the model left them.
+// H-1 (#313): an achievement sent with the bind it follows is never accepted, whichever lands first. Sent together,
+// either order may happen: read before the bind it is revision-changed, read after it the bound Plan's steps are
+// unfinished (step-incomplete). Each order is also a case of its own: read just before the bind lands it is strictly
+// revision-changed, and with the bind landed first it is step-incomplete. Under a store that does not compare the
+// revision read, the package's own finding, plan-unbound, still refuses it. Nothing of the objective is achieved, and
+// the steps stay as the model left them.
 func TestGoalAnAchievementReadBeforeItsBindIsRefused(t *testing.T) {
-	for _, how := range []string{"together", "read before the bind", "a store that does not compare what was read"} {
+	reasons := map[string][]string{
+		"together":             {"revision-changed", "step-incomplete"},
+		"the bind lands first": {"step-incomplete"},
+		"read before the bind": {"revision-changed"},
+		"a store that does not compare what was read": {"plan-unbound"},
+	}
+	for _, how := range []string{"together", "the bind lands first", "read before the bind", "a store that does not compare what was read"} {
 		t.Run(how, func(t *testing.T) {
 			f := newGoalFlow(t)
 			defer f.run.Context.Close()
@@ -605,13 +614,17 @@ func TestGoalAnAchievementReadBeforeItsBindIsRefused(t *testing.T) {
 			bind := f.command("bind", created.Goal.Revision, func(c *GoalCommand) { c.Steps = []string{"step-1", "step-2"}; c.Head = &head })
 			achieve := f.command("achieve", created.Goal.Revision+1, func(c *GoalCommand) { c.Head = &head })
 			var bindErr, achieveErr error
-			if how == "together" {
+			switch how {
+			case "together":
 				var wg sync.WaitGroup
 				wg.Add(2)
 				go func() { defer wg.Done(); _, bindErr = f.send(bind) }()
 				go func() { defer wg.Done(); _, achieveErr = f.send(achieve) }()
 				wg.Wait()
-			} else {
+			case "the bind lands first":
+				_, bindErr = f.send(bind)
+				_, achieveErr = f.send(achieve)
+			default:
 				once := func() { _, bindErr = f.send(bind) }
 				var store RunStore = goalReadsBefore{durableGoalStore: f.store, mu: &sync.Mutex{}, once: &once}
 				if how != "read before the bind" {
@@ -619,11 +632,13 @@ func TestGoalAnAchievementReadBeforeItsBindIsRefused(t *testing.T) {
 				}
 				_, achieveErr = RunGoalCommand(context.Background(), store, achieve)
 			}
-			reason := "revision-changed"
-			if how == "a store that does not compare what was read" {
-				reason = "plan-unbound"
+			reason := ""
+			for _, allowed := range reasons[how] {
+				if goalRefusedWith(achieveErr, allowed) {
+					reason = allowed
+				}
 			}
-			if bindErr != nil || !goalRefusedWith(achieveErr, reason) {
+			if bindErr != nil || reason == "" {
 				t.Fatal(bindErr, achieveErr)
 			}
 			held, _ := ReadGoal(context.Background(), f.store, goalRun)
