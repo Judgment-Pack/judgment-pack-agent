@@ -273,7 +273,8 @@ Two changes, neither of which changes a command or a test:
   usage budgets and the native routes that use their fixtures), `reauthtests` (re-authorization, waits
   and runtime actions), `principaltests` (the delegated runs, and the heaviest re-authorization test),
   `durableapprovaltests`, `durablewritetests` and `durablewiretests` (durable writes), and
-  `enrollmenttests` (runs under a host that enrolls its offers, #289; its rows run in parallel). A test
+  `enrollmenttests` (runs under a host that enrolls its offers, #289; its rows run in parallel), and
+  `framingtests` (what a model is shown of a source's text, #302). A test
   binary cannot import another's test files, so where a cluster divides a family its helpers are
   copied, and say so.
 
