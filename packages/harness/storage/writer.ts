@@ -22,6 +22,7 @@ import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
+import {APPROVAL_CONTINUATION} from '../toolSources'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
 import {authoredFailure} from '../failures'
@@ -39,6 +40,11 @@ export interface DurableDispatch {planPause?:import('../execution/plan').NativeP
 export interface DurableObservation {id:string;scope:DurableScope;kind:'operation'|'artifact-read'|'artifact-produced';source:string;dispatchId:string;commitId:string;artifact?:ArtifactObservation}
 export interface DurableBook {dispatches:DurableDispatch[];observations:DurableObservation[];children:{scope:DurableScope;checkpoint:ExecutionCheckpoint}[];pendingHandoff?:{callId:string;request:import('../delegationContract').DelegationRequest}}
 export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean;context?:StoredChatScope}
+/** Whether a recorded request holds the continuation block of this call (`approvalContinuation`): its first line, and the call's id in the block's data. */
+function carriesApprovalContinuation(request:string,callId:string):boolean{
+ return request.includes(JSON.stringify(APPROVAL_CONTINUATION).slice(1,-1))&&request.includes(JSON.stringify(`"callId":${JSON.stringify(callId)}`).slice(1,-1))
+}
+
 export class ContinuationNotRecoverable extends AIFailureError {constructor(){super({...failure('storage','storage','not-started'),detail:'ContinuationNotRecoverable: exact safe continuation bytes cannot be retained.'});this.name='ContinuationNotRecoverable'}}
 export class StorageOutcomeUnknown extends AIFailureError {constructor(cause?:unknown){super({...failure('storage','storage','unknown'),detail:'StorageOutcomeUnknown: the dispatched operation result was not acknowledged.'});this.name='StorageOutcomeUnknown';if(cause!==undefined)Object.defineProperty(this,'cause',{value:cause})}}
 export class StorageAcknowledgementInvalid extends AIFailureError {constructor(){super({...failure('storage','storage','unknown'),detail:'StorageAcknowledgementInvalid: the host did not acknowledge this exact transaction.'});this.name='StorageAcknowledgementInvalid'}}
@@ -740,13 +746,27 @@ export class RunWriter {
  event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{if(this.dispatchClosed)throw new DispatchCanceled(this.closed());
   // #293, #297: refused before the writer is bound (a policy the bind sets is what finalizing needs), on a fresh run or at a resume with a head, nothing was sent and nothing can be recorded: the host hears the refusal and its end as they are, and the head does not move.
   if(binding.root&&!this.policy&&(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
- recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
-  return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
+ /**
+  * Whether an agent invocation whose outcome is unknown is sent again as recorded. After the person's decision on the
+  * response's act call (ADR-0008), only an invocation that already carried that decision's continuation block is: the one
+  * that paused for it ended at the pause, and the invocation that continues the response carries the block (#309).
+  * Otherwise, at a delegation handoff, only one that already carried the batch's answer is.
+  */
+ private agentReplay(row:DurableDispatch):boolean{
+  const approval=this.latest?.approval
+  if(approval&&approval.state!=='asked'&&approval.state!=='approved')return carriesApprovalContinuation(row.request,approval.callId)
+  const handoff=this.latest?.handoff
+  if(handoff)return handoff.state==='continued'&&!!handoff.continuation&&row.request.includes(JSON.stringify(handoff.continuation).slice(1,-1))
+  return true
  }
+ recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
+  return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||this.agentReplay(row)))
+ }
+
  prepared(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,consume=false):string {
   if(kind!=='model'&&kind!=='agent')return request
   const pending=[...this.book.dispatches].reverse().find(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row))
-  if(pending&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&pending.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1)))){
+  if(pending&&(kind!=='agent'||this.agentReplay(pending))){
    if(this.hasTaskSteps||this.taskSchedule||kind==='model'&&!pending.read)throw new HostOutcomeUnknown()
    if(pending.source!==source||pending.tool!==tool)throw new ContinuationIdentityChanged()
    // The original admitted claim stays visible to coordinator accounting until this invocation returns.

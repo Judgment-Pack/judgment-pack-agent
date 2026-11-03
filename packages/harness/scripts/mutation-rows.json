@@ -14598,6 +14598,138 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "approval A1 a paused invocation is sent again after the decision",
+   "file": "storage/writer.ts",
+   "find": "  if(approval&&approval.state!=='asked'&&approval.state!=='approved')return carriesApprovalContinuation(row.request,approval.callId)\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#309. Go twin (by hand): drop the same branch in agentReplayLocked; caught at ^TestTheContinuingInvocationCarriesTheApprovedResult in ./adapter/continuationtests."
+  },
+  {
+   "name": "approval A2 a lost continuation is not sent again",
+   "file": "storage/writer.ts",
+   "find": " return request.includes(JSON.stringify(APPROVAL_CONTINUATION).slice(1,-1))&&",
+   "replace": " return false&&request.includes(JSON.stringify(APPROVAL_CONTINUATION).slice(1,-1))&&",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#309: the replay of what already carried the block is kept. Go twin (by hand): carriesApprovalContinuation returns false; caught at ^TestALostContinuingInvocationIsSentAgainAsRecorded in ./adapter/continuationtests."
+  },
+  {
+   "name": "approval A3 the next parent invocation takes the decision again",
+   "file": "delegation.ts",
+   "find": "        const decided=execution?.approval!==undefined&&execution.approval.state!=='asked'\n",
+   "replace": "        const decided=false as boolean\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#305. Go twin (by hand): drop the input.Approval reset in parentInvocation; caught at ^TestAnApprovedContinuationThatDelegatesGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "host ids H1 a host document under a package id is retained",
+   "file": "context/session.ts",
+   "find": " if(session.context?.documents?.some(document=>packageDocumentId(document.id)))throw authoredFailure(",
+   "replace": " if(false&&session.context?.documents?.some(document=>packageDocumentId(document.id)))throw authoredFailure(",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311. Go twin (by hand): drop the refusal before Initialize; caught at ^TestAHostDocumentUnderAPackageIDIsRefused in ./context."
+  },
+  {
+   "name": "host ids H2 a package id only at the start",
+   "file": "framing.ts",
+   "find": "const PACKAGE_DOCUMENT_ID = /(^|:)(request|",
+   "replace": "const PACKAGE_DOCUMENT_ID = /^(request|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: notes:request. Go twin (by hand): the same regular expression; caught at ^TestAHostDocumentUnderAPackageIDIsRefused in ./context."
+  },
+  {
+   "name": "host ids H3 a draft's row is the package's own",
+   "file": "framing.ts",
+   "find": "const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|task-result-",
+   "replace": "const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: a draft's label holds the host's document id. Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H4 the current-request row keeps a host's members",
+   "file": "context/session.ts",
+   "find": "value:{message:currentRequest.message,input:currentRequest.input}})",
+   "replace": "value:currentRequest})",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: TypeScript only; Go's row is a struct of the two members."
+  },
+  {
+   "name": "host ids H5 an operation id may hold a colon",
+   "file": "framing.ts",
+   "find": "|operation-[^:]+|task-result-[^:]+|task-proposal-[^:]+)$/\nconst RESULT_DOCUMENT",
+   "replace": "|operation-.+|task-result-[^:]+|task-proposal-[^:]+)$/\nconst RESULT_DOCUMENT",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O10). Go twin (by hand): the same in ownDocument; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H6 a result id need not end",
+   "file": "framing.ts",
+   "find": "const RESULT_DOCUMENT = /:result-[^:]+$/",
+   "replace": "const RESULT_DOCUMENT = /:result-[^:]+/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O11). Go twin (by hand): the same in resultDocument; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H7 a result row with no sections is the package's",
+   "file": "framing.ts",
+   "find": "    if (!Array.isArray(item.sections)) return true\n",
+   "replace": "    if (!Array.isArray(item.sections)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O13). Go twin (by hand): the same; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H8 a digest suffix need not end the id",
+   "file": "framing.ts",
+   "find": "const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}$/",
+   "replace": "const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O15). Go twin (by hand): the same in contextDigestSuffix; caught at ^TestListContextIsData in ./context."
   }
  ]
 }

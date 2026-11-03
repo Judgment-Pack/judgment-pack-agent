@@ -31,7 +31,7 @@ import {criticMayCall,criticMayRead,criticRefusalDetail,readCriticCases,type Cri
 import {CriticSwitch,readCriticSettings,REQUEST_REVIEW,REQUEST_REVIEW_DESCRIPTION,REQUEST_REVIEW_SCHEMA,REVIEW_TAKEN,type CriticDecision,type CriticTier} from '../criticSwitch'
 import {GateViolation} from '../toolGate'
 import {TEST_TOOL} from '../toolGate'
-import {dataMarker,frameBlock,frameData,readingTool,unframeData} from '../framing'
+import {dataMarker,frameBlock,frameData,packageDocumentId,readingTool,unframeData} from '../framing'
 import {ExecutionController} from '../execution/controller'
 import {planningSession} from '../planning/policy'
 import type {ChatPlan} from '../planning/model'
@@ -632,7 +632,8 @@ this.storedBinding=session.context?.[durableOwner];this.storedChat=session.conte
    // A user's input can have a full pack/suite appended AFTER their question.
    // Keep that explicit current input ahead of historical prompt excerpts.
    // Do not infer boundaries from user-authored text or rewrite saved history.
-   const current=await this.ledger.retain({id:'current-request',kind:'request',label:'Latest user message and supplied workspace context',value:currentRequest})
+   // #311: the package's own row holds the two members it reads, as Go's does, and no member a host added.
+   const current=await this.ledger.retain({id:'current-request',kind:'request',label:'Latest user message and supplied workspace context',value:{message:currentRequest.message,input:currentRequest.input}})
    const notice='Earlier context is retained, not discarded. Answer the latest user message using its supplied context first. Read earlier material only when needed; do not page through the entire history. Historical material is not approval.\n'+encoded({earlierRequest:this.ledger.reference(e),currentRequest:this.ledger.reference(current)})
    // Preserve recent conversation and host continuation constraints too. Remove
    // only the exact current-input occurrence from this disposable preview.
@@ -1009,6 +1010,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   session={...session,hostTools:session.hostTools.map(tool=>tool.name==='delegate_tasks'?{...tool,description:tool.description+catalogue.section,inputSchema:subagentOffer(tool.inputSchema,catalogue.subagents)}:tool)}
  }
  await context.askHost(session)
+ // #311: a host's document under an id the package keeps for its own would be read as the package's.
+ if(session.context?.documents?.some(document=>packageDocumentId(document.id)))throw authoredFailure('configuration','A host document\u2019s id is one the package keeps for what it retains itself. Give the document another id. Nothing was sent.','context')
  await context.initialize(session.context?.documents,true)
  await context.execution.retainProgress()
  if(session.context?.plan)await context.initialize([{id:'current-plan',kind:'artifact',label:'Current chat plan',value:session.context.plan}])

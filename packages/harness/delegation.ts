@@ -1052,7 +1052,10 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         const offered=batches<batchLimit()&&(!agent||shared.mayDelegate())
         const prompt=session.prompt+'\n\n'+(offered?DELEGATION_INSTRUCTIONS+(agent?' '+AGENT_DELEGATION_INSTRUCTIONS:''):DELEGATION_SPENT)+continued
         const hostTools=agent&&!shared.mayAct()?session.hostTools.filter(tool=>!asksApproval(tool)):session.hostTools
-        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate,...(taskDelegate?[taskDelegate]:[])]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{})}})
+        // #305: the person's decision is for the act call the response paused on. Once an open has taken it, the call is no
+        // longer asked, and a later parent invocation of the same response continues without it.
+        const decided=execution?.approval!==undefined&&execution.approval.state!=='asked'
+        const parent=bind({...session,signal:parentSignal,prompt,hostTools:[...hostTools,...(offered?[delegate,...(taskDelegate?[taskDelegate]:[])]:[])],context:{...session.context,chat,link:parentLink,...(execution?{execution}:{}),...(decided?{approval:undefined}:{})}})
         try{
           for await(let event of engine.start(parent)){
             if(!persistence&&(event.type==='execution_checkpoint'||event.type==='budget_paused'))event={...event,checkpoint:decorate(event.checkpoint)}

@@ -1255,11 +1255,7 @@ func (w *RunWriter) preparedLocked(binding *RunBinding, kind, source, tool strin
 			if superseded {
 				continue
 			}
-			replay := true
-			if kind == "agent" && w.latest != nil && w.latest.Handoff != nil {
-				handoff := w.latest.Handoff
-				replay = handoff.State == "continued" && handoff.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*handoff.Continuation)))
-			}
+			replay := kind != "agent" || w.agentReplayLocked(row)
 			if replay {
 				if w.taskSteps.Load() || w.taskSchedule != nil || kind == "model" && !row.Read {
 					return nil, &HostOutcomeUnknown{}
@@ -1278,6 +1274,30 @@ func (w *RunWriter) preparedLocked(binding *RunBinding, kind, source, tool strin
 	}
 	return append([]byte(nil), request...), nil
 }
+
+// agentReplayLocked reports whether an agent invocation whose outcome is unknown is sent again as recorded. After the
+// person's decision on the response's act call (ADR-0008), only an invocation that already carried that decision's
+// continuation block is: the one that paused for it ended at the pause, and the invocation that continues the response
+// carries the block (#309). Otherwise, at a delegation handoff, only one that already carried the batch's answer is.
+func (w *RunWriter) agentReplayLocked(row DurableDispatch) bool {
+	if w.latest == nil {
+		return true
+	}
+	if approval := w.latest.Approval; approval != nil && approval.State != "asked" && approval.State != "approved" {
+		return carriesApprovalContinuation(row.Request, approval.CallID)
+	}
+	if handoff := w.latest.Handoff; handoff != nil {
+		return handoff.State == "continued" && handoff.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*handoff.Continuation)))
+	}
+	return true
+}
+
+// carriesApprovalContinuation reports whether a recorded request holds the continuation block of this call
+// (ApprovalContinuationText): its first line, and the call's id in the block's data.
+func carriesApprovalContinuation(request, callID string) bool {
+	return strings.Contains(request, string(mustJSONText(ApprovalContinuation))) && strings.Contains(request, string(mustJSONText(`"callId":`+QuoteJSON(callID))))
+}
+
 func (c *SessionContext) ProviderStorageIdentity(role string) string {
 	id := c.Provider(role).Connection
 	revision := ""
@@ -1305,11 +1325,7 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 			if superseded {
 				continue
 			}
-			if kind != "agent" || w.latest == nil || w.latest.Handoff == nil {
-				return true
-			}
-			h := w.latest.Handoff
-			return h.State == "continued" && h.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*h.Continuation)))
+			return kind != "agent" || w.agentReplayLocked(row)
 		}
 	}
 	return false

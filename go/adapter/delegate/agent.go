@@ -679,6 +679,11 @@ func (c *coordinator) parentInvocation(ctx context.Context, execution *contract.
 	input.Chat = c.chat
 	input.Link = agentLink{c: c}
 	input.Execution = execution
+	// #305: the person's decision is for the act call the response paused on. Once an open has taken it, the call is no
+	// longer asked, and a later parent invocation of the same response continues without it.
+	if execution != nil && execution.Approval != nil && execution.Approval.State != "asked" {
+		input.Approval = nil
+	}
 	if run.Context != nil && run.Context.Checkpoint != nil {
 		save := run.Context.Checkpoint
 		input.Checkpoint = func(ctx context.Context, state contract.Checkpoint) error {
