@@ -9,7 +9,9 @@ import (
 // ReadHistoryObservation validates portable sidecar data; it confers no execution authority.
 func ReadHistoryObservation(raw []byte) (*Value, error) {
 	v, err := readCanonicalHistoryJSON(raw, HistoryObjectBytes)
-	if err != nil || v.Get("version").Num() != 1 || !historyScopeValue(v.Get("scope")) {
+	// #314: each member is read with its type checked first: stored bytes the reader cannot read are refused, never a
+	// panic.
+	if err != nil || !v.IsObject() || !isInteger(v.Get("version")) || v.Get("version").Num() != 1 || !historyScopeValue(v.Get("scope")) || !v.Get("kind").IsString() {
 		return nil, &HistoryInputInvalid{}
 	}
 	refs := func(v *Value) bool {

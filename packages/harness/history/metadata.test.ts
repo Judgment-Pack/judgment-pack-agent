@@ -35,3 +35,8 @@ it('reads closed bounded sidecars and refuses unknown, noncanonical, lossy and u
  expect(()=>readHistoryObservation(historyJSONBytes({version:1,kind:'relation',scope:{execution:'r',role:'author'},dispatchId:'d',target:{kind:'job',id:'j'},evidence:{digest:'sha256:'+'a'.repeat(64),bytes:1},unknown:1}))).toThrow(HistoryInputInvalid)
  expect(()=>readRunCapture(historyJSONBytes({version:2}))).toThrow(HistoryInputInvalid)
 })
+it('#314: refuses the empty object, other JSON values, and each kind with its members missing or of another type, as Go does',()=>{
+ const scope={execution:'r',role:'author'}
+ const shapes:unknown[]=[{},[],1,'x',null,true,{version:1},{version:'1',scope,kind:'genesis'},{version:1,scope},{version:1,scope,kind:1},{version:1,scope:1,kind:'genesis'},{version:1,scope,kind:'genesis'},{version:1,scope,kind:'genesis',profile:1},{version:1,scope,kind:'genesis',profile:{}},{version:1,scope,kind:'capture-request'},{version:1,scope,kind:'original'},{version:1,scope,kind:'compaction'},{version:1,scope,kind:'request'},{version:1,scope,kind:'relation'},{version:1,scope,kind:'relation',dispatchId:'d',target:'x',evidence:1}]
+ for(const shape of shapes)expect(()=>readHistoryObservation(historyJSONBytes(shape as never)),JSON.stringify(shape)).toThrow(HistoryInputInvalid)
+})

@@ -80,7 +80,7 @@ describe('job records and evidence: shared vectors (#229)',()=>{
   for(const row of modelVector.startAnswers)expect(readJobStartAnswer(row.answer)).toEqual(row.answer)
   for(const row of modelVector.cancelResults){const result=jobCancelResult(row.record as RunJob,(row as {sent?:boolean}).sent!==false);expect(result.content![0]!.text).toBe(row.text);expect(result.isError===true).toBe(row.isError)}
   for(const row of modelVector.cancelCards)expect(jobCancelCard(row.record as RunJob)).toEqual(row.card)
-  for(const row of modelVector.cancelInputs)expect(jobCancelInput(row.record as RunJob)).toEqual(row.input)
+  for(const row of modelVector.cancelInputs)expect(jobCancelInput(row.record as RunJob,row.operation)).toEqual(row.input)
   for(const row of modelVector.cancelArguments)expect(readJobCancelArgument(JSON.parse(row.raw))).toBe(row.job)
   for(const row of modelVector.cancelArgumentsRefused)expect(()=>readJobCancelArgument(JSON.parse(row.raw)),row.name).toThrow(JobRefused)
   expect(jobCancelUnrecorded().failure).toEqual(modelVector.cancelFailures.unrecorded)

@@ -13,7 +13,8 @@ import { vercel } from '../engines/vercel'
 import { ofType, sseTurn, streamed, vercelTurn, type EndpointRequest } from '../testing/scripted'
 import { approvalShownArguments, approvalShownDigest, toolListDigest } from '../toolSources'
 import { recordDigest } from '../records'
-import { canonicalJSON } from '../context/chat'
+import { ChatContext, canonicalJSON } from '../context/chat'
+import { StoredChatScope, restoreStoredChatScope } from '../context/storedChat'
 import type { HostTool } from '../engine'
 
 /** One streamed turn whose call carries exactly the argument text given. */
@@ -141,6 +142,35 @@ describe('a kept text from a Go writer, approved here (#275)', () => {
     const out = await resume(approvalShownDigest({ request: '{ "id" : 7 }' }))
     expect(out.errors).toEqual([])
     expect(out.executed).toEqual([{ id: 7 }])
+  })
+})
+
+// #303 (from #301's review): why the session keeps its own approval check beside the controller's. Under a stored chat, a
+// decision that proves nothing is refused before the writer opens, so nothing of the run or its chat moves: without the session's
+// check the controller would refuse it too, but only after the resume's claim had moved the run's revision and the chat's context.
+describe('a decision that proves nothing, under a stored chat (#303)', () => {
+  it('is refused before the writer opens: the run revision and the chat context stay where they were', async () => {
+    const store = new MemoryRunStore(), executed: unknown[] = []
+    const declared = { name: 'change_record', description: 'Change one record', inputSchema: { type: 'object' }, taxonomy: { operation: 'act', effect: 'act' } as const }
+    const tool = {
+      ...declared, effectClass: 'act', approve: () => 'ask',
+      source: { kind: 'custom', id: 'tracker', trust: 'person', version: '1', toolListDigest: await toolListDigest([declared] as never), identity: { kind: 'connection', label: 'tracker' } },
+      execute: async (args: unknown) => { executed.push(args); return { content: [{ type: 'text' as const, text: 'ran' }] } }
+    } as unknown as HostTool
+    const turn = (chat: StoredChatScope, resumed: boolean, decision?: object) => vercelTurn({
+      engine: vercel, hostTools: [tool],
+      answer: (request: EndpointRequest) => streamed(!resumed && request.number === 1 ? callFrame('call_1', 'tracker__change_record', '{"id":7}') : sseTurn({ text: 'Done.' })),
+      session: { context: { currentRequest: { message: 'Change it.', input: 'Change it.' }, chat, runStore: { store, id: 'chat-held', context: chat, ...(resumed ? { resume: true } : {}) }, ...(decision ? { approval: decision } : {}) } } as never
+    })
+    await turn(new StoredChatScope(store, 'chat', new ChatContext({ scope: 'shared' })), false)
+    const head = (await store.load('chat-held'))!, history = (await store.readHistoryHead('chat-held'))!
+    const saved = JSON.parse(new TextDecoder().decode(head.checkpoint!)) as { approval: { state: string; callId: string } }
+    expect(saved.approval.state).toBe('asked')
+    const record = await turn(await restoreStoredChatScope(store, history.context!), true, { callId: saved.approval.callId, approved: true, shownDigest: 'sha256:' + '0'.repeat(64) })
+    expect((ofType(record.events, 'error') as unknown as { message: string }[])[0]?.message).toContain('ApprovalNotShown')
+    expect(executed).toEqual([])
+    expect((await store.load('chat-held'))!.revision).toBe(head.revision)
+    expect((await store.readHistoryHead('chat-held'))!.context).toEqual(history.context)
   })
 })
 

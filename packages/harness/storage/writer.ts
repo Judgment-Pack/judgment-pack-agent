@@ -499,6 +499,8 @@ export class RunWriter {
   // M-6: a job and its claim commit together, so a job with no row of the head means its rows were restored from an earlier
   // moment than its jobs: a repeat would get a new row and a second start.
   for(const operation of this.jobRecords.keys())if(!this.book.dispatches.some(row=>row.id===operation))throw new JobCapabilityRefused('store-inconsistent')
+  // F-11: a tool's cancel was asked under its own row: a head restored from before that row would ask, and send, again.
+  for(const job of this.jobRecords.values())if(job.cancel?.requested.by==='tool'&&!this.book.dispatches.some(row=>row.id===job.cancel!.requested.operation))throw new JobCapabilityRefused('store-inconsistent')
  }
  async refreshJobs(signal?:AbortSignal):Promise<void>{
   if(!this.jobRecords)return
@@ -707,7 +709,7 @@ export class RunWriter {
   return output
  })}
  event(binding:DurableBinding,event:AssistantEvent,signal?:AbortSignal){return this.enqueue(async()=>{if(this.dispatchClosed)throw new DispatchCanceled(this.closed());
-  // #293, #297: refused before the writer is bound (a policy the bind sets is what finalizing needs), on a fresh run or at a resume with a head, nothing was sent and nothing can be recorded: the host hears the refusal and its end as they are, and the head does not move.
+  // #293, #297: refused before the writer is bound (a policy the bind sets is what finalizing needs), on a fresh run or at a resume with a head, nothing was sent and nothing can be recorded: the host hears the refusal and its end as they are, and the head's bytes do not change (a stored chat's resume claim moves its revision and context with the same bytes).
   if(binding.root&&!this.policy&&(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
   return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
@@ -845,7 +847,7 @@ export class RunWriter {
   // recorded; a result it refuses is recorded as the call's uncertain outcome with the refusal as its failure, never as a
   // result. Where the execution ended within its deadline, the check's own time is not the call's: what follows is
   // decided without the call's signal (`live`).
-  let live=signal,composed:T|undefined
+  let live=signal,composed:T|undefined,performed:{value:T}|undefined,dispatched=false
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
    // #229: `requested` is recorded under the current fence before admission, and what is sent is that record's. A job that
@@ -853,17 +855,19 @@ export class RunWriter {
    if(jobCancel){
     const port=jobPortOfView(this.store)
     try{
+     const before=await port.store.readJob(this.id,jobCancel.job,signal),read=before===undefined?undefined:readRunJob(structuredClone(before))
      const asked=readRunJob(structuredClone(await port.store.requestJobCancel({version:1,resource:this.id,job:jobCancel.job,generation:1,by:'tool',operation:claim.id},port.fence,signal)))
-     // F-2: what is sent is the record of the job asked for, and only that one.
-     if(asked.resource!==this.id||asked.job!==jobCancel.job)throw new JobRefused('invalid')
-     jobCancel.held(asked)
+     // F-2: what is sent is the record of the job asked for, and only that one. F-2b: a cancel moves no state, so the answer
+     // holds the handle, its marker, the source and the tool the record held before it was asked.
+     if(asked.resource!==this.id||asked.job!==jobCancel.job||!read||asked.handle!==read.handle||asked.handleDigested!==read.handleDigested||asked.source!==read.source||asked.tool!==read.tool)throw new JobRefused('invalid')
+     jobCancel.held(asked,claim.id)
     }
     catch(error){if(!(error instanceof JobRefused))throw error;composed=await this.cancelAnswer(jobCancel.job,false) as T|undefined;throw jobCancelNotSent()}
    }
    // #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with the fence; its
    // idempotency identity is the acknowledged claim's, never the epoch.
-   const perform=()=>execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)
-   try{value=await ((kind==='host'||kind==='runtime')&&!read?fencedEffect(this.store,{run:this.id,operation:claim.id,source,tool,requestDigest:claim.requestDigest},perform,signal):perform())}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
+   const perform=async()=>{const done=await execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined);performed={value:done};return done}
+   try{value=await ((kind==='host'||kind==='runtime')&&!read?fencedEffect(this.store,{run:this.id,operation:claim.id,source,tool,requestDigest:claim.requestDigest},perform,signal):perform());dispatched=true}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
    // #229 (M2): a stop does not lose a start's answer: it goes to the job below, then this holds.
    if(jobCancel){const answer=await this.cancelAnswer(jobCancel.job);if(answer===undefined)throw jobCancelUnrecorded();value=answer as T}
    if(this.dispatchClosed&&!jobStart)throw new DOMException('The operation was aborted','AbortError')
@@ -894,7 +898,16 @@ export class RunWriter {
    // a resumed re-authorization wait send the row again. Any other failure of that shape (a tool's, after admission) is
    // recorded and reported as an unknown outcome, with nothing said about admission.
    const effect=kind==='host'||kind==='runtime',refused=effect&&takeFreshReauthorization(thrown)
-   const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown
+   let error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown
+   // R-4, F-17: `perform` returned, and the effect host refused afterwards. The start ran and the cancel left, so nothing reads as
+   // refused input: a start's answer goes to its job and the model is answered from it, and either row holds its fixed failure.
+   if(performed&&!dispatched&&jobStart&&composed===undefined){
+    const port=jobPortOfView(this.store)
+    try{const answer=readJobStartAnswer(performed.value);await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)}catch{/* the job keeps what it had */}
+    try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
+    error=jobStartUnrecorded()
+   }
+   if(performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()
    // F-1: where the cancel was never handed to the host, the answer says it was not sent, whatever the record asked.
    if(jobCancel&&!refused&&composed===undefined)composed=await this.cancelAnswer(jobCancel.job,jobCancel.sent===true) as T|undefined
    if(kind!=='model')finishRecovery()
@@ -930,7 +943,9 @@ export class RunWriter {
 /** Whether the run's history head holds a stored chat, whether or not this session passes it. */
 const heldChat=async(store:RunStore,id:string,signal?:AbortSignal)=>{const history=store as Partial<HistoryRunStore>;return history.historyVersion===1&&(await history.readHistoryHead!(id,signal))?.context!==undefined}
 /** #229: what a cancel's dispatch asks of the writer: its job, and being handed the record it sends from. */
-export interface JobCancelDispatch {job:string;held:(job:RunJob)=>void;/** Set the moment the cancel is handed to the host. */sent?:boolean}
+export interface JobCancelDispatch {job:string;
+ /** The record asked of, and the identity the cancel is admitted under (F-3): its row's. */
+ held:(job:RunJob,operation:string)=>void;/** Set the moment the cancel is handed to the host. */sent?:boolean}
 /** #229: what a start's dispatch asks of the writer: the key digest of its job, and being told the job before it runs. */
 export interface JobStartDispatch {mint:JobStartSeam['mint'];bind:(job:string)=>void}
 /** A callback acknowledges legacy checkpoint delivery. It cannot create an exact dispatch journal. */

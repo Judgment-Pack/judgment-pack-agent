@@ -741,7 +741,8 @@ the same serialization as its commits, with everything they decide by surviving 
 - `answerJob(answer, fence)`: the typed answer, from the fence that registered or re-claimed the start, current or not
   (`unauthenticated` otherwise). The first start wins: another handle is `conflict`. A negative after a proof is `conflict`.
 - `reconcileJob(evidence)`: the completion key (`unauthenticated`) and no lease. `unknown` changes nothing. `not-started` must mean
-  the authority that would run it has closed it. The same evidence id with other content is `conflict`.
+  the authority that would run it has closed it. The same evidence id with other content is `conflict`. A `started` finding's
+  `handleDigested` is kept, as an answer's is.
 - `completeJob(evidence)`: the completion key and no lease. In one transaction it settles the job and wakes a `parked` wait on it,
   unless that wait's timeout or deadline, or the run's, has come: then only those end it. A duplicate returns the job and wakes
   nothing; other evidence on a completed job is `stale`.
@@ -757,8 +758,13 @@ the same serialization as its commits, with everything they decide by surviving 
 certifies the port, as the wait kit does its own: the factory receives the kit's clock and, to restart, the store it built. It
 names the first property broken: `job.register.*` (the commit and the job together, the fence, an unfenced commit, the identity,
 the history path), `job.key.*`, `job.wait.key`, `job.owner.*`, `job.answer.*`, `job.complete.*`, `job.reconcile.*`,
-`job.contradiction.*`, `job.reclaim.*`, `job.park.*`, `job.wake.*`, `job.timeout.*`, `job.limit`, `job.list.page` and
-`job.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+`job.contradiction.*`, `job.reclaim.*`, `job.park.*`, `job.wake.*`, `job.timeout.*`, `job.limit`, `job.list.page`,
+`job.cancel.*` (a cancel's answer is the record asked of, with the handle, marker, source and tool it held, and the run's other
+job untouched; a fence of another run asks nothing; a word keeps its receipt), `job.abandon.*` (each started job asked under its
+stable operation, a tool's first request standing, a second abandon at a newer epoch, the lease ending by the run's deadline, a
+parked run abandoned with its wait standing, no lease on a closed run or one never seen, a refused abandon moving nothing) and
+`job.restart.*`, whose commit ids are presented at the current revision, so a store that forgot one would commit it. The tests
+show a kind that leaves one guarantee out failing the property that names it.
 
 **Waiting.** After the model ends its turn, or at any checkpoint at rest (`running` or `complete`), the host calls `parkRun({...,
 job, condition: {event: {kind: 'job-completion', subject: job}}})`. A pending decision is `decision-required`, a stopped checkpoint
@@ -772,45 +778,61 @@ timeout's evidence id and no decision, and returns `job`, read through the reade
 words "started, not finished". `job_read` answers the state every time, with `changed` and, when nothing moved, a fixed instruction
 to end the turn. A handle, a receipt and host text never reach the model. Once a start has run, nothing reads as refused input:
 what it answered that could not be recorded (not typed, or conflicting with what the job holds), and whatever it threw, leaves the
-row `unknown` with one fixed failure, `JobStartUnrecorded`, and the model is answered from the job as a repeat is. A handle or
+row `unknown` with one fixed failure, `JobStartUnrecorded`, and the model is answered from the job as a repeat is. That holds too
+where the effect host's dispatch refuses after the start ran: its answer goes to the job, and the row holds that failure. A handle or
 receipt the record cannot hold (over 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, and the job
 is `started`: it can complete, and the same bytes answer the same, but the host holds the means to reach it. `handleDigested: true`
-on the record says which it is, because a real handle can read the same, and a digest is never sent as the external reference. Rows of job tools record no observation, so they are never
+on the record says which it is, because a real handle can read the same, and a digest is never sent as the external reference. A
+reconciliation's found handle and receipt are passed as the external system gave them, and the package keeps and marks them the same
+way. Rows of job tools record no observation, so they are never
 plan evidence; a start cited in `complete_plan_step` is held to its job, read afresh: `completed` with `succeeded` proves it whatever
 the row says, and anything else refuses `unsuccessful-operation`.
 
 **Cancelling.** `jobCancelTool({name, description, source, start, approve, approval, cancel})` (Go `JobCancelTool`) declares a start's
 cancel on the start's source, with both in that source's tool list (`JOB_CANCEL_SCHEMA`, Go `JobCancelSchema`). Its arguments are exactly
 `{job, generation}`. Its record is read before anyone is asked, before any claim and again before a held decision runs: `no-job` for
-another source's or tool's job, an absent one or another generation, `job-settled`, `job-unproven`. `jobCancelCard(job)` (Go
-`JobCancelCardOf`) is what a card shows. `requestJobCancel` records `requested` under the current fence before the effect host is asked:
-a stale or expired fence asks nothing, unlike `answerJob`. `cancel` is handed `{job, generation, source, tool, handle}`, or `handleDigest` and no
-`handle` where `handleDigested` marks it; a host answering an oversized handle keeps its own mapping. `acknowledgeJobCancel` takes the host's word
+another source's or tool's job, an absent one or another generation, `job-settled`, `job-contradicted` (closed, with evidence since
+that it ran), `job-unproven`. `jobCancelCard(job)` (Go `JobCancelCardOf`) is what a card shows: source, tool, state, generation and
+`job`. `requestJobCancel` records `requested` under the current fence before the effect host is asked: a stale or expired fence asks
+nothing, unlike `answerJob`. The writer reads the record before it asks, and an answer whose handle, marker, source or tool differ
+from it is refused `invalid` with nothing sent. `cancel` is handed `{job, generation, source, tool, handle, operation}`, or
+`handleDigest` and no `handle` where `handleDigested` marks it; a host answering an oversized handle keeps its own mapping. `operation`
+is the identity the effect host admits the cancel under (its row's), the same on a retry, so a host can make `cancel` idempotent across
+its own processes. `acknowledgeJobCancel` takes the host's word
 by the completion key, with no lease: `accepted` or `refused`, first write wins, `no-cancel` with no request. Neither moves `state` or wakes a wait;
-only a completion with `cancelled` says the job stopped. `job_read` shows `cancel`. The row and the answer are `jobCancelResult`, or the fixed
-failures `JobCancelUnrecorded` and `JobCancelNotSent` with the answer from the job. Where the cancel was never handed to the host, the answer
-says it was not sent, whatever the record asked. A repeat is answered from the job and sends nothing, and its note says the request may not have
-been delivered.
+only a completion with `cancelled` says the job stopped. `job_read` shows `cancel`. The answer is `jobCancelResult`, from the job. The row
+holds what the package composed, one of the fixed failures `JobCancelUnrecorded` and `JobCancelNotSent`, or, where the effect host or a
+delegation's read refused before the cancel was handed over, that refusal; none of those words reach the model. Where the cancel was never
+handed to the host, the answer says it was not sent, whatever the record asked, and once its job has settled it says so. An effect host
+that refuses after the cancel was handed over leaves `JobCancelUnrecorded`: it may have been sent. A repeat while the job runs is answered
+from the job and sends nothing, and its note says the request may not have been delivered; once the job has settled it is `job-settled`. A
+tool's cancel recorded on a job whose row the head does not hold refuses the run `store-inconsistent` before any request: it would be
+asked, and sent, again.
 
 **Abandoning.** `abandonJobs({store, effectHost, resource, command, durationMs, cancel})` (Go `AbandonJobs`) is a host's command, standing for the
 person's approval: no source policy is asked. `JobStore.abandonJobs` takes the lease under `job-abandon` at a new epoch in one transaction with a
-cancel asked of each `started` job, and old workers get `stale-epoch`. Each cancel goes through the effect host under `jobCancelOperation(command, job)`
-with no run commit, so a retry of the command is admitted once by the same effect host. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
+cancel asked of each `started` job, and old workers get `stale-epoch`. What it would refuse it refuses before it moves anything, and on a run the
+store has never seen (no commit, lease, wait or job) it takes no lease and answers no jobs; a worker's lease before its first commit is a
+run seen. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
+admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
+`cancel` is handed that operation. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
 nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-admitted`, `failed`, `undelivered`, `no-handle`, `settled`,
 `contradicted` (closed, with evidence since that it ran), `acknowledged`. None of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
-must be idempotent by `job`. `already-admitted` means the effect host has admitted that operation before, not that anything was
+must be idempotent by `operation`. `already-admitted` means the effect host has admitted that operation before, not that anything was
 delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
 approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
 
 **A gateway.** `gatewayActionMembers(job, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`: it takes the job
-(`readJob`), which a `start` can read and a reconciliation holding no lease can too. It carries no owner, subject or lease. No
-gateway accepts these members until gateway #352 ships: each refuses them and sends nothing. `gatewayRefusalFinding(refusal)` reads
-a reconciling request's refusal: only `action-key-not-dispatched`, which no gateway sends yet, is `not-started`. What the gateway must build is in ADR-0025's amendment, and it is filed on gateway #352.
+(`readJob`), which a `start` can read and a reconciliation holding no lease can too; a job its reader refuses gives no members. It
+carries no owner, subject or lease. Gateway v0.24.0 is the first release that accepts these members; an older one refuses them with
+HTTP 400, `request body carries a member this endpoint does not read`, before it reserves or sends anything, and only that refusal
+answers a start `{started: false}`. A cancel on a gateway source presents its own action key, never the start's. `gatewayRefusalFinding(refusal)` reads
+a reconciling request's refusal: only `action-key-not-dispatched` is `not-started`. What the gateway builds is in ADR-0025's amendment (gateway #352, in v0.24.0).
 
 ## One durable goal (#230)
 

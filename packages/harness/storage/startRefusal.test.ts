@@ -1,6 +1,7 @@
 // @vitest-environment node
 // #293, #297: a refusal before the writer is bound, on a fresh run or at a resume with a head, reaches the host as what it is,
-// through a run store as without one. Nothing is sent and the head does not move.
+// through a run store as without one. Nothing is sent, and the head's bytes do not change; under a stored chat the resume's claim
+// still moves the run's revision and the chat's context with the same bytes, and the run stays resumable.
 import {describe,expect,it,vi} from 'vitest'
 import type {AssistantEvent,EngineSession,HostTool} from '../engine'
 import {vercel} from '../engines/vercel'
@@ -94,6 +95,17 @@ describe("the writer's pass-through, at its own port (#297)",()=>{
  it('before the bind, a child scope gets no pass-through',async()=>{
   const {writer}=opened()
   await expect(writer.event({writer,root:false,scope:{execution:'child',role:'author',task:'child'}},{type:'error',message:'Refused.'} as AssistantEvent)).rejects.toBeInstanceOf(ContinuationNotRecoverable)
+ })
+ // #303 (from #301's review): the pass-through keys on the bind's policy, not on the root. A coordinator hands the root back
+ // (useAcknowledgedRoot) and goes on: its last usage and end are recorded, never passed through, though the writer has no root.
+ it.each([['usage',{type:'usage',usage:{rows:[]}}],['end',{type:'end'}]] as const)('after a coordinator handed the root back, its %s is still recorded',async(type,event)=>{
+  const {store,writer,root}=opened()
+  writer.bind(checkpointOf,RECORD_DEFAULTS,()=>undefined)
+  await writer.event(root,{type:'message',text:'Working.'} as AssistantEvent)
+  writer.useAcknowledgedRoot(root)
+  await writer.event(root,event as AssistantEvent)
+  const stored=(await store.readEvents('run-w',null,10)).items.map(item=>new TextDecoder().decode(item.bytes))
+  expect(stored.join('\n')).toContain(`"type":"${type}"`)
  })
  it.each(LISTED.map(event=>[event.type,event] as const))('from the bind, before the first commit, %s is recorded',async(_type,event)=>{
   const {store,writer,root}=opened()
