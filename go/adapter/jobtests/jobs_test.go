@@ -1785,7 +1785,7 @@ func TestJobsAnAbandonTakesAFreshFenceAndSendsThroughTheEffectHost(t *testing.T)
 	}
 	// A retry of the command sends nothing twice: the effect host admits its stable operation once.
 	again, err := runcontext.AbandonJobs(ctx, l.store, l.host, jobRun, "cmd-1", jobHour, send)
-	if err != nil || len(inputs) != 1 || again.Jobs[0].Delivery != "already-sent" {
+	if err != nil || len(inputs) != 1 || again.Jobs[0].Delivery != "already-admitted" {
 		t.Fatalf("%+v %v %d", again, err, len(inputs))
 	}
 }

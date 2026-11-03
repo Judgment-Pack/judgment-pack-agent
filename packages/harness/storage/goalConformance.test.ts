@@ -45,6 +45,9 @@ const reading=(kinds:string[],edit:(context:Held,goals:Held,input:Held)=>Held):F
 const withoutWoken=(context:Held)=>({...context,waits:context.waits.map((wait:Held)=>wait.state==='woken'?{...wait,state:'resumed'}:wait)})
 /** For each property of the kit, a store that breaks exactly it. */
 const FAULTS:[string,Fault][]=[
+ // #318: M-4, a create over an abandon whose deliveries were never journaled; L-8, a create over an achieved objective.
+ ['goal.create.unfinished',ahead(['create'],(input,goals)=>{const row=rowOf(goals,input.command.resource),current=currentOf(goals,input.command.resource);if(row&&current?.state==='abandoned'&&!row.journal.some((entry:Held)=>entry.command===current.abandoned.command&&entry.outcome==='delivered'))row.journal.push({command:current.abandoned.command,kind:'abandon',actor:'fault',at:STAMP.at,objective:current.id,outcome:'delivered',revision:row.revision,digest:'sha256:'+'f'.repeat(64),deliveries:[]})})],
+ ['goal.create.achieved',reading(['create'],(context,goals,input)=>currentOf(goals,input.command.resource)?.state==='achieved'?{...context,waits:[]}:context)],
  // #313's review: H-1, H-2 and the seven stores of M-2, with M-1.
  ['goal.achieve.read',ahead(['achieve'],input=>({...input,read:input.command.expectedRevision}))],
  ['goal.repeat.current',store=>{const seen=new Map<string,unknown>();wrap(store,'commandGoal',original=>async(input,signal)=>{const key=JSON.stringify(input.command);if(seen.has(key))return structuredClone(seen.get(key));const answer=await original(input,signal);seen.set(key,structuredClone(answer));return answer})}],
@@ -91,7 +94,7 @@ const FAULTS:[string,Fault][]=[
  ['goal.achieve.waiver',ahead(['achieve'],(input,_,{jobs})=>{if(!input.command.waive)return;const open=new Set((jobs.rows.get(input.command.resource)??[]).filter((job:Held)=>job.state==='unproven'||job.state==='started').map((job:Held)=>job.job));const waive=input.command.waive.filter((job:string)=>open.has(job));const {waive:_waive,...command}=input.command;return {...input,command:waive.length?{...command,waive}:command}})],
  ['goal.achieve.wait',(store,{waits})=>wrap(store,'commandGoal',original=>async(input,signal)=>{if(input.command.kind!=='achieve')return original(input,signal);const rows=(waits.rows.get(input.command.resource)??[]) as Held[],held=rows.map(row=>row.state);for(const row of rows)row.state='resumed';try{return await original(input,signal)}finally{rows.forEach((row,i)=>{row.state=held[i]})}})],
  ['goal.abandon.left',answered(['abandon'],answer=>{answer.goal.objectives.at(-1).abandoned.waits=[]})],
- ['goal.create.unresolved',ahead(['create'],(input,goals)=>{const current=currentOf(goals,input.command.resource);if(current?.abandoned)current.abandoned.waits=[]})],
+ ['goal.create.unresolved',ahead(['create'],(input,goals)=>{const current=currentOf(goals,input.command.resource);if(current?.abandoned&&rowOf(goals,input.command.resource)!.journal.some((entry:Held)=>entry.command===current.abandoned.command&&entry.outcome==='delivered'))current.abandoned.waits=[]})],
  ['goal.deliveries',(store,{goals})=>{store.recordGoalDeliveries=async(input:Held)=>structuredClone(rowOf(goals,input.resource))}],
  ['goal.deliveries.other',(store,{goals})=>wrap(store,'recordGoalDeliveries',original=>(input,signal)=>original({...input,command:currentOf(goals,input.resource)?.abandoned?.command??input.command},signal))],
  ['goal.pause.resume-wait',(store,{goals})=>wrap(store,'resumeWait',original=>async(claim,signal)=>{const held=goals.admitLease;goals.admitLease=()=>undefined;try{return await original(claim,signal)}finally{goals.admitLease=held}})],

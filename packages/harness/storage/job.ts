@@ -585,7 +585,7 @@ export const JOB_ABANDON_OWNER='job-abandon'
 /** A stable identity for an abandon's cancel of a job: a host's retry of the command is the same operation, and the effect host
  * admits it once. */
 export const jobCancelOperation=(command:string,job:string)=>`sha256:${sha256(canonicalJSON({command:id(command),job:digest(job),generation:JOB_GENERATION}))}`
-export type JobDelivery='sent'|'already-sent'|'failed'|'undelivered'|'no-handle'|'settled'|'contradicted'|'acknowledged'
+export type JobDelivery='sent'|'already-admitted'|'failed'|'undelivered'|'no-handle'|'settled'|'contradicted'|'acknowledged'
 export interface JobAbandonAnswer {fence?:LeaseFence;jobs:{job:string;delivery:JobDelivery}[]}
 /** ADR-0025 decision 8: a host's command to stop what the run owns. The command stands for the person's approval, the one stated
  * exception to decision 7's approval boundary, so a source's policy is not asked. It takes the lease under a reserved owner at a new
@@ -608,7 +608,7 @@ export async function abandonJobs(input:{store:RunStore;effectHost:EffectHost;re
    if(job.cancel?.acknowledged?.outcome==='accepted')return 'acknowledged'
    if(!view)return 'undelivered'
    try{await fencedEffect(view,{run:job.resource,operation:jobCancelOperation(input.command,job.job),source:job.source,tool:job.tool,requestDigest:`sha256:${sha256(canonicalJSON({job:job.job,generation:JOB_GENERATION}))}`},()=>input.cancel(jobCancelInput(job,input.signal)),input.signal);return 'sent'}
-   catch(error){return error instanceof LeaseRefused&&error.reason==='already-admitted'?'already-sent':'failed'}
+   catch(error){return error instanceof LeaseRefused&&error.reason==='already-admitted'?'already-admitted':'failed'}
   }
   jobs.push({job:job.job,delivery:await delivery()})
  }

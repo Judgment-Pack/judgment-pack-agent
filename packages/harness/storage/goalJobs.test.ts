@@ -84,7 +84,7 @@ describe('jobs and the abandon at the objective (#230)',()=>{
   expect(first.goal.journal.at(-1)).toMatchObject({kind:'abandon',outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'sent'}])})
   const retry=await abandonGoal({store:held.store,effectHost:held.host,command:cmd,durationMs:HOUR,cancel:async input=>{sent.push(input.job)}})
   expect(sent).toHaveLength(1);expect(retry.entry).toEqual(first.entry)
-  expect(retry.goal.journal.at(-1)).toMatchObject({outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'already-sent'}])})
+  expect(retry.goal.journal.at(-1)).toMatchObject({outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'already-admitted'}])})
  })
  it('H-2: a repeat of an old objective\'s abandon after a new objective started work sends nothing, takes no lease and writes nothing',async()=>{
   const held=await leased(),tool=await startTool(),call=(name:string)=>({call:{tool:'runner__start_job',arguments:{name}}})
@@ -107,6 +107,12 @@ describe('jobs and the abandon at the objective (#230)',()=>{
   expect(after).toEqual(before);expect(after.objectives.at(-1)).toMatchObject({id:'objective-2',state:'active'})
   expect(after.journal.slice(-3).map(entry=>`${entry.kind}:${entry.outcome}:${entry.objective}`)).toEqual(['abandon:accepted:objective-1','abandon:delivered:objective-1','create:accepted:objective-2'])
   expect(second.goal.revision).toBe(after.revision)
+  // #318 L-9: objective 2 abandoned in its turn, by a command of its own; a replay of objective 1's abandon still acts on nothing.
+  const own=await abandonGoal({store:held.store,effectHost:held.host,command:command('abandon',after.revision),durationMs:HOUR,cancel})
+  expect(own.goal.objectives.at(-1)).toMatchObject({id:'objective-2',state:'abandoned'});expect(sent).toContain(jobB)
+  const sends=sent.length,leaseNow=await held.store.readLease(RUN),goalNow=(await readGoal(held.store,RUN))!
+  await expect(abandonGoal({store:held.store,effectHost:held.host,command:abandonCmd,durationMs:HOUR,cancel})).rejects.toEqual(refusal('revision-changed'))
+  expect(sent).toHaveLength(sends);expect(await held.store.readLease(RUN)).toEqual(leaseNow);expect(await readGoal(held.store,RUN)).toEqual(goalNow)
  })
  it('M10: a wait parked before the abandon holds the next create until it is resumed or ended',async()=>{
   const held=await withJobs(),revision=held.bound.goal.revision

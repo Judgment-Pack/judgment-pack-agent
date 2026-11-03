@@ -544,7 +544,7 @@
      "deliveries": [
       {
        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-       "delivery": "already-sent"
+       "delivery": "already-admitted"
       },
       {
        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -686,7 +686,7 @@
      "deliveries": [
       {
        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-       "delivery": "already-sent"
+       "delivery": "already-admitted"
       },
       {
        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -1019,6 +1019,15 @@
      "at": "2026-01-01T00:30:25.000Z",
      "objective": "objective-1",
      "outcome": "lease-required",
+     "revision": 1
+    },
+    {
+     "command": "cmd-126",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:26.000Z",
+     "objective": "objective-y",
+     "outcome": "abandon-unfinished",
      "revision": 1
     }
    ],

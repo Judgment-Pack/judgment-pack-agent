@@ -591,13 +591,13 @@ and no run commit, so a retry of the command is admitted once by the same effect
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
 the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
 or on a closed run, no lease can be granted: `requested` is recorded `undelivered`, nothing is sent, and the answer says so. A parked run's wait
-stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-sent`, `failed`, `undelivered`,
+stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-admitted`, `failed`, `undelivered`,
 `no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
-must be idempotent by `job`. `already-sent` means the effect host has seen that operation, not that anything was delivered: after `failed`
-it means nothing reached the external system, and a failed delivery needs a new command (the value's name changes in #310). An abandon
+must be idempotent by `job`. `already-admitted` means the effect host has admitted that operation before, not that anything was
+delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
 approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
@@ -613,7 +613,10 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
   journaled.
 - `create` makes one from none or from terminal, under an identity never used in this run, at most eight a run; there is no
   `replace`. Earlier objectives are kept whole. `create` over an abandoned objective refuses `wait-unresolved` while a wait the
-  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1).
+  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1). A create
+  over an achieved objective is held to the run's waits the same way. Over an abandoned objective whose abandon has no `delivered`
+  entry it refuses `abandon-unfinished`: the abandon's jobs may never have been asked to stop, and once another objective exists the
+  abandon's retry could not finish it (#318 M-4).
 - `bind` takes the head's accepted Plan as the package reads it from the head the command names: nonempty unique steps with
   origins, in plan order, none `completed` or `not-needed` (`step-settled`), and no Plan an earlier objective of the run bound
   (`plan-reused`, M11). The run's accepted Plan is fixed for the run's life, so a later objective cannot bind it: new work under a new
