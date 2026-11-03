@@ -444,7 +444,7 @@ func TestGoalAbandonAsksACancelOfEveryStartedJobAndJournalsItsDeliveries(t *test
 		t.Fatal(err)
 	}
 	again := retry.Goal.Journal[len(retry.Goal.Journal)-1]
-	if len(sent) != 1 || !goalKitSame(retry.Entry, first.Entry) || len(again.Deliveries) != 1 || again.Deliveries[0].Delivery != "already-sent" {
+	if len(sent) != 1 || !goalKitSame(retry.Entry, first.Entry) || len(again.Deliveries) != 1 || again.Deliveries[0].Delivery != "already-admitted" {
 		t.Fatal(sent, again)
 	}
 }
@@ -693,5 +693,22 @@ func TestGoalARepeatOfAnOldAbandonActsOnNoNewObjective(t *testing.T) {
 	}
 	if last.ID != "objective-2" || last.State != "active" || after.Revision != created.Goal.Revision || !slices.Equal(tail, []string{"abandon:accepted:objective-1", "abandon:delivered:objective-1", "create:accepted:objective-2"}) {
 		t.Fatal(last, tail)
+	}
+	// #318 L-9: objective 2 abandoned in its turn, by a command of its own; a replay of objective 1's abandon still acts
+	// on nothing.
+	own, err := AbandonGoal(ctx, f.store, f.host, f.command("abandon", after.Revision, nil), 3600000, cancel)
+	if err != nil || own.Goal.Objectives[len(own.Goal.Objectives)-1].State != "abandoned" || !slices.Contains(sent, jobB) {
+		t.Fatal(err, sent)
+	}
+	sends := len(sent)
+	leaseNow, _ := f.store.ReadLease(ctx, goalRun)
+	goalNow, _ := ReadGoal(ctx, f.store, goalRun)
+	if _, err := AbandonGoal(ctx, f.store, f.host, abandon, 3600000, cancel); !goalRefusedWith(err, "revision-changed") {
+		t.Fatal(err)
+	}
+	leaseLater, _ := f.store.ReadLease(ctx, goalRun)
+	goalLater, _ := ReadGoal(ctx, f.store, goalRun)
+	if len(sent) != sends || !goalKitSame(leaseLater, leaseNow) || !goalKitSame(goalLater, goalNow) {
+		t.Fatal(sent, leaseLater, goalLater)
 	}
 }

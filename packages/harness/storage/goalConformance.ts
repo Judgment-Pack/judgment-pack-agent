@@ -21,6 +21,7 @@ const KEYS=['kit.goal-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1','kit.goal-b.Hs8Pq3Lz6Wd1Rm9Tc4
 const WAKE='kit.goal-wake.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf'
 const KEY_UNPROVEN='kit.goal-e.Wd3Gk8Np1Rs6Tb9Hy2Lm5Qc',KEY_V='kit.goal-v.Fj2Ns7Kc4Pw9Rd1Xt6Hb3Mg',KEY_V2='kit.goal-v2.Lq5Ty8Ab3Ze6Wn1Gs4Pc9Uk'
 const WAKE_V='kit.goal-wake-v.Hc7Rn2Xp9Kd4Tm1Sb6Wq3',WAKE_V2='kit.goal-wake-v2.Gd8Pt3Zm6Bx1Wk4Ns9Rq2'
+const KEY_C='kit.goal-cc.Rb4Wk9Nd2Hs7Tq1Gm6Xp3',WAKE_C='kit.goal-wake-c.Pz5Ld8Qx3Vm1Ks6Gh9Tb2'
 const REQUEST=`sha256:${'a'.repeat(64)}`,PLAN_REVISION=`sha256:${'c'.repeat(64)}`
 const PINS:ResumePins={model:{provider:'kit',model:'kit'},policy:`sha256:${'b'.repeat(64)}`,sources:[],artifacts:[]}
 const PLAN:GoalPlanSteps={id:'kit-plan',revision:PLAN_REVISION,steps:[{step:'step-1',index:0},{step:'step-2',index:1}]}
@@ -202,14 +203,17 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const abandon=command('run-w','abandon',2)
  const abandoned=await answers('goal.abandon.left',()=>send(abandon))
  check('goal.abandon.left',same(abandoned.goal.objectives[0]!.abandoned,{command:abandon.command,actor:'kit-person',at:iso(at),waits:[{wait:'wait-1',reason:'job',state:'parked'}],jobs:[{job:waitJob,state:'started'}]})&&abandoned.goal.objectives[0]!.state==='abandoned')
- const unresolved=command('run-w','create',3,{objective:'objective-w2'})
- await journaled('goal.create.unresolved',unresolved,()=>send(unresolved),'wait-unresolved')
+ // #318 M-4: until the abandon's deliveries are journaled it is unfinished, and no other objective is created over it.
+ const unfinished=command('run-w','create',3,{objective:'objective-w2'})
+ await journaled('goal.create.unfinished',unfinished,()=>send(unfinished),'abandon-unfinished')
  // The abandon's deliveries are journaled on the objective that command abandoned, and only there.
  const deliveries=[{job:waitJob,delivery:'sent' as const}]
  const delivered=await answers('goal.deliveries',()=>store.recordGoalDeliveries({version:1,resource:'run-w',command:abandon.command,deliveries}))
  const last=delivered.journal.at(-1)
  check('goal.deliveries',last?.outcome==='delivered'&&last.kind==='abandon'&&last.command===abandon.command&&same(last.deliveries,deliveries)&&delivered.revision===3)
  await untouched('goal.deliveries.other','run-w',()=>store.recordGoalDeliveries({version:1,resource:'run-w',command:'run-w-other',deliveries}),'invalid')
+ const unresolved=command('run-w','create',3,{objective:'objective-w2'})
+ await journaled('goal.create.unresolved',unresolved,()=>send(unresolved),'wait-unresolved')
  // The wait resolved, the create goes through.
  await store.completeJob({version:1,resource:'run-w',job:waitJob,generation:1,evidence:'done-1',outcome:'succeeded',key:KEYS[3]})
  const claim:WaitClaim={resource:'run-w',wait:'wait-1',evidence:'done-1',lease:{resource:'run-w',owner:'worker-b',expectedRevision:wReceipt.revision,durationMs:HOUR},reconciled:[],revalidation:{version:1,resource:'run-w',wait:'wait-1',pins:pinsDigest(PINS),evidence:'sha256:'+'e'.repeat(64),changes:[]}}
@@ -233,6 +237,7 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  await journaled('goal.achieve.woken',wokenAchieve,()=>send(wokenAchieve),'wait-pending')
  const vAbandoned=await answers('goal.abandon.woken',()=>send(command('run-v','abandon',2)))
  check('goal.abandon.woken',same(vAbandoned.goal.objectives[0]!.abandoned?.waits,[{wait:'wait-1',reason:'job',state:'woken'}]))
+ await answers('goal.create.woken',()=>store.recordGoalDeliveries({version:1,resource:'run-v',command:vAbandoned.entry.command,deliveries:[]}))
  const wokenCreate=command('run-v','create',3,{objective:'objective-v2'})
  await journaled('goal.create.woken',wokenCreate,()=>send(wokenCreate),'wait-unresolved')
  const vClaimed=await answers('goal.create.later',()=>store.resumeWait({...claim,resource:'run-v',lease:{...claim.lease,resource:'run-v',expectedRevision:vReceipt.revision},revalidation:{...claim.revalidation,resource:'run-v'}}))
@@ -252,6 +257,19 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  check('goal.terminal.pause',zGone.goal.objectives[0]!.paused===undefined&&(await store.readGoal('run-z'))!.objectives[0]!.paused===undefined)
  const zHead=(await store.load('run-z'))!.revision
  await answers('goal.terminal.pause',()=>store.acquireLease({resource:'run-z',owner:'worker-b',expectedRevision:zHead,durationMs:HOUR}))
+
+ // #318 L-8: a create over an achieved objective is held to the run's waits too, not only one over an abandoned objective.
+ const c=await open('run-c')
+ await answers('goal.create.achieved',()=>send(command('run-c','create',null,{objective:'objective-c'})))
+ const cHead=await head('run-c')
+ await answers('goal.create.achieved',()=>send(command('run-c','bind',1,{steps:['step-1'],head:cHead}),{plan:{...PLAN,id:'kit-plan-c',steps:[PLAN.steps[0]!]}}))
+ await answers('goal.create.achieved',()=>send(command('run-c','achieve',2,{head:cHead})))
+ const cReceipt=await store.commitFenced({runId:'run-c',expectedRevision:(await store.load('run-c'))!.revision,commitId:'run-c-op-1',checkpoint:bytes('{"kit":"run-c-op-1"}'),events:[],job:{job:jobIdentity('run-c','op-1'),operation:'op-1',source:'kit-source',tool:'kit-start',requestDigest:REQUEST,keyDigest:jobKeyDigest(KEY_C)}},c.fence)
+ const cJob=jobIdentity('run-c','op-1')
+ await store.answerJob({version:1,resource:'run-c',job:cJob,generation:1,answer:'started',handle:'kit-handle'},c.fence)
+ await store.parkWait({...park,resource:'run-c',pending:{kind:'job',job:cJob,generation:1},condition:{event:{kind:'job-completion',subject:cJob}},checkpoint:{revision:cReceipt.revision,digest:checkpointBytesDigest(bytes('{"kit":"run-c-op-1"}'))},wakeKeyDigest:wakeKeyDigest(WAKE_C)},c.fence)
+ const achievedCreate=command('run-c','create',3,{objective:'objective-c2'})
+ await journaled('goal.create.achieved',achievedCreate,()=>send(achievedCreate),'wait-unresolved')
 
  // A paused run is resumed by no claim either.
  const q=await open('run-q')
@@ -292,6 +310,7 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  for(let i=0;i<GOAL_OBJECTIVE_LIMIT;i++){
   const made=await answers('goal.exhausted',()=>send(command('run-x','create',xRevision,{objective:`objective-x${i}`})))
   const gone=await answers('goal.exhausted',()=>send(command('run-x','abandon',made.goal.revision)))
+  await answers('goal.exhausted',()=>store.recordGoalDeliveries({version:1,resource:'run-x',command:gone.entry.command,deliveries:[]}))
   xRevision=gone.goal.revision
  }
  const exhausted=command('run-x','create',xRevision,{objective:'objective-x-last'})

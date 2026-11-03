@@ -122,6 +122,10 @@
   {
    "version": 1,
    "reason": "lease-required"
+  },
+  {
+   "version": 1,
+   "reason": "abandon-unfinished"
   }
  ],
  "capability": [

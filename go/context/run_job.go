@@ -1899,7 +1899,7 @@ func AbandonJobs(ctx context.Context, store RunStore, host EffectHost, resource,
 			case err == nil:
 				delivery = "sent"
 			case errors.As(err, &refused) && refused.Reason == "already-admitted":
-				delivery = "already-sent"
+				delivery = "already-admitted"
 			default:
 				delivery = "failed"
 			}

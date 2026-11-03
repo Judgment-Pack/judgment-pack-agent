@@ -331,6 +331,16 @@
      "digest": "sha256:44bc354ec08b2a021d56c65ab4145ec407ed2c5827d123f963599c277e83c97e"
     },
     {
+     "command": "t-19b",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:30.000Z",
+     "objective": "goal-c",
+     "outcome": "abandon-unfinished",
+     "revision": 3,
+     "digest": "sha256:9dc4415b10b6b33caa69c16cdc3d21bc76dbf529dc1864ade6b35972afb1471f"
+    },
+    {
      "command": "t-19",
      "kind": "abandon",
      "actor": "host-1",
@@ -383,6 +393,16 @@
      "outcome": "wait-unresolved",
      "revision": 3,
      "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
+    },
+    {
+     "command": "t-21c",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:06:45.000Z",
+     "objective": "goal-c",
+     "outcome": "wait-unresolved",
+     "revision": 3,
+     "digest": "sha256:3b67bf06ebee3f1d0c7a3c2246bd155487c0468dbd529fa2fde21e49235a31ed"
     },
     {
      "command": "t-22",
@@ -1965,6 +1985,26 @@
      }
     },
     {
+     "at": "2026-02-01T00:03:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-19b",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "refused": "abandon-unfinished",
+     "context": {
+      "waits": []
+     }
+    },
+    {
      "at": "2026-02-01T00:04:00.000Z",
      "op": "deliver",
      "input": {
@@ -2105,6 +2145,37 @@
      "refused": "wait-unresolved"
     },
     {
+     "at": "2026-02-01T00:06:45.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-21c",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "refused": "wait-unresolved",
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "expired"
+       },
+       {
+        "wait": "w-3",
+        "reason": "job",
+        "state": "woken"
+       }
+      ]
+     }
+    },
+    {
      "at": "2026-02-01T00:07:00.000Z",
      "op": "command",
      "input": {
@@ -2209,6 +2280,16 @@
       "digest": "sha256:44bc354ec08b2a021d56c65ab4145ec407ed2c5827d123f963599c277e83c97e"
      },
      {
+      "command": "t-19b",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:30.000Z",
+      "objective": "goal-c",
+      "outcome": "abandon-unfinished",
+      "revision": 3,
+      "digest": "sha256:9dc4415b10b6b33caa69c16cdc3d21bc76dbf529dc1864ade6b35972afb1471f"
+     },
+     {
       "command": "t-19",
       "kind": "abandon",
       "actor": "host-1",
@@ -2261,6 +2342,16 @@
       "outcome": "wait-unresolved",
       "revision": 3,
       "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
+     },
+     {
+      "command": "t-21c",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:45.000Z",
+      "objective": "goal-c",
+      "outcome": "wait-unresolved",
+      "revision": 3,
+      "digest": "sha256:3b67bf06ebee3f1d0c7a3c2246bd155487c0468dbd529fa2fde21e49235a31ed"
      },
      {
       "command": "t-22",
