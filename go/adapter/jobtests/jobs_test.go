@@ -1986,137 +1986,6 @@ func (s askLost) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelA
 	return job, err
 }
 
-// failingHost fails a dispatch before anything is performed, while on: with err, or a plain error.
-type failingHost struct {
-	inner *runcontext.ReferenceEffectHost
-	on    *atomic.Bool
-	err   error
-}
-
-func (h failingHost) EffectFencing() string { return h.inner.EffectFencing() }
-func (h failingHost) Dispatch(ctx context.Context, admission runcontext.EffectAdmission, perform func(context.Context) error) error {
-	if h.on.Load() {
-		if h.err != nil {
-			return h.err
-		}
-		return errors.New("the authority is down")
-	}
-	return h.inner.Dispatch(ctx, admission, perform)
-}
-
-func TestJobsACancelThatNeverLeftSaysItWasNotSent(t *testing.T) {
-	ctx := context.Background()
-	for _, engine := range engines {
-		t.Run(engine+"/an acknowledgement lost after requested", func(t *testing.T) {
-			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
-			l, job := startedPair(t, engine, p)
-			lost := &atomic.Bool{}
-			lost.Store(true)
-			store := askLost{l.store, lost}
-			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
-			if err != nil {
-				t.Fatal(err)
-			}
-			first := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
-			held := onlyJob(t, l.store)
-			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, first), "this cancel was not sent") {
-				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, first))
-			}
-			repeat := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
-			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, repeat), "may not have been delivered") {
-				t.Fatal(p.sent.Load(), lastToolResult(t, repeat))
-			}
-		})
-		t.Run(engine+"/an effect host that fails", func(t *testing.T) {
-			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
-			l := newLeased(t, nil)
-			on := &atomic.Bool{}
-			certified, err := runcontext.CertifyEffectHost(ctx, func(authority runcontext.LeaseAuthority) runcontext.EffectHost {
-				return failingHost{inner: runcontext.NewReferenceEffectHost(authority), on: on}
-			}, l.store)
-			if err != nil {
-				t.Fatal(err)
-			}
-			view, err := runcontext.FencedRunStore(l.store, l.fence, certified)
-			if err != nil {
-				t.Fatal(err)
-			}
-			drive(t, view, engine, p.tools(), []jobCall{{"runner__start_job", jobArgs}}, options{})
-			job := onlyJob(t, l.store)
-			on.Store(true)
-			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
-			held := onlyJob(t, l.store)
-			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
-				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
-			}
-		})
-		// The run's own reads inside the dispatch, before the cancel is handed over: a delegation's counted read
-		// is one, and the host's Authorize is another at the same point. Go's job tests have no delegated driver,
-		// so Authorize stands in for it here; TypeScript drives the delegation itself.
-		t.Run(engine+"/a refusal inside the dispatch", func(t *testing.T) {
-			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
-			l, job := startedPair(t, engine, p)
-			// It admits the run's opening and refuses once the cancel is asked for: the point a counted read is at.
-			refuse := func(ctx context.Context) error {
-				if held, err := runcontext.ReadJob(ctx, l.store, jobRun, job.Job); err == nil && held != nil && held.Cancel != nil {
-					return failure.Authored("permission", "revoked", "context")
-				}
-				return nil
-			}
-			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true, authorize: refuse})
-			held := onlyJob(t, l.store)
-			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
-				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
-			}
-		})
-	}
-}
-
-// otherJobAnswer records the cancel and answers another job's record.
-type otherJobAnswer struct {
-	durableJobStore
-	other *string
-}
-
-func (s otherJobAnswer) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelAsk, fence runcontext.LeaseFence) (runcontext.RunJob, error) {
-	if _, err := s.durableJobStore.RequestJobCancel(ctx, ask, fence); err != nil {
-		return runcontext.RunJob{}, err
-	}
-	held, err := s.durableJobStore.ReadJob(ctx, ask.Resource, *s.other)
-	if err != nil || held == nil {
-		return runcontext.RunJob{}, err
-	}
-	return *held, nil
-}
-
-func TestJobsWhatIsSentIsTheRecordOfTheJobAskedFor(t *testing.T) {
-	for _, engine := range engines {
-		t.Run(engine, func(t *testing.T) {
-			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
-			l := newLeased(t, nil)
-			drive(t, l.view, engine, p.tools(), []jobCall{{"runner__start_job", `{"name":"one"}`}}, options{})
-			page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
-			first := page.Jobs[0].Job
-			second := pairOf(t, "runner", nil, nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
-			drive(t, l.view, engine, second.tools(), []jobCall{{"runner__start_job", `{"name":"two"}`}}, options{resume: true})
-			page, _ = runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
-			if len(page.Jobs) != 2 {
-				t.Fatalf("%+v", page.Jobs)
-			}
-			other := page.Jobs[1].Job
-			store := otherJobAnswer{l.store, &other}
-			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
-			if err != nil {
-				t.Fatal(err)
-			}
-			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(first)}}, options{resume: true})
-			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
-				t.Fatal(p.sent.Load(), lastToolResult(t, result))
-			}
-		})
-	}
-}
-
 // #303, #310: the batch. A host that refuses after perform, the cancel's answer, and the abandon's.
 
 // refusingAfter performs, then refuses, while on: a host that does something after perform.
@@ -2544,4 +2413,135 @@ func (h nestingHost) Dispatch(ctx context.Context, admission runcontext.EffectAd
 		h.nest(ctx)
 	}
 	return h.inner.Dispatch(ctx, admission, perform)
+}
+
+// failingHost fails a dispatch before anything is performed, while on: with err, or a plain error.
+type failingHost struct {
+	inner *runcontext.ReferenceEffectHost
+	on    *atomic.Bool
+	err   error
+}
+
+func (h failingHost) EffectFencing() string { return h.inner.EffectFencing() }
+func (h failingHost) Dispatch(ctx context.Context, admission runcontext.EffectAdmission, perform func(context.Context) error) error {
+	if h.on.Load() {
+		if h.err != nil {
+			return h.err
+		}
+		return errors.New("the authority is down")
+	}
+	return h.inner.Dispatch(ctx, admission, perform)
+}
+
+func TestJobsACancelThatNeverLeftSaysItWasNotSent(t *testing.T) {
+	ctx := context.Background()
+	for _, engine := range engines {
+		t.Run(engine+"/an acknowledgement lost after requested", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			lost := &atomic.Bool{}
+			lost.Store(true)
+			store := askLost{l.store, lost}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, first), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, first))
+			}
+			repeat := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, repeat), "may not have been delivered") {
+				t.Fatal(p.sent.Load(), lastToolResult(t, repeat))
+			}
+		})
+		t.Run(engine+"/an effect host that fails", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l := newLeased(t, nil)
+			on := &atomic.Bool{}
+			certified, err := runcontext.CertifyEffectHost(ctx, func(authority runcontext.LeaseAuthority) runcontext.EffectHost {
+				return failingHost{inner: runcontext.NewReferenceEffectHost(authority), on: on}
+			}, l.store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := runcontext.FencedRunStore(l.store, l.fence, certified)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drive(t, view, engine, p.tools(), []jobCall{{"runner__start_job", jobArgs}}, options{})
+			job := onlyJob(t, l.store)
+			on.Store(true)
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
+			}
+		})
+		// The run's own reads inside the dispatch, before the cancel is handed over: a delegation's counted read
+		// is one, and the host's Authorize is another at the same point. Go's job tests have no delegated driver,
+		// so Authorize stands in for it here; TypeScript drives the delegation itself.
+		t.Run(engine+"/a refusal inside the dispatch", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			// It admits the run's opening and refuses once the cancel is asked for: the point a counted read is at.
+			refuse := func(ctx context.Context) error {
+				if held, err := runcontext.ReadJob(ctx, l.store, jobRun, job.Job); err == nil && held != nil && held.Cancel != nil {
+					return failure.Authored("permission", "revoked", "context")
+				}
+				return nil
+			}
+			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true, authorize: refuse})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
+			}
+		})
+	}
+}
+
+// otherJobAnswer records the cancel and answers another job's record.
+type otherJobAnswer struct {
+	durableJobStore
+	other *string
+}
+
+func (s otherJobAnswer) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelAsk, fence runcontext.LeaseFence) (runcontext.RunJob, error) {
+	if _, err := s.durableJobStore.RequestJobCancel(ctx, ask, fence); err != nil {
+		return runcontext.RunJob{}, err
+	}
+	held, err := s.durableJobStore.ReadJob(ctx, ask.Resource, *s.other)
+	if err != nil || held == nil {
+		return runcontext.RunJob{}, err
+	}
+	return *held, nil
+}
+
+func TestJobsWhatIsSentIsTheRecordOfTheJobAskedFor(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l := newLeased(t, nil)
+			drive(t, l.view, engine, p.tools(), []jobCall{{"runner__start_job", `{"name":"one"}`}}, options{})
+			page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+			first := page.Jobs[0].Job
+			second := pairOf(t, "runner", nil, nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
+			drive(t, l.view, engine, second.tools(), []jobCall{{"runner__start_job", `{"name":"two"}`}}, options{resume: true})
+			page, _ = runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+			if len(page.Jobs) != 2 {
+				t.Fatalf("%+v", page.Jobs)
+			}
+			other := page.Jobs[1].Job
+			store := otherJobAnswer{l.store, &other}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(first)}}, options{resume: true})
+			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), lastToolResult(t, result))
+			}
+		})
+	}
 }
