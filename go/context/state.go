@@ -853,3 +853,17 @@ func failedResult(err *failure.Error, outcome string) ToolResult {
 	structured, _ := ParseJSON(encoded)
 	return ResultOf([]Content{TextContent(detail)}, structured).WithIsError(true)
 }
+
+// DecisionForParentOpen is the decision a coordinator's parent open is given (#305). The response's first open takes the
+// host's decision and refuses it where it is stale, as any open does. A later open of the same response is given it only
+// where it is not the act call's decision that the checkpoint shows taken: a Plan decision, or one for another call, is
+// still given, and refused there if it is stale.
+func DecisionForParentOpen(given *contract.CheckpointApprovalDecision, execution *contract.Checkpoint, opened bool) *contract.CheckpointApprovalDecision {
+	if given == nil || !opened || execution == nil || execution.Approval == nil {
+		return given
+	}
+	if execution.Approval.CallID == given.CallID && execution.Approval.State != "asked" {
+		return nil
+	}
+	return given
+}

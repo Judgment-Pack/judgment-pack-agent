@@ -103,11 +103,19 @@ export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation' | 'int
 const RESULT_MEMBERS = /^\/(content|structuredContent|isError)$|^\/content\/[0-9]+(\/(type|text|data|mimeType))?$/
 /**
  * A listed entry's context id is its scope, its document's id and a digest prefix. The package's own documents are these,
- * and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>.
+ * and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>. A draft's row is not
+ * among them: its label holds the id of the document the host gave it (#311).
  */
 const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}$/
-const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+)$/
+const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|task-result-[^:]+|task-proposal-[^:]+)$/
 const RESULT_DOCUMENT = /:result-[^:]+$/
+/**
+ * The ids the package keeps for what it retains itself, a draft's included (#311). A host's document under one would be
+ * read as the package's, so it is refused, wherever the id ends after a colon.
+ */
+const PACKAGE_DOCUMENT_ID = /(^|:)(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+|result-[^:]+)$/
+/** Whether a document id is one the package keeps for its own retained context (#311). */
+export function packageDocumentId(id: string): boolean { return PACKAGE_DOCUMENT_ID.test(id) }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 

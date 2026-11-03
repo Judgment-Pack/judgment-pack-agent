@@ -97,12 +97,19 @@ func UnframeData(text, marker string) (string, bool) {
 var resultMembers = regexp.MustCompile(`^/(content|structuredContent|isError)$|^/content/[0-9]+(/(type|text|data|mimeType))?$`)
 
 // A listed entry's context id is its scope, its document's id and a digest prefix. The package's own documents are these,
-// and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>.
+// and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>. A draft's row is not
+// among them: its label holds the id of the document the host gave it (#311).
 var (
 	contextDigestSuffix = regexp.MustCompile(`:[0-9a-f]{16}$`)
-	ownDocument         = regexp.MustCompile(`:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+)$`)
+	ownDocument         = regexp.MustCompile(`:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|task-result-[^:]+|task-proposal-[^:]+)$`)
 	resultDocument      = regexp.MustCompile(`:result-[^:]+$`)
+	// packageDocumentID are the ids the package keeps for what it retains itself, a draft's included (#311). A host's
+	// document under one would be read as the package's, so it is refused, wherever the id ends after a colon.
+	packageDocumentID = regexp.MustCompile(`(^|:)(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+|result-[^:]+)$`)
 )
+
+// PackageDocumentID reports whether a document id is one the package keeps for its own retained context (#311).
+func PackageDocumentID(id string) bool { return packageDocumentID.MatchString(id) }
 
 // ListingNamesToolKeys reports whether this answer is a page of list_context that shows text the package did not write
 // (#302): a key a tool's result holds, or anything of a document the host gave the run (its keys, label, revision and id),

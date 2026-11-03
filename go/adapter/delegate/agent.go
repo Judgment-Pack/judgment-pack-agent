@@ -547,6 +547,7 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 	// its children start under its opened principal.
 	if run.Context != nil && (run.Context.TaskSteps || runcontext.HoldsDelegation(run.Context)) && pending != nil && (pending.state == "released" || pending.state == "children") {
 		input := *run.Context
+		c.opened = true
 		input.Chat = c.chat
 		input.Link = agentLink{c: c}
 		named := runcontext.RunModels{}
@@ -679,6 +680,9 @@ func (c *coordinator) parentInvocation(ctx context.Context, execution *contract.
 	input.Chat = c.chat
 	input.Link = agentLink{c: c}
 	input.Execution = execution
+	// #305: the person's decision is for the act call the response paused on, and the response's first open takes it.
+	input.Approval = runcontext.DecisionForParentOpen(input.Approval, execution, c.opened)
+	c.opened = true
 	if run.Context != nil && run.Context.Checkpoint != nil {
 		save := run.Context.Checkpoint
 		input.Checkpoint = func(ctx context.Context, state contract.Checkpoint) error {
