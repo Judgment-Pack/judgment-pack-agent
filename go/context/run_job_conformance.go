@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -133,6 +134,47 @@ func (k *jobKit) allJobs(run string) []RunJob {
 		}
 		after = page.Next
 	}
+}
+
+// restartWhole restarts the store, and every job and wait must read as it did, all of each.
+func (k *jobKit) restartWhole(now func() time.Time) {
+	type keptRun struct {
+		jobs  []RunJob
+		waits WaitExport
+	}
+	before := map[string]keptRun{}
+	for _, run := range k.touched {
+		waits, err := k.store.ExportWaits(k.ctx, run)
+		if err != nil {
+			panic(err)
+		}
+		before[run] = keptRun{jobs: k.allJobs(run), waits: waits}
+	}
+	next := k.create(now, k.store)
+	k.check("job.restart.instance", next != k.store)
+	k.store = next
+	for run, held := range before {
+		for _, job := range held.jobs {
+			after := k.job(run, job.Job)
+			k.check("job.restart.job", after != nil)
+			a, _ := canonicalRaw(after.Contradictions)
+			b, _ := canonicalRaw(job.Contradictions)
+			k.check("job.restart.contradiction", string(a) == string(b))
+			k.check("job.restart.record", k.sameJob(*after, job))
+		}
+		waits, err := k.store.ExportWaits(k.ctx, run)
+		x, _ := canonicalRaw(waits)
+		y, _ := canonicalRaw(held.waits)
+		k.check("job.restart.wait", err == nil && string(x) == string(y))
+	}
+}
+
+// unchanged: a refusal changes nothing: the job reads as it did.
+func (k *jobKit) unchanged(run, job, property, reason string, attempt func() error) {
+	before := k.job(run, job)
+	k.refuses(property, attempt(), reason)
+	after := k.job(run, job)
+	k.check(property, (before == nil) == (after == nil) && (before == nil || k.sameJob(*before, *after)))
 }
 func (k *jobKit) waitOf(run string) *RunWait {
 	held, err := k.store.ReadWait(k.ctx, run, "wait-1")
@@ -281,14 +323,27 @@ func (k *jobKit) properties() {
 	}
 	otherC := c.fence
 	otherC.Owner = "worker-x"
-	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherC)
-	k.refuses("job.answer.other", err, "unauthenticated")
+	k.unchanged("run-c", late, "job.answer.other", "unauthenticated", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherC)
+		return err
+	})
 	otherRun := c.fence
 	otherRun.Resource = "run-other"
-	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherRun)
-	k.refuses("job.answer.run", err, "unauthenticated")
-	_, err = store().AnswerJob(ctx, jobKitAnswer("run-other", late, "kit-handle"), c.fence)
-	k.refuses("job.answer.across", err, "no-job")
+	otherEpoch := c.fence
+	nextEpoch, _ := strconv.Atoi(c.fence.Epoch)
+	otherEpoch.Epoch = strconv.Itoa(nextEpoch + 1)
+	k.unchanged("run-c", late, "job.answer.epoch", "unauthenticated", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherEpoch)
+		return err
+	})
+	k.unchanged("run-c", late, "job.answer.run", "unauthenticated", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), otherRun)
+		return err
+	})
+	k.unchanged("run-c", late, "job.answer.across", "no-job", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-other", late, "kit-handle"), c.fence)
+		return err
+	})
 	k.at = k.at.Add(2 * time.Hour)
 	answered, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), c.fence)
 	k.answers("job.answer.late", err)
@@ -297,24 +352,34 @@ func (k *jobKit) properties() {
 	k.check("job.read.fresh", freshRead != nil && k.sameJob(*freshRead, answered))
 	freshList, err := store().ListJobs(ctx, "run-c", "", 10)
 	k.check("job.list.fresh", err == nil && len(freshList.Jobs) == 1 && k.sameJob(freshList.Jobs[0], answered))
-	_, err = store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-other"), c.fence)
-	k.refuses("job.answer.conflict", err, "conflict")
+	k.unchanged("run-c", late, "job.answer.conflict", "conflict", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-other"), c.fence)
+		return err
+	})
 	again, err := store().AnswerJob(ctx, jobKitAnswer("run-c", late, "kit-handle"), c.fence)
 	k.answers("job.answer.same", err)
 	k.check("job.answer.same", k.sameJob(again, answered))
 	// Completion and its refusals, with no lease at all.
-	_, err = store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitWrong, "done-1", "succeeded"))
-	k.refuses("job.complete.key", err, "unauthenticated")
+	k.unchanged("run-c", late, "job.complete.key", "unauthenticated", func() error {
+		_, err := store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitWrong, "done-1", "succeeded"))
+		return err
+	})
 	done, err := store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-1", "succeeded"))
 	k.answers("job.complete.settles", err)
 	k.check("job.complete.settles", done.State == "completed" && done.Completion != nil && done.Completion.Outcome == "succeeded" && done.Completion.At == k.stamp())
+	readDone := k.job("run-c", late)
+	k.check("job.read.completed", readDone != nil && k.sameJob(*readDone, done))
 	repeat, err := store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-1", "succeeded"))
 	k.answers("job.complete.duplicate", err)
 	k.check("job.complete.duplicate", k.sameJob(repeat, done))
-	_, err = store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-1", "failed"))
-	k.refuses("job.complete.conflict", err, "conflict")
-	_, err = store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-2", "succeeded"))
-	k.refuses("job.complete.stale", err, "stale")
+	k.unchanged("run-c", late, "job.complete.conflict", "conflict", func() error {
+		_, err := store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-1", "failed"))
+		return err
+	})
+	k.unchanged("run-c", late, "job.complete.stale", "stale", func() error {
+		_, err := store().CompleteJob(ctx, jobKitComplete("run-c", late, jobKitKeys[1], "done-2", "succeeded"))
+		return err
+	})
 	// Reconciliation: the key and no lease; first write wins; a contradiction is kept. H1, M1.
 	d := k.open("run-d")
 	closing, _ := k.register("run-d", "op-1", jobKitKeys[2], d)
@@ -324,23 +389,31 @@ func (k *jobKit) properties() {
 	unknown, err := store().ReconcileJob(ctx, jobKitReconcile("run-d", closing, jobKitKeys[2], "find-0", "unknown"))
 	k.answers("job.reconcile.no-lease", err)
 	k.check("job.reconcile.unknown", unknown.State == "unproven")
-	_, err = store().ReconcileJob(ctx, jobKitReconcile("run-d", closing, jobKitWrong, "find-1", "not-started"))
-	k.refuses("job.reconcile.key", err, "unauthenticated")
+	k.unchanged("run-d", closing, "job.reconcile.key", "unauthenticated", func() error {
+		_, err := store().ReconcileJob(ctx, jobKitReconcile("run-d", closing, jobKitWrong, "find-1", "not-started"))
+		return err
+	})
 	closed, err := store().ReconcileJob(ctx, jobKitReconcile("run-d", closing, jobKitKeys[2], "find-1", "not-started"))
 	k.answers("job.reconcile.no-lease", err)
 	k.check("job.reconcile.no-lease", closed.State == "not-started" && closed.Closed != nil && closed.Closed.Evidence != nil && *closed.Closed.Evidence == "find-1")
+	readClosed := k.job("run-d", closing)
+	k.check("job.read.closed", readClosed != nil && k.sameJob(*readClosed, closed))
 	same, err := store().ReconcileJob(ctx, jobKitReconcile("run-d", closing, jobKitKeys[2], "find-1", "not-started"))
 	k.answers("job.reconcile.same", err)
 	k.check("job.reconcile.same", k.sameJob(same, closed))
 	handle := "h"
 	conflicting := jobKitReconcile("run-d", closing, jobKitKeys[2], "find-1", "started")
 	conflicting.Handle = &handle
-	_, err = store().ReconcileJob(ctx, conflicting)
-	k.refuses("job.reconcile.conflict", err, "conflict")
+	k.unchanged("run-d", closing, "job.reconcile.conflict", "conflict", func() error {
+		_, err := store().ReconcileJob(ctx, conflicting)
+		return err
+	})
 	contradicted, err := store().CompleteJob(ctx, jobKitComplete("run-d", closing, jobKitKeys[2], "done-1", "succeeded"))
 	k.answers("job.contradiction.completion", err)
-	_, conflictErr := store().CompleteJob(ctx, jobKitComplete("run-d", closing, jobKitKeys[2], "done-1", "failed"))
-	k.refuses("job.contradiction.conflict", conflictErr, "conflict")
+	k.unchanged("run-d", closing, "job.contradiction.conflict", "conflict", func() error {
+		_, err := store().CompleteJob(ctx, jobKitComplete("run-d", closing, jobKitKeys[2], "done-1", "failed"))
+		return err
+	})
 	k.check("job.contradiction.completion", contradicted.State == "not-started" && len(contradicted.Contradictions) == 1 && contradicted.Contradictions[0].Kind == "completed" && contradicted.Contradictions[0].Outcome != nil && *contradicted.Contradictions[0].Outcome == "succeeded")
 	lateHandle := "late"
 	startedAfter := jobKitReconcile("run-d", closing, jobKitKeys[2], "find-2", "started")
@@ -359,8 +432,10 @@ func (k *jobKit) properties() {
 	reclaim, _ := k.register("run-e", "op-1", jobKitKeys[3], e)
 	otherE := e.fence
 	otherE.Owner = "worker-x"
-	_, err = store().ReclaimJob(ctx, "run-e", reclaim, otherE)
-	k.refuses("job.reclaim.fence", err, "other-owner")
+	k.unchanged("run-e", reclaim, "job.reclaim.fence", "other-owner", func() error {
+		_, err := store().ReclaimJob(ctx, "run-e", reclaim, otherE)
+		return err
+	})
 	k.check("job.reclaim.fence", k.job("run-e", reclaim).Reclaimed == nil)
 	taken, err := store().ReclaimJob(ctx, "run-e", reclaim, e.fence)
 	k.answers("job.reclaim.records", err)
@@ -368,14 +443,18 @@ func (k *jobKit) properties() {
 	if _, err = store().ReconcileJob(ctx, jobKitReconcile("run-e", reclaim, jobKitKeys[3], "find-1", "not-started")); err != nil {
 		panic(err)
 	}
-	_, err = store().ReclaimJob(ctx, "run-e", reclaim, e.fence)
-	k.refuses("job.reclaim.settled", err, "job-settled")
+	k.unchanged("run-e", reclaim, "job.reclaim.settled", "job-settled", func() error {
+		_, err := store().ReclaimJob(ctx, "run-e", reclaim, e.fence)
+		return err
+	})
 	// Under an expired and a stale fence of the same owner.
 	ex := k.open("run-expired")
 	lapsed, _ := k.register("run-expired", "op-1", jobKitKey(130), ex)
 	k.at = k.at.Add(2 * time.Hour)
-	_, err = store().ReclaimJob(ctx, "run-expired", lapsed, ex.fence)
-	k.refuses("job.reclaim.expired", err, "expired")
+	k.unchanged("run-expired", lapsed, "job.reclaim.expired", "expired", func() error {
+		_, err := store().ReclaimJob(ctx, "run-expired", lapsed, ex.fence)
+		return err
+	})
 	k.check("job.reclaim.expired", k.job("run-expired", lapsed) != nil && k.job("run-expired", lapsed).Reclaimed == nil)
 	st := k.open("run-stale")
 	staled, staledRevision := k.register("run-stale", "op-1", jobKitKey(131), st)
@@ -385,9 +464,167 @@ func (k *jobKit) properties() {
 	if _, err = store().AcquireLease(ctx, LeaseAcquire{Resource: "run-stale", Owner: "worker-a", ExpectedRevision: staledRevision, DurationMs: 3600000}); err != nil {
 		panic(err)
 	}
-	_, err = store().ReclaimJob(ctx, "run-stale", staled, st.fence)
-	k.refuses("job.reclaim.stale", err, "stale-epoch")
+	k.unchanged("run-stale", staled, "job.reclaim.stale", "stale-epoch", func() error {
+		_, err := store().ReclaimJob(ctx, "run-stale", staled, st.fence)
+		return err
+	})
 	k.check("job.reclaim.stale", k.job("run-stale", staled) != nil && k.job("run-stale", staled).Reclaimed == nil)
+	// A cancel: asked for under a current fence, of a started job, moving no state. A stale fence asks nothing: unlike a
+	// start's answer.
+	askOf := func(run, job, operation string) JobCancelAsk {
+		return JobCancelAsk{Version: 1, Resource: run, Job: job, Generation: 1, By: "tool", Operation: operation}
+	}
+	wordOf := func(run, job, key, evidence, outcome string) JobCancelAcknowledgement {
+		return JobCancelAcknowledgement{Version: 1, Resource: run, Job: job, Generation: 1, Evidence: evidence, Outcome: outcome, Key: key}
+	}
+	can := k.open("run-cancel")
+	canJob, _ := k.register("run-cancel", "op-1", jobKitKey(150), can)
+	k.unchanged("run-cancel", canJob, "job.cancel.unproven", "job-unproven", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), can.fence)
+		return err
+	})
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel", canJob, "kit-handle"), can.fence); err != nil {
+		panic(err)
+	}
+	k.unchanged("run-cancel", canJob, "job.cancel.none", "no-cancel", func() error {
+		_, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "accepted"))
+		return err
+	})
+	otherCan := can.fence
+	otherCan.Owner = "worker-x"
+	k.unchanged("run-cancel", canJob, "job.cancel.fence", "other-owner", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), otherCan)
+		return err
+	})
+	// A second job of the run: the answer must be the job asked for.
+	otherCanJob, _ := k.register("run-cancel", "op-2", jobKitKey(159), jobKitRun{revision: k.revision("run-cancel"), fence: can.fence})
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel", otherCanJob, "kit-handle-2"), can.fence); err != nil {
+		panic(err)
+	}
+	asked, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), can.fence)
+	k.answers("job.cancel.records", err)
+	otherAfter := k.job("run-cancel", otherCanJob)
+	k.check("job.cancel.which", asked.Job == canJob && asked.Resource == "run-cancel" && otherAfter != nil && otherAfter.Cancel == nil)
+	k.check("job.cancel.records", asked.State == "started" && asked.Cancel != nil && asked.Cancel.Requested.By == "tool" && asked.Cancel.Requested.Operation == "cancel-1" && asked.Cancel.Requested.Owner != nil && *asked.Cancel.Requested.Owner == "worker-a" && asked.Cancel.Requested.Epoch != nil && *asked.Cancel.Requested.Epoch == can.fence.Epoch && asked.Cancel.Requested.At == k.stamp())
+	askedAgain, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-2"), can.fence)
+	k.answers("job.cancel.first", err)
+	k.check("job.cancel.first", k.sameJob(askedAgain, asked))
+	k.unchanged("run-cancel", canJob, "job.cancel.key", "unauthenticated", func() error {
+		_, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitWrong, "word-1", "accepted"))
+		return err
+	})
+	worded, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "accepted"))
+	k.answers("job.cancel.word", err)
+	k.check("job.cancel.word", worded.State == "started" && worded.Cancel != nil && worded.Cancel.Acknowledged != nil && worded.Cancel.Acknowledged.Outcome == "accepted" && worded.Cancel.Acknowledged.Evidence == "word-1" && worded.Cancel.Acknowledged.At == k.stamp())
+	wordedAgain, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "accepted"))
+	k.answers("job.cancel.same", err)
+	k.check("job.cancel.same", k.sameJob(wordedAgain, worded))
+	k.unchanged("run-cancel", canJob, "job.cancel.conflict", "conflict", func() error {
+		_, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "refused"))
+		return err
+	})
+	k.unchanged("run-cancel", canJob, "job.cancel.again", "stale", func() error {
+		_, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-2", "accepted"))
+		return err
+	})
+	stopped, err := store().CompleteJob(ctx, jobKitComplete("run-cancel", canJob, jobKitKey(150), "done-1", "cancelled"))
+	if err != nil {
+		panic(err)
+	}
+	stoppedCancel, _ := canonicalRaw(stopped.Cancel)
+	wordedCancel, _ := canonicalRaw(worded.Cancel)
+	k.check("job.cancel.completes", stopped.State == "completed" && string(stoppedCancel) == string(wordedCancel))
+	k.unchanged("run-cancel", canJob, "job.cancel.settled", "job-settled", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-3"), can.fence)
+		return err
+	})
+	closedCan := k.open("run-cancel-closed")
+	closedJob, _ := k.register("run-cancel-closed", "op-1", jobKitKey(151), closedCan)
+	if _, err = store().ReconcileJob(ctx, jobKitReconcile("run-cancel-closed", closedJob, jobKitKey(151), "find-1", "not-started")); err != nil {
+		panic(err)
+	}
+	k.unchanged("run-cancel-closed", closedJob, "job.cancel.closed", "job-settled", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel-closed", closedJob, "cancel-1"), closedCan.fence)
+		return err
+	})
+	staleCan := k.open("run-cancel-stale")
+	staleJob, staleRevision := k.register("run-cancel-stale", "op-1", jobKitKey(152), staleCan)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel-stale", staleJob, "kit-handle"), staleCan.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().ReleaseLease(ctx, staleCan.fence); err != nil {
+		panic(err)
+	}
+	newLease, err := store().AcquireLease(ctx, LeaseAcquire{Resource: "run-cancel-stale", Owner: "worker-a", ExpectedRevision: staleRevision, DurationMs: 3600000})
+	if err != nil {
+		panic(err)
+	}
+	k.unchanged("run-cancel-stale", staleJob, "job.cancel.stale", "stale-epoch", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel-stale", staleJob, "cancel-1"), staleCan.fence)
+		return err
+	})
+	k.at = k.at.Add(2 * time.Hour)
+	k.unchanged("run-cancel-stale", staleJob, "job.cancel.expired", "expired", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel-stale", staleJob, "cancel-1"), FenceOf(newLease))
+		return err
+	})
+	// An abandon's own transaction: the lease under the reserved owner at a new epoch, and a cancel asked for each
+	// started job.
+	ab := k.open("run-abandon")
+	abStarted, abRevision := k.register("run-abandon", "op-1", jobKitKey(153), ab)
+	abUnproven, abRevision := k.register("run-abandon", "op-2", jobKitKey(154), jobKitRun{revision: abRevision, fence: ab.fence})
+	abDone, abRevision := k.register("run-abandon", "op-3", jobKitKey(155), jobKitRun{revision: abRevision, fence: ab.fence})
+	for _, held := range []string{abStarted, abDone} {
+		if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon", held, "kit-handle"), ab.fence); err != nil {
+			panic(err)
+		}
+	}
+	if _, err = store().CompleteJob(ctx, jobKitComplete("run-abandon", abDone, jobKitKey(155), "done-1", "succeeded")); err != nil {
+		panic(err)
+	}
+	abTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon", Command: "cmd-1", DurationMs: 3600000})
+	k.answers("job.abandon.lease", err)
+	k.check("job.abandon.lease", abTaken.Lease != nil && abTaken.Lease.Owner == JobAbandonOwner && abTaken.Lease.State == "held" && abTaken.Lease.Epoch != ab.fence.Epoch)
+	currentLease, err := store().ReadLease(ctx, "run-abandon")
+	k.check("job.abandon.lease", err == nil && currentLease != nil && currentLease.Epoch == abTaken.Lease.Epoch)
+	k.check("job.abandon.nocommit", k.revision("run-abandon") == abRevision)
+	_, err = store().CommitFenced(ctx, k.claim("run-abandon", abRevision, "op-late", jobKitWrong), ab.fence)
+	k.refuses("job.abandon.epoch", err, "stale-epoch")
+	abAsked := k.job("run-abandon", abStarted)
+	k.check("job.abandon.asks", abAsked != nil && abAsked.State == "started" && abAsked.Cancel != nil && abAsked.Cancel.Requested.By == "command" && abAsked.Cancel.Requested.Command != nil && *abAsked.Cancel.Requested.Command == "cmd-1" && abAsked.Cancel.Requested.Owner != nil && *abAsked.Cancel.Requested.Owner == JobAbandonOwner && abAsked.Cancel.Requested.Epoch != nil && *abAsked.Cancel.Requested.Epoch == abTaken.Lease.Epoch)
+	k.check("job.abandon.only", k.job("run-abandon", abUnproven).Cancel == nil && k.job("run-abandon", abDone).Cancel == nil)
+	abTakenJobs, _ := canonicalRaw(abTaken.Jobs)
+	abRead, _ := canonicalRaw(k.allJobs("run-abandon"))
+	k.check("job.abandon.jobs", string(abTakenJobs) == string(abRead))
+	// A delegated run's principals stay on the abandon's lease: a takeover is a new epoch of the same principals.
+	if keeps, ok := store().(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
+		principal := &PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://host.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+		head, err := store().Commit(ctx, RunCommit{RunID: "run-abandon-principal", CommitID: "run-abandon-principal-open", Checkpoint: []byte(`{"kit":"job"}`), Events: [][]byte{}})
+		if err != nil {
+			panic(err)
+		}
+		if _, err = store().AcquireLease(ctx, LeaseAcquire{Resource: "run-abandon-principal", Owner: "worker-a", ExpectedRevision: head.Revision, DurationMs: 3600000, Principal: principal}); err != nil {
+			panic(err)
+		}
+		held, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-principal", Command: "cmd-3", DurationMs: 3600000})
+		k.answers("job.abandon.principal", err)
+		k.check("job.abandon.principal", held.Lease != nil && held.Lease.Version == 2 && held.Lease.Principal != nil && SamePrincipalBinding(held.Lease.Principal, principal))
+	}
+	// Past a deadline no lease can be granted: each cancel stays undelivered, and says so.
+	lost := k.open("run-abandon-late")
+	lostJob, _ := k.register("run-abandon-late", "op-1", jobKitKey(156), lost)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon-late", lostJob, "kit-handle"), lost.fence); err != nil {
+		panic(err)
+	}
+	limitAt := k.at.Add(time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, err = store().LimitRun(ctx, RunLimit{Version: 1, Resource: "run-abandon-late", Run: limitAt}); err != nil {
+		panic(err)
+	}
+	k.at = k.at.Add(time.Minute)
+	lateTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-late", Command: "cmd-2", DurationMs: 3600000})
+	k.answers("job.abandon.past", err)
+	lateHeld := k.job("run-abandon-late", lostJob)
+	k.check("job.abandon.past", lateTaken.Lease == nil && lateHeld != nil && lateHeld.Cancel != nil && lateHeld.Cancel.Requested.Undelivered != nil && lateHeld.Cancel.Requested.Owner == nil)
 	// The answer follows the re-claim: the fence that re-sent it answers, and the first one no longer does.
 	f := k.open("run-f")
 	moved, movedRevision := k.register("run-f", "op-1", jobKitKeys[4], f)
@@ -402,8 +639,10 @@ func (k *jobKit) properties() {
 	if _, err = store().ReclaimJob(ctx, "run-f", moved, later); err != nil {
 		panic(err)
 	}
-	_, err = store().AnswerJob(ctx, jobKitAnswer("run-f", moved, "kit-handle"), f.fence)
-	k.refuses("job.reclaim.answer", err, "unauthenticated")
+	k.unchanged("run-f", moved, "job.reclaim.answer", "unauthenticated", func() error {
+		_, err := store().AnswerJob(ctx, jobKitAnswer("run-f", moved, "kit-handle"), f.fence)
+		return err
+	})
 	movedAnswer, err := store().AnswerJob(ctx, jobKitAnswer("run-f", moved, "kit-handle"), later)
 	k.check("job.reclaim.answer", err == nil && movedAnswer.State == "started")
 	// The park: the job in the park's own transaction. The lost wake-up.
@@ -450,35 +689,7 @@ func (k *jobKit) properties() {
 	k.check("job.wake.event", k.wait("run-i").State == "parked")
 	// A restart: everything after it is decided by what the store kept. It keeps every job and every wait as they were,
 	// all of each: a job completed before it is read after it.
-	type keptRun struct {
-		jobs  []RunJob
-		waits WaitExport
-	}
-	before := map[string]keptRun{}
-	for _, run := range k.touched {
-		waits, waitErr := store().ExportWaits(ctx, run)
-		if waitErr != nil {
-			panic(waitErr)
-		}
-		before[run] = keptRun{jobs: k.allJobs(run), waits: waits}
-	}
-	next := k.create(now, k.store)
-	k.check("job.restart.instance", next != k.store)
-	k.store = next
-	for run, held := range before {
-		for _, job := range held.jobs {
-			after := k.job(run, job.Job)
-			k.check("job.restart.job", after != nil)
-			a, _ := canonicalRaw(after.Contradictions)
-			b, _ := canonicalRaw(job.Contradictions)
-			k.check("job.restart.contradiction", string(a) == string(b))
-			k.check("job.restart.record", k.sameJob(*after, job))
-		}
-		waits, waitErr := store().ExportWaits(ctx, run)
-		x, _ := canonicalRaw(waits)
-		y, _ := canonicalRaw(held.waits)
-		k.check("job.restart.wait", waitErr == nil && string(x) == string(y))
-	}
+	k.restartWhole(now)
 	_ = key0
 	kept := k.job("run-d", closing)
 	k.check("job.restart.contradiction", kept != nil && len(kept.Contradictions) == 2)
@@ -573,6 +784,38 @@ func (k *jobKit) properties() {
 		panic(err)
 	}
 	k.check("job.wake.deadline", k.wait("run-deadline").State == "parked")
+	// Neither a cancel nor the host's word on it wakes a wait.
+	quiet := k.open("run-cancel-wait")
+	quietJob, _ := k.register("run-cancel-wait", "op-1", jobKitKey(157), quiet)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel-wait", quietJob, "kit-handle"), quiet.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().RequestJobCancel(ctx, JobCancelAsk{Version: 1, Resource: "run-cancel-wait", Job: quietJob, Generation: 1, By: "tool", Operation: "cancel-1"}, quiet.fence); err != nil {
+		panic(err)
+	}
+	if _, _, err = store().ParkWait(ctx, k.park("run-cancel-wait", quietJob, jobKitKey(158), nil), quiet.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().AcknowledgeJobCancel(ctx, JobCancelAcknowledgement{Version: 1, Resource: "run-cancel-wait", Job: quietJob, Generation: 1, Evidence: "word-1", Outcome: "accepted", Key: jobKitKey(157)}); err != nil {
+		panic(err)
+	}
+	k.check("job.cancel.nowake", k.wait("run-cancel-wait").State == "parked")
+	// A completion wakes the wait on its own job, not the run's parked wait whichever job it is for.
+	two := k.open("run-two")
+	oneJob, oneRevision := k.register("run-two", "op-1", jobKitKey(135), two)
+	anotherJob, _ := k.register("run-two", "op-2", jobKitKey(136), jobKitRun{revision: oneRevision, fence: two.fence})
+	for _, held := range []string{oneJob, anotherJob} {
+		if _, err = store().AnswerJob(ctx, jobKitAnswer("run-two", held, "kit-handle"), two.fence); err != nil {
+			panic(err)
+		}
+	}
+	if _, _, err = store().ParkWait(ctx, k.park("run-two", oneJob, jobKitKey(137), nil), two.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().CompleteJob(ctx, jobKitComplete("run-two", anotherJob, jobKitKey(136), "done-1", "succeeded")); err != nil {
+		panic(err)
+	}
+	k.check("job.wake.other", k.wait("run-two").State == "parked")
 	// The run's limit: its sixty-fifth job is refused, with its claim.
 	limit := k.open("run-k")
 	moving := limit.revision
@@ -610,6 +853,41 @@ func (k *jobKit) properties() {
 		y, _ := canonicalRaw(k.allJobs(run))
 		k.check("job.export.reads", exportErr == nil && string(x) == string(y))
 	}
+	// One more restart, with waits woken, resumed and timed out by now: all read as they were, and every key and commit
+	// id holds.
+	timedLast := k.open("run-timed")
+	lastJob, _ := k.register("run-timed", "op-1", jobKitKey(140), timedLast)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-timed", lastJob, "kit-handle"), timedLast.fence); err != nil {
+		panic(err)
+	}
+	timeoutLast := k.at.Add(time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+	if _, _, err = store().ParkWait(ctx, k.park("run-timed", lastJob, jobKitKey(141), &timeoutLast), timedLast.fence); err != nil {
+		panic(err)
+	}
+	k.at = k.at.Add(time.Minute)
+	if _, err = store().WakeWait(ctx, WakeEvidence{Version: 1, Resource: "run-timed", Wait: "wait-1", Evidence: "timeout-1", Kind: "timeout", Key: jobKitKey(141)}); err != nil {
+		panic(err)
+	}
+	k.check("job.timeout.state", k.wait("run-timed").State == "timed-out")
+	again2 := k.open("run-after")
+	kept2, _ := k.register("run-after", "op-1", jobKitKey(142), again2)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-after", kept2, "kit-handle"), again2.fence); err != nil {
+		panic(err)
+	}
+	k.restartWhole(now)
+	headAfter := k.revision("run-after")
+	repeatAfter := k.claim("run-after", again2.revision, "op-other", jobKitKey(143))
+	repeatAfter.CommitID = "run-after-op-1"
+	_, repeatErr := store().CommitFenced(ctx, repeatAfter, again2.fence)
+	k.check("job.restart.commit", repeatErr != nil && k.job("run-after", JobIdentity("run-after", "op-other")) == nil && k.revision("run-after") == headAfter)
+	_, err = store().CommitFenced(ctx, k.claim("run-after", headAfter, "op-wake", jobKitKey(141)), again2.fence)
+	k.refuses("job.restart.wakekey", err, "key-reused")
+	_, _, err = store().ParkWait(ctx, k.park("run-after", kept2, jobKitKey(142), nil), again2.fence)
+	k.refuses("job.restart.jobkey", err, "key-reused")
+	k.unchanged("run-after", kept2, "job.restart.auth", "unauthenticated", func() error {
+		_, err := store().CompleteJob(ctx, jobKitComplete("run-after", kept2, jobKitWrong, "done-1", "succeeded"))
+		return err
+	})
 }
 
 // CheckRunStoreJobConformance certifies a store kind's job port (#229). It returns StorageConformanceFailure naming

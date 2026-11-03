@@ -833,6 +833,8 @@ export class SourceGate {
   private readonly queuedDecisions = new Map<string, HeldDecision[]>()
   /** ADR-0029: the delegated run's principal, whose chain admits each call before dispatch; a child's gate holds its parent's. */
   private ownPrincipal?: OpenedPrincipal
+  /** #229: a refusal to answer with, in place of asking anyone; '' for none. */
+  beforeAsking?: (entry: SourceEntry, args: Record<string, unknown>) => Promise<string>
   constructor(
     readonly entries: ReadonlyMap<string, SourceEntry>,
     private readonly sources: readonly SourceRecord[],
@@ -1016,7 +1018,9 @@ export class SourceGate {
     let detail = ''
     const claimed=this.book?.claim?.()
     try{
-    const closed = claimed===false?'Another act call is being prepared or waits for approval; nothing was run.':this.book?.closed() ?? ''
+    // #229: what a job's record already refuses is never put to the person.
+    const refusedBefore = claimed===false || this.beforeAsking===undefined ? '' : await this.beforeAsking(entry, args)
+    const closed = claimed===false?'Another act call is being prepared or waits for approval; nothing was run.':refusedBefore || (this.book?.closed() ?? '')
     const row = this.row(id)
     let served = true
     const changedIdentity = closed === '' && (entry.declared.source?.currentIdentity !== undefined || this.alteredIdentities.has(id)) && await this.identityChanged(entry)

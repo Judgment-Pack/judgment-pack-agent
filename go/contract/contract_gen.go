@@ -293,6 +293,11 @@ var Registry = map[string]func() any{
 	"run-job.json#/$defs/fact":                      func() any { return new(RunJobFact) },
 	"run-job.json#/$defs/completionRecord":          func() any { return new(RunJobCompletionRecord) },
 	"run-job.json#/$defs/contradiction":             func() any { return new(RunJobContradiction) },
+	"run-job.json#/$defs/cancelRequest":             func() any { return new(RunJobCancelRequest) },
+	"run-job.json#/$defs/cancelAcknowledged":        func() any { return new(RunJobCancelAcknowledged) },
+	"run-job.json#/$defs/cancel":                    func() any { return new(RunJobCancel) },
+	"run-job.json#/$defs/cancelAsk":                 func() any { return new(RunJobCancelAsk) },
+	"run-job.json#/$defs/cancelAcknowledgement":     func() any { return new(RunJobCancelAcknowledgement) },
 	"run-job.json#/$defs/registration":              func() any { return new(RunJobRegistration) },
 	"run-job.json#/$defs/answer":                    func() any { return new(RunJobAnswer) },
 	"run-job.json#/$defs/reconciliation":            func() any { return new(RunJobReconciliation) },
@@ -19664,14 +19669,16 @@ type RunJob struct {
 	Principal      *RunPrincipalBinding    `json:"principal,omitzero"`
 	State          string                  `json:"state"`
 	Handle         *string                 `json:"handle,omitzero"`
+	HandleDigested *bool                   `json:"handleDigested,omitzero"`
 	Receipt        *string                 `json:"receipt,omitzero"`
 	Started        *RunJobFact             `json:"started,omitzero"`
 	Closed         *RunJobFact             `json:"closed,omitzero"`
 	Completion     *RunJobCompletionRecord `json:"completion,omitzero"`
+	Cancel         *RunJobCancel           `json:"cancel,omitzero"`
 	Contradictions []RunJobContradiction   `json:"contradictions,omitzero"`
 }
 
-var runJobMembers = []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "reclaimed", "principal", "state", "handle", "receipt", "started", "closed", "completion", "contradictions"}
+var runJobMembers = []string{"version", "kind", "resource", "job", "generation", "operation", "source", "tool", "requestDigest", "keyDigest", "registered", "reclaimed", "principal", "state", "handle", "handleDigested", "receipt", "started", "closed", "completion", "cancel", "contradictions"}
 
 // UnmarshalJSON decodes a RunJob object and refuses a member the closed schema does not name.
 func (v *RunJob) UnmarshalJSON(data []byte) error {
@@ -19723,16 +19730,17 @@ func (v RunJobActor) MarshalJSON() ([]byte, error) {
 // From run-job.json#/$defs/answer. The writer's record of the host's typed answer to a start,
 // under the fence that admitted it.
 type RunJobAnswer struct {
-	Version    int64   `json:"version"`
-	Resource   string  `json:"resource"`
-	Job        string  `json:"job"`
-	Generation int64   `json:"generation"`
-	Answer     string  `json:"answer"`
-	Handle     *string `json:"handle,omitzero"`
-	Receipt    *string `json:"receipt,omitzero"`
+	Version        int64   `json:"version"`
+	Resource       string  `json:"resource"`
+	Job            string  `json:"job"`
+	Generation     int64   `json:"generation"`
+	Answer         string  `json:"answer"`
+	Handle         *string `json:"handle,omitzero"`
+	HandleDigested *bool   `json:"handleDigested,omitzero"`
+	Receipt        *string `json:"receipt,omitzero"`
 }
 
-var runJobAnswerMembers = []string{"version", "resource", "job", "generation", "answer", "handle", "receipt"}
+var runJobAnswerMembers = []string{"version", "resource", "job", "generation", "answer", "handle", "handleDigested", "receipt"}
 
 // UnmarshalJSON decodes a RunJobAnswer object and refuses a member the closed schema does not name.
 func (v *RunJobAnswer) UnmarshalJSON(data []byte) error {
@@ -19750,6 +19758,166 @@ func (v *RunJobAnswer) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunJobAnswer object.
 func (v RunJobAnswer) MarshalJSON() ([]byte, error) {
 	type plain RunJobAnswer
+	return encodeObject(plain(v), nil)
+}
+
+// From run-job.json#/$defs/cancel. Cancellation never moves state. What was asked for, and the
+// host's word on it.
+type RunJobCancel struct {
+	Requested    RunJobCancelRequest       `json:"requested"`
+	Acknowledged *RunJobCancelAcknowledged `json:"acknowledged,omitzero"`
+}
+
+var runJobCancelMembers = []string{"requested", "acknowledged"}
+
+// UnmarshalJSON decodes a RunJobCancel object and refuses a member the closed schema does not name.
+func (v *RunJobCancel) UnmarshalJSON(data []byte) error {
+	type plain RunJobCancel
+	var p plain
+	extra, err := decodeObject(data, &p, runJobCancelMembers, true)
+	if err != nil {
+		return errorf("RunJobCancel: %w", err)
+	}
+	*v = RunJobCancel(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunJobCancel object.
+func (v RunJobCancel) MarshalJSON() ([]byte, error) {
+	type plain RunJobCancel
+	return encodeObject(plain(v), nil)
+}
+
+// From run-job.json#/$defs/cancelAcknowledged. The host's word on a cancel, by the completion key.
+// Only a completion with cancelled says the job stopped.
+type RunJobCancelAcknowledged struct {
+	Evidence string  `json:"evidence"`
+	Outcome  string  `json:"outcome"`
+	At       string  `json:"at"`
+	Digest   string  `json:"digest"`
+	Receipt  *string `json:"receipt,omitzero"`
+}
+
+var runJobCancelAcknowledgedMembers = []string{"evidence", "outcome", "at", "digest", "receipt"}
+
+// UnmarshalJSON decodes a RunJobCancelAcknowledged object and refuses a member the closed schema does not name.
+func (v *RunJobCancelAcknowledged) UnmarshalJSON(data []byte) error {
+	type plain RunJobCancelAcknowledged
+	var p plain
+	extra, err := decodeObject(data, &p, runJobCancelAcknowledgedMembers, true)
+	if err != nil {
+		return errorf("RunJobCancelAcknowledged: %w", err)
+	}
+	*v = RunJobCancelAcknowledged(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunJobCancelAcknowledged object.
+func (v RunJobCancelAcknowledged) MarshalJSON() ([]byte, error) {
+	type plain RunJobCancelAcknowledged
+	return encodeObject(plain(v), nil)
+}
+
+// From run-job.json#/$defs/cancelAcknowledgement. A host's word on a cancel, authenticated by the
+// completion key, with no lease. Its digest leaves the key out.
+type RunJobCancelAcknowledgement struct {
+	Version    int64   `json:"version"`
+	Resource   string  `json:"resource"`
+	Job        string  `json:"job"`
+	Generation int64   `json:"generation"`
+	Evidence   string  `json:"evidence"`
+	Outcome    string  `json:"outcome"`
+	Receipt    *string `json:"receipt,omitzero"`
+	Key        string  `json:"key"`
+}
+
+var runJobCancelAcknowledgementMembers = []string{"version", "resource", "job", "generation", "evidence", "outcome", "receipt", "key"}
+
+// UnmarshalJSON decodes a RunJobCancelAcknowledgement object and refuses a member the closed schema does not name.
+func (v *RunJobCancelAcknowledgement) UnmarshalJSON(data []byte) error {
+	type plain RunJobCancelAcknowledgement
+	var p plain
+	extra, err := decodeObject(data, &p, runJobCancelAcknowledgementMembers, true)
+	if err != nil {
+		return errorf("RunJobCancelAcknowledgement: %w", err)
+	}
+	*v = RunJobCancelAcknowledgement(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunJobCancelAcknowledgement object.
+func (v RunJobCancelAcknowledgement) MarshalJSON() ([]byte, error) {
+	type plain RunJobCancelAcknowledgement
+	return encodeObject(plain(v), nil)
+}
+
+// From run-job.json#/$defs/cancelAsk. What the writer or an abandon records before a cancel is
+// sent, under a current fence.
+type RunJobCancelAsk struct {
+	Version    int64   `json:"version"`
+	Resource   string  `json:"resource"`
+	Job        string  `json:"job"`
+	Generation int64   `json:"generation"`
+	By         string  `json:"by"`
+	Operation  string  `json:"operation"`
+	Command    *string `json:"command,omitzero"`
+}
+
+var runJobCancelAskMembers = []string{"version", "resource", "job", "generation", "by", "operation", "command"}
+
+// UnmarshalJSON decodes a RunJobCancelAsk object and refuses a member the closed schema does not name.
+func (v *RunJobCancelAsk) UnmarshalJSON(data []byte) error {
+	type plain RunJobCancelAsk
+	var p plain
+	extra, err := decodeObject(data, &p, runJobCancelAskMembers, true)
+	if err != nil {
+		return errorf("RunJobCancelAsk: %w", err)
+	}
+	*v = RunJobCancelAsk(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunJobCancelAsk object.
+func (v RunJobCancelAsk) MarshalJSON() ([]byte, error) {
+	type plain RunJobCancelAsk
+	return encodeObject(plain(v), nil)
+}
+
+// From run-job.json#/$defs/cancelRequest. A cancel asked for: by a cancel tool under its fence, or
+// by a host's command under the abandon's fence, or undelivered where no lease could be had. It
+// says nothing was stopped.
+type RunJobCancelRequest struct {
+	By          string  `json:"by"`
+	Operation   string  `json:"operation"`
+	At          string  `json:"at"`
+	Owner       *string `json:"owner,omitzero"`
+	Epoch       *string `json:"epoch,omitzero"`
+	Command     *string `json:"command,omitzero"`
+	Undelivered *bool   `json:"undelivered,omitzero"`
+}
+
+var runJobCancelRequestMembers = []string{"by", "operation", "at", "owner", "epoch", "command", "undelivered"}
+
+// UnmarshalJSON decodes a RunJobCancelRequest object and refuses a member the closed schema does not name.
+func (v *RunJobCancelRequest) UnmarshalJSON(data []byte) error {
+	type plain RunJobCancelRequest
+	var p plain
+	extra, err := decodeObject(data, &p, runJobCancelRequestMembers, true)
+	if err != nil {
+		return errorf("RunJobCancelRequest: %w", err)
+	}
+	*v = RunJobCancelRequest(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunJobCancelRequest object.
+func (v RunJobCancelRequest) MarshalJSON() ([]byte, error) {
+	type plain RunJobCancelRequest
 	return encodeObject(plain(v), nil)
 }
 
@@ -19976,11 +20144,12 @@ type RunJobProjection struct {
 	Outcome      *string `json:"outcome,omitzero"`
 	ResultDigest *string `json:"resultDigest,omitzero"`
 	Contradicted *bool   `json:"contradicted,omitzero"`
+	Cancel       *string `json:"cancel,omitzero"`
 	Changed      *bool   `json:"changed,omitzero"`
 	Note         *string `json:"note,omitzero"`
 }
 
-var runJobProjectionMembers = []string{"job", "generation", "state", "outcome", "resultDigest", "contradicted", "changed", "note"}
+var runJobProjectionMembers = []string{"job", "generation", "state", "outcome", "resultDigest", "contradicted", "cancel", "changed", "note"}
 
 // UnmarshalJSON decodes a RunJobProjection object and refuses a member the closed schema does not name.
 func (v *RunJobProjection) UnmarshalJSON(data []byte) error {
@@ -20127,20 +20296,23 @@ func (v RunJobReport) MarshalJSON() ([]byte, error) {
 
 // From run-job.json#/$defs/reportEntry.
 type RunJobReportEntry struct {
-	Job         string  `json:"job"`
-	Decision    string  `json:"decision"`
-	At          string  `json:"at"`
-	Owner       *string `json:"owner,omitzero"`
-	Epoch       *string `json:"epoch,omitzero"`
-	By          *string `json:"by,omitzero"`
-	Evidence    *string `json:"evidence,omitzero"`
-	Outcome     *string `json:"outcome,omitzero"`
-	Contradicts *string `json:"contradicts,omitzero"`
-	Tool        *string `json:"tool,omitzero"`
-	Source      *string `json:"source,omitzero"`
+	Job          string  `json:"job"`
+	Decision     string  `json:"decision"`
+	At           string  `json:"at"`
+	Owner        *string `json:"owner,omitzero"`
+	Epoch        *string `json:"epoch,omitzero"`
+	By           *string `json:"by,omitzero"`
+	Evidence     *string `json:"evidence,omitzero"`
+	Outcome      *string `json:"outcome,omitzero"`
+	Contradicts  *string `json:"contradicts,omitzero"`
+	Tool         *string `json:"tool,omitzero"`
+	Source       *string `json:"source,omitzero"`
+	Command      *string `json:"command,omitzero"`
+	Undelivered  *bool   `json:"undelivered,omitzero"`
+	Acknowledged *string `json:"acknowledged,omitzero"`
 }
 
-var runJobReportEntryMembers = []string{"job", "decision", "at", "owner", "epoch", "by", "evidence", "outcome", "contradicts", "tool", "source"}
+var runJobReportEntryMembers = []string{"job", "decision", "at", "owner", "epoch", "by", "evidence", "outcome", "contradicts", "tool", "source", "command", "undelivered", "acknowledged"}
 
 // UnmarshalJSON decodes a RunJobReportEntry object and refuses a member the closed schema does not name.
 func (v *RunJobReportEntry) UnmarshalJSON(data []byte) error {

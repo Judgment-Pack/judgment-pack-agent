@@ -485,6 +485,12 @@ export class WaitTable {
   if(ceiling!==undefined&&at(this.now())>=ceiling)throw new WaitRefused('deadline-passed')
   if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')
  }
+ /** #229: whether an abandon can have a lease: a closed run and one past its deadline grant none. A parked run can: its wait stands. */
+ leasable(resource:string):boolean{
+  if((this.rows.get(resource)??[]).some(terminal))return false
+  const ceiling=this.ceiling(resource)
+  return ceiling===undefined||at(this.now())<ceiling
+ }
  limit(input:RunLimit):RunLimit{
   const limit=within(()=>readRunLimit(input)),held=this.ceilings.get(limit.resource),next=Math.min(held??Infinity,at(limit.run))
   this.ceilings.set(limit.resource,next)

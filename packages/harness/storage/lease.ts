@@ -132,6 +132,14 @@ export class LeaseTable {
   const lease:RunLease={version:request.principal?2:1,resource:request.resource,owner:request.owner,epoch:nextLeaseEpoch(row?.epoch),expiry:expiryAt(Math.min(now+duration,ceiling??Infinity)),state:'held',...(request.principal?{principal:{...request.principal,sub:{...request.principal.sub}}}:{})}
   this.rows.set(lease.resource,lease);return {...lease}
  }
+ /** #229: an abandon's own transaction: the lease under a reserved owner at a new epoch, whoever holds it, so old workers get
+  * stale-epoch. A takeover is a new epoch of the same principals, never a change of principal. */
+ seize(resource:string,owner:string,durationMs:number,ceiling?:number):RunLease{
+  if(!storageId(resource)||!storageId(owner))throw new LeaseRefused('invalid')
+  const duration=requireDuration(durationMs),now=this.now(),row=this.rows.get(resource),epoch=nextLeaseEpoch(row?.epoch),end=ceiling===undefined?now+duration:Math.min(now+duration,ceiling)
+  const lease:RunLease={version:row?.principal?2:1,resource,owner,epoch,expiry:expiryAt(end),state:'held',...(row?.principal?{principal:{...row.principal,sub:{...row.principal.sub}}}:{})}
+  this.rows.set(resource,lease);return {...lease}
+ }
  /** Throws the named reason unless the fence is current: this epoch, this owner, held and unexpired by the store clock.
   * An expiry equal to the store's time is expired. */
  check(fence:LeaseFence):RunLease{

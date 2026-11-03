@@ -20,7 +20,7 @@ import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
 import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
-import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobIdentity,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
+import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
@@ -515,8 +515,17 @@ export class RunWriter {
  /** #229: this run's jobs by their start's dispatch id, where the host offers job tools: what plan evidence is held to. */
  private jobRecords?:Map<string,RunJob>
  /** #229: this run offers job tools. Nothing below is asked of a store otherwise. */
+ /** This run's job as it reads now. */
+ async readJobRecord(job:string,signal?:AbortSignal):Promise<RunJob|undefined>{const held=await jobPortOfView(this.store).store.readJob(this.id,job,signal);return held===undefined?undefined:readRunJob(structuredClone(held))}
+ /** A cancel's answer: its job as it reads now, or nothing where it cannot be read. */
+ private async cancelAnswer(job:string,sent=true):Promise<McpToolResult|undefined>{
+  try{const held=await this.readJobRecord(job);return held===undefined?undefined:jobCancelResult(held,sent)}catch{return undefined}
+ }
  async attachJobs(signal?:AbortSignal):Promise<void>{
   admitJobView(this.store)
+  // R-2: capability, before any offer. A job's wait cannot resume under a stored chat, so a start there would tell the model the
+  // host resumes it when nothing can.
+  if(await heldChat(this.store,this.id,signal))throw new JobCapabilityRefused('chat-store-unsupported')
   this.jobRecords??=new Map();await this.refreshJobs(signal)
   // M-6: a job and its claim commit together, so a job with no row of the head means its rows were restored from an earlier
   // moment than its jobs: a repeat would get a new row and a second start.
@@ -789,7 +798,7 @@ export class RunWriter {
   signal.throwIfAborted()
   return response!
  }
- async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt,admit?:(value:T)=>Promise<void>,recordable=true,jobStart?:JobStartDispatch):Promise<T>{
+ async invoke<T>(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,read:boolean,execute:(request:string,nativeWitness?:object,nativeClaim?:object,captureFrame?:(body:string)=>void)=>Promise<T>,successful:(value:T)=>boolean=()=>true,artifacts:(value:T)=>ArtifactObservation[]=()=>[],signal?:AbortSignal,ticket?:object,captureBindings?:NativeCaptureBindings,planAttempt?:NativePlanAttempt,admit?:(value:T)=>Promise<void>,recordable=true,jobStart?:JobStartDispatch,jobCancel?:JobCancelDispatch):Promise<T>{
   safeRequest(request);requireId(source);requireId(tool)
   request=this.prepared(binding,kind,source,tool,request,true)
   const scope=structuredClone(binding.scope),fingerprint=digest(canonicalJSON({kind,scope,source,tool,request:JSON.parse(request)}))
@@ -851,8 +860,11 @@ export class RunWriter {
    else await this.publish(binding,undefined,undefined,undefined,signal)
   })
   if(refusal)throw refusal
-  // #229: a repeated start is answered from its job's record where its row cannot say, and is never sent again.
-  if(reused&&jobStart&&reused.state!=='result'){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held===undefined)throw new HostOutcomeUnknown();return jobStartResult(readRunJob(structuredClone(held))) as T}
+  // #229: a repeated start is answered from its job's record, whatever its row holds, and is never sent again. A row says
+  // nothing about its job: `result` holds words from an earlier moment. Only with the job record lost does a result answer.
+  if(reused&&jobStart){const held=await jobPortOfView(this.store).store.readJob(this.id,jobIdentity(this.id,reused.id),signal);if(held!==undefined)return jobStartResult(readRunJob(structuredClone(held))) as T;if(reused.state!=='result')throw new HostOutcomeUnknown()}
+  // A repeated cancel likewise: a row says nothing about its job, and nothing is sent again.
+  if(reused&&jobCancel){const held=await jobPortOfView(this.store).store.readJob(this.id,jobCancel.job,signal);if(held!==undefined)return jobCancelResult(readRunJob(structuredClone(held))) as T;if(reused.state!=='result')throw new HostOutcomeUnknown()}
   if(reused){if(reused.state!=='result'||reused.result===undefined)throw new HostOutcomeUnknown();return structuredClone(reused.result) as T}
   if(jobId!==undefined)jobStart!.bind(jobId)
   signal?.throwIfAborted();if(this.fatal!==undefined)throw this.fatal;if(this.dispatchClosed)throw new DOMException('The operation was aborted','AbortError')
@@ -867,11 +879,24 @@ export class RunWriter {
   let live=signal,composed:T|undefined
   const finishRecovery=()=>{if(kind==='model'||kind==='agent')for(const row of this.book.dispatches)if(row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown')this.recovered.delete(row.id)}
   try{
+   // #229: `requested` is recorded under the current fence before admission, and what is sent is that record's. A job that
+   // settled since it was asked about refuses here: nothing is sent, and the model is answered from the job.
+   if(jobCancel){
+    const port=jobPortOfView(this.store)
+    try{
+     const asked=readRunJob(structuredClone(await port.store.requestJobCancel({version:1,resource:this.id,job:jobCancel.job,generation:1,by:'tool',operation:claim.id},port.fence,signal)))
+     // F-2: what is sent is the record of the job asked for, and only that one.
+     if(asked.resource!==this.id||asked.job!==jobCancel.job)throw new JobRefused('invalid')
+     jobCancel.held(asked)
+    }
+    catch(error){if(!(error instanceof JobRefused))throw error;composed=await this.cancelAnswer(jobCancel.job,false) as T|undefined;throw jobCancelNotSent()}
+   }
    // #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with the fence; its
    // idempotency identity is the acknowledged claim's, never the epoch.
    const perform=()=>execute(request,nativeWitness,nativeClaim,this.capture&&kind==='agent'?body=>this.capture!.agent(claim,body):undefined)
    try{value=await ((kind==='host'||kind==='runtime')&&!read?fencedEffect(this.store,{run:this.id,operation:claim.id,source,tool,requestDigest:claim.requestDigest},perform,signal):perform())}finally{closeNativeWitness(nativeWitness);const held=nativeClaim?this.nativeClaims.get(nativeClaim):undefined;if(held)held.live=false}
    // #229 (M2): a stop does not lose a start's answer: it goes to the job below, then this holds.
+   if(jobCancel){const answer=await this.cancelAnswer(jobCancel.job);if(answer===undefined)throw jobCancelUnrecorded();value=answer as T}
    if(this.dispatchClosed&&!jobStart)throw new DOMException('The operation was aborted','AbortError')
    if(kind==='model'){
     if(!value||typeof value!=='object'||!(value as unknown as PendingModel)[modelClaim]||this.models.has(value))throw new AIFailureError(failure('invalid-response','model','unknown'))
@@ -888,7 +913,7 @@ export class RunWriter {
     const port=jobPortOfView(this.store)
     try{
     const answer=readJobStartAnswer(value)
-    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
+    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
     }catch{
      try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
      throw jobStartUnrecorded()
@@ -901,6 +926,8 @@ export class RunWriter {
    // recorded and reported as an unknown outcome, with nothing said about admission.
    const effect=kind==='host'||kind==='runtime',refused=effect&&takeFreshReauthorization(thrown)
    const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown
+   // F-1: where the cancel was never handed to the host, the answer says it was not sent, whatever the record asked.
+   if(jobCancel&&!refused&&composed===undefined)composed=await this.cancelAnswer(jobCancel.job,jobCancel.sent===true) as T|undefined
    if(kind!=='model')finishRecovery()
    const admitted=kind==='agent'&&admittedNativeWitness(nativeWitness,binding,ticket)&&!signal?.aborted&&!this.dispatchClosed
    try{await this.enqueue(async()=>{if(this.stopped)return;claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=normalizeFailure(error,kind==='host'||kind==='runtime'?'tool':'agent');if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
@@ -931,6 +958,10 @@ export class RunWriter {
   return value
  }
 }
+/** Whether the run's history head holds a stored chat, whether or not this session passes it. */
+const heldChat=async(store:RunStore,id:string,signal?:AbortSignal)=>{const history=store as Partial<HistoryRunStore>;return history.historyVersion===1&&(await history.readHistoryHead!(id,signal))?.context!==undefined}
+/** #229: what a cancel's dispatch asks of the writer: its job, and being handed the record it sends from. */
+export interface JobCancelDispatch {job:string;held:(job:RunJob)=>void;/** Set the moment the cancel is handed to the host. */sent?:boolean}
 /** #229: what a start's dispatch asks of the writer: the key digest of its job, and being told the job before it runs. */
 export interface JobStartDispatch {mint:JobStartSeam['mint'];bind:(job:string)=>void}
 /** A callback acknowledges legacy checkpoint delivery. It cannot create an exact dispatch journal. */
@@ -976,6 +1007,8 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
  const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined
  if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
+ // R-2: a chat this session passes, before the writer opens: nothing of the chat is touched.
+ if(config?.context&&session.hostTools?.some(tool=>jobSeamOf(tool)!==undefined))throw new JobCapabilityRefused('chat-store-unsupported')
  if(store.durability==='single-writer-callback')return callbackProfile(session,store,id,execution,head)
  if(execution?.durable?.pendingHandoff&&!execution.handoff)throw new ProviderReleaseUnknown()
  if(execution?.durable?.dispatches.some(row=>row.failure?.detail?.startsWith('ProviderReleaseUnknown:')))throw new ProviderReleaseUnknown()

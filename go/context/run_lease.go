@@ -422,6 +422,37 @@ func (t *LeaseTable) Acquire(request LeaseAcquire, currentRevision string) (RunL
 	return t.acquireWithin(request, currentRevision, nil)
 }
 
+// Seize is an abandon's own transaction (#229): the lease under a reserved owner at a new epoch, whoever holds it, so
+// old workers get stale-epoch. A takeover is a new epoch of the same principals, never a change of principal.
+func (t *LeaseTable) Seize(resource, owner string, durationMs int64, ceiling *int64) (RunLease, error) {
+	if !validStorageID(resource) || !validStorageID(owner) || durationMs < 1 || durationMs > LeaseDurationMaxMs {
+		return RunLease{}, leaseInvalid()
+	}
+	now, err := t.millis()
+	if err != nil {
+		return RunLease{}, err
+	}
+	row := t.rows[resource]
+	epoch, err := NextLeaseEpoch(row.Epoch)
+	if err != nil {
+		return RunLease{}, err
+	}
+	end := now + durationMs
+	if ceiling != nil && *ceiling < end {
+		end = *ceiling
+	}
+	expiry, err := leaseExpiryAt(end)
+	if err != nil {
+		return RunLease{}, err
+	}
+	lease := RunLease{Version: LeaseRecordVersion, Resource: resource, Owner: owner, Epoch: epoch, Expiry: expiry, State: "held"}
+	if row.Principal != nil {
+		lease.Version, lease.Principal = 2, clonePrincipalBinding(row.Principal)
+	}
+	t.rows[resource] = lease
+	return lease, nil
+}
+
 // acquireWithin is Acquire with a ceiling (#225, store-clock milliseconds, nil for none): the latest the
 // lease may expire, the run's deadline or an approval's expiry. The caller refuses before it when the
 // ceiling is not after the store's time.

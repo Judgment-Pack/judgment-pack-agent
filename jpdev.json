@@ -24,6 +24,7 @@
         "go-test",
         "go-race-a",
         "go-race-b",
+        "go-race-c",
         "harness-check",
         "parity"
       ]
@@ -63,6 +64,7 @@
         "go-test",
         "go-race-a",
         "go-race-b",
+        "go-race-c",
         "harness-check"
       ]
     },
@@ -88,6 +90,7 @@
         "go-test",
         "go-race-a",
         "go-race-b",
+        "go-race-c",
         "harness-check"
       ]
     },
@@ -109,6 +112,7 @@
         "go-test",
         "go-race-a",
         "go-race-b",
+        "go-race-c",
         "harness-check"
       ]
     },

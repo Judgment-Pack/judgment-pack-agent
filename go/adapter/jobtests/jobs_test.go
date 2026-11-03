@@ -151,6 +151,7 @@ func modelFinal() *http.Response {
 type options struct {
 	ctx          context.Context
 	requestCap   *int
+	authorize    func(context.Context) error
 	resume       bool
 	decision     *contract.CheckpointApprovalDecision
 	continuation *runcontext.RunJob
@@ -165,7 +166,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 	g.SetOffer(contract.ToolOffer{})
 	start := ""
 	run := &adapter.Run{Prompt: "Run the job.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Gate: g.Calls(), HostTools: tools,
-		Context: &runcontext.Input{RequestCap: with.requestCap, CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation},
+		Context: &runcontext.Input{RequestCap: with.requestCap, Authorize: with.authorize, CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation},
 		Emit: func(event contract.RunEvent) {
 			mu.Lock()
 			out.events = append(out.events, event)
@@ -173,7 +174,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 		},
 		EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
 			for _, held := range offer.HostTools {
-				if held.Taxonomy.Operation == "run" {
+				if held.Taxonomy.Operation == "run" && !strings.HasSuffix(held.Name, "cancel_job") {
 					start = held.Name
 				}
 			}
@@ -298,6 +299,22 @@ func refusedAs(err error, reason string) bool {
 	var refused *runcontext.JobRefused
 	return errors.As(err, &refused) && refused.Reason == reason
 }
+
+// lastToolResult is the last tool result's text: a request body also holds what earlier turns were told.
+func lastToolResult(t *testing.T, result *runResult) string {
+	t.Helper()
+	for i := len(result.events) - 1; i >= 0; i-- {
+		raw, err := json.Marshal(result.events[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), `"type":"tool_result"`) {
+			return string(raw)
+		}
+	}
+	return ""
+}
+
 func toolAnswer(result *runResult) string {
 	raw, _ := json.Marshal(result.events)
 	return string(raw) + strings.Join(result.bodies, "\n")
@@ -1067,6 +1084,33 @@ func TestJobsAStartThatRanIsToldWhatItsJobSays(t *testing.T) {
 	}
 }
 
+// R-1: a repeat answers from the job whatever the row holds.
+func TestJobsARepeatAnswersFromTheJobWhateverItsRowHolds(t *testing.T) {
+	for name, c := range map[string]struct {
+		answer runcontext.JobStartAnswer
+		state  string
+	}{"a completed job": {startedAnswer, "completed"}, "evidence after a closure": {runcontext.JobStartAnswer{}, "not-started"}} {
+		for _, engine := range engines {
+			t.Run(name+"/"+engine, func(t *testing.T) {
+				l := newLeased(t, nil)
+				calls := &startCalls{}
+				tool := startTool(t, calls, answered(c.answer, nil), "allow", nil)
+				drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+				job := onlyJob(t, l.store)
+				if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(job.Job, nil)); err != nil {
+					t.Fatal(err)
+				}
+				repeat := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
+				job = onlyJob(t, l.store)
+				answer := lastToolResult(t, repeat)
+				if job.State != c.state || calls.count() != 1 || strings.Contains(answer, "nothing is running") || !strings.Contains(answer, c.state) {
+					t.Fatal(job.State, calls.count(), answer)
+				}
+			})
+		}
+	}
+}
+
 func TestJobsAHandleTheRecordCannotHoldIsKeptAsItsDigest(t *testing.T) {
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
@@ -1076,7 +1120,7 @@ func TestJobsAHandleTheRecordCannotHoldIsKeptAsItsDigest(t *testing.T) {
 			result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
 			job := onlyJob(t, l.store)
 			sum := func(text string) string { return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(text))) }
-			if job.State != "started" || job.Handle == nil || *job.Handle != sum(long) || job.Receipt == nil || *job.Receipt != sum(receipt) {
+			if job.State != "started" || job.Handle == nil || *job.Handle != sum(long) || job.HandleDigested == nil || !*job.HandleDigested || job.Receipt == nil || *job.Receipt != sum(receipt) {
 				t.Fatalf("%+v", job)
 			}
 			rows, _ := headBook(t, l.store)
@@ -1342,6 +1386,728 @@ func TestJobsWithNoJobToolOfferedTheStoreIsNeverAskedAboutJobs(t *testing.T) {
 			}
 			if counting.calls.Load() != 0 || counting.registered.Load() != 0 {
 				t.Fatal(counting.calls.Load(), counting.registered.Load())
+			}
+		})
+	}
+}
+
+// jobPair is a start and its cancel, declared as a pair on one source.
+type jobPair struct {
+	start, cancel runcontext.HostTool
+	calls         *startCalls
+	asked, sent   *atomic.Int32
+	inputs        *[]runcontext.JobCancelInput
+	id            string
+}
+
+func pairOf(t *testing.T, id string, answer func(context.Context, runcontext.JobStartInput) (runcontext.JobStartAnswer, error), cancel func(context.Context, runcontext.JobCancelInput) error, approve, key string) *jobPair {
+	t.Helper()
+	schema := json.RawMessage(`{"type":"object"}`)
+	taxonomy := &runcontext.ToolTaxonomy{Operation: "run", Effect: "act"}
+	digest := runcontext.ToolListDigest([]runcontext.ListedTool{{Name: "start_job", Description: "Start one background job.", InputSchema: schema, Taxonomy: taxonomy}, {Name: "cancel_job", Description: "Cancel one background job.", InputSchema: runcontext.JobCancelSchema, Taxonomy: taxonomy}})
+	source := func() *runcontext.ToolSource {
+		return &runcontext.ToolSource{Kind: "custom", ID: id, Trust: "person", Version: "1", ToolListDigest: digest, CurrentDigest: func(context.Context) (string, error) { return digest, nil }}
+	}
+	if answer == nil {
+		answer = answered(startedAnswer, nil)
+	}
+	out := &jobPair{calls: &startCalls{}, asked: &atomic.Int32{}, sent: &atomic.Int32{}, inputs: &[]runcontext.JobCancelInput{}, id: id}
+	var err error
+	out.start, err = runcontext.JobStartTool(runcontext.JobStartSpec{Name: "start_job", Description: "Start one background job.", InputSchema: schema, Source: source(),
+		Approve: func(runcontext.ApprovalRequest) string { return "allow" }, Approval: "required",
+		Mint: func(context.Context, string) (string, error) { return runcontext.JobKeyDigest(key) },
+		Start: func(ctx context.Context, input runcontext.JobStartInput) (runcontext.JobStartAnswer, error) {
+			out.calls.mu.Lock()
+			out.calls.requests = append(out.calls.requests, string(input.Request))
+			out.calls.mu.Unlock()
+			return answer(ctx, input)
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.cancel, err = runcontext.JobCancelTool(runcontext.JobCancelSpec{Name: "cancel_job", Description: "Cancel one background job.", Source: source(), Start: out.start, Approval: "required",
+		Approve: func(runcontext.ApprovalRequest) string { out.asked.Add(1); return approve },
+		Cancel: func(ctx context.Context, input runcontext.JobCancelInput) error {
+			out.sent.Add(1)
+			*out.inputs = append(*out.inputs, input)
+			if cancel != nil {
+				return cancel(ctx, input)
+			}
+			return nil
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func (p *jobPair) tools() []runcontext.HostTool { return []runcontext.HostTool{p.start, p.cancel} }
+func cancelArgs(job string) string              { return `{"job":"` + job + `","generation":1}` }
+
+// startedPair is a run whose model started one job through the pair and ended its turn.
+func startedPair(t *testing.T, engine string, p *jobPair) (*leasedRun, runcontext.RunJob) {
+	t.Helper()
+	l := newLeased(t, nil)
+	drive(t, l.view, engine, p.tools(), []jobCall{{p.id + "__start_job", jobArgs}}, options{})
+	return l, onlyJob(t, l.store)
+}
+
+func cancelRows(t *testing.T, store runcontext.RunStore) []bookRow {
+	t.Helper()
+	rows, _ := headBook(t, store)
+	out := []bookRow{}
+	for _, row := range rows.hosts() {
+		if strings.HasSuffix(row.Tool, "cancel_job") {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func TestJobsACancelIsRequestedBeforeAdmissionAndSendsTheRecord(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			var l *leasedRun
+			by := ""
+			p := pairOf(t, "runner", nil, func(ctx context.Context, input runcontext.JobCancelInput) error {
+				held, err := runcontext.ReadJob(ctx, l.store, jobRun, input.Job)
+				if err == nil && held != nil && held.Cancel != nil {
+					by = held.Cancel.Requested.By
+				}
+				return nil
+			}, "allow", jobKey)
+			var job runcontext.RunJob
+			l, job = startedPair(t, engine, p)
+			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 1 || by != "tool" || held.State != "started" || held.Cancel == nil || held.Cancel.Requested.Owner == nil || *held.Cancel.Requested.Owner != "worker-a" {
+				t.Fatalf("%d %q %+v", p.sent.Load(), by, held)
+			}
+			sent := (*p.inputs)[0]
+			if sent.Job != job.Job || sent.Generation != 1 || sent.Source != job.Source || sent.Tool != job.Tool || sent.Handle != jobSecret {
+				t.Fatalf("%+v", sent)
+			}
+			rows := cancelRows(t, l.store)
+			if len(rows) != 1 || rows[0].State != "result" || rows[0].ID != held.Cancel.Requested.Operation {
+				t.Fatalf("%+v", rows)
+			}
+			answer := lastToolResult(t, result)
+			if !strings.Contains(answer, "cancel requested") || strings.Contains(answer, jobSecret) {
+				t.Fatal(answer)
+			}
+		})
+	}
+}
+
+func TestJobsAnotherSourcesCancelIsNoJob(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			prod, other := pairOf(t, "runner", nil, nil, "allow", jobKey), pairOf(t, "other", nil, nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
+			l, job := startedPair(t, engine, prod)
+			result := drive(t, l.view, engine, append(prod.tools(), other.tools()...), []jobCall{{"other__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			if other.asked.Load() != 0 || other.sent.Load() != 0 || prod.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "JobRefused: no-job") || len(cancelRows(t, l.store)) != 0 {
+				t.Fatal(other.asked.Load(), other.sent.Load(), prod.sent.Load(), lastToolResult(t, result), cancelRows(t, l.store))
+			}
+			if held := onlyJob(t, l.store); held.Cancel != nil {
+				t.Fatalf("%+v", held)
+			}
+		})
+	}
+}
+
+func TestJobsACancelIsDeclaredWithAStartOfItsSource(t *testing.T) {
+	a, b := pairOf(t, "runner", nil, nil, "allow", jobKey), pairOf(t, "other", nil, nil, "allow", jobKey)
+	spec := runcontext.JobCancelSpec{Name: "cancel_job", Description: "Cancel.", Source: b.start.Source, Start: a.start, Cancel: func(context.Context, runcontext.JobCancelInput) error { return nil }}
+	var refused *runcontext.JobCapabilityRefused
+	if _, err := runcontext.JobCancelTool(spec); !errors.As(err, &refused) || refused.Reason != "job-host-unsupported" {
+		t.Fatal(err)
+	}
+	spec.Source, spec.Start = a.start.Source, runcontext.HostTool{Name: "x", Source: a.start.Source}
+	if _, err := runcontext.JobCancelTool(spec); !errors.As(err, &refused) || refused.Reason != "job-host-unsupported" {
+		t.Fatal(err)
+	}
+	// Its source's list holds the cancel alone, so the source is offered, and the pair is not.
+	alone := runcontext.ToolListDigest([]runcontext.ListedTool{{Name: "cancel_job", Description: "Cancel one background job.", InputSchema: runcontext.JobCancelSchema, Taxonomy: &runcontext.ToolTaxonomy{Operation: "run", Effect: "act"}}})
+	spec.Description, spec.Start = "Cancel one background job.", a.start
+	spec.Source = &runcontext.ToolSource{Kind: "custom", ID: "runner", Trust: "person", Version: "1", ToolListDigest: alone, CurrentDigest: func(context.Context) (string, error) { return alone, nil }}
+	spec.Approve, spec.Approval = func(runcontext.ApprovalRequest) string { return "allow" }, "required"
+	tool, err := runcontext.JobCancelTool(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := newLeased(t, nil)
+	result := drive(t, l.view, "eino", []runcontext.HostTool{tool}, nil, options{})
+	text := toolAnswer(result)
+	if result.err != nil {
+		text += result.err.Error()
+	}
+	if !strings.Contains(text, "JobCapabilityRefused: job-host-unsupported") || result.asks.Load() != 0 {
+		t.Fatal(result.asks.Load(), text)
+	}
+}
+
+func TestJobsWhatARecordRefusesIsRefusedBeforeTheCardAndTheClaim(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "ask", jobKey)
+			l, job := startedPair(t, engine, p)
+			absent := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(runcontext.JobIdentity(jobRun, "no-such"))}}, options{resume: true})
+			if !strings.Contains(lastToolResult(t, absent), "JobRefused: no-job") {
+				t.Fatal(lastToolResult(t, absent))
+			}
+			generation := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", `{"job":"` + job.Job + `","generation":2}`}}, options{resume: true})
+			if strings.Contains(lastToolResult(t, generation), "requested") || p.sent.Load() != 0 {
+				t.Fatal(lastToolResult(t, generation))
+			}
+			if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(job.Job, nil)); err != nil {
+				t.Fatal(err)
+			}
+			settled := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			if !strings.Contains(lastToolResult(t, settled), "JobRefused: job-settled") || p.asked.Load() != 0 || p.sent.Load() != 0 || len(cancelRows(t, l.store)) != 0 {
+				t.Fatal(lastToolResult(t, settled), p.asked.Load(), p.sent.Load())
+			}
+			none := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true}, nil), nil, "ask", jobKey)
+			lost, unproven := startedPair(t, engine, none)
+			result := drive(t, lost.view, engine, none.tools(), []jobCall{{"runner__cancel_job", cancelArgs(unproven.Job)}}, options{resume: true})
+			if unproven.State != "unproven" || !strings.Contains(lastToolResult(t, result), "JobRefused: job-unproven") || none.asked.Load() != 0 || none.sent.Load() != 0 {
+				t.Fatal(unproven.State, lastToolResult(t, result), none.asked.Load())
+			}
+		})
+	}
+}
+
+func TestJobsAHeldCancelProvesWhatWasShown(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "ask", jobKey)
+			l, job := startedPair(t, engine, p)
+			first := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			callID := ""
+			for _, event := range first.events {
+				if event.ApprovalRequested != nil {
+					callID = event.ApprovalRequested.CallID
+				}
+			}
+			if callID == "" || p.sent.Load() != 0 || onlyJob(t, l.store).Cancel != nil {
+				t.Fatal(callID, p.sent.Load())
+			}
+			card := runcontext.JobCancelCardOf(onlyJob(t, l.store))
+			if card.Source != job.Source || card.Tool != job.Tool || card.State != "started" || card.Generation != 1 || card.Operation != job.Job {
+				t.Fatalf("%+v", card)
+			}
+			refused := drive(t, l.view, engine, p.tools(), nil, options{resume: true, decision: &contract.CheckpointApprovalDecision{CallID: callID, Approved: true}})
+			if !strings.Contains(fmt.Sprint(refused.err)+toolAnswer(refused), "ApprovalNotShown") || p.sent.Load() != 0 {
+				t.Fatal(refused.err, p.sent.Load())
+			}
+			drive(t, l.view, engine, p.tools(), nil, options{resume: true, decision: heldProof(t, l.store, callID)})
+			if p.sent.Load() != 1 {
+				t.Fatal(p.sent.Load())
+			}
+		})
+	}
+}
+
+func TestJobsADigestedHandleIsNeverSentAsTheReference(t *testing.T) {
+	long := strings.Repeat("h", 300)
+	p := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: long}, nil), nil, "allow", jobKey)
+	l, job := startedPair(t, "eino", p)
+	drive(t, l.view, "eino", p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+	if p.sent.Load() != 1 || (*p.inputs)[0].Handle != "" || (*p.inputs)[0].HandleDigest != fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(long))) {
+		t.Fatalf("%+v", *p.inputs)
+	}
+}
+
+func TestJobsARepeatedCancelIsAnsweredFromTheJob(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			call := []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}
+			drive(t, l.view, engine, p.tools(), call, options{resume: true})
+			if _, err := runcontext.AcknowledgeJobCancel(context.Background(), l.store, runcontext.JobCancelAcknowledgement{Version: 1, Resource: jobRun, Job: job.Job, Generation: 1, Evidence: "word-1", Outcome: "accepted", Key: jobKey}); err != nil {
+				t.Fatal(err)
+			}
+			repeat := drive(t, l.view, engine, p.tools(), call, options{resume: true})
+			if p.sent.Load() != 1 || !strings.Contains(lastToolResult(t, repeat), "cancel accepted") {
+				t.Fatal(p.sent.Load(), lastToolResult(t, repeat))
+			}
+		})
+	}
+}
+
+func TestJobsACancelThatFailsHoldsOneFixedFailureAndIsNotSentAgain(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, func(context.Context, runcontext.JobCancelInput) error {
+				return failure.Authored("tool-failed", "SENTINEL-HOST-TEXT: half sent", "tool")
+			}, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			call := []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}
+			result := drive(t, l.view, engine, p.tools(), call, options{resume: true})
+			rows := cancelRows(t, l.store)
+			if len(rows) != 1 || rows[0].State != "unknown" || rows[0].Failure["outcome"] != "unknown" || !strings.Contains(fmt.Sprint(rows[0].Failure["detail"]), "JobCancelUnrecorded") {
+				t.Fatalf("%+v", rows)
+			}
+			answer := toolAnswer(result)
+			if strings.Contains(answer, "SENTINEL-HOST-TEXT") || strings.Contains(answer, "invalid-tool-input") || !strings.Contains(lastToolResult(t, result), "cancel requested") {
+				t.Fatal(answer)
+			}
+			drive(t, l.view, engine, p.tools(), call, options{resume: true})
+			if p.sent.Load() != 1 {
+				t.Fatal(p.sent.Load())
+			}
+		})
+	}
+}
+
+// settlesFirst completes the job just before the store is asked to record the cancel.
+type settlesFirst struct {
+	durableJobStore
+	settle func()
+}
+
+func (s *settlesFirst) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelAsk, fence runcontext.LeaseFence) (runcontext.RunJob, error) {
+	s.settle()
+	return s.durableJobStore.RequestJobCancel(ctx, ask, fence)
+}
+
+func TestJobsAJobThatSettlesAfterItWasAskedAboutIsNotSent(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			store := &settlesFirst{durableJobStore: l.store, settle: func() {
+				if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(job.Job, nil)); err != nil {
+					t.Fatal(err)
+				}
+			}}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			rows := cancelRows(t, l.store)
+			if p.sent.Load() != 0 || held.State != "completed" || held.Cancel != nil || len(rows) != 1 || rows[0].State != "unknown" || rows[0].Failure["outcome"] != "not-started" || !strings.Contains(fmt.Sprint(rows[0].Failure["detail"]), "JobCancelNotSent") {
+				t.Fatalf("%d %+v %+v", p.sent.Load(), held, rows)
+			}
+			if !strings.Contains(lastToolResult(t, result), "completed") {
+				t.Fatal(lastToolResult(t, result))
+			}
+		})
+	}
+}
+
+func TestJobsTheHostsWordMovesNoStateAndOnlyACompletionSaysItStopped(t *testing.T) {
+	ctx := context.Background()
+	p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+	l, job := startedPair(t, "eino", p)
+	drive(t, l.view, "eino", p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+	if _, err := l.store.ReleaseLease(ctx, l.fence); err != nil {
+		t.Fatal(err)
+	}
+	worded, err := runcontext.AcknowledgeJobCancel(ctx, l.store, runcontext.JobCancelAcknowledgement{Version: 1, Resource: jobRun, Job: job.Job, Generation: 1, Evidence: "word-1", Outcome: "accepted", Key: jobKey})
+	if err != nil || worded.State != "started" || runcontext.JobProjectionOf(worded).Cancel == nil || *runcontext.JobProjectionOf(worded).Cancel != "accepted" {
+		t.Fatalf("%+v %v", worded, err)
+	}
+	done, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, func(e *runcontext.JobCompletionEvidence) { e.Outcome = "cancelled" }))
+	if err != nil || done.State != "completed" || done.Completion.Outcome != "cancelled" || done.Cancel == nil || done.Cancel.Acknowledged == nil {
+		t.Fatalf("%+v %v", done, err)
+	}
+	report, err := runcontext.JobReportOf(ctx, l.store, jobRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decisions := []string{}
+	for _, entry := range report.Entries {
+		decisions = append(decisions, entry.Decision)
+	}
+	if strings.Join(decisions, ",") != "register,start,cancel-requested,cancel-acknowledged,complete" {
+		t.Fatal(decisions)
+	}
+}
+
+func TestJobsASubAgentIsOfferedNoCancelToolAtDeclaration(t *testing.T) {
+	// The seam is the whole of it: the declaration's refusal reads it, in TestJobToolsAreOfferedToNoSubAgent.
+	p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+	policy := runcontext.Policy{CataloguedSubagents: 16, SubagentCatalogueBytes: 4000, MaxInputBytes: 1 << 20, TurnMilliseconds: 1 << 20, ToolResultBytes: 1 << 20}
+	raw, err := os.ReadFile("../../../contract/vectors/subagents/declaration.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct{ Items []runcontext.Subagent }
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	s := file.Items[0]
+	s.Tools = []string{p.cancel.Name}
+	admitted, _, err := runcontext.DeclareSubagents([]runcontext.Subagent{s}, []runcontext.HostTool{p.cancel}, nil, policy)
+	if err != nil || len(admitted) != 0 {
+		t.Fatal(len(admitted), err)
+	}
+}
+
+func TestJobsAnAbandonTakesAFreshFenceAndSendsThroughTheEffectHost(t *testing.T) {
+	ctx := context.Background()
+	p := pairOf(t, "runner", nil, nil, "refuse", jobKey)
+	l, job := startedPair(t, "eino", p)
+	before, err := l.store.Load(ctx, jobRun)
+	if err != nil || before == nil {
+		t.Fatal(before, err)
+	}
+	inputs := []runcontext.JobCancelInput{}
+	send := func(_ context.Context, input runcontext.JobCancelInput) error {
+		inputs = append(inputs, input)
+		return nil
+	}
+	answer, err := runcontext.AbandonJobs(ctx, l.store, l.host, jobRun, "cmd-1", jobHour, send)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.Fence == nil || answer.Fence.Owner != runcontext.JobAbandonOwner || answer.Fence.Epoch == l.fence.Epoch || len(answer.Jobs) != 1 || answer.Jobs[0].Delivery != "sent" {
+		t.Fatalf("%+v", answer)
+	}
+	if len(inputs) != 1 || inputs[0].Handle != jobSecret || p.asked.Load() != 0 {
+		t.Fatalf("%+v %d", inputs, p.asked.Load())
+	}
+	after, _ := l.store.Load(ctx, jobRun)
+	if after.Revision != before.Revision {
+		t.Fatal("an abandon committed to the run")
+	}
+	var refused *runcontext.LeaseRefused
+	if _, err := l.store.CommitFenced(ctx, runcontext.RunCommit{RunID: jobRun, ExpectedRevision: before.Revision, CommitID: "late", Checkpoint: before.Checkpoint, Events: [][]byte{}}, l.fence); !errors.As(err, &refused) || refused.Reason != "stale-epoch" {
+		t.Fatal(err)
+	}
+	held := onlyJob(t, l.store)
+	if held.State != "started" || held.Cancel == nil || held.Cancel.Requested.By != "command" || held.Cancel.Requested.Operation != runcontext.JobCancelOperation("cmd-1", job.Job) {
+		t.Fatalf("%+v", held)
+	}
+	// A retry of the command sends nothing twice: the effect host admits its stable operation once.
+	again, err := runcontext.AbandonJobs(ctx, l.store, l.host, jobRun, "cmd-1", jobHour, send)
+	if err != nil || len(inputs) != 1 || again.Jobs[0].Delivery != "already-sent" {
+		t.Fatalf("%+v %v %d", again, err, len(inputs))
+	}
+}
+
+func TestJobsAnAbandonSaysWhatItCouldNotSend(t *testing.T) {
+	ctx := context.Background()
+	send := func(context.Context, runcontext.JobCancelInput) error { return errors.New("down") }
+	abandon := func(t *testing.T, l *leasedRun) runcontext.JobAbandonAnswer {
+		t.Helper()
+		answer, err := runcontext.AbandonJobs(ctx, l.store, l.host, jobRun, "cmd-1", jobHour, send)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return answer
+	}
+	t.Run("a failed cancel", func(t *testing.T) {
+		l, _ := startedPair(t, "eino", pairOf(t, "runner", nil, nil, "allow", jobKey))
+		if got := abandon(t, l); got.Jobs[0].Delivery != "failed" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("no handle", func(t *testing.T) {
+		l, _ := startedPair(t, "eino", pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true}, nil), nil, "allow", jobKey))
+		if got := abandon(t, l); got.Jobs[0].Delivery != "no-handle" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("settled", func(t *testing.T) {
+		l, job := startedPair(t, "eino", pairOf(t, "runner", nil, nil, "allow", jobKey))
+		if _, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if got := abandon(t, l); got.Jobs[0].Delivery != "settled" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("evidence on a closed job", func(t *testing.T) {
+		l, job := startedPair(t, "eino", pairOf(t, "runner", answered(runcontext.JobStartAnswer{}, nil), nil, "allow", jobKey))
+		if _, err := runcontext.CompleteJob(ctx, l.store, completion(job.Job, nil)); err != nil {
+			t.Fatal(err)
+		}
+		if got := abandon(t, l); got.Jobs[0].Delivery != "contradicted" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("the host accepted", func(t *testing.T) {
+		p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+		l, job := startedPair(t, "eino", p)
+		drive(t, l.view, "eino", p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+		if _, err := runcontext.AcknowledgeJobCancel(ctx, l.store, runcontext.JobCancelAcknowledgement{Version: 1, Resource: jobRun, Job: job.Job, Generation: 1, Evidence: "word-1", Outcome: "accepted", Key: jobKey}); err != nil {
+			t.Fatal(err)
+		}
+		if got := abandon(t, l); got.Jobs[0].Delivery != "acknowledged" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("past its deadline", func(t *testing.T) {
+		l, _ := startedPair(t, "eino", pairOf(t, "runner", nil, nil, "allow", jobKey))
+		limit := l.clock.now().Add(time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")
+		if _, err := l.store.LimitRun(ctx, runcontext.RunLimit{Version: 1, Resource: jobRun, Run: limit}); err != nil {
+			t.Fatal(err)
+		}
+		l.clock.move(time.Minute)
+		got := abandon(t, l)
+		held := onlyJob(t, l.store)
+		if got.Fence != nil || got.Jobs[0].Delivery != "undelivered" || held.Cancel == nil || held.Cancel.Requested.Undelivered == nil {
+			t.Fatalf("%+v %+v", got, held)
+		}
+	})
+	t.Run("a digest is never the reference", func(t *testing.T) {
+		l, _ := startedPair(t, "eino", pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: strings.Repeat("h", 300)}, nil), nil, "allow", jobKey))
+		var sent runcontext.JobCancelInput
+		if _, err := runcontext.AbandonJobs(ctx, l.store, l.host, jobRun, "cmd-1", jobHour, func(_ context.Context, input runcontext.JobCancelInput) error { sent = input; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if sent.Handle != "" || sent.HandleDigest == "" {
+			t.Fatalf("%+v", sent)
+		}
+	})
+	t.Run("a host that only declares", func(t *testing.T) {
+		l, _ := startedPair(t, "eino", pairOf(t, "runner", nil, nil, "allow", jobKey))
+		var refused *runcontext.LeaseCapabilityRefused
+		if _, err := runcontext.AbandonJobs(ctx, l.store, declaredOnly{}, jobRun, "cmd-1", jobHour, send); !errors.As(err, &refused) {
+			t.Fatal(err)
+		}
+		if lease, _ := l.store.ReadLease(ctx, jobRun); lease == nil || lease.Epoch != l.fence.Epoch {
+			t.Fatalf("%+v", lease)
+		}
+	})
+}
+
+func TestJobsAHeldCancelWhoseJobSettledBeforeTheDecisionIsNotSent(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "ask", jobKey)
+			l, job := startedPair(t, engine, p)
+			first := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			callID := ""
+			for _, event := range first.events {
+				if event.ApprovalRequested != nil {
+					callID = event.ApprovalRequested.CallID
+				}
+			}
+			decision := heldProof(t, l.store, callID)
+			if _, err := runcontext.CompleteJob(context.Background(), l.store, completion(job.Job, nil)); err != nil {
+				t.Fatal(err)
+			}
+			result := drive(t, l.view, engine, p.tools(), nil, options{resume: true, decision: decision})
+			if p.sent.Load() != 0 || !strings.Contains(toolAnswer(result), "JobRefused: job-settled") || len(cancelRows(t, l.store)) != 0 {
+				t.Fatal(p.sent.Load(), toolAnswer(result), cancelRows(t, l.store))
+			}
+		})
+	}
+}
+
+// otherOwnerAbandon answers an abandon's lease under another owner.
+type otherOwnerAbandon struct{ durableJobStore }
+
+func (s otherOwnerAbandon) AbandonJobs(ctx context.Context, input runcontext.JobAbandon) (runcontext.JobAbandonTaken, error) {
+	taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+	if taken.Lease != nil {
+		taken.Lease.Owner = "worker-z"
+	}
+	return taken, err
+}
+
+func TestJobsAnAbandonTrustsNoLeaseOfAnotherOwner(t *testing.T) {
+	l, _ := startedPair(t, "eino", pairOf(t, "runner", nil, nil, "allow", jobKey))
+	store := otherOwnerAbandon{l.store}
+	sent := 0
+	_, err := runcontext.AbandonJobs(context.Background(), store, runcontext.NewReferenceEffectHost(store), jobRun, "cmd-1", jobHour, func(context.Context, runcontext.JobCancelInput) error { sent++; return nil })
+	var refused *runcontext.LeaseRefused
+	if !errors.As(err, &refused) || refused.Reason != "invalid" || sent != 0 {
+		t.Fatal(err, sent)
+	}
+}
+
+// A nested run on the context a cancel was handed is no cancel itself.
+func TestJobsANestedRunInACancelIsNoCancel(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			nested := newLeased(t, nil)
+			nestedAnswer := ""
+			p := pairOf(t, "runner", nil, func(ctx context.Context, _ runcontext.JobCancelInput) error {
+				result := drive(t, nested.view, engine, nil, nil, options{ctx: ctx})
+				nestedAnswer = fmt.Sprint(result.err) + toolAnswer(result)
+				return result.err
+			}, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			rows := cancelRows(t, l.store)
+			if p.sent.Load() != 1 || len(rows) != 1 || rows[0].State != "result" || !strings.Contains(lastToolResult(t, result), "cancel requested") {
+				t.Fatal(p.sent.Load(), rows, lastToolResult(t, result))
+			}
+			// The nested run's own requests went through: none was taken for a cancel.
+			if strings.Contains(nestedAnswer, `"type":"error"`) {
+				t.Fatal(nestedAnswer)
+			}
+		})
+	}
+}
+
+// lostJobs answers as a store whose job rows were lost: a repeat's read finds none.
+type lostJobs struct{ durableJobStore }
+
+func (lostJobs) ReadJob(context.Context, string, string) (*runcontext.RunJob, error) { return nil, nil }
+
+func TestJobsWithItsRecordLostARepeatOfAStartAnswersItsRow(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			calls := &startCalls{}
+			tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
+			drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
+			store := lostJobs{l.store}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeat := drive(t, view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true})
+			if calls.count() != 1 || !strings.Contains(lastToolResult(t, repeat), "started, not finished") {
+				t.Fatal(calls.count(), lastToolResult(t, repeat))
+			}
+		})
+	}
+}
+
+// askLost records the cancel and loses the acknowledgement, as a crash there leaves it.
+type askLost struct {
+	durableJobStore
+	lost *atomic.Bool
+}
+
+func (s askLost) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelAsk, fence runcontext.LeaseFence) (runcontext.RunJob, error) {
+	job, err := s.durableJobStore.RequestJobCancel(ctx, ask, fence)
+	if err == nil && s.lost.Swap(false) {
+		return runcontext.RunJob{}, errors.New("acknowledgement lost")
+	}
+	return job, err
+}
+
+// failingHost fails a dispatch before anything is performed, while on.
+type failingHost struct {
+	inner *runcontext.ReferenceEffectHost
+	on    *atomic.Bool
+}
+
+func (h failingHost) EffectFencing() string { return h.inner.EffectFencing() }
+func (h failingHost) Dispatch(ctx context.Context, admission runcontext.EffectAdmission, perform func(context.Context) error) error {
+	if h.on.Load() {
+		return errors.New("the authority is down")
+	}
+	return h.inner.Dispatch(ctx, admission, perform)
+}
+
+func TestJobsACancelThatNeverLeftSaysItWasNotSent(t *testing.T) {
+	ctx := context.Background()
+	for _, engine := range engines {
+		t.Run(engine+"/an acknowledgement lost after requested", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			lost := &atomic.Bool{}
+			lost.Store(true)
+			store := askLost{l.store, lost}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, first), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, first))
+			}
+			repeat := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, repeat), "may not have been delivered") {
+				t.Fatal(p.sent.Load(), lastToolResult(t, repeat))
+			}
+		})
+		t.Run(engine+"/an effect host that fails", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l := newLeased(t, nil)
+			on := &atomic.Bool{}
+			certified, err := runcontext.CertifyEffectHost(ctx, func(authority runcontext.LeaseAuthority) runcontext.EffectHost {
+				return failingHost{inner: runcontext.NewReferenceEffectHost(authority), on: on}
+			}, l.store)
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := runcontext.FencedRunStore(l.store, l.fence, certified)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drive(t, view, engine, p.tools(), []jobCall{{"runner__start_job", jobArgs}}, options{})
+			job := onlyJob(t, l.store)
+			on.Store(true)
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
+			}
+		})
+		// The run's own reads inside the dispatch, before the cancel is handed over: a delegation's counted read
+		// is one, and the host's Authorize is another at the same point. Go's job tests have no delegated driver,
+		// so Authorize stands in for it here; TypeScript drives the delegation itself.
+		t.Run(engine+"/a refusal inside the dispatch", func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l, job := startedPair(t, engine, p)
+			// It admits the run's opening and refuses once the cancel is asked for: the point a counted read is at.
+			refuse := func(ctx context.Context) error {
+				if held, err := runcontext.ReadJob(ctx, l.store, jobRun, job.Job); err == nil && held != nil && held.Cancel != nil {
+					return failure.Authored("permission", "revoked", "context")
+				}
+				return nil
+			}
+			result := drive(t, l.view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true, authorize: refuse})
+			held := onlyJob(t, l.store)
+			if p.sent.Load() != 0 || held.Cancel == nil || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), held.Cancel, lastToolResult(t, result))
+			}
+		})
+	}
+}
+
+// otherJobAnswer records the cancel and answers another job's record.
+type otherJobAnswer struct {
+	durableJobStore
+	other *string
+}
+
+func (s otherJobAnswer) RequestJobCancel(ctx context.Context, ask runcontext.JobCancelAsk, fence runcontext.LeaseFence) (runcontext.RunJob, error) {
+	if _, err := s.durableJobStore.RequestJobCancel(ctx, ask, fence); err != nil {
+		return runcontext.RunJob{}, err
+	}
+	held, err := s.durableJobStore.ReadJob(ctx, ask.Resource, *s.other)
+	if err != nil || held == nil {
+		return runcontext.RunJob{}, err
+	}
+	return *held, nil
+}
+
+func TestJobsWhatIsSentIsTheRecordOfTheJobAskedFor(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, nil, "allow", jobKey)
+			l := newLeased(t, nil)
+			drive(t, l.view, engine, p.tools(), []jobCall{{"runner__start_job", `{"name":"one"}`}}, options{})
+			page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+			first := page.Jobs[0].Job
+			second := pairOf(t, "runner", nil, nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
+			drive(t, l.view, engine, second.tools(), []jobCall{{"runner__start_job", `{"name":"two"}`}}, options{resume: true})
+			page, _ = runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+			if len(page.Jobs) != 2 {
+				t.Fatalf("%+v", page.Jobs)
+			}
+			other := page.Jobs[1].Job
+			store := otherJobAnswer{l.store, &other}
+			view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(first)}}, options{resume: true})
+			if p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+				t.Fatal(p.sent.Load(), lastToolResult(t, result))
 			}
 		})
 	}
