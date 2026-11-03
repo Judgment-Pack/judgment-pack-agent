@@ -13,6 +13,7 @@ import {vercel} from './engines/vercel'
 import {codex} from './engines/codex'
 import {withDelegation} from './delegation'
 import {MemoryRunStore,type RunStore} from './storage/run'
+import {ChatContext} from './context/chat'
 import type {RuntimeExecutionOwner,RuntimeActionPort} from './runtimeActions'
 import type {AgentAssistantSession,AssistantEvent,AssistantSession,EngineSession,HostTool,McpTool} from './engine'
 import type {AgentRun} from './agent'
@@ -266,6 +267,21 @@ describe('a durable resume under other principals',()=>{
   const error=events.find(e=>e.type==='error') as Extract<AssistantEvent,{type:'error'}>
   expect(error.message).toContain('principal-changed')
   expect(error.failure?.code).toBe('stale-state')
+ })
+ // Refused before the writer opens: the session refuses the same way later (#301 made its refusal before the bind arrive
+ // as this one), but only after it has asked the host's authorize, touched the chat and reported usage. This holds the
+ // writer's own refusal (P51) apart from the session's.
+ it('asks the host nothing, touches no chat and reports no usage before it refuses',async()=>{
+  const store=new MemoryRunStore(),ran:string[]=[],reads:AdmissionRead[]=[],tools=await notes(ran),id='durable-untouched',chat=new ChatContext()
+  let authorized=0
+  const extra=(resume:boolean)=>({runStore:{store,id,...(resume?{resume:true}:{})},chat,authorize:async()=>{authorized++}})
+  await drive(session(tools,principal(reads),extra(false)),'notes__read_note')
+  const asked=authorized,held=JSON.stringify({size:chat.size,entries:[...chat.entries.keys()],chat})
+  const events=await drive(session(tools,principal(reads,{chain:4}),extra(true)),'notes__read_note')
+  expect(events.map(e=>e.type)).toEqual(['error','end'])
+  expect((events[0] as {message:string}).message).toContain('principal-changed')
+  expect(authorized).toBe(asked)
+  expect(JSON.stringify({size:chat.size,entries:[...chat.entries.keys()],chat})).toBe(held)
  })
  it('continues under a chain re-issued for the same subject and root actor',async()=>{
   const store=new MemoryRunStore(),ran:string[]=[],reads:AdmissionRead[]=[],tools=await notes(ran),id='durable-reissued'
