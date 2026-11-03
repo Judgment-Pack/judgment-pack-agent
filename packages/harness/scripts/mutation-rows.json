@@ -10134,13 +10134,13 @@
   "name": "a host write JSON.parse rounded is run",
   "file": "context/session.ts",
   "find": ",durableReadingTool(tool)||exactlyHeld(args),job?.kind",
-  "replace": ")",
+  "replace": ",undefined,job?.kind",
   "tests": [
     "storage/durableWrites.engines.test.ts"
   ],
   "status": "caught",
   "origin": "agent#275",
-  "note": "Go twin: none; Go runs the bytes the model wrote, so it has nothing rounded to refuse."
+  "note": "The write's recordable flag dropped, so its default lets a write JSON.parse rounded be recorded and run. Since #294 added the job argument after it, the flag is replaced by undefined rather than removed with the closing parenthesis, which left a syntax error that decided nothing. Go twin: none; Go runs the bytes the model wrote, so it has nothing rounded to refuse."
 },
 {
   "name": "a host read is held to what a write is",
@@ -11410,7 +11410,7 @@
    ],
    "status": "caught",
    "origin": "agent#260",
-   "note": "Go twin (by hand): the session's check, which Go's durable resume reaches bound: PrincipalsChanged in ContextualSessionWithEnrollment; caught at ^TestPrincipalSessionRecordsAndResume$."
+   "note": "Since #301 (refusals before the bind) the session's own check gives the same error when this one is gone, so the named-refusal tests no longer tell them apart. The two differ in what happens first: without this check the host's authorize is asked, the chat is touched and a usage event is reported before the refusal. Caught at 'asks the host nothing, touches no chat and reports no usage before it refuses'. Go twin (by hand): the session's check, which Go's durable resume reaches bound: PrincipalsChanged in ContextualSessionWithEnrollment; caught at ^TestPrincipalSessionRecordsAndResume$."
   },
   {
    "name": "principal P52 a resume under another issuing host continues",
