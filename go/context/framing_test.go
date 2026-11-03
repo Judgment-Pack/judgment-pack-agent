@@ -146,7 +146,11 @@ func TestListContextIsDataWhereItNamesAKeyOfAToolResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			answered := ToolResult{StructuredContent: ledger.List(0), order: []string{"structuredContent"}}
+			page := ledger.List(0)
+			if row.Has("answer") {
+				page = row.Get("answer")
+			}
+			answered := ToolResult{StructuredContent: page, order: []string{"structuredContent"}}
 			data := AnswerIsData(&HostTool{Name: "list_context"}, "list_context", answered)
 			text := string(answered.JSON())
 			if data {

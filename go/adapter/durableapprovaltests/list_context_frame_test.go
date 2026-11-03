@@ -93,7 +93,27 @@ func driveListing(t *testing.T, engine string, calls []packageCall) (answers []s
 
 func driveWith(t *testing.T, engine string, calls []packageCall, tool runcontext.HostTool, held *string) (answers []string, marker string) {
 	t.Helper()
-	memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+	return driveOn(t, engine, calls, tool, held, driveOptions{})
+}
+
+// driveOptions are what some drives change: the store and whether this is its resume, the host's documents, and a stop
+// before the final answer, which leaves the run to be resumed.
+type driveOptions struct {
+	store     runcontext.RunStore
+	resume    bool
+	documents []runcontext.Document
+	stop      bool
+	refused   *[]string
+}
+
+func driveOn(t *testing.T, engine string, calls []packageCall, tool runcontext.HostTool, held *string, options driveOptions) (answers []string, marker string) {
+	t.Helper()
+	var memory runcontext.RunStore = runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+	if options.store != nil {
+		memory = options.store
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})
 	var errorsSeen []string
@@ -101,7 +121,7 @@ func driveWith(t *testing.T, engine string, calls []packageCall, tool runcontext
 		EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
 			return g.EnrollContext(offer.ID, offer.HostTools)
 		},
-		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Read.", Input: "Read."}, RunStore: &runcontext.DurableRunInput{Store: memory, ID: "run-key"}},
+		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Read.", Input: "Read."}, RunStore: &runcontext.DurableRunInput{Store: memory, ID: "run-key", Resume: options.resume}, Documents: options.documents},
 		Emit: func(event contract.RunEvent) {
 			if event.Error != nil {
 				errorsSeen = append(errorsSeen, event.Error.Message)
@@ -143,6 +163,10 @@ func driveWith(t *testing.T, engine string, calls []packageCall, tool runcontext
 					return err
 				}
 				answers = append(answers, answer.Text)
+			}
+			if options.stop {
+				cancel()
+				return context.Canceled
 			}
 			return cb.Event(ctx, adapter.AgentEvent{Type: "message", ID: "final", Text: "Done.", Phase: "final"})
 		}}
@@ -199,11 +223,22 @@ func driveWith(t *testing.T, engine string, calls []packageCall, tool runcontext
 			if at > 2 {
 				answers = append(answers, last)
 			}
+			if options.stop {
+				cancel()
+				return nil, context.Canceled
+			}
 			return quarantineFinal(), nil
 		}
 	}
-	if err := implementation.Run(context.Background(), run); err != nil {
+	if err := implementation.Run(ctx, run); err != nil && !options.stop {
 		t.Fatal(err)
+	}
+	if options.refused != nil {
+		*options.refused = errorsSeen
+		return answers, marker
+	}
+	if options.stop {
+		return answers, marker
 	}
 	if len(errorsSeen) != 0 || len(answers) != len(calls) || marker == "" {
 		t.Fatalf("errors %v, answers %d of %d, marker %q", errorsSeen, len(answers), len(calls), marker)
@@ -350,6 +385,132 @@ func TestAListingThatNamesNoToolKeyIsNotABlock(t *testing.T) {
 			answers, _ := driveListing(t, engine, calls)
 			if strings.Contains(answers[0], "BEGIN RETRIEVED DATA") || !strings.Contains(answers[0], `"items"`) {
 				t.Fatalf("the listing: %.300q", answers[0])
+			}
+		})
+	}
+}
+
+// #307's review, M22: a page past the tool result bound comes back as a reference to the page retained, whose preview holds
+// the page's first characters. Twenty keys of 1,500 bytes, then six results of 30 short keys: both are data.
+func TestABigPageIsABlockToo(t *testing.T) {
+	t.Parallel()
+	for _, shape := range []struct {
+		name    string
+		results int
+		keys    func(n int) string
+	}{
+		{"twenty long keys", 1, func(n int) string { return fmt.Sprintf("%s %d %s", hostileWords, n, strings.Repeat("k", 1500)) }},
+		{"six results of thirty short keys", 6, func(n int) string { return fmt.Sprintf("%s %d", hostileWords, n) }},
+	} {
+		for _, engine := range []string{"api", "native"} {
+			t.Run(shape.name+"/"+engine, func(t *testing.T) {
+				t.Parallel()
+				marker := ""
+				tool := hostileSource(&marker)
+				count := 30
+				if shape.results == 1 {
+					count = 20
+				}
+				tool.Execute = func(_ context.Context, raw json.RawMessage) (runcontext.ToolResult, error) {
+					if !strings.Contains(string(raw), "big") {
+						return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("a short note")}, nil), nil
+					}
+					held := runcontext.Object()
+					for n := range count {
+						held.Set(shape.keys(n)+" "+string(raw), runcontext.String(strings.Repeat("x", 500)))
+					}
+					return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("a long note")}, held), nil
+				}
+				calls := []packageCall{}
+				for n := 1; n < shape.results; n++ {
+					calls = append(calls, packageCall{"notes__read_note", func(string) string { return fmt.Sprintf(`{"big":%d}`, n+1) }})
+				}
+				calls = append(calls, packageCall{"list_context", func(string) string { return `{}` }})
+				answers, marker := driveWith(t, engine, calls, tool, &marker)
+				page := answers[len(answers)-1]
+				if !strings.Contains(page, "list_context") || !strings.Contains(page, `"contextId"`) {
+					t.Fatalf("not a reference: %.300q", page)
+				}
+				if err := oneBlock(page, marker); err != nil || strings.Contains(outsideBlocks(page), "SYSTEM") {
+					t.Fatalf("the page: %v %.300q", err, page)
+				}
+			})
+		}
+	}
+}
+
+// #307's review, M23: what a page shows of a document the host gave the run, its keys and label among it, is not the
+// package's writing, and is a block.
+func TestAHostsDocumentInAListingIsABlock(t *testing.T) {
+	t.Parallel()
+	for _, document := range []runcontext.Document{
+		{ID: "brief", Kind: "artifact", Label: "Brief", Value: runcontext.ObjectOf(hostileWords, runcontext.Number(1))},
+		{ID: "brief", Kind: "request", Label: hostileWords, Value: runcontext.String("Read the note.")},
+	} {
+		for _, engine := range []string{"api", "native"} {
+			t.Run(document.Kind+"/"+engine, func(t *testing.T) {
+				marker := ""
+				// The source answers short text only, so nothing of its own is retained: the document alone decides.
+				tool := hostileSource(&marker)
+				tool.Execute = func(context.Context, json.RawMessage) (runcontext.ToolResult, error) {
+					return runcontext.ResultOf([]runcontext.Content{runcontext.TextContent("a short note")}, nil), nil
+				}
+				calls := []packageCall{{"list_context", func(string) string { return `{}` }}}
+				answers, marker := driveOn(t, engine, calls, tool, &marker, driveOptions{documents: []runcontext.Document{document}})
+				if err := oneBlock(answers[0], marker); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+// #307's review, M24: a stored page the package could not have written, read back on a resume, is decided on without a
+// panic and goes to the model as data, on both engines.
+func TestAStoredPageThePackageNeverWroteIsDecidedOn(t *testing.T) {
+	t.Parallel()
+	for _, engine := range []string{"api", "native"} {
+		t.Run(engine, func(t *testing.T) {
+			memory := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			marker := ""
+			tool := hostileSource(&marker)
+			calls := []packageCall{{"list_context", func(string) string { return `{}` }}}
+			driveOn(t, engine, calls, tool, &marker, driveOptions{store: memory, stop: true})
+			head, err := memory.Load(context.Background(), "run-key")
+			if err != nil || head == nil {
+				t.Fatal(head, err)
+			}
+			var state map[string]any
+			if err := json.Unmarshal(head.Checkpoint, &state); err != nil {
+				t.Fatal(err)
+			}
+			damaged := 0
+			for _, row := range state["durable"].(map[string]any)["dispatches"].([]any) {
+				if held := row.(map[string]any); held["tool"] == "list_context" {
+					held["result"].(map[string]any)["structuredContent"] = map[string]any{"items": []any{map[string]any{}}, "nextOffset": nil}
+					damaged++
+				}
+			}
+			if damaged != 1 {
+				t.Fatalf("damaged %d rows", damaged)
+			}
+			raw, _ := json.Marshal(state)
+			stored, err := memory.ReadEvents(context.Background(), "run-key", "", runcontext.StoragePageLimit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			events := [][]byte{}
+			for _, item := range stored.Items {
+				events = append(events, item.Bytes)
+			}
+			fresh := runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})
+			if _, err := fresh.Commit(context.Background(), runcontext.RunCommit{RunID: "run-key", CommitID: "seed", Checkpoint: raw, Events: events}); err != nil {
+				t.Fatal(err)
+			}
+			refused := []string{}
+			answers, _ := driveOn(t, engine, calls, tool, &marker, driveOptions{store: fresh, resume: true, refused: &refused})
+			if len(refused) != 0 || len(answers) != 1 || !strings.HasPrefix(answers[0], "BEGIN RETRIEVED DATA") || !strings.Contains(answers[0], `"items":[{}]`) {
+				t.Fatalf("errors %v, answers %.300q", refused, answers)
 			}
 		})
 	}

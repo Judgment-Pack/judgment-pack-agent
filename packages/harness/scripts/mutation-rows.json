@@ -13810,8 +13810,8 @@
   {
    "name": "list_context L2 every page is data",
    "file": "framing.ts",
-   "find": "  if (name !== 'list_context') return false\n",
-   "replace": "  if (name === 'list_context') return true\n  if (name !== 'list_context') return false\n",
+   "find": "  if (name !== 'list_context' || !isObject(page)) return false\n",
+   "replace": "  if (name === 'list_context') return true\n  if (name !== 'list_context' || !isObject(page)) return false\n",
    "tests": [
     "framing.test.ts"
    ],
@@ -13822,8 +13822,8 @@
   {
    "name": "list_context L3 any tool's answer is read as a listing",
    "file": "framing.ts",
-   "find": "  if (name !== 'list_context') return false\n  const items",
-   "replace": "  const items",
+   "find": "  if (name !== 'list_context' || !isObject(page)) return false\n",
+   "replace": "  if (!isObject(page)) return false\n",
    "tests": [
     "framing.test.ts"
    ],
@@ -13890,6 +13890,54 @@
    "status": "caught",
    "origin": "agent#302",
    "note": "Go twin (by hand): the agent's invoke.go passes no name to AnswerIsData; caught at ^TestAToolsKey/native in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L9 a page past the bound is not data",
+   "file": "framing.ts",
+   "find": "  if (typeof page.contextId === 'string' && page.contextId.includes(':result-list_context-')) return true\n",
+   "replace": "",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M22. Go twin (by hand): drop the same check; caught at ^TestListContextIsData in ./context and ^TestABigPageIsABlockToo in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L10 a host's document is the package's",
+   "file": "framing.ts",
+   "find": "    if (!RESULT_DOCUMENT.test(document)) return true\n",
+   "replace": "    if (!RESULT_DOCUMENT.test(document)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M23. Go twin (by hand): continue instead of true; caught at ^TestListContextIsData in ./context and ^TestAHostsDocumentInAListingIsABlock in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L11 any document is the package's own",
+   "file": "framing.ts",
+   "find": "const OWN_DOCUMENT = /:(request|",
+   "replace": "const OWN_DOCUMENT = /|:(request|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M23. Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L12 a page the package could not have written is not data",
+   "file": "framing.ts",
+   "find": "    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return true\n",
+   "replace": "    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "#307's M24: TypeScript decides as Go does on a damaged page. Go twin (by hand): read contextId unguarded, as before; caught at ^TestListContextIsData in ./context and ^TestAStoredPageThePackageNeverWrote in ./adapter/durableapprovaltests, by the panic the guard prevents."
   }
  ]
 }

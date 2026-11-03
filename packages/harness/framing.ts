@@ -101,19 +101,37 @@ export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation' | 'int
 
 /** The paths of a retained tool result that name the result's own members, not a tool's. */
 const RESULT_MEMBERS = /^\/(content|structuredContent|isError)$|^\/content\/[0-9]+(\/(type|text|data|mimeType))?$/
+/**
+ * A listed entry's context id is its scope, its document's id and a digest prefix. The package's own documents are these,
+ * and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>.
+ */
+const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}$/
+const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+)$/
+const RESULT_DOCUMENT = /:result-[^:]+$/
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
- * Whether this answer is a page of `list_context` that names a key a tool wrote (#302). A key is a tool's text
- * however it reads, so the test is where the key sits and not what it says. It reads the answer itself, so a
- * durable replay of the same answer decides the same way.
+ * Whether this answer is a page of `list_context` that shows text the package did not write (#302): a key a tool's
+ * result holds, or anything of a document the host gave the run (its keys, label, revision and id), which may hold a
+ * source's words. A key is that text however it reads, so the test is where it sits and not what it says. A page over
+ * the result bound comes back as a reference to the page retained, and is data too. So is a page the package could not
+ * have written. It reads the answer itself, so a durable replay of the same answer decides the same way.
  */
 export function listingNamesToolKeys(name: string, result: { structuredContent?: unknown }): boolean {
-  if (name !== 'list_context') return false
-  const items = (result.structuredContent as { items?: unknown } | undefined)?.items
-  if (!Array.isArray(items)) return false
-  return items.some((item: { kind?: unknown; contextId?: unknown; sections?: { path?: unknown }[] }) =>
-    item?.kind === 'tool' && typeof item.contextId === 'string' && item.contextId.includes(':result-') &&
-    Array.isArray(item.sections) && item.sections.some(section => !(typeof section?.path === 'string' && RESULT_MEMBERS.test(section.path))))
+  const page = result.structuredContent
+  if (name !== 'list_context' || !isObject(page)) return false
+  if (typeof page.contextId === 'string' && page.contextId.includes(':result-list_context-')) return true
+  if (page.items === undefined) return false
+  if (!Array.isArray(page.items)) return true
+  return page.items.some((item: unknown) => {
+    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return true
+    const document = item.contextId.replace(CONTEXT_DIGEST_SUFFIX, '')
+    if (OWN_DOCUMENT.test(document)) return false
+    if (!RESULT_DOCUMENT.test(document)) return true
+    if (!Array.isArray(item.sections)) return true
+    return item.sections.some((section: unknown) => !(isObject(section) && typeof section.path === 'string' && RESULT_MEMBERS.test(section.path)))
+  })
 }
 
 /**

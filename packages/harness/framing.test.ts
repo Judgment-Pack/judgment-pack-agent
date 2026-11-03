@@ -682,7 +682,7 @@ describe('list_context, by the handwritten cases', () => {
       const ledger = new ContextLedger({ ...CONTEXT_DEFAULTS })
       ledger.scope = listingKeys.scope
       for (const document of row.documents) await ledger.retain(document as never)
-      const answered = { structuredContent: ledger.list(0) }
+      const answered = { structuredContent: 'answer' in row ? row.answer : ledger.list(0) }
       const data = answerIsData({ effect: undefined } as never, 'list_context', answered)
       const text = JSON.stringify(answered)
       expect(data).toBe(row.data)
@@ -779,5 +779,49 @@ describe('a tool\u2019s key in list_context, on codex', () => {
       }
     })
     expect(answers[0]!.text).not.toContain(OPENING)
+  })
+})
+
+/** #307's review, M22: a page past the tool result bound comes back as a reference to the page retained, and is data. */
+const bigKeys = (): HostTool => ({
+  name: 'read_note', taxonomy: { operation: 'read', effect: 'read' } as const, effect: 'read',
+  description: 'Read one note.',
+  inputSchema: { type: 'object', properties: { big: { type: 'boolean' } }, additionalProperties: false },
+  execute: async () => ({ content: [{ type: 'text', text: 'A long note.' }], structuredContent: Object.fromEntries(Array.from({ length: 20 }, (_, n) => [`${HOSTILE_WORDS} ${n} ${'k'.repeat(1500)}`, 1])) })
+})
+function expectBigPageInside(shown: string) {
+  const { data } = expectFramed(shown, 'list_context')
+  expect(data).toContain(':result-list_context-')
+  expect(data).toContain(HOSTILE_WORDS)
+}
+describe.each([vercel, deepagents])('a big page in list_context, on $id', (engine) => {
+  beforeEach(() => { modelEngine = engine })
+  it('reaches the model as a reference inside one block', async () => {
+    const steps: Record<number, string> = {
+      1: sseTurn({ tool: { name: 'read_note', args: { big: true } } }),
+      2: sseTurn({ tool: { name: 'list_context', args: {} } })
+    }
+    const { events, requests } = await vercelTurn({ engine: modelEngine, hostTools: [bigKeys()],
+      answer: (request) => streamed(steps[request.number] ?? sseTurn({ text: 'Checked.' }))
+    })
+    expect(ofType(events, 'error')).toEqual([])
+    expectBigPageInside(toolTexts(requests.at(-1)!).at(-1)!)
+  })
+})
+describe('a big page in list_context, on codex', () => {
+  it('reaches the agent as a reference inside one block', async () => {
+    const answers: { text: string; isError: boolean }[] = []
+    const { events } = await codexTurn({
+      hostTools: [bigKeys()],
+      script: async (bridge) => {
+        bridge.started()
+        await bridge.call('read_note', { big: true })
+        answers.push(await bridge.call('list_context', {}))
+        bridge.say('Checked.')
+        bridge.end()
+      }
+    })
+    expect(ofType(events, 'error')).toEqual([])
+    expectBigPageInside(answers[0]!.text)
   })
 })
