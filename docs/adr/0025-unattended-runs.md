@@ -524,7 +524,10 @@ with no `keyScope`. The gateway's record of the key's first scope is to prove th
 hashes the run and a random operation; anything else stays `unknown`. The writer never re-sends an unknown row, so
 reconciling is the only re-presentation. Findings: a retained answer is parsed by the host like the first answer (a `response`
 is not a commit; untyped is `unknown`); `action-key-not-dispatched` is `not-started`; anything else, `action-key-scope-conflict`
-included, is `unknown`. Gateway v0.24.0 (#352) is the first release that accepts these members and sends `action-key-not-dispatched`,
+included, is `unknown`. `action-key-not-dispatched` is `not-started` only from the gateway store that took the start's first send:
+v0.24.0 keeps its key index per store, so a second store under the same authority, or one restored without `actions/`, can answer it
+for a key sent elsewhere, and a host reconciles at the store that took the first send.
+Gateway v0.24.0 (#352) is the first release that accepts these members and sends `action-key-not-dispatched`,
 with the durable closure below. An older gateway refuses them with its closed body before it reserves or sends anything: HTTP 400 with
 the `error` `request body carries a member this endpoint does not read: ` and the member's name. The host answers such a start
 `not-started` from that refusal only; any other refusal proves nothing about what ran, and a host that maps it to `{started: false}`
@@ -600,7 +603,8 @@ The rows of cancel tools are not evidence, and no child is offered one: they car
 **Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
 transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
 holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
-same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen it takes no lease. Cancels go
+same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen (no commit, lease, wait or job)
+it takes no lease; a worker's lease before its first commit is a run seen, so its first claim gets `stale-epoch` too. Cancels go
 through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`, admitted under the tool `job-abandon` and
 the job's source, and no run commit, so a retry of the command is admitted once by the same effect host; `cancel` gets that operation. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on

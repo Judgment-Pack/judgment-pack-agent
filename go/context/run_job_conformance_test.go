@@ -772,6 +772,14 @@ func jobCancelStores() map[string]struct {
 			job.HandleDigested = nil
 			return job, err
 		}}},
+		"#316 MEDIUM-1 a reconciliation drops the marker": {"job.reconcile.digested", jobFault{reconcile: func(s jobFault, ctx context.Context, input JobReconciliation) (RunJob, error) {
+			job, err := s.durableJobStore.ReconcileJob(ctx, input)
+			if row := s.rowOf(input.Resource, input.Job); row != nil {
+				row.HandleDigested = nil
+			}
+			job.HandleDigested = nil
+			return job, err
+		}}},
 		"F-6 C12 a word drops its receipt": {"job.cancel.word", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
 			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
 			if row := s.rowOf(input.Resource, input.Job); row != nil && row.Cancel != nil && row.Cancel.Acknowledged != nil {
@@ -846,6 +854,12 @@ func jobCancelStores() map[string]struct {
 			if input.Resource == "run-abandon-never" {
 				lease, err := s.AcquireLease(ctx, LeaseAcquire{Resource: input.Resource, Owner: JobAbandonOwner, DurationMs: input.DurationMs})
 				return JobAbandonTaken{Lease: &lease, Jobs: []RunJob{}}, err
+			}
+			return s.durableJobStore.AbandonJobs(ctx, input)
+		}}},
+		"#316 MEDIUM-3 an abandon counts only commits as a run seen": {"job.abandon.leased", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			if head, err := s.Load(ctx, input.Resource); err == nil && head == nil {
+				return JobAbandonTaken{Jobs: []RunJob{}}, nil
 			}
 			return s.durableJobStore.AbandonJobs(ctx, input)
 		}}},

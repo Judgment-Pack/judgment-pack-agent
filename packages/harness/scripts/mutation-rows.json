@@ -14557,11 +14557,12 @@
    "find": "evidence:held.evidence},held.handle,held.receipt,held.handleDigested)",
    "replace": "evidence:held.evidence},held.handle,held.receipt)",
    "tests": [
-    "storage/job.test.ts"
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
    ],
    "status": "caught",
    "origin": "agent#303",
-   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAFoundStartsLongHandleIsKeptAsItsMarkedDigest."
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAFoundStartsLongHandleIsKeptAsItsMarkedDigest. Since #316's review round (MEDIUM-1) the kit catches it too, at job.reconcile.digested, in both languages (Go: TestJobConformanceKitHoldsACancelAndAnAbandon)."
   },
   {
    "name": "job B4 R-7 an empty receipt is kept as a receipt",
@@ -14759,7 +14760,7 @@
   {
    "name": "job B20 F-10 an abandon on a run never seen takes a lease",
    "file": "storage/run.ts",
-   "find": "  if(!this.runs.has(input.resource))return {jobs:[]}\n",
+   "find": "  if(!this.runs.has(input.resource)&&!this.leases.read(input.resource)&&!this.waits.export(input.resource).waits.length&&!this.jobs.export(input.resource).jobs.length)return {jobs:[]}\n",
    "replace": "",
    "tests": [
     "storage/job.test.ts",
@@ -14767,7 +14768,7 @@
    ],
    "status": "caught",
    "origin": "agent#303",
-   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
+   "note": "#303/#310; repointed in #316's review round to the widened condition. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.unknown); it was caught before at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
   },
   {
    "name": "job BK1 F-2b the kit takes another handle on a cancel",
@@ -14996,6 +14997,43 @@
    "status": "caught",
    "origin": "agent#303",
    "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job B22 #316 MEDIUM-3 an abandon counts only commits as a run seen",
+   "file": "storage/run.ts",
+   "find": "&&!this.leases.read(input.resource)&&",
+   "replace": "&&",
+   "tests": [
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round (MEDIUM-3, a regression from F-10). Go twin (by hand, in run_job.go): caught at TestAnAbandonFencesALeasedRunWithNoCommitYet and TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.leased)."
+  },
+  {
+   "name": "job BK20 #316 MEDIUM-3 the kit leaves out a leased run with no commit",
+   "file": "storage/jobConformance.ts",
+   "find": " // #316 review, MEDIUM-3: a run leased before its first commit is a run the store has seen. Its abandon takes the lease at a\n // new epoch, and the worker's first claim, under the fence it held, is refused.\n touched.add('run-abandon-leased')\n const freshFence=fenceOf(await store.acquireLease({resource:'run-abandon-leased',owner:'worker-a',expectedRevision:null,durationMs:HOUR}))\n const freshTaken=await answers('job.abandon.leased',()=>store.abandonJobs({version:1,resource:'run-abandon-leased',command:'cmd-leased',durationMs:HOUR}))\n check('job.abandon.leased',freshTaken.lease?.owner===JOB_ABANDON_OWNER&&Number(freshTaken.lease.epoch)>Number(freshFence.epoch)&&freshTaken.jobs.length===0&&(await store.readLease('run-abandon-leased'))?.epoch===freshTaken.lease.epoch)\n await refuses('job.abandon.leased',()=>store.commitFenced({...claim('run-abandon-leased','','op-1',keyFor(169)),expectedRevision:null},freshFence),'stale-epoch')\n check('job.abandon.leased',(await store.load('run-abandon-leased'))===undefined&&(await allJobs('run-abandon-leased')).length===0)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK21 #316 MEDIUM-1 the kit leaves out a reconciliation's marker",
+   "file": "storage/jobConformance.ts",
+   "find": " // #316 review, MEDIUM-1: a reconciliation's digest keeps its marker as an answer's does (and across the restart, below), so a\n // cancel is never handed the digest as the host's reference.\n const rdig=await open('run-reconciled-digested'),rdigJob=await register('run-reconciled-digested','op-1',keyFor(168),rdig.fence,rdig.revision)\n const rdigFound=await answers('job.reconcile.digested',()=>store.reconcileJob(reconcile('run-reconciled-digested',rdigJob.job,keyFor(168),{finding:'started',handle:digest,handleDigested:true})))\n check('job.reconcile.digested',rdigFound.state==='started'&&rdigFound.handle===digest&&rdigFound.handleDigested===true&&(await store.readJob('run-reconciled-digested',rdigJob.job))?.handleDigested===true&&(await store.listJobs('run-reconciled-digested',null,10)).jobs[0]?.handleDigested===true)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
    "name": "job B21 #314 the history observation reader reads members of what is no object",

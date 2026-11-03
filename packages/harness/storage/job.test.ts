@@ -1049,6 +1049,13 @@ describe('the batch: a host that refuses after perform, and the cancel\'s answer
   expect(unseen).toEqual({jobs:[]});expect(await held.store.readLease('run-never')).toBeUndefined()
   await expect(held.store.acquireLease({resource:'run-never',owner:'worker-a',expectedRevision:null,durationMs:HOUR})).resolves.toMatchObject({owner:'worker-a'})
  })
+ it('#316 review, MEDIUM-3: a run leased before its first commit is a run seen: its abandon takes the lease and fences the worker\'s first claim',async()=>{
+  const held=await leased(),job=jobIdentity(RUN,'op-1')
+  const taken=await held.store.abandonJobs({version:1,resource:RUN,command:'cmd-stop',durationMs:HOUR})
+  expect(taken).toEqual({lease:expect.objectContaining({owner:JOB_ABANDON_OWNER,epoch:'2',state:'held'}),jobs:[]})
+  await expect(held.store.commitFenced({runId:RUN,expectedRevision:null,commitId:'c1',checkpoint:new TextEncoder().encode('{}'),events:[],job:{job,operation:'op-1',source:'runner',tool:'start_job',requestDigest:`sha256:${'a'.repeat(64)}`,keyDigest:jobKeyDigest(KEY)}},held.fence)).rejects.toMatchObject({name:'LeaseRefused',reason:'stale-epoch'})
+  expect(await held.store.load(RUN)).toBeUndefined();expect(await held.store.readJob(RUN,job)).toBeUndefined()
+ })
  it('F-11: a head restored from before a cancel\'s row is refused before anything is offered: the cancel would be asked, and sent, again',async()=>{
   const tools=await pair(),held=await started2(tools)
   const before=(await held.store.load(RUN))!

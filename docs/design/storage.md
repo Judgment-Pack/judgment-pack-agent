@@ -812,7 +812,8 @@ asked, and sent, again.
 **Abandoning.** `abandonJobs({store, effectHost, resource, command, durationMs, cancel})` (Go `AbandonJobs`) is a host's command, standing for the
 person's approval: no source policy is asked. `JobStore.abandonJobs` takes the lease under `job-abandon` at a new epoch in one transaction with a
 cancel asked of each `started` job, and old workers get `stale-epoch`. What it would refuse it refuses before it moves anything, and on a run the
-store has never seen it takes no lease and answers no jobs. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
+store has never seen (no commit, lease, wait or job) it takes no lease and answers no jobs; a worker's lease before its first commit is a
+run seen. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
 admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
 `cancel` is handed that operation. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
 nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-sent`, `failed`, `undelivered`, `no-handle`, `settled`,

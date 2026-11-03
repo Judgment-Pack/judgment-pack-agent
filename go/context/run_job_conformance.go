@@ -593,6 +593,16 @@ func (k *jobKit) properties() {
 	k.answers("job.answer.digested", err)
 	digRead, digListed := k.job("run-digested", digJob), k.allJobs("run-digested")
 	k.check("job.answer.digested", jobKitSameMarker(digAnswered.HandleDigested, &marked) && digRead != nil && jobKitSameMarker(digRead.HandleDigested, &marked) && len(digListed) == 1 && jobKitSameMarker(digListed[0].HandleDigested, &marked))
+	// #316 review, MEDIUM-1: a reconciliation's digest keeps its marker as an answer's does (and across the restart, below),
+	// so a cancel is never handed the digest as the host's reference.
+	rdig := k.open("run-reconciled-digested")
+	rdigJob, _ := k.register("run-reconciled-digested", "op-1", jobKitKey(168), rdig)
+	rdigFinding, rdigDigest := jobKitReconcile("run-reconciled-digested", rdigJob, jobKitKey(168), "find-1", "started"), "sha256:"+strings.Repeat("d", 64)
+	rdigFinding.Handle, rdigFinding.HandleDigested = &rdigDigest, &marked
+	rdigFound, err := store().ReconcileJob(ctx, rdigFinding)
+	k.answers("job.reconcile.digested", err)
+	rdigRead, rdigListed := k.job("run-reconciled-digested", rdigJob), k.allJobs("run-reconciled-digested")
+	k.check("job.reconcile.digested", rdigFound.State == "started" && rdigFound.Handle != nil && *rdigFound.Handle == rdigDigest && jobKitSameMarker(rdigFound.HandleDigested, &marked) && rdigRead != nil && jobKitSameMarker(rdigRead.HandleDigested, &marked) && len(rdigListed) == 1 && jobKitSameMarker(rdigListed[0].HandleDigested, &marked))
 	// C3: an abandon's command never rewrites a tool's first request.
 	fr := k.open("run-cancel-first")
 	frJob, _ := k.register("run-cancel-first", "op-1", jobKitKey(161), fr)
@@ -655,6 +665,21 @@ func (k *jobKit) properties() {
 	k.answers("job.abandon.unknown", err)
 	unseenLease, _ := store().ReadLease(ctx, "run-abandon-never")
 	k.check("job.abandon.unknown", unseen.Lease == nil && len(unseen.Jobs) == 0 && unseenLease == nil)
+	// #316 review, MEDIUM-3: a run leased before its first commit is a run the store has seen. Its abandon takes the lease at
+	// a new epoch, and the worker's first claim, under the fence it held, is refused.
+	k.touched = append(k.touched, "run-abandon-leased")
+	freshLease, err := store().AcquireLease(ctx, LeaseAcquire{Resource: "run-abandon-leased", Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		panic(err)
+	}
+	freshTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-leased", Command: "cmd-leased", DurationMs: 3600000})
+	k.answers("job.abandon.leased", err)
+	freshHeld, _ := store().ReadLease(ctx, "run-abandon-leased")
+	k.check("job.abandon.leased", freshTaken.Lease != nil && freshTaken.Lease.Owner == JobAbandonOwner && jobKitEpochAfter(freshTaken.Lease.Epoch, freshLease.Epoch) && len(freshTaken.Jobs) == 0 && freshHeld != nil && freshHeld.Epoch == freshTaken.Lease.Epoch)
+	_, err = store().CommitFenced(ctx, k.claim("run-abandon-leased", "", "op-1", jobKitKey(169)), FenceOf(freshLease))
+	k.refuses("job.abandon.leased", err, "stale-epoch")
+	freshHead, _ := store().Load(ctx, "run-abandon-leased")
+	k.check("job.abandon.leased", freshHead == nil && len(k.allJobs("run-abandon-leased")) == 0)
 	// A delegated run's principals stay on the abandon's lease: a takeover is a new epoch of the same principals.
 	if keeps, ok := store().(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
 		principal := &PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://host.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}

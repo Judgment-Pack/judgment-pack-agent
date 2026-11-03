@@ -1260,8 +1260,12 @@ func (m *MemoryRunStore) AbandonJobs(ctx context.Context, input JobAbandon) (tak
 		if !validStorageID(input.Resource) || !validStorageID(input.Command) {
 			return jobInvalid()
 		}
-		// F-10: a run the store has never seen has nothing to abandon, and its first worker's lease is not taken.
-		if _, ok := m.runs[input.Resource]; !ok {
+		// F-10: a run the store has never seen has nothing to abandon, and its first worker's lease is not taken. A lease, a
+		// wait or a job is a run seen as much as a commit is (#316 review, MEDIUM-3): a worker's lease before its first
+		// commit is fenced.
+		_, committed := m.runs[input.Resource]
+		_, leased := m.leases.rows[input.Resource]
+		if !committed && !leased && len(m.waits.rows[input.Resource]) == 0 && len(m.jobs.rows[input.Resource]) == 0 {
 			taken.Jobs = []RunJob{}
 			return nil
 		}

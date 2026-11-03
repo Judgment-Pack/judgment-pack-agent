@@ -219,6 +219,11 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  const digest=`sha256:${'d'.repeat(64)}`
  const digAnswer=await answers('job.answer.digested',()=>store.answerJob({...answerOf('run-digested',digJob.job,digest),handleDigested:true},dig.fence))
  check('job.answer.digested',digAnswer.handleDigested===true&&(await store.readJob('run-digested',digJob.job))?.handleDigested===true&&(await store.listJobs('run-digested',null,10)).jobs[0]?.handleDigested===true)
+ // #316 review, MEDIUM-1: a reconciliation's digest keeps its marker as an answer's does (and across the restart, below), so a
+ // cancel is never handed the digest as the host's reference.
+ const rdig=await open('run-reconciled-digested'),rdigJob=await register('run-reconciled-digested','op-1',keyFor(168),rdig.fence,rdig.revision)
+ const rdigFound=await answers('job.reconcile.digested',()=>store.reconcileJob(reconcile('run-reconciled-digested',rdigJob.job,keyFor(168),{finding:'started',handle:digest,handleDigested:true})))
+ check('job.reconcile.digested',rdigFound.state==='started'&&rdigFound.handle===digest&&rdigFound.handleDigested===true&&(await store.readJob('run-reconciled-digested',rdigJob.job))?.handleDigested===true&&(await store.listJobs('run-reconciled-digested',null,10)).jobs[0]?.handleDigested===true)
  // C3: an abandon's command never rewrites a tool's first request.
  const fr=await open('run-cancel-first'),firstJob=await register('run-cancel-first','op-1',keyFor(161),fr.fence,fr.revision)
  await store.answerJob(answerOf('run-cancel-first',firstJob.job),fr.fence)
@@ -256,6 +261,14 @@ async function jobProperties(create:JobStoreFactory):Promise<void>{
  check('job.abandon.invalid',same(await store.readLease('run-abandon'),leaseBeforeInvalid))
  const unseen=await answers('job.abandon.unknown',()=>store.abandonJobs({version:1,resource:'run-abandon-never',command:'cmd-never',durationMs:HOUR}))
  check('job.abandon.unknown',unseen.lease===undefined&&unseen.jobs.length===0&&(await store.readLease('run-abandon-never'))===undefined)
+ // #316 review, MEDIUM-3: a run leased before its first commit is a run the store has seen. Its abandon takes the lease at a
+ // new epoch, and the worker's first claim, under the fence it held, is refused.
+ touched.add('run-abandon-leased')
+ const freshFence=fenceOf(await store.acquireLease({resource:'run-abandon-leased',owner:'worker-a',expectedRevision:null,durationMs:HOUR}))
+ const freshTaken=await answers('job.abandon.leased',()=>store.abandonJobs({version:1,resource:'run-abandon-leased',command:'cmd-leased',durationMs:HOUR}))
+ check('job.abandon.leased',freshTaken.lease?.owner===JOB_ABANDON_OWNER&&Number(freshTaken.lease.epoch)>Number(freshFence.epoch)&&freshTaken.jobs.length===0&&(await store.readLease('run-abandon-leased'))?.epoch===freshTaken.lease.epoch)
+ await refuses('job.abandon.leased',()=>store.commitFenced({...claim('run-abandon-leased','','op-1',keyFor(169)),expectedRevision:null},freshFence),'stale-epoch')
+ check('job.abandon.leased',(await store.load('run-abandon-leased'))===undefined&&(await allJobs('run-abandon-leased')).length===0)
  // A delegated run's principals stay on the abandon's lease: a takeover is a new epoch of the same principals.
  if((store as {leasePrincipals?:true}).leasePrincipals===true){
   const principal={sub:{kind:'person' as const,issuer:'https://host.example/',subject:'kit-subject'},rootActor:'b1'.repeat(16),host:'kit-host'}
