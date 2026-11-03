@@ -70,7 +70,7 @@ describe('goal records: shared vectors (#230)',()=>{
  * adds that the copy lacks could never be journaled, and every later create would refuse abandon-unfinished. The record below is
  * typed by the job's own JobDelivery, so it names each value exactly once (the type check fails one missing or one extra), and the
  * goal's reader and its schema must take exactly those. */
-const EVERY_DELIVERY:Record<JobDelivery,true>={sent:true,'already-admitted':true,failed:true,undelivered:true,'no-handle':true,settled:true,contradicted:true,acknowledged:true}
+const EVERY_DELIVERY:Record<JobDelivery,true>={sent:true,'already-admitted':true,failed:true,undelivered:true,'no-handle':true,settled:true,contradicted:true,acknowledged:true,invalid:true}
 describe('goal records: the deliveries are the job\'s (#321)',()=>{
  it('journals every delivery an abandon can answer, refuses any other, and its schema names the same list',()=>{
   const job=`sha256:${'a'.repeat(64)}`,journal=(delivery:string)=>readGoalDeliveries({version:1,resource:'run-1',command:'cmd-1',deliveries:[{job,delivery}]})

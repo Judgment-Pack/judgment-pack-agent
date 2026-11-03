@@ -1918,66 +1918,84 @@ func AbandonJobs(ctx context.Context, store RunStore, host EffectHost, resource,
 			return JobAbandonAnswer{}, err
 		}
 	}
-	// #325: what is sent is the record's, as a tool's cancel is (F-2b). Each job the store's answer names is read back
-	// before anything is sent, and an answer whose handle, marker, source or tool is not the record's is refused: nothing
-	// is sent.
-	answered := make([]RunJob, 0, len(taken.Jobs))
+	// #325: whether a cancel is sent, and what it carries, are the record's, read back after the store's transaction,
+	// never the answer's alone (as a tool's cancel is, F-2b). Each job is decided on its own: one whose answer the
+	// record does not bear out is reported invalid and sent nothing, and the others still go.
 	for _, row := range taken.Jobs {
-		job, err := jobReadBack(row, resource, row.Job)
+		answered, err := jobReadBack(row, row.Resource, row.Job)
 		if err != nil {
 			return JobAbandonAnswer{}, err
 		}
-		found, err := port.ReadJob(ctx, resource, job.Job)
-		if err != nil {
+		delivery := "invalid"
+		found, err := port.ReadJob(ctx, resource, answered.Job)
+		var refusedJob *JobRefused
+		if err != nil && !errors.As(err, &refusedJob) {
 			return JobAbandonAnswer{}, err
 		}
-		if found == nil {
-			return JobAbandonAnswer{}, jobInvalid()
+		var job RunJob
+		readable := err == nil && found != nil
+		if readable {
+			job, err = jobReadBack(*found, resource, answered.Job)
+			readable = err == nil
 		}
-		read, err := jobReadBack(*found, resource, job.Job)
-		if err != nil {
-			return JobAbandonAnswer{}, err
-		}
-		if !sameJobOptional(job.Handle, read.Handle) || (job.HandleDigested != nil) != (read.HandleDigested != nil) || job.Source != read.Source || job.Tool != read.Tool {
-			return JobAbandonAnswer{}, jobInvalid()
-		}
-		answered = append(answered, job)
-	}
-	for _, job := range answered {
-		delivery := "settled"
-		// not-started is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing
-		// to stop.
-		if job.Contradictions != nil {
-			delivery = "contradicted"
-		}
-		switch {
-		case job.State == "unproven":
-			delivery = "no-handle"
-		case job.State != "started":
-		case job.Cancel != nil && job.Cancel.Acknowledged != nil && job.Cancel.Acknowledged.Outcome == "accepted":
-			delivery = "acknowledged"
-		case view == nil:
-			delivery = "undelivered"
-		default:
-			// F-14: admitted as the abandon's, so an effect host's log tells a cancel from its start; F-3: Cancel gets the
-			// identity.
-			operation := EffectOperation{Run: resource, Operation: JobCancelOperation(command, job.Job), Source: job.Source, Tool: JobAbandonOwner, RequestDigest: durableDigest([]byte(CanonicalJSON(ObjectOf("generation", Number(1), "job", String(job.Job)))))}
-			err := fencedEffect(ctx, view, operation, func(ctx context.Context) error {
-				return cancel(withoutReceiptAdmission(ctx), JobCancelInputOf(job, operation.Operation))
-			})
-			var refused *LeaseRefused
+		// The record of this run's job, and an answer that agrees with it: source and tool never move, and a handle,
+		// once held, is the record's with its marker. A start that answered since the transaction holds a handle its
+		// answer did not.
+		if readable && answered.Resource == resource && answered.Source == job.Source && answered.Tool == job.Tool && (answered.Handle == nil || sameJobOptional(answered.Handle, job.Handle) && (answered.HandleDigested != nil) == (job.HandleDigested != nil)) {
+			delivery = "settled"
+			// not-started is someone's word: evidence since says it ran, so an abandon says so and does not read as
+			// nothing to stop.
+			if job.Contradictions != nil {
+				delivery = "contradicted"
+			}
 			switch {
-			case err == nil:
-				delivery = "sent"
-			case errors.As(err, &refused) && refused.Reason == "already-admitted":
-				delivery = "already-admitted"
+			case job.State == "unproven":
+				delivery = "no-handle"
+			case job.State != "started":
+			case job.Cancel != nil && job.Cancel.Acknowledged != nil && job.Cancel.Acknowledged.Outcome == "accepted":
+				delivery = "acknowledged"
+			case view == nil:
+				delivery = "undelivered"
 			default:
-				delivery = "failed"
+				delivery = abandonCancel(ctx, port, view, *out.Fence, job, resource, command, cancel)
 			}
 		}
-		out.Jobs = append(out.Jobs, JobAbandonDelivery{Job: job.Job, Delivery: delivery})
+		out.Jobs = append(out.Jobs, JobAbandonDelivery{Job: answered.Job, Delivery: delivery})
 	}
 	return out, nil
+}
+
+// abandonCancel sends one started job's cancel for an abandon, from its record. A start that answered after the
+// store's transaction has no cancel asked: it is asked now, under the abandon's fence, as the transaction would have
+// asked it, so what is sent is on the record and can be acknowledged.
+func abandonCancel(ctx context.Context, port JobRunStore, view RunStore, fence LeaseFence, job RunJob, resource, command string, cancel func(context.Context, JobCancelInput) error) (delivery string) {
+	// F-14: admitted as the abandon's, so an effect host's log tells a cancel from its start; F-3: Cancel gets the
+	// identity.
+	operation := EffectOperation{Run: resource, Operation: JobCancelOperation(command, job.Job), Source: job.Source, Tool: JobAbandonOwner, RequestDigest: durableDigest([]byte(CanonicalJSON(ObjectOf("generation", Number(1), "job", String(job.Job)))))}
+	if job.Cancel == nil {
+		asked, err := port.RequestJobCancel(ctx, JobCancelAsk{Version: JobRecordVersion, Resource: resource, Job: job.Job, Generation: JobGeneration, By: "command", Operation: operation.Operation, Command: &command}, fence)
+		var refused *JobRefused
+		switch {
+		case errors.As(err, &refused) && refused.Reason == "job-settled":
+			return "settled"
+		case err != nil:
+			return "failed"
+		}
+		if asked.Resource != resource || asked.Job != job.Job || !sameJobOptional(asked.Handle, job.Handle) || (asked.HandleDigested != nil) != (job.HandleDigested != nil) || asked.Source != job.Source || asked.Tool != job.Tool {
+			return "invalid"
+		}
+	}
+	err := fencedEffect(ctx, view, operation, func(ctx context.Context) error {
+		return cancel(withoutReceiptAdmission(ctx), JobCancelInputOf(job, operation.Operation))
+	})
+	var refused *LeaseRefused
+	switch {
+	case err == nil:
+		return "sent"
+	case errors.As(err, &refused) && refused.Reason == "already-admitted":
+		return "already-admitted"
+	}
+	return "failed"
 }
 
 // JobStartInput is what a start runs with: its job and the row's own request bytes.

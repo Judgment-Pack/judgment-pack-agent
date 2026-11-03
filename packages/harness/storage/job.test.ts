@@ -22,7 +22,7 @@ import {RECORD_DEFAULTS} from '../records'
 import type {ExecutionCheckpoint} from '../execution/state'
 import {RunWriter,type DurableBinding} from './writer'
 import {LeaseCapabilityRefused,LeaseRefused,ReferenceEffectHost,certifyEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type EffectOperation,type LeaseLifetime} from './lease'
-import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer,JOB_ABANDON_OWNER,JOB_CANCEL_SCHEMA,abandonJobs,acknowledgeJobCancel,jobCancelCard,jobCancelOperation,jobCancelResult,jobCancelTool,jobReportFromExport,type JobCancelInput,admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob} from './job'
+import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer,JOB_ABANDON_OWNER,JOB_CANCEL_SCHEMA,abandonJobs,acknowledgeJobCancel,jobCancelCard,jobCancelOperation,jobCancelResult,jobCancelTool,jobReportFromExport,type JobCancelInput,admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob,type JobDelivery} from './job'
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
 
 /* #229: run-owned jobs through the real Vercel engine, the package's writer and the reference effect host. The Go twins are
@@ -803,24 +803,68 @@ describe('an abandon takes a fresh fence, and its cancels are stable (#229, M9)'
   expect((await readJob(held.store,RUN,held.job.job))?.cancel?.requested).toMatchObject({by:'command',command:'cmd-1',owner:JOB_ABANDON_OWNER,epoch:answer.fence!.epoch,operation:jobCancelOperation('cmd-1',held.job.job)})
   expect((await readJob(held.store,RUN,held.job.job))?.state).toBe('started')
  })
- it('#325: an abandon reads back each job its store answers, and sends nothing where the answer is not the record',async()=>{
-  const digest=`sha256:${'d'.repeat(64)}`,job=jobIdentity(RUN,'op-1')
-  const faults:[string,(held:RunJob)=>RunJob][]=[['the record',held=>held],['drops the marker',({handleDigested:_,...held})=>held],['another handle',held=>({...held,handle:`sha256:${'f'.repeat(64)}`})],['another source',held=>({...held,source:'kit-other-source'})],['another tool',held=>({...held,tool:'kit-other-tool'})]]
-  for(const [name,fault] of faults){
-   const held=await leased(),sent=vi.fn(async(_:JobCancelInput)=>undefined)
-   await held.store.commitFenced({runId:RUN,expectedRevision:null,commitId:'c1',checkpoint:new TextEncoder().encode('{}'),events:[],job:{job,operation:'op-1',source:'runner',tool:'start_job',requestDigest:`sha256:${'a'.repeat(64)}`,keyDigest:jobKeyDigest(KEY)}},held.fence)
-   await held.store.answerJob({version:1,resource:RUN,job,generation:1,answer:'started',handle:digest,handleDigested:true},held.fence)
-   const original=held.store.abandonJobs.bind(held.store)
-   held.store.abandonJobs=async(input,signal)=>{const taken=await original(input,signal);return {...taken,jobs:taken.jobs.map(fault)}}
-   const answer=abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:sent})
-   if(name==='the record'){
-    expect((await answer).jobs).toEqual([{job,delivery:'sent'}])
-    expect(sent).toHaveBeenCalledWith(expect.objectContaining({job,handleDigest:digest}));expect(sent.mock.calls[0]![0]).not.toHaveProperty('handle')
-   }else{
-    await expect(answer,name).rejects.toMatchObject({name:'JobRefused',reason:'invalid'})
-    expect(sent,name).not.toHaveBeenCalled()
-   }
+ /** #325: a run with two started jobs, A under a marked digest and B under a plain handle, or B left in flight. */
+ async function twoJobs(over:{completeA?:boolean;bInFlight?:boolean}={}){
+  const held=await leased(),a=jobIdentity(RUN,'op-1'),b=jobIdentity(RUN,'op-2'),digest=`sha256:${'d'.repeat(64)}`,keyB='job.key.0002.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K'
+  const claim=(job:string,operation:string,key:string,expectedRevision:string|null)=>held.store.commitFenced({runId:RUN,expectedRevision,commitId:`c-${operation}`,checkpoint:new TextEncoder().encode('{}'),events:[],job:{job,operation,source:'runner',tool:'start_job',requestDigest:`sha256:${'a'.repeat(64)}`,keyDigest:jobKeyDigest(key)}},held.fence)
+  const first=await claim(a,'op-1',KEY,null);await claim(b,'op-2',keyB,first.revision)
+  await held.store.answerJob({version:1,resource:RUN,job:a,generation:1,answer:'started',handle:digest,handleDigested:true},held.fence)
+  // A completed A was asked a cancel first, so only its state tells an abandon not to send it.
+  if(over.completeA){await held.store.requestJobCancel({version:1,resource:RUN,job:a,generation:1,by:'tool',operation:'cancel-a'},held.fence);await held.store.completeJob(completion(a))}
+  if(!over.bInFlight)await held.store.answerJob({version:1,resource:RUN,job:b,generation:1,answer:'started',handle:'kit-handle-b'},held.fence)
+  return {...held,a,b,digest,sent:vi.fn(async(_:JobCancelInput)=>undefined)}
+ }
+ it('#325: an abandon decides each job from its record: one whose answer the record does not bear out is sent nothing, and the others still go',async()=>{
+  type Held=Awaited<ReturnType<typeof twoJobs>>
+  const faults:[string,{answer?:(job:RunJob,held:Held)=>RunJob;read?:(held:Held)=>Promise<RunJob|undefined>;completeA?:boolean},JobDelivery][]=[
+   ['the record',{},'sent'],
+   ['drops the marker',{answer:({handleDigested:_,...job})=>job},'invalid'],
+   ['another handle',{answer:job=>({...job,handle:`sha256:${'f'.repeat(64)}`})},'invalid'],
+   ['another source',{answer:job=>({...job,source:'kit-other-source'})},'invalid'],
+   ['another tool',{answer:job=>({...job,tool:'kit-other-tool'})},'invalid'],
+   // Another job's record, bearing the answer out in all else: only its identity tells it apart.
+   ['a record of another job',{read:async held=>{const other=(await MemoryRunStore.prototype.readJob.call(held.store,RUN,held.b))!;return {...other,handle:held.digest,handleDigested:true}}},'invalid'],
+   ['no record',{read:async()=>undefined},'invalid'],
+   // LOW-1: an answer that calls a completed job started sends it nothing: its record says it has settled.
+   ['a completed job called started',{completeA:true,answer:({completion:_,closed:__,...job})=>({...job,state:'started'})},'settled'],
+  ]
+  for(const [name,fault,delivery] of faults){
+   const held=await twoJobs({completeA:fault.completeA}),abandonOf=held.store.abandonJobs.bind(held.store),readOf=held.store.readJob.bind(held.store)
+   held.store.abandonJobs=async(input,signal)=>{const taken=await abandonOf(input,signal);return {...taken,jobs:taken.jobs.map(job=>job.job===held.a&&fault.answer?fault.answer(job,held):job)}}
+   held.store.readJob=async(resource,job,signal)=>job===held.a&&fault.read?fault.read(held):readOf(resource,job,signal)
+   const answer=await abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:held.sent})
+   expect(answer.jobs,name).toEqual([{job:held.a,delivery},{job:held.b,delivery:'sent'}])
+   expect(held.sent,name).toHaveBeenCalledWith(expect.objectContaining({job:held.b,handle:'kit-handle-b'}))
+   if(delivery==='sent'){expect(held.sent).toHaveBeenCalledTimes(2);expect(held.sent).toHaveBeenCalledWith(expect.objectContaining({job:held.a,handleDigest:held.digest}));expect(held.sent.mock.calls.find(([input])=>input.job===held.a)![0]).not.toHaveProperty('handle')}
+   else expect(held.sent,name).toHaveBeenCalledTimes(1)
   }
+ })
+ it('#325 MEDIUM-1: a start that answers between the store\'s transaction and the read-back is decided by its record, and its cancel is asked and sent',async()=>{
+  const held=await twoJobs({bInFlight:true}),abandonOf=held.store.abandonJobs.bind(held.store)
+  let unproven:string|undefined
+  held.store.abandonJobs=async(input,signal)=>{
+   const taken=await abandonOf(input,signal);unproven=taken.jobs.find(job=>job.job===held.b)?.state
+   // A stale worker's start answers under its own fence, as M2 lets it.
+   await held.store.answerJob({version:1,resource:RUN,job:held.b,generation:1,answer:'started',handle:'kit-handle-b'},held.fence)
+   return taken
+  }
+  const answer=await abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:held.sent})
+  expect(unproven).toBe('unproven')
+  expect(answer.jobs).toEqual([{job:held.a,delivery:'sent'},{job:held.b,delivery:'sent'}])
+  expect(held.sent).toHaveBeenCalledTimes(2);expect(held.sent).toHaveBeenCalledWith(expect.objectContaining({job:held.b,handle:'kit-handle-b',operation:jobCancelOperation('cmd-1',held.b)}))
+  expect((await held.store.readJob(RUN,held.b))?.cancel?.requested).toMatchObject({by:'command',command:'cmd-1',owner:JOB_ABANDON_OWNER,epoch:answer.fence!.epoch,operation:jobCancelOperation('cmd-1',held.b)})
+  // A retry of the command sends nothing twice.
+  held.store.abandonJobs=abandonOf
+  const again=await abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:held.sent})
+  expect(again.jobs).toEqual([{job:held.a,delivery:'already-admitted'},{job:held.b,delivery:'already-admitted'}]);expect(held.sent).toHaveBeenCalledTimes(2)
+ })
+ it('#325 MEDIUM-1: a late start whose asked cancel the store answers with another handle is sent nothing; the others still go',async()=>{
+  const held=await twoJobs({bInFlight:true}),abandonOf=held.store.abandonJobs.bind(held.store),askOf=held.store.requestJobCancel.bind(held.store)
+  held.store.abandonJobs=async(input,signal)=>{const taken=await abandonOf(input,signal);await held.store.answerJob({version:1,resource:RUN,job:held.b,generation:1,answer:'started',handle:'kit-handle-b'},held.fence);return taken}
+  held.store.requestJobCancel=async(ask,fence,signal)=>{const asked=await askOf(ask,fence,signal);return ask.job===held.b?{...asked,handle:'kit-other-handle'}:asked}
+  const answer=await abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:held.sent})
+  expect(answer.jobs).toEqual([{job:held.a,delivery:'sent'},{job:held.b,delivery:'invalid'}])
+  expect(held.sent).toHaveBeenCalledTimes(1);expect(held.sent).toHaveBeenCalledWith(expect.objectContaining({job:held.a}))
  })
  it('a retry of the command sends nothing twice: the effect host admits its stable operation once',async()=>{
   const tools=await pair(),held=await started2(tools),sent=vi.fn(async(_:JobCancelInput)=>undefined)

@@ -75,7 +75,7 @@ var (
 	// A job a goal lists is one that did not succeed: its outcome is never succeeded.
 	goalJobOutcomes = []string{"failed", "cancelled", "unknown"}
 	goalJobStates   = []string{"unproven", "started", "not-started", "completed"}
-	goalDeliveries  = []string{"sent", "already-admitted", "failed", "undelivered", "no-handle", "settled", "contradicted", "acknowledged"}
+	goalDeliveries  = []string{"sent", "already-admitted", "failed", "undelivered", "no-handle", "settled", "contradicted", "acknowledged", "invalid"}
 )
 
 // GoalRefused is a named goal refusal. Where the run has a goal record the store journaled it, and nothing else
