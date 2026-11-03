@@ -81,6 +81,7 @@ EXPECTED_SCHEMAS = {
     "run-report-v3.json",
     "run-reauth.json",
     "run-job.json",
+    "run-goal.json",
 }
 
 # The $defs added or changed (beyond their descriptions) between v0.1.0 and the v0.2.0 release
@@ -1663,6 +1664,87 @@ class VectorTests(unittest.TestCase):
             self.assertEqual("sha256:" + hashlib.sha256(row["key"].encode()).hexdigest(), row["digest"])
         for item in rows["job/job.json"]["items"]:
             self.assertEqual(digest({"resource": item["resource"], "operation": item["operation"]}), item["job"])
+
+    def test_every_run_goal_member_and_value_is_carried_and_every_refused_record_fails(self):
+        # #230: every member of run-goal.json (root and definitions) and every enum value is carried by a
+        # handwritten goal vector, every refused record fails the schema, every reader-only refusal is
+        # schema-valid (the readers hold it), and every digest is the one an independent canonical JSON gives.
+        rows = {name: vector for name, vector in self.vectors.items() if name.startswith("goal/")}
+        self.assertEqual(set(rows), {"goal/goal.json", "goal/command.json", "goal/refusal.json", "goal/report.json", "goal/transitions.json"})
+        schema = self.schemas["run-goal.json"]
+        commands = rows["goal/command.json"]
+        scenarios = rows["goal/transitions.json"]["scenarios"]
+        steps = [step for scenario in scenarios for step in scenario["steps"]]
+        carried = [("run-goal.json", rows["goal/goal.json"]["items"] + [scenario["final"] for scenario in scenarios]),
+                   ("run-goal.json#/$defs/command", commands["items"]),
+                   ("run-goal.json#/$defs/transition", commands["transitions"] + [step["input"] for step in steps if step["op"] == "command"]),
+                   ("run-goal.json#/$defs/inspect", commands["inspects"] + [step["input"] for step in steps if step["op"] == "inspect"]),
+                   ("run-goal.json#/$defs/deliveries", commands["deliveries"] + [step["input"] for step in steps if step["op"] == "deliver"]),
+                   ("run-goal.json#/$defs/refusal", rows["goal/refusal.json"]["items"]),
+                   ("run-goal.json#/$defs/capabilityRefusal", rows["goal/refusal.json"]["capability"]),
+                   ("run-goal.json#/$defs/report", rows["goal/report.json"]["items"])]
+
+        def invalid(changed):
+            return any(problems(validator(changed, reference), items) for reference, items in carried)
+
+        self.assertFalse(invalid(self.schemas))
+        paths = [["properties", member] for member in schema["properties"]]
+        for name, definition in schema["$defs"].items():
+            paths.append(["$defs", name])
+            paths += [["$defs", name, "properties", member] for member in definition.get("properties", {})]
+        for path in paths:
+            changed = copy.deepcopy(self.schemas)
+            node = changed["run-goal.json"]
+            for step in path[:-1]:
+                node = node[step]
+            node[path[-1]] = False
+            with self.subTest(path=path):
+                self.assertTrue(invalid(changed), path)
+
+        def enums(node, path):
+            if isinstance(node, dict):
+                if "enum" in node:
+                    yield path
+                for key, value in node.items():
+                    yield from enums(value, path + [key])
+
+        for path in enums(schema, []):
+            node = schema
+            for step in path:
+                node = node[step]
+            for value in node["enum"]:
+                changed = copy.deepcopy(self.schemas)
+                target = changed["run-goal.json"]
+                for step in path:
+                    target = target[step]
+                target["enum"] = [other for other in target["enum"] if other != value]
+                with self.subTest(path=path, value=value):
+                    self.assertTrue(invalid(changed), (path, value))
+        for name, reference, refused, reader in (("goal/goal.json", "run-goal.json", "refused", "readerRefused"), ("goal/command.json", "run-goal.json#/$defs/command", "refused", "readerRefused"), ("goal/command.json", "run-goal.json#/$defs/transition", "transitionsRefused", "transitionsReaderRefused"), ("goal/refusal.json", "run-goal.json#/$defs/refusal", "refused", None)):
+            for row in rows[name][refused]:
+                with self.subTest(vector=name, problem=row["problem"]):
+                    self.assertTrue(problems(validator(self.schemas, reference), [row["record"]]), row["problem"])
+            for row in rows[name][reader] if reader else []:
+                with self.subTest(vector=name, problem=row["problem"]):
+                    self.assertEqual(problems(validator(self.schemas, reference), [row["record"]]), [])
+
+        def digest(value):
+            return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+
+        for command, expected in zip(commands["items"], commands["digests"], strict=True):
+            self.assertEqual(digest(command), expected)
+        for row, expected in zip(commands["deliveries"], commands["deliveryDigests"], strict=True):
+            self.assertEqual(digest({"command": row["command"], "deliveries": row["deliveries"]}), expected)
+        for step in steps:
+            head = step.get("context", {}).get("head")
+            command = step["input"].get("command") if step["op"] == "command" else None
+            if head and isinstance(command, dict) and "head" in command and command["head"]["revision"] == head["revision"]:
+                self.assertEqual(command["head"]["digest"], "sha256:" + hashlib.sha256(head["checkpoint"].encode()).hexdigest())
+        for scenario in scenarios:
+            commands_by_id = {step["input"]["command"]["command"]: step["input"]["command"] for step in scenario["steps"] if step["op"] == "command" and not step.get("refused") == "conflict"}
+            for entry in scenario["final"]["journal"]:
+                if entry["outcome"] != "delivered":
+                    self.assertEqual(entry["digest"], digest(commands_by_id[entry["command"]]))
 
     def test_every_run_wait_member_and_value_is_carried_and_every_refused_record_fails(self):
         # #224 and #228: every member of run-wait.json (root and definitions) and every enum value is

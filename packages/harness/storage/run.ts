@@ -6,6 +6,7 @@ import type {StorageRevision,StorageCursor} from './common'
 import {LeaseRefused,LeaseTable,fenceOf,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
 import {WaitTable,type AttentionDelivery,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import type {RunLimit} from './resume'
+import {GoalTable,type GoalDeliveries,type GoalInspect,type GoalLifetime,type GoalStore,type GoalTransition} from './goal'
 import {JOB_ABANDON_OWNER,JobRefused,JobTable,jobCancelOperation,readJobRegistration,type JobAbandon,type JobAnswer,type JobCancelAcknowledgement,type JobCancelAsk,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStore} from './job'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
@@ -60,7 +61,7 @@ const copyHead=(head:RunHead):RunHead=>({...head,checkpoint:head.checkpoint===nu
  * Its leases follow the lease transitions within the same process only (leaseLifetime 'process'): it never qualifies for
  * unattended admission, and a new instance starts with no leases. Its waits (#224) likewise end with its process
  * (waitLifetime 'process'), so a park on it refuses store-lifetime. */
-export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobStore {
+export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobStore,GoalStore {
  readonly durability:RunStoreDurability='memory'
  readonly historyVersion=1 as const
  readonly leaseVersion=1 as const
@@ -70,13 +71,16 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  readonly waitLifetime:WaitLifetime='process'
  readonly jobVersion=1 as const
  readonly jobLifetime:JobLifetime='process'
+ readonly goalVersion=1 as const
+ readonly goalLifetime:GoalLifetime='process'
  private readonly jobs:JobTable
+ private readonly goals:GoalTable
  private readonly leases:LeaseTable
  private readonly waits:WaitTable
  private readonly journal:MemoryHistoryJournal
  private runs=new Map<string,HeldRun>()
  private tail:Promise<unknown>=Promise.resolve()
- constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date());this.jobs=new JobTable(()=>this.options.now?.()??new Date())}
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date());this.jobs=new JobTable(()=>this.options.now?.()??new Date());this.goals=new GoalTable(()=>this.options.now?.()??new Date())}
  private serial<T>(signal:AbortSignal|undefined,run:()=>T):Promise<T>{
   try{signal?.throwIfAborted()}catch(error){return Promise.reject(error)}
   const result=this.tail.then(()=>{signal?.throwIfAborted();return run()})
@@ -86,6 +90,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  acquireLease(request:LeaseAcquire,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>{
   const resource=request&&typeof request==='object'&&storageId(request.resource)?request.resource:undefined
   if(resource!==undefined)this.waits.admitAcquire(resource)
+  // #230 (M8): a paused objective's run is leased by no acquisition.
+  if(resource!==undefined)this.goals.admitLease(resource)
   return this.leases.acquire(request,resource===undefined?null:this.runs.get(resource)?.head.revision??null,resource===undefined?undefined:this.waits.ceiling(resource))
  })}
  renewLease(fence:LeaseFence,durationMs:number,signal?:AbortSignal):Promise<RunLease>{return this.serial(signal,()=>this.leases.renew(fence,durationMs,fence&&typeof fence==='object'?this.waits.ceiling(fence.resource):undefined))}
@@ -96,7 +102,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  private head(resource:string){return this.runs.get(resource)?.head}
  parkWait(park:WaitPark,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.park(park,fence,park&&typeof park==='object'?this.head(park.resource):undefined,this.leases,this.jobs))}
  wakeWait(evidence:WakeEvidence,signal?:AbortSignal){return this.serial(signal,()=>this.waits.wake(evidence))}
- resumeWait(claim:WaitClaim,signal?:AbortSignal){return this.serial(signal,()=>this.waits.resume(claim,claim&&typeof claim==='object'&&storageId(claim.resource)?this.head(claim.resource):undefined,this.leases))}
+ // #230 (M8): a paused objective's run is resumed by no claim, as it is leased by no acquisition.
+ resumeWait(claim:WaitClaim,signal?:AbortSignal){return this.serial(signal,()=>{const resource=claim&&typeof claim==='object'&&storageId(claim.resource)?claim.resource:undefined;if(resource!==undefined)this.goals.admitLease(resource);return this.waits.resume(claim,resource===undefined?undefined:this.head(resource),this.leases)})}
  limitRun(limit:RunLimit,signal?:AbortSignal){return this.serial(signal,()=>{const held=this.waits.limit(limit);this.leases.lower(held.resource,Date.parse(held.run));return held})}
  readWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.read(resource,wait))}
  exportWaits(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.export(resource))}
@@ -115,6 +122,11 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
   for(const job of this.jobs.started(input.resource))this.jobs.requestCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation:jobCancelOperation(input.command,job.job),command:input.command},fence)
   return {...(lease?{lease}:{}),jobs:this.jobs.export(input.resource).jobs}
  })}
+ // #230: a goal command reads the run's head, waits, jobs and lease in its own transaction.
+ commandGoal(input:GoalTransition,signal?:AbortSignal){return this.serial(signal,()=>this.goals.command(input,resource=>({...(this.runs.has(resource)?{head:this.runs.get(resource)!.head}:{}),waits:this.waits.export(resource).waits,jobs:this.jobs.export(resource).jobs,...(this.leases.read(resource)?{lease:this.leases.read(resource)!}:{})})))}
+ inspectGoal(input:GoalInspect,signal?:AbortSignal){return this.serial(signal,()=>this.goals.inspect(input))}
+ recordGoalDeliveries(input:GoalDeliveries,signal?:AbortSignal){return this.serial(signal,()=>this.goals.deliver(input))}
+ readGoal(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.goals.read(resource))}
  readJob(resource:string,job:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.read(resource,job))}
  listJobs(resource:string,after:string|null,limit:number,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.list(resource,after,limit))}
  exportJobs(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.export(resource))}
@@ -145,7 +157,9 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
    const held=this.runs.get(frozen.runId),prior=held?.commits.get(frozen.commitId)
    if(prior){if(!identical(prior.input,frozen)||prior.historyInput!==canonicalJSON(extra))throw new StorageCommitMismatch();return {receipt:{...prior.receipt},historyReceipt:structuredClone(prior.historyReceipt!)}}
    // #266 M4: a commit not presented under a fence continues no run a wait holds, closed or past its deadline.
+   // #230: once the run has an objective it is leased, and an unfenced commit is refused.
    if(!fence)this.waits.admitAcquire(frozen.runId)
+   if(!fence)this.goals.admitUnfenced(frozen.runId)
    if((held?.head.revision??null)!==frozen.expectedRevision)throw new StorageConflict(frozen.expectedRevision,held?.head.revision??null)
    // #225 H1 and M3: an unsettled approved call is committed only as the person reviewed it; the commit that records it
    // settled lifts its expiry from the run.

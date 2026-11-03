@@ -1,0 +1,146 @@
+{
+ "description": "Every goal refusal and capability refusal, as records.",
+ "schema": "run-goal.json#/$defs/refusal",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/goal.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "reason": "invalid"
+  },
+  {
+   "version": 1,
+   "reason": "conflict"
+  },
+  {
+   "version": 1,
+   "reason": "revision-changed"
+  },
+  {
+   "version": 1,
+   "reason": "no-objective"
+  },
+  {
+   "version": 1,
+   "reason": "objective-exists"
+  },
+  {
+   "version": 1,
+   "reason": "objective-reused"
+  },
+  {
+   "version": 1,
+   "reason": "goals-exhausted"
+  },
+  {
+   "version": 1,
+   "reason": "objective-terminal"
+  },
+  {
+   "version": 1,
+   "reason": "objective-paused"
+  },
+  {
+   "version": 1,
+   "reason": "not-paused"
+  },
+  {
+   "version": 1,
+   "reason": "objective-blocked"
+  },
+  {
+   "version": 1,
+   "reason": "not-blocked"
+  },
+  {
+   "version": 1,
+   "reason": "plan-bound"
+  },
+  {
+   "version": 1,
+   "reason": "plan-unbound"
+  },
+  {
+   "version": 1,
+   "reason": "plan-invalid"
+  },
+  {
+   "version": 1,
+   "reason": "plan-reused"
+  },
+  {
+   "version": 1,
+   "reason": "step-settled"
+  },
+  {
+   "version": 1,
+   "reason": "head-changed"
+  },
+  {
+   "version": 1,
+   "reason": "lineage-changed"
+  },
+  {
+   "version": 1,
+   "reason": "decision-pending"
+  },
+  {
+   "version": 1,
+   "reason": "wait-pending"
+  },
+  {
+   "version": 1,
+   "reason": "step-incomplete"
+  },
+  {
+   "version": 1,
+   "reason": "evidence-refused"
+  },
+  {
+   "version": 1,
+   "reason": "history-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "jobs-unsettled"
+  },
+  {
+   "version": 1,
+   "reason": "waiver-invalid"
+  },
+  {
+   "version": 1,
+   "reason": "wait-unresolved"
+  },
+  {
+   "version": 1,
+   "reason": "lease-required"
+  }
+ ],
+ "capability": [
+  {
+   "version": 1,
+   "reason": "store-unsupported"
+  },
+  {
+   "version": 1,
+   "reason": "store-lifetime"
+  }
+ ],
+ "refused": [
+  {
+   "problem": "an unknown reason",
+   "record": {
+    "version": 1,
+    "reason": "replaced"
+   }
+  }
+ ]
+}

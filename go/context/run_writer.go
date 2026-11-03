@@ -3048,8 +3048,27 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 	if !ok || store.HistoryVersion() != 1 {
 		return nil
 	}
+	verified, err := verifyTaskEvidence(ctx, store, w.ID, w.revision, w.acknowledgedCheckpoint, saved, binding.Scope)
+	if err != nil {
+		return err
+	}
+	if w.taskResults == nil {
+		w.taskResults = map[string]TaskCompletionEvidence{}
+	}
+	for step, result := range verified {
+		w.taskResults[step] = result
+	}
+	return nil
+}
+
+// verifyTaskEvidence is the writer's history check of delegated evidence (#183), for a reader that holds no
+// writer: #230 (M16) re-verifies an objective's delegated step by the same reading. Every saved child result must
+// be proven by the exact original history transaction that recorded it, and the history must be the run's whole,
+// unchanged, at the head given. Anything else is ContinuationIdentityChanged.
+func verifyTaskEvidence(ctx context.Context, store HistoryRunStore, run, revision string, acknowledged []byte, saved []TaskStepRow, scope DurableScope) (map[string]TaskCompletionEvidence, error) {
+	invalid := func() error { return &ContinuationIdentityChanged{} }
 	readHead := func() (*RunHistoryHead, error) {
-		head, err := store.ReadHistoryHead(ctx, w.ID)
+		head, err := store.ReadHistoryHead(ctx, run)
 		if err != nil {
 			return nil, err
 		}
@@ -3062,11 +3081,11 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 	}
 	head, err := readHead()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	expected := HistoryObjectRef{Digest: HistoryBytesDigest(w.acknowledgedCheckpoint), Bytes: len(w.acknowledgedCheckpoint)}
-	if head.RunID != w.ID || head.ExecutionRevision != w.revision || head.Checkpoint == nil || *head.Checkpoint != expected {
-		return invalid()
+	expected := HistoryObjectRef{Digest: HistoryBytesDigest(acknowledged), Bytes: len(acknowledged)}
+	if head.RunID != run || head.ExecutionRevision != revision || head.Checkpoint == nil || *head.Checkpoint != expected {
+		return nil, invalid()
 	}
 	total, sequence, eventCount := 0, 0, 0
 	previous := ""
@@ -3076,7 +3095,7 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 		if !validHistoryRef(ref) || total > HistoryTotalBytes {
 			return nil, invalid()
 		}
-		page, err := store.ReadHistoryObject(ctx, HistoryResource{Kind: "run", ID: w.ID}, head.Revision, ref.Digest, 0, ref.Bytes)
+		page, err := store.ReadHistoryObject(ctx, HistoryResource{Kind: "run", ID: run}, head.Revision, ref.Digest, 0, ref.Bytes)
 		if err != nil {
 			return nil, err
 		}
@@ -3087,20 +3106,20 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 	}
 	for sequence < head.CommitCount {
 		if sequence >= HistoryMaxRows {
-			return invalid()
+			return nil, invalid()
 		}
-		page, err := store.ReadHistoryPage(ctx, w.ID, head.Revision, sequence, 100)
+		page, err := store.ReadHistoryPage(ctx, run, head.Revision, sequence, 100)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if page.Revision != head.Revision || page.AfterSequence != sequence || len(page.Items) == 0 || len(page.Items) > 100 || page.Total != head.CommitCount || page.NextSequence != sequence+len(page.Items) || page.HasMore != (page.NextSequence < head.CommitCount) {
-			return invalid()
+			return nil, invalid()
 		}
 		for _, input := range page.Items {
 			raw, _ := historyJSONBytes(input)
 			transaction, err := ReadRunHistoryEntry(raw)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			sequence++
 			prior := ""
@@ -3108,11 +3127,11 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 				prior = *transaction.PreviousDigest
 			}
 			if transaction.Sequence != sequence || prior != previous || transaction.EventStart != eventCount+1 {
-				return invalid()
+				return nil, invalid()
 			}
 			eventCount += transaction.EventCount
 			if eventCount > HistoryMaxEvents {
-				return invalid()
+				return nil, invalid()
 			}
 			previous = transaction.Digest
 			for _, row := range saved {
@@ -3121,22 +3140,22 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 					continue
 				}
 				if _, found := verified[row.ID]; found || transaction.Checkpoint == nil {
-					return invalid()
+					return nil, invalid()
 				}
 				raw, err := object(*transaction.Checkpoint)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				value, err := ParseJSON(raw)
 				if err != nil {
-					return err
+					return nil, err
 				}
 				state, err := ReadExecution(value)
 				if err != nil {
-					return err
+					return nil, err
 				}
-				if state == nil || state.ID != w.ID {
-					return invalid()
+				if state == nil || state.ID != run {
+					return nil, invalid()
 				}
 				var historical *Value
 				for _, candidate := range value.Get("planState").Get("taskSchedule").Get("rows").Items() {
@@ -3146,34 +3165,34 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 					}
 				}
 				if CanonicalJSON(historical) != usageCanonical(child) {
-					return invalid()
+					return nil, invalid()
 				}
 				matched := false
 				for _, ref := range transaction.Events {
 					raw, err := object(ref)
 					if err != nil {
-						return err
+						return nil, err
 					}
 					if HistoryBytesDigest(raw) != result.EventDigest {
 						continue
 					}
 					envelope, err := ReadStoredRunEvent(raw)
 					if err != nil {
-						return err
+						return nil, err
 					}
 					event := envelope.Event
-					if matched || envelope.Scope != binding.Scope || event.DelegatedTask == nil {
-						return invalid()
+					if matched || envelope.Scope != scope || event.DelegatedTask == nil {
+						return nil, invalid()
 					}
 					taskRaw, _ := canonicalRaw(event.DelegatedTask.Task)
 					digest, ok := successfulTaskChild(*state, *child, event.DelegatedTask.Task)
 					if durableDigest(taskRaw) != result.ResultDigest || !ok || digest != result.CheckpointDigest {
-						return invalid()
+						return nil, invalid()
 					}
 					matched = true
 				}
 				if !matched {
-					return invalid()
+					return nil, invalid()
 				}
 				verified[row.ID] = TaskCompletionEvidence{Step: row.ID, Task: child.Task, PlanRevision: child.PlanRevision, TaskChildResult: *result}
 			}
@@ -3181,19 +3200,13 @@ func (w *RunWriter) restoreTaskEvidence(ctx context.Context, binding RunBinding)
 	}
 	again, err := readHead()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	identity := func(head *RunHistoryHead) string {
 		return usageCanonical([]any{head.RunID, head.ExecutionRevision, head.CommitCount, head.EventCount, head.Root, head.Checkpoint})
 	}
 	if len(verified) != len(saved) || previous != head.Root || eventCount != head.EventCount || identity(again) != identity(head) {
-		return invalid()
+		return nil, invalid()
 	}
-	if w.taskResults == nil {
-		w.taskResults = map[string]TaskCompletionEvidence{}
-	}
-	for step, result := range verified {
-		w.taskResults[step] = result
-	}
-	return nil
+	return verified, nil
 }
