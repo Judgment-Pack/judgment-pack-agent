@@ -117,6 +117,11 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  requestJobCancel(ask:JobCancelAsk,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>{const held=readLeaseFence(fence);if(ask?.resource!==held.resource)throw new LeaseRefused('resource-mismatch');this.leases.check(held);return this.jobs.requestCancel(ask,held)})}
  acknowledgeJobCancel(evidence:JobCancelAcknowledgement,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.acknowledgeCancel(evidence))}
  abandonJobs(input:JobAbandon,signal?:AbortSignal){return this.serial(signal,()=>{
+  // F-9: everything the transaction could refuse is read first, so a refused abandon has moved nothing.
+  if(!input||typeof input!=='object'||!storageId(input.resource)||!storageId(input.command))throw new JobRefused('invalid')
+  // F-10: a run the store has never seen has nothing to abandon, and its first worker's lease is not taken. A lease, a wait or
+  // a job is a run seen as much as a commit is (#316 review, MEDIUM-3): a worker's lease before its first commit is fenced.
+  if(!this.runs.has(input.resource)&&!this.leases.read(input.resource)&&!this.waits.export(input.resource).waits.length&&!this.jobs.export(input.resource).jobs.length)return {jobs:[]}
   const lease=this.waits.leasable(input.resource)?this.leases.seize(input.resource,JOB_ABANDON_OWNER,input.durationMs,this.waits.ceiling(input.resource)):undefined
   const fence=lease?fenceOf(lease):undefined
   for(const job of this.jobs.started(input.resource))this.jobs.requestCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation:jobCancelOperation(input.command,job.job),command:input.command},fence)

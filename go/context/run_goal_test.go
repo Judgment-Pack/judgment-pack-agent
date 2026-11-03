@@ -3,8 +3,13 @@ package runcontext
 import (
 	"encoding/json"
 	"errors"
+	"go/ast"
+	goparser "go/parser"
+	"go/token"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -283,6 +288,89 @@ func TestGoalTransitionVectors(t *testing.T) {
 		}
 		if _, err := ReadRunGoal([]byte(jobCanonOf(t, *record))); err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+// #321's review: the goal record keeps its own copy of the deliveries an abandon answers (goalDeliveries). A value the job
+// adds that the copy lacks could never be journaled, and every later create would refuse abandon-unfinished. The values are
+// read from AbandonJobs' own source, every string it assigns to its delivery, and the goal's list, its reader and the
+// schema must hold exactly those.
+func TestGoalDeliveriesAreTheAbandonsOwn(t *testing.T) {
+	file, err := goparser.ParseFile(token.NewFileSet(), "run_job.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answered := []string{}
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name.Name != "AbandonJobs" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			assign, ok := node.(*ast.AssignStmt)
+			if !ok || len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+				return true
+			}
+			name, isName := assign.Lhs[0].(*ast.Ident)
+			value, isText := assign.Rhs[0].(*ast.BasicLit)
+			if isName && name.Name == "delivery" && isText && value.Kind == token.STRING {
+				text, err := strconv.Unquote(value.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				answered = append(answered, text)
+			}
+			return true
+		})
+	}
+	slices.Sort(answered)
+	answered = slices.Compact(answered)
+	if len(answered) < 8 {
+		t.Fatalf("AbandonJobs assigns %q: the scan no longer reads its deliveries", answered)
+	}
+	held := slices.Clone(goalDeliveries)
+	slices.Sort(held)
+	if !slices.Equal(held, answered) {
+		t.Fatalf("the goal record holds %q, and an abandon answers %q", held, answered)
+	}
+	raw, err := os.ReadFile("../../contract/schemas/run-goal.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Defs struct {
+			Delivery struct {
+				Properties struct {
+					Delivery struct {
+						Enum []string `json:"enum"`
+					} `json:"delivery"`
+				} `json:"properties"`
+			} `json:"delivery"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	named := slices.Clone(schema.Defs.Delivery.Properties.Delivery.Enum)
+	slices.Sort(named)
+	if !slices.Equal(named, answered) {
+		t.Fatalf("the schema names %q, and an abandon answers %q", named, answered)
+	}
+	job := "sha256:" + strings.Repeat("a", 64)
+	journal := func(delivery string) error {
+		input, _ := json.Marshal(map[string]any{"version": 1, "resource": "run-1", "command": "cmd-1", "deliveries": []any{map[string]any{"job": job, "delivery": delivery}}})
+		_, err := ReadGoalDeliveries(input)
+		return err
+	}
+	for _, delivery := range answered {
+		if err := journal(delivery); err != nil {
+			t.Fatalf("%s: %v", delivery, err)
+		}
+	}
+	for _, other := range []string{"already-sent", "cancelled", ""} {
+		if err := journal(other); !goalRefusedWith(err, "") {
+			t.Fatalf("%q: %v", other, err)
 		}
 	}
 }

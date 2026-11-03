@@ -10505,8 +10505,8 @@
   {
    "name": "reauth H3 a failure of the typed shape is recorded as it says, whoever wrote it",
    "file": "storage/writer.ts",
-   "find": "   const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown\n",
-   "replace": "   const error=thrown\n",
+   "find": "   let error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))?new AIFailureError(failure('authentication','tool','unknown')):thrown\n",
+   "replace": "   let error=thrown\n",
    "tests": [
     "storage/reauth.test.ts"
    ],
@@ -12340,7 +12340,7 @@
    ],
    "status": "caught",
    "origin": "agent#275",
-   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so only the test at the session itself can tell them apart."
+   "note": "Go twin (by hand): the approvalDecisionHolds call dropped from the controller; caught at ^TestAnApprovedCallRunsWhatThePersonApproved$. Since #297 the controller's own refusal reaches the host unchanged when this one is gone, so the test at the session itself tells them apart by place, and the stored-chat case (#303) by what the check is kept for: without it, the controller refuses only after the resume's claim has moved the run's revision and the chat's context, which that case asserts unmoved."
   },
   {
    "name": "a decision with no run store proves nothing",
@@ -12428,8 +12428,8 @@
   {
    "name": "reauth N2 only the outer error is checked for the typed shape",
    "file": "storage/writer.ts",
-   "find": "const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
-   "replace": "const error=effect&&!refused&&thrown instanceof AIFailureError&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "find": "let error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "replace": "let error=effect&&!refused&&thrown instanceof AIFailureError&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
    "tests": [
     "storage/reauth.test.ts"
    ],
@@ -12440,8 +12440,8 @@
   {
    "name": "reauth N2b a typed failure on a read is left as it says",
    "file": "storage/writer.ts",
-   "find": "const error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
-   "replace": "const error=effect&&!read&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "find": "let error=effect&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
+   "replace": "let error=effect&&!read&&!refused&&isNeverAdmittedFailure(normalizeFailure(thrown,'tool'))",
    "tests": [
     "storage/reauth.test.ts"
    ],
@@ -14206,8 +14206,8 @@
   {
    "name": "job CA12 what a cancel throws reaches the row",
    "file": "context/session.ts",
-   "find": "try{await job.cancel(jobCancelInput(cancelRecord,signal))}catch{throw jobCancelUnrecorded()}",
-   "replace": "await job.cancel(jobCancelInput(cancelRecord,signal))",
+   "find": "try{await job.cancel(jobCancelInput(cancelRecord,cancelOperation,signal))}catch{throw jobCancelUnrecorded()}",
+   "replace": "await job.cancel(jobCancelInput(cancelRecord,cancelOperation,signal))",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -14422,8 +14422,8 @@
   {
    "name": "job AB1 an abandon sends past the effect host",
    "file": "storage/job.ts",
-   "find": "try{await fencedEffect(view,{run:job.resource,operation:jobCancelOperation(input.command,job.job),source:job.source,tool:job.tool,requestDigest:`sha256:${sha256(canonicalJSON({job:job.job,generation:JOB_GENERATION}))}`},()=>input.cancel(jobCancelInput(job,input.signal)),input.signal);return 'sent'}",
-   "replace": "try{await input.cancel(jobCancelInput(job,input.signal));return 'sent'}",
+   "find": "try{await fencedEffect(view,{run:job.resource,operation,source:job.source,tool:JOB_ABANDON_OWNER,requestDigest:`sha256:${sha256(canonicalJSON({job:job.job,generation:JOB_GENERATION}))}`},()=>input.cancel(jobCancelInput(job,operation,input.signal)),input.signal);return 'sent'}",
+   "replace": "try{await input.cancel(jobCancelInput(job,operation,input.signal));return 'sent'}",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -14434,8 +14434,8 @@
   {
    "name": "job AB2 a retry of the command has a new identity",
    "file": "storage/job.ts",
-   "find": "{run:job.resource,operation:jobCancelOperation(input.command,job.job),source:job.source,",
-   "replace": "{run:job.resource,operation:crypto.randomUUID(),source:job.source,",
+   "find": "   const operation=jobCancelOperation(input.command,job.job)\n",
+   "replace": "   const operation=crypto.randomUUID()\n",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -14528,10 +14528,566 @@
    "note": "#229. Go twin (by hand, in run_lease.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
+   "name": "job B1 F-5 a found start's long handle is kept as its digest with no marker",
+   "file": "storage/job.ts",
+   "find": "out.handle=`sha256:${sha256(v.handle)}`;out.handleDigested=true}",
+   "replace": "out.handle=`sha256:${sha256(v.handle)}`}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAFoundStartsLongHandleIsKeptAsItsMarkedDigest."
+  },
+  {
+   "name": "job B2 F-5 a reconciliation passes the raw long handle on",
+   "file": "storage/job.ts",
+   "find": "const held=readJobReconciliation(keptReconciliation(evidence))",
+   "replace": "const held=readJobReconciliation(evidence)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAFoundStartsLongHandleIsKeptAsItsMarkedDigest."
+  },
+  {
+   "name": "job B3 F-5 the store drops a reconciliation's marker",
+   "file": "storage/job.ts",
+   "find": "evidence:held.evidence},held.handle,held.receipt,held.handleDigested)",
+   "replace": "evidence:held.evidence},held.handle,held.receipt)",
+   "tests": [
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAFoundStartsLongHandleIsKeptAsItsMarkedDigest. Since #316's review round (MEDIUM-1) the kit catches it too, at job.reconcile.digested, in both languages (Go: TestJobConformanceKitHoldsACancelAndAnAbandon)."
+  },
+  {
+   "name": "job B4 R-7 an empty receipt is kept as a receipt",
+   "file": "storage/job.ts",
+   "find": "held.receipt===undefined||held.receipt===''?{}",
+   "replace": "held.receipt===undefined?{}",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. The TypeScript path only: Go's zero value is no receipt."
+  },
+  {
+   "name": "job B5 F-16 a cancel not sent says the job may still run once it has settled",
+   "file": "storage/job.ts",
+   "find": "note:job.state==='started'||job.state==='unproven'?JOB_CANCEL_NOT_SENT_NOTE:JOB_CANCEL_NOT_SENT_SETTLED}",
+   "replace": "note:JOB_CANCEL_NOT_SENT_NOTE}",
+   "tests": [
+    "storage/jobRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobModelVectors."
+  },
+  {
+   "name": "job B6 F-13 the cancel tool names a contradicted job otherwise than the abandon",
+   "file": "storage/job.ts",
+   "find": "if(job.state==='not-started'&&job.contradictions)return 'job-contradicted'\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAContradictedJobIsCalledContradictedByBoth."
+  },
+  {
+   "name": "job B7 F-14 an abandon's cancel is admitted under its start's tool",
+   "file": "storage/job.ts",
+   "find": "source:job.source,tool:JOB_ABANDON_OWNER,",
+   "replace": "source:job.source,tool:job.tool,",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonsCancelIsAdmittedAsTheAbandons."
+  },
+  {
+   "name": "job B8 F-3 an abandon hands cancel another identity",
+   "file": "storage/job.ts",
+   "find": "()=>input.cancel(jobCancelInput(job,operation,input.signal))",
+   "replace": "()=>input.cancel(jobCancelInput(job,job.job,input.signal))",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsHandedItsOperation."
+  },
+  {
+   "name": "job B9 F-3 the writer holds another identity for a tool's cancel",
+   "file": "storage/writer.ts",
+   "find": "jobCancel.held(asked,claim.id)",
+   "replace": "jobCancel.held(asked,asked.job)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelIsHandedItsOperation."
+  },
+  {
+   "name": "job B10 F-3 a tool's cancel is handed another identity",
+   "file": "context/session.ts",
+   "find": "jobCancelInput(cancelRecord,cancelOperation,signal)",
+   "replace": "jobCancelInput(cancelRecord,cancelRecord.job,signal)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_writer.go): caught at TestJobsACancelIsHandedItsOperation."
+  },
+  {
+   "name": "job B11 F-2b a cancel sends a handle the record did not hold",
+   "file": "storage/writer.ts",
+   "find": "||asked.handle!==read.handle",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay."
+  },
+  {
+   "name": "job B12 F-2b a cancel sends under a marker the record did not hold",
+   "file": "storage/writer.ts",
+   "find": "||asked.handleDigested!==read.handleDigested",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay."
+  },
+  {
+   "name": "job B13 F-2b a cancel sends to a source the record did not name",
+   "file": "storage/writer.ts",
+   "find": "||asked.source!==read.source",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay."
+  },
+  {
+   "name": "job B14 F-2b a cancel sends for a tool the record did not name",
+   "file": "storage/writer.ts",
+   "find": "||asked.tool!==read.tool",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay."
+  },
+  {
+   "name": "job B15 R-4 a host that refuses after a start ran reads as refused input",
+   "file": "storage/writer.ts",
+   "find": "if(performed&&!dispatched&&jobStart&&composed===undefined){",
+   "replace": "if(false&&performed&&!dispatched&&jobStart&&composed===undefined){",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_writer.go): caught at TestJobsAHostThatRefusesAfterPerformTakesTheThrownStartPath."
+  },
+  {
+   "name": "job B16 F-17 a host that refuses after a cancel left reads as not started",
+   "file": "storage/writer.ts",
+   "find": "if(performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()",
+   "replace": "if(false&&performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_writer.go): caught at TestJobsACancelWhoseHostRefusesAfterPerformMayHaveBeenSent."
+  },
+  {
+   "name": "job B17 R-4 an error after the dispatch returned is read as a refusal after perform",
+   "file": "storage/writer.ts",
+   "find": "perform());dispatched=true}finally",
+   "replace": "perform())}finally",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go reads the refusal right after the execute, so no later error reaches it; its twin (by hand, in run_writer.go) never marks the execute as performed, and is caught at TestJobsAHostThatRefusesAfterPerformTakesTheThrownStartPath."
+  },
+  {
+   "name": "job B18 F-11 a head restored from before a tool cancel's row is attached",
+   "file": "storage/writer.ts",
+   "find": "  for(const job of this.jobRecords.values())if(job.cancel?.requested.by==='tool'&&!this.book.dispatches.some(row=>row.id===job.cancel!.requested.operation))throw new JobCapabilityRefused('store-inconsistent')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAHeadRestoredFromBeforeACancelsRowIsRefused."
+  },
+  {
+   "name": "job B19 F-9 a refused abandon has already moved the lease",
+   "file": "storage/run.ts",
+   "find": "  if(!input||typeof input!=='object'||!storageId(input.resource)||!storageId(input.command))throw new JobRefused('invalid')\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
+  },
+  {
+   "name": "job B20 F-10 an abandon on a run never seen takes a lease",
+   "file": "storage/run.ts",
+   "find": "  if(!this.runs.has(input.resource)&&!this.leases.read(input.resource)&&!this.waits.export(input.resource).waits.length&&!this.jobs.export(input.resource).jobs.length)return {jobs:[]}\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310; repointed in #316's review round to the widened condition. Go twin (by hand, in run_job.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.unknown); it was caught before at TestJobsAnAbandonRefusedOrOfNoRunMovesNoLease."
+  },
+  {
+   "name": "job BK1 F-2b the kit takes another handle on a cancel",
+   "file": "storage/jobConformance.ts",
+   "find": "&&asked.handle===beforeAsk?.handle",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK2 F-2b the kit takes another marker on a cancel",
+   "file": "storage/jobConformance.ts",
+   "find": "&&asked.handleDigested===beforeAsk?.handleDigested",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK3 F-2b the kit takes another source on a cancel",
+   "file": "storage/jobConformance.ts",
+   "find": "&&asked.source===beforeAsk?.source",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK4 F-2b the kit takes another tool on a cancel",
+   "file": "storage/jobConformance.ts",
+   "find": "&&asked.tool===beforeAsk?.tool",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK5 F-21 the kit takes a cancel recorded on the other job",
+   "file": "storage/jobConformance.ts",
+   "find": "&&same(await store.readJob('run-cancel',otherCan.job),otherBefore)",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK6 C6 the kit takes a cancel under another run's fence",
+   "file": "storage/jobConformance.ts",
+   "find": "await unchanged('run-cancel',canJob.job,'job.cancel.run',",
+   "replace": "if(at<0)await unchanged('run-cancel',canJob.job,'job.cancel.run',",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK7 C7 the kit takes an answer that drops the marker",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.answer.digested',digAnswer",
+   "replace": "check('job.answer.digested',true||digAnswer",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK8 C12 the kit takes a word that drops its receipt",
+   "file": "storage/jobConformance.ts",
+   "find": "&&worded.cancel.acknowledged.receipt==='kit-word-receipt'",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK9 C3 the kit takes an abandon that rewrites a tool's request",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.first',same(",
+   "replace": "check('job.abandon.first',true||same(",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK10 C13 the kit reads only the first started job of an abandon",
+   "file": "storage/jobConformance.ts",
+   "find": "for(const started of [abStarted,abSecond]){",
+   "replace": "for(const started of [abStarted]){",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK11 C21 the kit takes an abandon under another operation",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.operation',abasked",
+   "replace": "check('job.abandon.operation',true||abasked",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK12 C14 the kit takes a second abandon at the same epoch",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.again',abAgain",
+   "replace": "check('job.abandon.again',true||abAgain",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK13 C15 the kit takes an abandon's lease past the deadline",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.deadline',dlTaken",
+   "replace": "check('job.abandon.deadline',true||dlTaken",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK14 C17 the kit takes an abandon that refuses a parked run",
+   "file": "storage/jobConformance.ts",
+   "find": "const pkTaken=await answers('job.abandon.parked',()=>store.abandonJobs({version:1,resource:'run-abandon-parked',command:'cmd-pk',durationMs:HOUR}))\n check('job.abandon.parked',pkTaken",
+   "replace": "const pkTaken=await store.abandonJobs({version:1,resource:'run-abandon-parked',command:'cmd-pk',durationMs:HOUR}).catch(()=>({} as never))\n check('job.abandon.parked',true||pkTaken",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK15 C18 the kit takes an abandon that ends a parked wait",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.wait',same(",
+   "replace": "check('job.abandon.wait',true||same(",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK16 C16 the kit takes a lease on a closed run",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.closed',clTaken",
+   "replace": "check('job.abandon.closed',true||clTaken",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK17 F-6 the kit presents an old revision for a forgotten commit id",
+   "file": "storage/jobConformance.ts",
+   "find": "claim('run-after',headAfter,'op-other',keyFor(143),'run-after-op-1')",
+   "replace": "claim('run-after',again.revision,'op-other',keyFor(143),'run-after-op-1')",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion."
+  },
+  {
+   "name": "job BK18 F-9 the kit takes a refused abandon that moved the lease",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.invalid',same(",
+   "replace": "check('job.abandon.invalid',true||same(",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK19 F-10 the kit takes a lease on a run never seen",
+   "file": "storage/jobConformance.ts",
+   "find": "check('job.abandon.unknown',unseen",
+   "replace": "check('job.abandon.unknown',true||unseen",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job B22 #316 MEDIUM-3 an abandon counts only commits as a run seen",
+   "file": "storage/run.ts",
+   "find": "&&!this.leases.read(input.resource)&&",
+   "replace": "&&",
+   "tests": [
+    "storage/job.test.ts",
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round (MEDIUM-3, a regression from F-10). Go twin (by hand, in run_job.go): caught at TestAnAbandonFencesALeasedRunWithNoCommitYet and TestJobConformanceKitHoldsACancelAndAnAbandon (job.abandon.leased)."
+  },
+  {
+   "name": "job BK20 #316 MEDIUM-3 the kit leaves out a leased run with no commit",
+   "file": "storage/jobConformance.ts",
+   "find": " // #316 review, MEDIUM-3: a run leased before its first commit is a run the store has seen. Its abandon takes the lease at a\n // new epoch, and the worker's first claim, under the fence it held, is refused.\n touched.add('run-abandon-leased')\n const freshFence=fenceOf(await store.acquireLease({resource:'run-abandon-leased',owner:'worker-a',expectedRevision:null,durationMs:HOUR}))\n const freshTaken=await answers('job.abandon.leased',()=>store.abandonJobs({version:1,resource:'run-abandon-leased',command:'cmd-leased',durationMs:HOUR}))\n check('job.abandon.leased',freshTaken.lease?.owner===JOB_ABANDON_OWNER&&Number(freshTaken.lease.epoch)>Number(freshFence.epoch)&&freshTaken.jobs.length===0&&(await store.readLease('run-abandon-leased'))?.epoch===freshTaken.lease.epoch)\n await refuses('job.abandon.leased',()=>store.commitFenced({...claim('run-abandon-leased','','op-1',keyFor(169)),expectedRevision:null},freshFence),'stale-epoch')\n check('job.abandon.leased',(await store.load('run-abandon-leased'))===undefined&&(await allJobs('run-abandon-leased')).length===0)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job BK21 #316 MEDIUM-1 the kit leaves out a reconciliation's marker",
+   "file": "storage/jobConformance.ts",
+   "find": " // #316 review, MEDIUM-1: a reconciliation's digest keeps its marker as an answer's does (and across the restart, below), so a\n // cancel is never handed the digest as the host's reference.\n const rdig=await open('run-reconciled-digested'),rdigJob=await register('run-reconciled-digested','op-1',keyFor(168),rdig.fence,rdig.revision)\n const rdigFound=await answers('job.reconcile.digested',()=>store.reconcileJob(reconcile('run-reconciled-digested',rdigJob.job,keyFor(168),{finding:'started',handle:digest,handleDigested:true})))\n check('job.reconcile.digested',rdigFound.state==='started'&&rdigFound.handle===digest&&rdigFound.handleDigested===true&&(await store.readJob('run-reconciled-digested',rdigJob.job))?.handleDigested===true&&(await store.listJobs('run-reconciled-digested',null,10)).jobs[0]?.handleDigested===true)\n",
+   "replace": "",
+   "tests": [
+    "storage/jobConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#316's review round. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "job B21 #314 the history observation reader reads members of what is no object",
+   "file": "history/metadata.ts",
+   "find": " if(!object(value)||value.version!==1||!scope(value.scope))return fail()\n",
+   "replace": " if(value.version!==1||!scope(value.scope))return fail()\n",
+   "tests": [
+    "history/metadata.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in history_view.go): caught at TestHistoryReadersRefuseEveryShapeTheyCannotRead."
+  },
+  {
+   "name": "pass-through #303 the writer passes a refusal through on its root, not the bind's policy",
+   "file": "storage/writer.ts",
+   "find": "if(binding.root&&!this.policy&&(event.type==='error'",
+   "replace": "if(binding.root&&!this.root&&(event.type==='error'",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303 (#301's review). The TypeScript path only: Go's writer has no pass-through before its bind. Caught at the writer's port: after a coordinator hands the root back, its usage and end leave the log."
+  },
+  {
+   "name": "receipt verifier #303 the verifier gets the whole limit",
+   "file": "toolSources.ts",
+   "find": "Math.max(1, limit - (Date.now() - started))",
+   "replace": "limit",
+   "tests": [
+    "receiptQuarantine.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in sources.go): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach."
+  },
+  {
+   "name": "receipt verifier #303 the verifier gets twice what the call left",
+   "file": "toolSources.ts",
+   "find": "Math.max(1, limit - (Date.now() - started))",
+   "replace": "Math.max(1, 2 * (limit - (Date.now() - started)))",
+   "tests": [
+    "receiptQuarantine.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in sources.go): caught at TestAnUnverifiedReceiptLeavesNothingAReaderCanReach."
+  },
+  {
    "name": "job CA16 a cancel is sent from another job's record",
    "file": "storage/writer.ts",
-   "find": "     if(asked.resource!==this.id||asked.job!==jobCancel.job)throw new JobRefused('invalid')\n",
-   "replace": "",
+   "find": "if(asked.resource!==this.id||asked.job!==jobCancel.job||!read||",
+   "replace": "if(!read||",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -14566,7 +15122,7 @@
   {
    "name": "job CA19 the answer of a cancel not sent says it was asked",
    "file": "storage/job.ts",
-   "find": " if(!sent)return textResult({...jobProjection(job),note:JOB_CANCEL_NOT_SENT_NOTE},true)\n",
+   "find": " if(!sent)return textResult({...jobProjection(job),note:job.state==='started'||job.state==='unproven'?JOB_CANCEL_NOT_SENT_NOTE:JOB_CANCEL_NOT_SENT_SETTLED},true)\n",
    "replace": "",
    "tests": [
     "storage/jobRecords.test.ts"
@@ -14590,7 +15146,7 @@
   {
    "name": "job CT15 a cancel answers another job of the run",
    "file": "storage/jobConformance.ts",
-   "find": " check('job.cancel.which',asked.job===canJob.job&&asked.resource==='run-cancel'&&(await store.readJob('run-cancel',otherCan.job))?.cancel===undefined)\n",
+   "find": " check('job.cancel.which',asked.job===canJob.job&&asked.resource==='run-cancel'&&asked.handle===beforeAsk?.handle&&asked.handleDigested===beforeAsk?.handleDigested&&asked.source===beforeAsk?.source&&asked.tool===beforeAsk?.tool&&same(await store.readJob('run-cancel',otherCan.job),otherBefore))\n",
    "replace": "",
    "tests": [
     "storage/jobConformance.test.ts"
@@ -15542,6 +16098,18 @@
    "status": "caught",
    "origin": "agent#318",
    "note": "#310/#318 batch. Go twin (by hand, in run_goal.go): caught at TestGoalRecordVectors."
+  },
+  {
+   "name": "goal J5 #321's review: the goal record drifts one delivery from the job's",
+   "file": "storage/goal.ts",
+   "find": "'settled','contradicted','acknowledged']",
+   "replace": "'settled','contradiction' as JobDelivery,'acknowledged']",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "Merging main into #316 (#321's review): the goal's copy of the deliveries is tied to the job's JobDelivery and to the schema. Go twin (by hand, in run_goal.go): caught at TestGoalDeliveriesAreTheAbandonsOwn, which reads AbandonJobs' own deliveries."
   },
   {
    "name": "goal JK1 #318 M-4 the kit takes a create over an unfinished abandon",

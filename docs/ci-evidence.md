@@ -299,7 +299,7 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
 
 - **The steps.** `go-race-a` names its packages, `./gate` among them, and `go-race-c` names `./adapter/jobtests`. `go-race-b` asks `go list ./context/... ./adapter/...`
   and takes every package the other two do not name, so a new package runs, in `go-race-b`, before anyone
-  has placed it. `tests/test_release_evidence.py` runs both steps' own text with a stand-in `go`, over this
+  has placed it. `tests/test_release_evidence.py` runs the three steps' own text with a stand-in `go`, over this
   tree and over this tree with a package added: together they are the packages of the one pattern, each
   once. A package `go-race-a` names that has moved stops that step, and a `go list` that fails part of the
   way stops `go-race-b` rather than letting it test what it got.
@@ -326,7 +326,9 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   at 1,467 s of it, and cancellation and the objective add to that binary. Locally, under race and with other work
   beside it, the binary took 1,271 s at #306's head. Expected on a hosted runner: `go-race-c` about 1,600 s (the
   binary and its compile), well under its 2,250 s warning; `go-race-b` about 1,000 to 1,500 s, back to room for
-  the packages still to come; `go-race-a` unchanged. A binary that outgrows its leg moves the same way: name it
+  the packages still to come; `go-race-a` unchanged. The hosted run at #306's reviewed head took `go-race-a`
+  2,027 s, `go-race-b` 1,439 s and `go-race-c` 992 s, so `go-race-a` is now the leg nearest its warning, and a
+  new binary belongs in `go-race-b` or `go-race-c`. A binary that outgrows its leg moves the same way: name it
   in its step, and in `go-race-b`'s exclusion.
 
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
@@ -337,12 +339,12 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   mutation table is one job with ten shards. In `.github/ci-evidence.json` each leg is a job of its own,
   with one check; each has its own status, its own artifact (`ci-evidence-ci-go-race-a-<attempt>`,
   `ci-evidence-ci-go-race-b-<attempt>`, `ci-evidence-ci-go-race-c-<attempt>`), its own plan, capture and readmission, under the same rules as
-  #254's one job. Neither cancels the other on a failure. A leg skips every other step of the manifest, the
-  other leg's among them, and the `check` job skips both.
+  #254's one job. None cancels another on a failure. A leg skips every other step of the manifest, the
+  other legs' among them, and the `check` job skips all three.
 - **What a release requires.** Every leg. The gate holds a candidate's job names to the configuration's, so a
   run without any one leg refuses (`job-coverage`), as does a run with the one old `go-race` job; without
-  either artifact, `artifact-coverage`; without either result, `check-coverage` or `check-result`. A leg's
-  evidence holding the other's step refuses too. A merged pull request's run from before the division has
+  any leg's artifact, `artifact-coverage`; without any leg's result, `check-coverage` or `check-result`. A leg's
+  evidence holding another leg's step refuses too. A merged pull request's run from before the division has
   none of the legs, so on main each step runs fresh (`reuse-job`), and the `check` job's reuse is unaffected.
 - **The warning.** As well as the warning for a binary, each job warns when its step passes three quarters
   of the 3,000 s, 2,250 s: the sign that a binary should move to the other step, or that a third is due.
@@ -396,6 +398,9 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   from #254; the two legs' were exercised only against fixtures until then. The division's seconds are one
   hosted run's, and what a step takes on a slow runner is an estimate from the speed of a reference binary
   on other runs, not a run on that runner.
+- **The `go-race-c` job.** Its evidence first ran on the pull request of #306, and its first plan and capture
+  on main at that merge, where the plan reused the pull request's evidence. A fresh run of the leg on main, and
+  the release gate over a candidate holding it, have not happened yet.
 - **The nightly table.** `report a failed nightly table` first runs on the first failed nightly after
   #299 merges; its issue writes were exercised only against a stand-in `gh`. How the API reports a shard at
   its limit and a hand cancel is from live runs. How a concurrency group treats a pending run, and GitHub's

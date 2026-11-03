@@ -204,7 +204,13 @@ func (k *jobKit) revision(run string) string {
 	}
 	return head.Revision
 }
-func (k *jobKit) stamp() string { return k.at.UTC().Format("2006-01-02T15:04:05.000Z") }
+
+// jobKitSameMarker: the same handleDigested marker, present or not.
+func jobKitSameMarker(a, b *bool) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+
+// jobKitEpochAfter: a lease epoch is a decimal string with no leading zero; a is the later epoch.
+func jobKitEpochAfter(a, b string) bool { return len(a) > len(b) || len(a) == len(b) && a > b }
+func (k *jobKit) stamp() string         { return k.at.UTC().Format("2006-01-02T15:04:05.000Z") }
 func (k *jobKit) claimOf(run, evidence, owner, revision string) WaitClaim {
 	digest, _ := PinsDigest(jobKitPins)
 	return WaitClaim{Resource: run, Wait: "wait-1", Evidence: evidence, Lease: LeaseAcquire{Resource: run, Owner: owner, ExpectedRevision: revision, DurationMs: 3600000}, Reconciled: []WaitRelease{}, Revalidation: Revalidation{Version: 1, Resource: run, Wait: "wait-1", Pins: digest, Evidence: "sha256:" + strings.Repeat("c", 64), Changes: []contract.RunResumeChange{}}}
@@ -475,7 +481,8 @@ func (k *jobKit) properties() {
 		return JobCancelAsk{Version: 1, Resource: run, Job: job, Generation: 1, By: "tool", Operation: operation}
 	}
 	wordOf := func(run, job, key, evidence, outcome string) JobCancelAcknowledgement {
-		return JobCancelAcknowledgement{Version: 1, Resource: run, Job: job, Generation: 1, Evidence: evidence, Outcome: outcome, Key: key}
+		receipt := "kit-word-receipt"
+		return JobCancelAcknowledgement{Version: 1, Resource: run, Job: job, Generation: 1, Evidence: evidence, Outcome: outcome, Receipt: &receipt, Key: key}
 	}
 	can := k.open("run-cancel")
 	canJob, _ := k.register("run-cancel", "op-1", jobKitKey(150), can)
@@ -501,10 +508,19 @@ func (k *jobKit) properties() {
 	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel", otherCanJob, "kit-handle-2"), can.fence); err != nil {
 		panic(err)
 	}
+	beforeAsk, otherBefore := k.job("run-cancel", canJob), k.job("run-cancel", otherCanJob)
+	// C6: a fence of another run asks nothing of this run's job.
+	elsewhere := k.open("run-cancel-elsewhere")
+	k.unchanged("run-cancel", canJob, "job.cancel.run", "resource-mismatch", func() error {
+		_, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), elsewhere.fence)
+		return err
+	})
 	asked, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-1"), can.fence)
 	k.answers("job.cancel.records", err)
+	// F-2b, F-21: the answer is the record asked of, with its handle, marker, source and tool as they were, and the
+	// other job is untouched: its record reads whole as before.
 	otherAfter := k.job("run-cancel", otherCanJob)
-	k.check("job.cancel.which", asked.Job == canJob && asked.Resource == "run-cancel" && otherAfter != nil && otherAfter.Cancel == nil)
+	k.check("job.cancel.which", asked.Job == canJob && asked.Resource == "run-cancel" && beforeAsk != nil && sameJobOptional(asked.Handle, beforeAsk.Handle) && jobKitSameMarker(asked.HandleDigested, beforeAsk.HandleDigested) && asked.Source == beforeAsk.Source && asked.Tool == beforeAsk.Tool && otherAfter != nil && otherBefore != nil && k.sameJob(*otherAfter, *otherBefore))
 	k.check("job.cancel.records", asked.State == "started" && asked.Cancel != nil && asked.Cancel.Requested.By == "tool" && asked.Cancel.Requested.Operation == "cancel-1" && asked.Cancel.Requested.Owner != nil && *asked.Cancel.Requested.Owner == "worker-a" && asked.Cancel.Requested.Epoch != nil && *asked.Cancel.Requested.Epoch == can.fence.Epoch && asked.Cancel.Requested.At == k.stamp())
 	askedAgain, err := store().RequestJobCancel(ctx, askOf("run-cancel", canJob, "cancel-2"), can.fence)
 	k.answers("job.cancel.first", err)
@@ -515,7 +531,7 @@ func (k *jobKit) properties() {
 	})
 	worded, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "accepted"))
 	k.answers("job.cancel.word", err)
-	k.check("job.cancel.word", worded.State == "started" && worded.Cancel != nil && worded.Cancel.Acknowledged != nil && worded.Cancel.Acknowledged.Outcome == "accepted" && worded.Cancel.Acknowledged.Evidence == "word-1" && worded.Cancel.Acknowledged.At == k.stamp())
+	k.check("job.cancel.word", worded.State == "started" && worded.Cancel != nil && worded.Cancel.Acknowledged != nil && worded.Cancel.Acknowledged.Outcome == "accepted" && worded.Cancel.Acknowledged.Evidence == "word-1" && worded.Cancel.Acknowledged.At == k.stamp() && worded.Cancel.Acknowledged.Receipt != nil && *worded.Cancel.Acknowledged.Receipt == "kit-word-receipt")
 	wordedAgain, err := store().AcknowledgeJobCancel(ctx, wordOf("run-cancel", canJob, jobKitKey(150), "word-1", "accepted"))
 	k.answers("job.cancel.same", err)
 	k.check("job.cancel.same", k.sameJob(wordedAgain, worded))
@@ -568,14 +584,48 @@ func (k *jobKit) properties() {
 		_, err := store().RequestJobCancel(ctx, askOf("run-cancel-stale", staleJob, "cancel-1"), FenceOf(newLease))
 		return err
 	})
+	// C7: a handle kept as its digest keeps its marker, on the answer and on every read (and across the restart, below).
+	dig := k.open("run-digested")
+	digJob, _ := k.register("run-digested", "op-1", jobKitKey(160), dig)
+	digAnswer, marked := jobKitAnswer("run-digested", digJob, "sha256:"+strings.Repeat("d", 64)), true
+	digAnswer.HandleDigested = &marked
+	digAnswered, err := store().AnswerJob(ctx, digAnswer, dig.fence)
+	k.answers("job.answer.digested", err)
+	digRead, digListed := k.job("run-digested", digJob), k.allJobs("run-digested")
+	k.check("job.answer.digested", jobKitSameMarker(digAnswered.HandleDigested, &marked) && digRead != nil && jobKitSameMarker(digRead.HandleDigested, &marked) && len(digListed) == 1 && jobKitSameMarker(digListed[0].HandleDigested, &marked))
+	// #316 review, MEDIUM-1: a reconciliation's digest keeps its marker as an answer's does (and across the restart, below),
+	// so a cancel is never handed the digest as the host's reference.
+	rdig := k.open("run-reconciled-digested")
+	rdigJob, _ := k.register("run-reconciled-digested", "op-1", jobKitKey(168), rdig)
+	rdigFinding, rdigDigest := jobKitReconcile("run-reconciled-digested", rdigJob, jobKitKey(168), "find-1", "started"), "sha256:"+strings.Repeat("d", 64)
+	rdigFinding.Handle, rdigFinding.HandleDigested = &rdigDigest, &marked
+	rdigFound, err := store().ReconcileJob(ctx, rdigFinding)
+	k.answers("job.reconcile.digested", err)
+	rdigRead, rdigListed := k.job("run-reconciled-digested", rdigJob), k.allJobs("run-reconciled-digested")
+	k.check("job.reconcile.digested", rdigFound.State == "started" && rdigFound.Handle != nil && *rdigFound.Handle == rdigDigest && jobKitSameMarker(rdigFound.HandleDigested, &marked) && rdigRead != nil && jobKitSameMarker(rdigRead.HandleDigested, &marked) && len(rdigListed) == 1 && jobKitSameMarker(rdigListed[0].HandleDigested, &marked))
+	// C3: an abandon's command never rewrites a tool's first request.
+	fr := k.open("run-cancel-first")
+	frJob, _ := k.register("run-cancel-first", "op-1", jobKitKey(161), fr)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-cancel-first", frJob, "kit-handle"), fr.fence); err != nil {
+		panic(err)
+	}
+	toolAsk, err := store().RequestJobCancel(ctx, askOf("run-cancel-first", frJob, "cancel-tool"), fr.fence)
+	if err != nil {
+		panic(err)
+	}
+	_, err = store().AbandonJobs(ctx, JobAbandon{Resource: "run-cancel-first", Command: "cmd-first", DurationMs: 3600000})
+	k.answers("job.abandon.first", err)
+	frRead := k.job("run-cancel-first", frJob)
+	k.check("job.abandon.first", frRead != nil && k.sameJob(RunJob{Cancel: frRead.Cancel}, RunJob{Cancel: toolAsk.Cancel}))
 	// An abandon's own transaction: the lease under the reserved owner at a new epoch, and a cancel asked for each
 	// started job.
 	ab := k.open("run-abandon")
 	abStarted, abRevision := k.register("run-abandon", "op-1", jobKitKey(153), ab)
 	abUnproven, abRevision := k.register("run-abandon", "op-2", jobKitKey(154), jobKitRun{revision: abRevision, fence: ab.fence})
 	abDone, abRevision := k.register("run-abandon", "op-3", jobKitKey(155), jobKitRun{revision: abRevision, fence: ab.fence})
-	for _, held := range []string{abStarted, abDone} {
-		if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon", held, "kit-handle"), ab.fence); err != nil {
+	abSecond, abRevision := k.register("run-abandon", "op-4", jobKitKey(167), jobKitRun{revision: abRevision, fence: ab.fence})
+	for _, held := range [][2]string{{abStarted, "kit-handle"}, {abSecond, "kit-handle-4"}, {abDone, "kit-handle"}} {
+		if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon", held[0], held[1]), ab.fence); err != nil {
 			panic(err)
 		}
 	}
@@ -590,12 +640,46 @@ func (k *jobKit) properties() {
 	k.check("job.abandon.nocommit", k.revision("run-abandon") == abRevision)
 	_, err = store().CommitFenced(ctx, k.claim("run-abandon", abRevision, "op-late", jobKitWrong), ab.fence)
 	k.refuses("job.abandon.epoch", err, "stale-epoch")
-	abAsked := k.job("run-abandon", abStarted)
-	k.check("job.abandon.asks", abAsked != nil && abAsked.State == "started" && abAsked.Cancel != nil && abAsked.Cancel.Requested.By == "command" && abAsked.Cancel.Requested.Command != nil && *abAsked.Cancel.Requested.Command == "cmd-1" && abAsked.Cancel.Requested.Owner != nil && *abAsked.Cancel.Requested.Owner == JobAbandonOwner && abAsked.Cancel.Requested.Epoch != nil && *abAsked.Cancel.Requested.Epoch == abTaken.Lease.Epoch)
+	for _, started := range []string{abStarted, abSecond} {
+		abAsked := k.job("run-abandon", started)
+		k.check("job.abandon.asks", abAsked != nil && abAsked.State == "started" && abAsked.Cancel != nil && abAsked.Cancel.Requested.By == "command" && abAsked.Cancel.Requested.Command != nil && *abAsked.Cancel.Requested.Command == "cmd-1" && abAsked.Cancel.Requested.Owner != nil && *abAsked.Cancel.Requested.Owner == JobAbandonOwner && abAsked.Cancel.Requested.Epoch != nil && *abAsked.Cancel.Requested.Epoch == abTaken.Lease.Epoch)
+		k.check("job.abandon.operation", abAsked.Cancel.Requested.Operation == JobCancelOperation("cmd-1", started))
+	}
+	// C14: another abandon is another new epoch: the first abandon's fence goes stale too.
+	abAgain, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon", Command: "cmd-again", DurationMs: 3600000})
+	k.answers("job.abandon.again", err)
+	k.check("job.abandon.again", abAgain.Lease != nil && abTaken.Lease != nil && jobKitEpochAfter(abAgain.Lease.Epoch, abTaken.Lease.Epoch))
 	k.check("job.abandon.only", k.job("run-abandon", abUnproven).Cancel == nil && k.job("run-abandon", abDone).Cancel == nil)
-	abTakenJobs, _ := canonicalRaw(abTaken.Jobs)
+	abAgainJobs, _ := canonicalRaw(abAgain.Jobs)
 	abRead, _ := canonicalRaw(k.allJobs("run-abandon"))
-	k.check("job.abandon.jobs", string(abTakenJobs) == string(abRead))
+	k.check("job.abandon.jobs", string(abAgainJobs) == string(abRead))
+	// F-9: an abandon the store refuses has moved nothing. F-10: one on a run the store has never seen takes no lease.
+	invalidBefore, _ := store().ReadLease(ctx, "run-abandon")
+	_, err = store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon", Command: "", DurationMs: 3600000})
+	k.refuses("job.abandon.invalid", err, "invalid")
+	invalidAfter, _ := store().ReadLease(ctx, "run-abandon")
+	leaseBefore, _ := canonicalRaw(invalidBefore)
+	leaseAfter, _ := canonicalRaw(invalidAfter)
+	k.check("job.abandon.invalid", string(leaseAfter) == string(leaseBefore))
+	unseen, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-never", Command: "cmd-never", DurationMs: 3600000})
+	k.answers("job.abandon.unknown", err)
+	unseenLease, _ := store().ReadLease(ctx, "run-abandon-never")
+	k.check("job.abandon.unknown", unseen.Lease == nil && len(unseen.Jobs) == 0 && unseenLease == nil)
+	// #316 review, MEDIUM-3: a run leased before its first commit is a run the store has seen. Its abandon takes the lease at
+	// a new epoch, and the worker's first claim, under the fence it held, is refused.
+	k.touched = append(k.touched, "run-abandon-leased")
+	freshLease, err := store().AcquireLease(ctx, LeaseAcquire{Resource: "run-abandon-leased", Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		panic(err)
+	}
+	freshTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-leased", Command: "cmd-leased", DurationMs: 3600000})
+	k.answers("job.abandon.leased", err)
+	freshHeld, _ := store().ReadLease(ctx, "run-abandon-leased")
+	k.check("job.abandon.leased", freshTaken.Lease != nil && freshTaken.Lease.Owner == JobAbandonOwner && jobKitEpochAfter(freshTaken.Lease.Epoch, freshLease.Epoch) && len(freshTaken.Jobs) == 0 && freshHeld != nil && freshHeld.Epoch == freshTaken.Lease.Epoch)
+	_, err = store().CommitFenced(ctx, k.claim("run-abandon-leased", "", "op-1", jobKitKey(169)), FenceOf(freshLease))
+	k.refuses("job.abandon.leased", err, "stale-epoch")
+	freshHead, _ := store().Load(ctx, "run-abandon-leased")
+	k.check("job.abandon.leased", freshHead == nil && len(k.allJobs("run-abandon-leased")) == 0)
 	// A delegated run's principals stay on the abandon's lease: a takeover is a new epoch of the same principals.
 	if keeps, ok := store().(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
 		principal := &PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://host.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
@@ -610,6 +694,58 @@ func (k *jobKit) properties() {
 		k.answers("job.abandon.principal", err)
 		k.check("job.abandon.principal", held.Lease != nil && held.Lease.Version == 2 && held.Lease.Principal != nil && SamePrincipalBinding(held.Lease.Principal, principal))
 	}
+	// C15: an abandon's lease ends by the run's deadline.
+	abDl := k.open("run-abandon-deadline")
+	dlJob, _ := k.register("run-abandon-deadline", "op-1", jobKitKey(162), abDl)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon-deadline", dlJob, "kit-handle"), abDl.fence); err != nil {
+		panic(err)
+	}
+	dlLimit := k.at.Add(10 * time.Minute)
+	if _, err = store().LimitRun(ctx, RunLimit{Version: 1, Resource: "run-abandon-deadline", Run: dlLimit.UTC().Format("2006-01-02T15:04:05.000Z")}); err != nil {
+		panic(err)
+	}
+	dlTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-deadline", Command: "cmd-abDl", DurationMs: 3600000})
+	k.answers("job.abandon.deadline", err)
+	k.check("job.abandon.deadline", dlTaken.Lease != nil && func() bool {
+		expiry, parseErr := time.Parse(time.RFC3339Nano, dlTaken.Lease.Expiry)
+		return parseErr == nil && !expiry.After(dlLimit)
+	}())
+	// C17, C18: a parked run is abandoned like any other, and its wait stands.
+	pk := k.open("run-abandon-parked")
+	pkJob, _ := k.register("run-abandon-parked", "op-1", jobKitKey(163), pk)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon-parked", pkJob, "kit-handle"), pk.fence); err != nil {
+		panic(err)
+	}
+	if _, _, err = store().ParkWait(ctx, k.park("run-abandon-parked", pkJob, jobKitKey(164), nil), pk.fence); err != nil {
+		panic(err)
+	}
+	parkedWait, _ := canonicalRaw(k.wait("run-abandon-parked"))
+	pkTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-parked", Command: "cmd-pk", DurationMs: 3600000})
+	k.answers("job.abandon.parked", err)
+	pkRead := k.job("run-abandon-parked", pkJob)
+	k.check("job.abandon.parked", pkTaken.Lease != nil && pkTaken.Lease.Owner == JobAbandonOwner && pkRead != nil && pkRead.Cancel != nil && pkRead.Cancel.Requested.Command != nil && *pkRead.Cancel.Requested.Command == "cmd-pk")
+	waitAfter, _ := canonicalRaw(k.wait("run-abandon-parked"))
+	k.check("job.abandon.wait", string(waitAfter) == string(parkedWait))
+	// C16: a run its deadline closed grants no lease: the cancel stays undelivered.
+	cl := k.open("run-abandon-closed")
+	clJob, _ := k.register("run-abandon-closed", "op-1", jobKitKey(165), cl)
+	if _, err = store().AnswerJob(ctx, jobKitAnswer("run-abandon-closed", clJob, "kit-handle"), cl.fence); err != nil {
+		panic(err)
+	}
+	if _, _, err = store().ParkWait(ctx, k.park("run-abandon-closed", clJob, jobKitKey(166), nil), cl.fence); err != nil {
+		panic(err)
+	}
+	if _, err = store().LimitRun(ctx, RunLimit{Version: 1, Resource: "run-abandon-closed", Run: k.at.Add(time.Minute).UTC().Format("2006-01-02T15:04:05.000Z")}); err != nil {
+		panic(err)
+	}
+	k.at = k.at.Add(time.Minute)
+	if _, err = store().WakeWait(ctx, WakeEvidence{Version: 1, Resource: "run-abandon-closed", Wait: "wait-1", Evidence: "deadline-1", Kind: "deadline", Key: jobKitKey(166)}); err != nil {
+		panic(err)
+	}
+	clTaken, err := store().AbandonJobs(ctx, JobAbandon{Resource: "run-abandon-closed", Command: "cmd-cl", DurationMs: 3600000})
+	k.answers("job.abandon.closed", err)
+	clRead := k.job("run-abandon-closed", clJob)
+	k.check("job.abandon.closed", clTaken.Lease == nil && clRead != nil && clRead.Cancel != nil && clRead.Cancel.Requested.Undelivered != nil)
 	// Past a deadline no lease can be granted: each cancel stays undelivered, and says so.
 	lost := k.open("run-abandon-late")
 	lostJob, _ := k.register("run-abandon-late", "op-1", jobKitKey(156), lost)
@@ -876,7 +1012,7 @@ func (k *jobKit) properties() {
 	}
 	k.restartWhole(now)
 	headAfter := k.revision("run-after")
-	repeatAfter := k.claim("run-after", again2.revision, "op-other", jobKitKey(143))
+	repeatAfter := k.claim("run-after", headAfter, "op-other", jobKitKey(143))
 	repeatAfter.CommitID = "run-after-op-1"
 	_, repeatErr := store().CommitFenced(ctx, repeatAfter, again2.fence)
 	k.check("job.restart.commit", repeatErr != nil && k.job("run-after", JobIdentity("run-after", "op-other")) == nil && k.revision("run-after") == headAfter)

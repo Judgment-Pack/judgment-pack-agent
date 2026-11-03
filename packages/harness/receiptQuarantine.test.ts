@@ -185,6 +185,29 @@ describe('an external read whose receipt does not verify (agent#242)',()=>{
  })
 })
 
+// #303 (from #301's review): the verifier gets what the call left of its deadline, no more. The executor spends three quarters
+// of the source's 2,000 ms; a verifier that needs 700 ms more is cut at the 500 ms left, and the result is withheld. Given the
+// whole limit, or twice what was left, it would have finished and verified.
+describe('the receipt verifier\'s budget (#303)',()=>{
+ it('is what the call left of its deadline: a verifier that needs more is cut, and the result withheld',async()=>{
+  const chat=new ChatContext({scope:fixture.scope}),store=new MemoryRunStore(),held=fixture.cases[0]!,receipt='receipt-budget'
+  const declaration=fixture.declaration,result=structuredClone(held.result) as McpToolResult
+  const tool:HostTool={name:declaration.name,description:declaration.description,inputSchema:structuredClone(declaration.inputSchema),taxonomy:{...declaration.taxonomy} as HostTool['taxonomy'],
+   execute:async()=>{await new Promise(resolve=>setTimeout(resolve,1500));return {...structuredClone(result),receipt}}}
+  let verified=false
+  tool.source={...declaration.source,toolListDigest:await toolListDigest([{name:tool.name,description:tool.description,inputSchema:tool.inputSchema,taxonomy:tool.taxonomy}]),verifyReceipt:async(_e:unknown,signal:AbortSignal)=>{
+   await new Promise(resolve=>{const timer=setTimeout(resolve,700);signal.addEventListener('abort',()=>{clearTimeout(timer);resolve(undefined)},{once:true})})
+   verified=!signal.aborted;return verified
+  }} as HostTool['source']
+  const ready=await contextualSession({...session(chat,store,[tool],false),policy:{budget:{sourceCallMilliseconds:2000}}} as AssistantSession)
+  const call=ready.session.values.hostTools.find(t=>t.name===fixture.wireName)!
+  const answer=await settle(call.execute(structuredClone(fixture.arguments),ready.session.signal,'call-budget'))
+  expect(verified).toBe(false)
+  expect(event(fixture.wireName,answer).text).toBe(RECEIPT_WITHHELD)
+  ready.context.close()
+ },20_000)
+})
+
 // The issue's sequence: the source call, list_context, read_context, read_window and a search of
 // every retained item (the vector's readers 0, 1, 2 and 4, its items 0, 1, 2, 3 and 5), then the
 // final answer: six requests, through each engine.

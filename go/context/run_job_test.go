@@ -346,12 +346,15 @@ func TestJobModelVectors(t *testing.T) {
 	}
 	for _, row := range jobVectorRows(t, file["cancelInputs"]) {
 		var want struct {
-			Job, Source, Tool, Handle, HandleDigest string
-			Generation                              int
+			Job, Source, Tool, Operation string
+			Handle, HandleDigest         *string
+			Generation                   int
 		}
+		var operation string
 		_ = json.Unmarshal(row["input"], &want)
-		got := JobCancelInputOf(jobOf(row["record"]))
-		if got.Job != want.Job || got.Source != want.Source || got.Tool != want.Tool || got.Handle != want.Handle || got.HandleDigest != want.HandleDigest || got.Generation != want.Generation {
+		_ = json.Unmarshal(row["operation"], &operation)
+		got := JobCancelInputOf(jobOf(row["record"]), operation)
+		if got.Job != want.Job || got.Source != want.Source || got.Tool != want.Tool || !sameJobOptional(got.Handle, want.Handle) || !sameJobOptional(got.HandleDigest, want.HandleDigest) || got.Generation != want.Generation || got.Operation != want.Operation {
 			t.Fatalf("%+v, want %+v", got, want)
 		}
 	}
@@ -896,5 +899,76 @@ func TestJobCancelVectors(t *testing.T) {
 		if JobCancelOperation(command, job) != operation {
 			t.Fatal(JobCancelOperation(command, job), operation)
 		}
+	}
+}
+
+// R-5's second line (#316 review, LOW-2): only a host row reads a start's dispatch. A runtime or an agent row run on a
+// context that still holds one, as host code the writer calls (a store's own claim commit, say) could hand a nested
+// run, registers no job and mints no key: its row is no start.
+func TestJobDispatchIsReadOnlyOnAHostRow(t *testing.T) {
+	for _, kind := range []string{"runtime", "agent"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx := context.Background()
+			store := durableJobStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+			lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-n", Owner: "worker-a", DurationMs: 3600000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := UnattendedRunStore(store, FenceOf(lease), NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding := durableWriter(t, view, "run-n", false)
+			minted := 0
+			dispatch := &jobStartDispatch{mint: func(context.Context, string) (string, error) {
+				minted++
+				return JobKeyDigest("kit.job-nested.Q7z2Xm9LpV4cR8tNb3Yh6Df1")
+			}}
+			held := context.WithValue(ctx, jobStartKey{}, dispatch)
+			answer, err := InvokeDurable(held, binding, kind, "nested", "nested", []byte(`{"q":1}`), false, func([]byte) (ToolResult, error) {
+				return ResultOf([]Content{TextContent("answered")}, nil), nil
+			}, nil, nil)
+			if err != nil || len(answer.Content) != 1 {
+				t.Fatal(answer, err)
+			}
+			page, err := store.ListJobs(ctx, "run-n", "", 10)
+			if err != nil || len(page.Jobs) != 0 || minted != 0 || dispatch.job != "" {
+				t.Fatalf("%+v %v minted %d job %q", page.Jobs, err, minted, dispatch.job)
+			}
+		})
+	}
+}
+
+// #316 review, MEDIUM-3: a run leased before its first commit is a run seen. Its abandon takes the lease, and the worker's
+// first claim, under the fence it held, is refused.
+func TestAnAbandonFencesALeasedRunWithNoCommitYet(t *testing.T) {
+	for _, store := range []struct {
+		name  string
+		store RunStore
+	}{{"memory", NewMemoryRunStore(MemoryRunStoreOptions{})}, {"durable", durableJobStore{NewMemoryRunStore(MemoryRunStoreOptions{})}}} {
+		t.Run(store.name, func(t *testing.T) {
+			ctx := context.Background()
+			jobs := store.store.(JobRunStore)
+			lease, err := store.store.(LeaseRunStore).AcquireLease(ctx, LeaseAcquire{Resource: "run-fresh", Owner: "worker-a", DurationMs: 3600000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			taken, err := jobs.AbandonJobs(ctx, JobAbandon{Resource: "run-fresh", Command: "cmd-stop", DurationMs: 3600000})
+			if err != nil || taken.Lease == nil || taken.Lease.Owner != JobAbandonOwner || taken.Lease.Epoch != "2" || taken.Lease.State != "held" || len(taken.Jobs) != 0 {
+				t.Fatalf("%+v %v", taken, err)
+			}
+			key, _ := JobKeyDigest("kit.job-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1")
+			job := JobIdentity("run-fresh", "op-1")
+			_, err = jobs.CommitFenced(ctx, RunCommit{RunID: "run-fresh", CommitID: "c1", Checkpoint: []byte(`{}`), Events: [][]byte{}, Job: &JobRegistration{Job: job, Operation: "op-1", Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, FenceOf(lease))
+			var refused *LeaseRefused
+			if !errors.As(err, &refused) || refused.Reason != "stale-epoch" {
+				t.Fatalf("the first worker's claim: %v", err)
+			}
+			head, err := jobs.Load(ctx, "run-fresh")
+			held, readErr := jobs.ReadJob(ctx, "run-fresh", job)
+			if head != nil || err != nil || held != nil || readErr != nil {
+				t.Fatal(head, err, held, readErr)
+			}
+		})
 	}
 }

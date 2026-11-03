@@ -524,13 +524,19 @@ with no `keyScope`. The gateway's record of the key's first scope is to prove th
 hashes the run and a random operation; anything else stays `unknown`. The writer never re-sends an unknown row, so
 reconciling is the only re-presentation. Findings: a retained answer is parsed by the host like the first answer (a `response`
 is not a commit; untyped is `unknown`); `action-key-not-dispatched` is `not-started`; anything else, `action-key-scope-conflict`
-included, is `unknown`. No gateway accepts either member until #352 ships: each refuses them (a closed body), so nothing is sent, and the
-host answers such a start `not-started` from that exact refusal. Nor does any gateway send `action-key-not-dispatched` yet, and it
-must not without the durable closure below. The host keeps `decision` and `cites` for its reconciling request: no record here holds
-them.
+included, is `unknown`. `action-key-not-dispatched` is `not-started` only from the gateway store that took the start's first send:
+v0.24.0 keeps its key index per store, so a second store under the same authority, or one restored without `actions/`, can answer it
+for a key sent elsewhere, and a host reconciles at the store that took the first send.
+Gateway v0.24.0 (#352) is the first release that accepts these members and sends `action-key-not-dispatched`,
+with the durable closure below. An older gateway refuses them with its closed body before it reserves or sends anything: HTTP 400 with
+the `error` `request body carries a member this endpoint does not read: ` and the member's name. The host answers such a start
+`not-started` from that refusal only; any other refusal proves nothing about what ran, and a host that maps it to `{started: false}`
+makes a false closure. The host keeps `decision` and `cites` for its reconciling request: no record here holds them.
 
 The gateway builds, on `/act`:
-1. `keyScope: "authority"`: before reserving, exclusively create a durable per-authority index of the key's first scope,
+1. `keyScope: "authority"`: before reserving, exclusively create a durable index of the key's first scope, kept per store (one file
+   name hashes the key alone, so a renamed authority cannot find nothing and answer that nothing was sent; a second store under the same
+   authority does not see the first store's keys),
    by a requester that may reserve or by a closing reconcile. It outlives compaction. Any request on that key under another
    scope, flagged or not, gets `action-key-scope-conflict` before anything is reserved or sent. Unflagged keys keep §1.2b.
 2. `reconcile: true`: the same content checks; it never reserves and never dispatches, a freed attempt included, since the
@@ -551,7 +557,7 @@ The gateway builds, on `/act`:
 | Give job, lease and wait ports outliving its process, and an effect host proven for that store (`admitJobs`), on a run with no stored chat | `store-unsupported`, `store-lifetime`, `effect-host-unfenced`, `chat-store-unsupported`, before any offer |
 | Decide every held start with `shownDigest` (`approvalShownDigest`), text kept or not: a new surface has no unmoved host | `ApprovalNotShown`, before the claim: no job, nothing runs, and the pause stands |
 | Declare `gatewayKeyScope` on a start tool of a `gateway` source | `job-host-unsupported` |
-| Declare each cancel as a pair with its start on one source, with both in the source's list | `job-host-unsupported`, before any offer; another source's cancel is `no-job` |
+| Declare each cancel as a pair with its start on one source, with both in the source's list | `job-host-unsupported`, before any offer, where the pair's start is another instance; a cancel declared alone, or missing from its source's list, has its source withheld by a guardrail, and the run goes on; another source's cancel is `no-job` |
 | Map a job to its reference itself where `handleDigested` marks its handle, and acknowledge a cancel by the completion key | The cancel is handed `handleDigest` and no `handle`; only a completion with `cancelled` says it stopped |
 | Issue an abandon's command only with the person's authority, and hold its fence | It stands for their approval, and no policy is asked |
 | Declare no sub-agent with a job tool | The definition is withheld; a child session offered one refuses `child-unsupported` |
@@ -559,6 +565,11 @@ The gateway builds, on `/act`:
 | Answer `start` in the typed form, with a handle and a receipt of at most 256 bytes | Anything else leaves the job unproven, or keeps what it had. The row holds a fixed `unknown` failure that says it was not re-sent, and the model is answered from the job. A handle or receipt the record cannot hold is kept as the digest of its bytes, and the job is `started`; `handleDigested` marks such a handle |
 | Complete only through `completeJob`; hand the wake's evidence id to `resumeParked` | Event `wakeWait` is `mismatch`; `unacknowledged` |
 | Report `not-started` only when the authority has closed the start. A reference effect host cannot, its admitted set being process memory, so it answers `unknown` | A later completion is kept as a contradiction |
+| Map only an older gateway's closed-body refusal of the members to `{started: false}` | Any other mapping is a false closure |
+| Know that the gateway's one scope holds for a request under a lease only | A leaseless reconcile is not gated by it; under another credential it gets `action-key-scope-conflict`, which sends nothing |
+| Treat a start the gateway answers `action-key-outcome-unknown` for good (its first request failed between its index and its reservation, with nothing sent) as unproven | It stays `unknown` by the gateway's decision, since a close there could be false after a partial restore, and the agent re-presents only by reconciling: the job stays `unproven` and has no handle to cancel. The way out is the gateway's own record: reconcile it `started` with the handle found there, after which a cancel or an abandon reaches it; otherwise it stays `unproven` and the person is told |
+| Give a gateway source's `cancel` an action key of its own, from its `operation`, never the start's | The start's members get `action-key-conflict`, and nothing is sent |
+| After the credential that started a job is revoked, settle it from the gateway's own record or not at all | No reading can close its key; the job stays as it reads, and the person is told |
 | Keep `decision` and `cites`, and back up job and run records together | A takeover elsewhere gets `action-key-conflict`. A job with no row in the head refuses `store-inconsistent` before any offer; a row with its job lost is no evidence |
 | On `job-settled`, `job-unproven` or `no-job` at a park: continue or reconcile; none of them holds the run | The run stays leased until the host acts |
 
@@ -566,37 +577,46 @@ The gateway builds, on `/act`:
 their signatures. A store without the port refuses `store-unsupported` only when a job tool is offered.
 
 **Cancellation (#229, built).** Cancellation never moves `state`. A cancel tool (`jobCancelTool`) is an ordinary sourced `act` tool,
-declared as a pair with its start on one source, and offered only beside it (`job-host-unsupported`). Its arguments are exactly
+declared as a pair with its start on one source, and offered only beside it (`job-host-unsupported`, or the source withheld). Its arguments are exactly
 `{job, generation}`; anything else is `no-job`. Before anyone is asked and before any claim, the job's record is read afresh: a job
 whose `source` and `tool` are not this pair's start's is `no-job` (H5), a settled one `job-settled`, and one with no handle
 `job-unproven` (M4). That is read again before a decision that was held runs, because a job can settle while a person decides.
-`jobCancelCard` is the card reader over the record: source, tool, state, generation and the job's identity as the operation digest.
+`jobCancelCard` is the card reader over the record: source, tool, state, generation and `job`, the job's identity. A contradicted job is
+`job-contradicted`, the word the abandon uses.
 A decision approving a held cancel must carry `shownDigest`, as a held start's does. `requested` is recorded by the writer under the
 current fence before admission, and a stale fence asks nothing, unlike a start's answer. What is sent is that record's job, generation
 and handle, never model bytes; a handle kept as its digest comes as `handleDigest` and no `handle`, and the host maps the job itself.
+The writer reads the record before it asks, and an answer with another handle, marker, source or tool is refused with nothing sent.
+`cancel` also gets `operation`, the identity the effect host admits it under, so a host can make it idempotent across its processes.
 The first request stands. `acknowledged` (`accepted`, `refused`) comes from the host by the completion key, with no lease
 (`acknowledgeJobCancel`); first write wins, it wakes nothing, and with no request it is `no-cancel`. Only `completed` with `cancelled`
-says the job stopped. A cancel's row holds what the package composed, or one of two fixed failures (`JobCancelUnrecorded`, `unknown`;
-`JobCancelNotSent`, `not-started`), and the model is answered from the job as it reads now. Where the cancel was never handed to the host
+says the job stopped. A cancel's row holds what the package composed, one of two fixed failures (`JobCancelUnrecorded`, `unknown`;
+`JobCancelNotSent`, `not-started`), or the refusal of an effect host or a delegation's read that stopped it before it was handed over; the
+model is answered from the job as it reads now, and none of those words reach it. Where the cancel was never handed to the host
 (a refusal of the record, a lost acknowledgement, an effect host that fails, a refusal inside the dispatch such as a delegation's counted read),
-that answer says it was not sent, whatever the record asked. A repeat is answered from the job too, and nothing is sent again; its note says the
-request may not have been delivered.
+that answer says it was not sent, whatever the record asked, and where the job has settled since, says that. An effect host that refuses
+after the cancel was handed over leaves `JobCancelUnrecorded`: it may have been sent. A repeat while the job runs is answered from the job
+too, and nothing is sent again; its note says the request may not have been delivered. Once the job has settled, a repeat is `job-settled`.
+A tool's cancel on a job whose row the head does not hold refuses the run `store-inconsistent` before any offer.
 The rows of cancel tools are not evidence, and no child is offered one: they carry the seam.
 
 **Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
 transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
 holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
-same fence serves what follows. Cancels go through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`
-and no run commit, so a retry of the command is admitted once by the same effect host. **The command stands for the person's approval. That is the one
+same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen (no commit, lease, wait or job)
+it takes no lease; a worker's lease before its first commit is a run seen, so its first claim gets `stale-epoch` too. Cancels go
+through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`, admitted under the tool `job-abandon` and
+the job's source, and no run commit, so a retry of the command is admitted once by the same effect host; `cancel` gets that operation. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
 the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
-or on a closed run, no lease can be granted: `requested` is recorded `undelivered`, nothing is sent, and the answer says so. A parked run's wait
+or on a closed run, no lease can be granted: `requested` is recorded `undelivered` unless a tool asked first (that request stands), nothing
+is sent, and the answer says so. A parked run's wait
 stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-admitted`, `failed`, `undelivered`,
 `no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
-must be idempotent by `job`. `already-admitted` means the effect host has admitted that operation before, not that anything was
+must be idempotent by `operation`. `already-admitted` means the effect host has admitted that operation before, not that anything was
 delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
@@ -704,7 +724,9 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | M-9 statements only the unbuilt gateway makes true | Reworded. `gatewayActionMembers` takes the job, which a `start` and a leaseless reconciliation can both read |
 | L-1, L-7 | Host text as above; a repeated contradiction id with other content is `conflict`, and an answer under another run's fence is refused, each now held by the kit |
 
-**The re-read's findings, as far as they are built.** R-1: every repeat of a start answers from its job, which also cures L-3. R-2: a run under a stored chat refuses `chat-store-unsupported` before any offer, whether the session passes the chat or the head holds it. R-3: each refusal in the kit compares the job with before; a last restart comes after waits woke, resumed and timed out; a completion wakes only the wait on its own job; reads stay fresh after a settlement; an answer needs the first fence's epoch as well as its owner; and keys, commit ids and authentication hold across a restart. R-6: `handleDigested` marks a handle kept as its digest, and a real handle reading the same is another handle. R-4, R-5, R-7 and R-8 are not built.
+**The re-read's findings, as far as they are built.** R-1: every repeat of a start answers from its job, which also cures L-3. R-2: a run under a stored chat refuses `chat-store-unsupported` before any offer, whether the session passes the chat or the head holds it. R-3: each refusal in the kit compares the job with before; a last restart comes after waits woke, resumed and timed out; a completion wakes only the wait on its own job; reads stay fresh after a settlement; an answer needs the first fence's epoch as well as its owner; and keys, commit ids and authentication hold across a restart. R-6: `handleDigested` marks a handle kept as its digest, and a real handle reading the same is another handle. R-4: where an effect host's `dispatch` refuses after `perform` returned, a start takes the path of a thrown `start` (its answer goes to its job, the row holds `JobStartUnrecorded`, the model is answered from the job), and a cancel's row holds `JobCancelUnrecorded`. R-5: Go's `Mint`, `Authorize` and effect host get a context with no start's or cancel's dispatch, and only a host row reads one. R-7: an empty receipt is no receipt in both languages, and Go's `GatewayActionMembers` refuses a job its reader refuses. R-8: the gateway's exact refusal is named above, and a reconciliation passes the raw bytes: the package keeps a long handle as its digest and marks it.
+
+**The cancel review's remaining findings (#310), built.** F-2b: the writer compares the store's answer with the record read before asking (handle, `handleDigested`, source, tool), and `job.cancel.which` does too. F-3: `cancel` gets `operation`. F-5: a reconciliation's long handle is marked. F-6: the kit fails the fourteen stores it passed, and presents a forgotten commit id at the current revision. F-9, F-10: a refused abandon moves nothing, and one on an unknown run takes no lease. F-11: `store-inconsistent` covers a tool cancel's row. F-12, F-18: the statements above. F-13: `job-contradicted`. F-14: the abandon's admission names `job-abandon`, and the card's member is `job`. F-15: Go's `JobCancelInput.Handle` is absent, not empty, where the handle is a digest. F-16: a cancel not sent on a settled job says so. F-17, F-20: an effect host's `LeaseRefused` before the hand-over reads as not sent, and after it as maybe sent. F-21: the kit's other-job check has its own negative. F-4: `already-sent` is `already-admitted`, renamed with the objective's last batch (#321).
 
 ## Implementation split and acceptance
 

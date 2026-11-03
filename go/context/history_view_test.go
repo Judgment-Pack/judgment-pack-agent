@@ -146,3 +146,52 @@ func TestHistoryViewInvalidPortEvidence(t *testing.T) {
 		t.Fatal("altered source bytes accepted", err)
 	}
 }
+
+// #314: a reader of stored history bytes refuses what it cannot read and never panics: the empty object, other JSON
+// values, and each kind with its members missing or of another type. TypeScript decides the same shapes the same way
+// (packages/harness/history/metadata.test.ts).
+var historyReaderShapes = []string{
+	`{}`, `[]`, `1`, `"x"`, `null`, `true`,
+	`{"version":1}`,
+	`{"version":"1","scope":{"execution":"r","role":"author"},"kind":"genesis"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"}}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":1}`,
+	`{"version":1,"scope":1,"kind":"genesis"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"genesis"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"genesis","profile":1}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"genesis","profile":{}}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"capture-request"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"original"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"compaction"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"request"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"relation"}`,
+	`{"version":1,"scope":{"execution":"r","role":"author"},"kind":"relation","dispatchId":"d","target":"x","evidence":1}`,
+}
+
+func TestHistoryReadersRefuseEveryShapeTheyCannotRead(t *testing.T) {
+	readers := map[string]func([]byte) error{
+		"ReadHistoryObservation":   func(raw []byte) error { _, err := ReadHistoryObservation(raw); return err },
+		"ReadRunHistoryHead":       func(raw []byte) error { _, err := ReadRunHistoryHead(raw); return err },
+		"ReadRunHistoryEntry":      func(raw []byte) error { _, err := ReadRunHistoryEntry(raw); return err },
+		"ReadHistoryMetadataEntry": func(raw []byte) error { _, err := ReadHistoryMetadataEntry(raw); return err },
+		"ReadRunFeedback":          func(raw []byte) error { _, err := ReadRunFeedback(raw); return err },
+		"ReadHistoryMetadata":      func(raw []byte) error { _, err := ReadHistoryMetadata(raw); return err },
+		"ReadRunCapture":           func(raw []byte) error { _, err := ReadRunCapture(raw); return err },
+	}
+	for name, read := range readers {
+		for _, shape := range historyReaderShapes {
+			raw := []byte(CanonicalJSON(MustParseJSON(shape)))
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						t.Errorf("%s panics on %s: %v", name, shape, recovered)
+					}
+				}()
+				var invalid *HistoryInputInvalid
+				if err := read(raw); !errors.As(err, &invalid) {
+					t.Errorf("%s on %s: %v", name, shape, err)
+				}
+			}()
+		}
+	}
+}
