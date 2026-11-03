@@ -609,15 +609,22 @@ seen, so its first claim gets `stale-epoch` too, and so is a goal's run no worke
 it carries, are the record's, as for a tool's cancel (F-2b): the package reads each job back after the store's transaction and decides it
 from that record, never from the answer alone (#325). A job the record does not bear out (none held, another job's, or an answer whose
 source, tool, or handle and marker are not the record's) is answered `invalid` and sent nothing; the others still go. A start that
-answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses the abandon whole only
-where it cannot read the store's answer (a malformed job, or a lease that is not the abandon's): the lease is then taken and nothing is
-sent, and a retry of the same command finishes it. Cancels go
+answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses the abandon whole
+where it cannot read the store's answer (a lease that is not the abandon's, or a malformed job) and where reading a job back fails with
+an error that is not a job refusal. The lease is then taken. Jobs are decided and sent one at a time, so only a lease that is not the
+abandon's is refused before any send: a malformed job or a read error at a later job comes after the earlier jobs' cancels were sent, and
+the host must treat the refusal as "some cancels may have gone". A retry of the same command answers those `already-admitted` only while
+the effect host remembers their operations, and is refused again while the store keeps answering so. Whether the refusal should precede
+every send is a question for v0.14.0. Cancels go
 through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`, admitted under the tool `job-abandon` and
 the job's source, and no run commit, so a retry of the command is admitted once by the same effect host; `cancel` gets that operation. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
 the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
-or on a closed run, no lease can be granted: `requested` is recorded `undelivered` unless a tool asked first (that request stands), nothing
-is sent, and the answer says so. A parked run's wait
+or on a closed run, no lease can be granted: a cancel the store's transaction asks is recorded `undelivered` unless a tool asked first (that
+request stands), nothing is sent, and the answer says `undelivered`. A start that answered after the transaction is answered `undelivered`
+too, with no request on its record, since no fence can ask it. A job answered `invalid` was sent nothing and its store is faulty for it: the
+host does not retry it until its record and its answer agree, and stops it, if it must, at the external system itself and reports that
+through `completeJob`. After `undelivered` the package has no path left to that job's cancel, and the host takes the same route. A parked run's wait
 stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-admitted`, `failed`, `undelivered`,
 `no-handle`, `settled`, `contradicted`, `acknowledged`, `invalid`), and none of it proves anything stopped.
 

@@ -64,6 +64,28 @@ All other implementation, privacy/security, regression, cross-language parity,
 safeguard-removal, required CI, independent review and artifact-verification gates
 remain. This decision does not waive the live comparison for later Agent releases.
 
+## v0.13.0 scope decision
+
+For Agent v0.13.0 only, the maintainer [deferred the live comparison again on 2026-11-03](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6614430639),
+as for v0.10.0, v0.11.0 and v0.12.0. Issue #169 stays open on milestone v0.14.0, and is not a
+blocking Agent v0.13.0 release gate.
+
+The reason: v0.13.0 changes model-visible text only for hosts that use its new features
+(run-owned jobs, cancel and abandon, goal commands, and the framing of `list_context` and
+enrollment). The pre-release review confirmed that a host using none of them sees v0.12.0's bytes
+on the wire and in its records. The earlier reason ("not prompts") no longer holds for feature
+users, so it is not reused. The Desk's application-level comparison for its v0.14.0 release,
+tracked by [Desk #599](https://github.com/Judgment-Pack/judgment-pack-desk/issues/599), remains
+the route.
+
+Release review and notes must disclose that no live comparison has passed and no
+answer-quality, token-saving or monetary-cost result is claimed, that the release changes
+model-visible text for feature users, and that routing remains off by default.
+
+All other implementation, privacy and security, regression, cross-language parity,
+safeguard-removal, required CI, review and artifact-verification gates remain. This decision
+does not waive the comparison for later Agent releases.
+
 ## API runner and general release requirement
 
 Issue #169 adds a release-review tool separate from ADR-0022's deterministic offline
