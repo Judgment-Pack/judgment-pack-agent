@@ -669,7 +669,7 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		if projected.StructuredContent != nil {
 			text = string(projected.JSON())
 		}
-		if answered && runcontext.ReadingTool(held.host) {
+		if answered && runcontext.AnswerIsData(held.host, held.name, projected) {
 			text = r.sc.Frame(held.name, text)
 		}
 		if r.sc.Execution.State().PlanState.Has("pending") {

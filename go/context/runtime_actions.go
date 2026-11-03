@@ -172,7 +172,7 @@ func (c *SessionContext) PrepareRuntimeCall(ctx context.Context, name string, ar
 			return nil, runtimeactions.ErrStale
 		}
 		binding := request.Runtime
-		marker := c.Marker
+		marker := c.approvalMarker()
 		record := contract.CheckpointApproval{CallID: callID, Name: name, Tool: name, Source: request.Source, Args: args, State: "asked", Runtime: &binding, Marker: &marker}
 		if err := c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record, "Version": 3, "Status": "paused"}); err != nil {
 			return nil, err

@@ -98,3 +98,46 @@ export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation' | 'int
   if (host.effect !== undefined) return host.effect === 'read'
   return host.delegation === 'read' || host.delegation === 'research' || host.interaction === 'delegation'
 }
+
+/** The paths of a retained tool result that name the result's own members, not a tool's. */
+const RESULT_MEMBERS = /^\/(content|structuredContent|isError)$|^\/content\/[0-9]+(\/(type|text|data|mimeType))?$/
+/**
+ * A listed entry's context id is its scope, its document's id and a digest prefix. The package's own documents are these,
+ * and it wrote every key, label and revision they show; a tool's result is result-<tool>-<digest>.
+ */
+const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}$/
+const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-[^:]+|task-proposal-[^:]+)$/
+const RESULT_DOCUMENT = /:result-[^:]+$/
+
+const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * Whether this answer is a page of `list_context` that shows text the package did not write (#302): a key a tool's
+ * result holds, or anything of a document the host gave the run (its keys, label, revision and id), which may hold a
+ * source's words. A key is that text however it reads, so the test is where it sits and not what it says. A page over
+ * the result bound comes back as a reference to the page retained, and is data too. So is a page the package could not
+ * have written. It reads the answer itself, so a durable replay of the same answer decides the same way.
+ */
+export function listingNamesToolKeys(name: string, result: { structuredContent?: unknown }): boolean {
+  const page = result.structuredContent
+  if (name !== 'list_context' || !isObject(page)) return false
+  if (typeof page.contextId === 'string' && page.contextId.includes(':result-list_context-')) return true
+  if (page.items === undefined) return false
+  if (!Array.isArray(page.items)) return true
+  return page.items.some((item: unknown) => {
+    if (!isObject(item) || typeof item.contextId !== 'string' || !CONTEXT_DIGEST_SUFFIX.test(item.contextId)) return true
+    const document = item.contextId.replace(CONTEXT_DIGEST_SUFFIX, '')
+    if (OWN_DOCUMENT.test(document)) return false
+    if (!RESULT_DOCUMENT.test(document)) return true
+    if (!Array.isArray(item.sections)) return true
+    return item.sections.some((section: unknown) => !(isObject(section) && typeof section.path === 'string' && RESULT_MEMBERS.test(section.path)))
+  })
+}
+
+/**
+ * Whether a tool's answer goes to the model as one data block: a reading tool's always, and `list_context`'s where
+ * it names a key a tool wrote. The durable record's class of the tool is not this, and does not move.
+ */
+export function answerIsData(host: Parameters<typeof readingTool>[0], name: string, result: { structuredContent?: unknown }): boolean {
+  return readingTool(host) || listingNamesToolKeys(name, result)
+}
