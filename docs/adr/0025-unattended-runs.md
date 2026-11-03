@@ -577,19 +577,30 @@ and handle, never model bytes; a handle kept as its digest comes as `handleDiges
 The first request stands. `acknowledged` (`accepted`, `refused`) comes from the host by the completion key, with no lease
 (`acknowledgeJobCancel`); first write wins, it wakes nothing, and with no request it is `no-cancel`. Only `completed` with `cancelled`
 says the job stopped. A cancel's row holds what the package composed, or one of two fixed failures (`JobCancelUnrecorded`, `unknown`;
-`JobCancelNotSent`, `not-started`), and the model is answered from the job as it reads now. A repeat is too, and nothing is sent again.
+`JobCancelNotSent`, `not-started`), and the model is answered from the job as it reads now. Where the cancel was never handed to the host
+(a refusal of the record, a lost acknowledgement, an effect host that fails, a refusal inside the dispatch such as a delegation's counted read),
+that answer says it was not sent, whatever the record asked. A repeat is answered from the job too, and nothing is sent again; its note says the
+request may not have been delivered.
 The rows of cancel tools are not evidence, and no child is offered one: they carry the seam.
 
 **Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
 transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
 holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
 same fence serves what follows. Cancels go through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`
-and no run commit, so a retry of the command is admitted once. **The command stands for the person's approval. That is the one
+and no run commit, so a retry of the command is admitted once by the same effect host. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on
 the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
 or on a closed run, no lease can be granted: `requested` is recorded `undelivered`, nothing is sent, and the answer says so. A parked run's wait
 stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-sent`, `failed`, `undelivered`,
 `no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
+
+**What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
+the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
+must be idempotent by `job`. `already-sent` means the effect host has seen that operation, not that anything was delivered: after `failed`
+it means nothing reached the external system, and a failed delivery needs a new command (the value's name changes in #310). An abandon
+hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
+ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
+approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
 
 **Next: the objective (#230).** Host commands only, each with id, actor and expected revision; no model call and no run
 commit. `create` makes one from none or from terminal, under an identity never used in this run; there is no `replace`. `create`

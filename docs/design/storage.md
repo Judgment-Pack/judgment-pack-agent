@@ -788,14 +788,24 @@ a stale or expired fence asks nothing, unlike `answerJob`. `cancel` is handed `{
 `handle` where `handleDigested` marks it; a host answering an oversized handle keeps its own mapping. `acknowledgeJobCancel` takes the host's word
 by the completion key, with no lease: `accepted` or `refused`, first write wins, `no-cancel` with no request. Neither moves `state` or wakes a wait;
 only a completion with `cancelled` says the job stopped. `job_read` shows `cancel`. The row and the answer are `jobCancelResult`, or the fixed
-failures `JobCancelUnrecorded` and `JobCancelNotSent` with the answer from the job. A repeat is answered from the job and sends nothing.
+failures `JobCancelUnrecorded` and `JobCancelNotSent` with the answer from the job. Where the cancel was never handed to the host, the answer
+says it was not sent, whatever the record asked. A repeat is answered from the job and sends nothing, and its note says the request may not have
+been delivered.
 
 **Abandoning.** `abandonJobs({store, effectHost, resource, command, durationMs, cancel})` (Go `AbandonJobs`) is a host's command, standing for the
 person's approval: no source policy is asked. `JobStore.abandonJobs` takes the lease under `job-abandon` at a new epoch in one transaction with a
 cancel asked of each `started` job, and old workers get `stale-epoch`. Each cancel goes through the effect host under `jobCancelOperation(command, job)`
-with no run commit, so a retry of the command is admitted once. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
+with no run commit, so a retry of the command is admitted once by the same effect host. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
 nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-sent`, `failed`, `undelivered`, `no-handle`, `settled`,
 `contradicted` (closed, with evidence since that it ran), `acknowledged`. None of it proves anything stopped.
+
+**What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
+the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
+must be idempotent by `job`. `already-sent` means the effect host has seen that operation, not that anything was delivered: after `failed`
+it means nothing reached the external system, and a failed delivery needs a new command (the value's name changes in #310). An abandon
+hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
+ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
+approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
 
 **A gateway.** `gatewayActionMembers(job, {reconcile})` (Go `GatewayActionMembers`) is what the host adds to `/act`: it takes the job
 (`readJob`), which a `start` can read and a reconciliation holding no lease can too. It carries no owner, subject or lease. No
