@@ -69,7 +69,7 @@ var (
 	GoalCommandKinds      = []string{"create", "bind", "achieve", "pause", "resume", "block", "unblock", "abandon"}
 	GoalRefusalReasons    = []string{"invalid", "conflict", "revision-changed", "no-objective", "objective-exists", "objective-reused", "goals-exhausted", "objective-terminal", "objective-paused", "not-paused", "objective-blocked", "not-blocked", "plan-bound", "plan-unbound", "plan-invalid", "plan-reused", "step-settled", "head-changed", "lineage-changed", "decision-pending", "wait-pending", "step-incomplete", "evidence-refused", "history-unsupported", "jobs-unsettled", "waiver-invalid", "wait-unresolved", "lease-required"}
 	GoalCapabilityReasons = []string{"store-unsupported", "store-lifetime"}
-	GoalFindings          = []string{"head-changed", "plan-invalid", "step-settled", "decision-pending", "lineage-changed", "step-incomplete", "evidence-refused", "history-unsupported"}
+	GoalFindings          = []string{"head-changed", "plan-invalid", "step-settled", "decision-pending", "lineage-changed", "step-incomplete", "evidence-refused", "history-unsupported", "plan-unbound"}
 	goalStepFindings      = []string{"step-settled", "step-incomplete", "evidence-refused", "history-unsupported"}
 	goalWaitReasons       = []string{"approval", "budget", "question", "reauthorization", "job"}
 	// A job a goal lists is one that did not succeed: its outcome is never succeeded.
@@ -769,9 +769,10 @@ func ReadGoalCommand(raw []byte) (GoalCommand, error) {
 }
 
 // ReadGoalTransition reads what the store is handed. A bind carries its steps or what refused them, never both;
-// an achievement may carry a finding; nothing else carries either.
+// an achievement carries the revision its finding was read from (#313 H-1) and may carry a finding; nothing else
+// carries any of them.
 func ReadGoalTransition(raw []byte) (GoalTransition, error) {
-	g, err := goalShape(raw, []string{"version", "command"}, []string{"plan", "refused"})
+	g, err := goalShape(raw, []string{"version", "command"}, []string{"plan", "refused", "read"})
 	if err != nil {
 		return GoalTransition{}, err
 	}
@@ -783,6 +784,16 @@ func ReadGoalTransition(raw []byte) (GoalTransition, error) {
 		return GoalTransition{}, err
 	}
 	t := GoalTransition{Version: GoalRecordVersion, Command: command}
+	if g.has("read") != (command.Kind == "achieve") {
+		return GoalTransition{}, goalInvalid()
+	}
+	if g.has("read") {
+		read, err := g.count("read", 1)
+		if err != nil {
+			return GoalTransition{}, err
+		}
+		t.Read = &read
+	}
 	if g.has("plan") {
 		plan, err := ReadGoalPlanSteps(g.m["plan"])
 		if err != nil {
@@ -1090,6 +1101,10 @@ func (t *GoalTable) Command(input GoalTransition, context func(resource string) 
 	if c.ExpectedRevision.Null != (row == nil) || row != nil && c.ExpectedRevision.Value != revision {
 		return refuse("revision-changed", nil)
 	}
+	// H-1: an achievement's finding is the record's at the command's revision, or it is no finding of this record.
+	if c.Kind == "achieve" && (held.Read == nil || c.ExpectedRevision.Null || *held.Read != c.ExpectedRevision.Value) {
+		return refuse("revision-changed", nil)
+	}
 	run := context(c.Resource)
 	headIs := func(head GoalHead) bool {
 		return run.Head != nil && run.Head.Checkpoint != nil && run.Head.Revision == head.Revision && CheckpointBytesDigest(run.Head.Checkpoint) == head.Digest
@@ -1113,8 +1128,12 @@ func (t *GoalTable) Command(input GoalTransition, context func(resource string) 
 		if row != nil && len(row.Objectives) >= GoalObjectiveLimit {
 			return refuse("goals-exhausted", nil)
 		}
-		// M10: a wait parked before the abandon is resumed or ended before another objective is created over it.
+		// M10: a wait parked before the abandon, or after it (an abandon closes nothing), is resumed or ended before
+		// another objective is created over a terminal one.
 		if current != nil && current.Abandoned != nil && slices.ContainsFunc(current.Abandoned.Waits, func(left GoalLeftWait) bool { return goalUnresolvedWait(waitOf(left.Wait)) }) {
+			return refuse("wait-unresolved", nil)
+		}
+		if current != nil && slices.ContainsFunc(run.Waits, func(wait RunWait) bool { return goalUnresolvedWait(&wait) }) {
 			return refuse("wait-unresolved", nil)
 		}
 		next = GoalObjective{ID: *c.Objective, State: "active", Created: by}
@@ -1299,7 +1318,9 @@ func (t *GoalTable) Deliver(input GoalDeliveries) (RunGoal, error) {
 // atomic with the store's commits and checked against its own clock, and the record survives the store's
 // restarts. CommandGoal decides one command in one transaction against the record's revision, the run's head,
 // waits, jobs and lease as they are in it, and journals it, accepted or refused; a repeat of a command id answers
-// as the first did, and another command under it is conflict. While the current objective is paused,
+// as the first did, with the record as it is now, while its entry is in the journal, and another command under it
+// is conflict. An achievement's finding is taken only from the record at the command's revision (Read). While the
+// current objective is paused,
 // AcquireLease and ResumeWait refuse objective-paused; once the run has a goal record an unfenced commit refuses
 // lease-required. The package checks none of this in a host store; CheckRunStoreGoalConformance
 // (run_goal_conformance.go) does.

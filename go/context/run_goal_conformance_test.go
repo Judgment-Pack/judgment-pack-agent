@@ -68,6 +68,55 @@ type goalFault struct {
 	resume  func(s *goalFault, ctx context.Context, claim WaitClaim) (RunWait, RunLease, error)
 	commit  func(s *goalFault, ctx context.Context, input RunCommit) (RunReceipt, error)
 	fenced  func(s *goalFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error)
+	history func(s *goalFault, ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error)
+}
+
+func (s *goalFault) CommitHistory(ctx context.Context, input RunHistoryCommit) (RunHistoryReceipt, error) {
+	if s.history != nil {
+		return s.history(s, ctx, input)
+	}
+	return s.durableGoalStore.CommitHistory(ctx, input)
+}
+
+// withoutGoal runs do with the run's goal record out of the table: a store that does not know the run has one.
+func (s *goalFault) withoutGoal(resource string, do func()) {
+	row := s.rowOf(resource)
+	delete(s.MemoryRunStore.goals.rows, resource)
+	defer func() {
+		if row != nil {
+			s.MemoryRunStore.goals.rows[resource] = row
+		}
+	}()
+	do()
+}
+
+// reading: a goal transaction of these kinds reads the run's waits or jobs as edit leaves them for its length, and
+// then the store holds them as they were: a store that reads less than it holds.
+func reading(kinds []string, edit func(s *goalFault, input GoalTransition) func()) func(*goalFault) {
+	return func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			if slices.Contains(kinds, input.Command.Kind) {
+				defer edit(s, input)()
+			}
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	}
+}
+
+// goalWokenAsResolved reads a woken wait of the run as resumed.
+func goalWokenAsResolved(s *goalFault, input GoalTransition) func() {
+	changed := []*RunWait{}
+	for _, wait := range s.MemoryRunStore.waits.rows[input.Command.Resource] {
+		if wait.State == "woken" {
+			wait.State = "resumed"
+			changed = append(changed, wait)
+		}
+	}
+	return func() {
+		for _, wait := range changed {
+			wait.State = "woken"
+		}
+	}
 }
 
 func (s *goalFault) GoalVersion() int {
@@ -186,6 +235,86 @@ func goalOpenJobs(s *goalFault, resource string) []string {
 
 // goalFaults: for each property of the kit, a store that breaks exactly it.
 var goalFaults = map[string]func(*goalFault){
+	// #313's review: H-1, H-2 and the seven stores of M-2, with M-1.
+	"goal.achieve.read": ahead([]string{"achieve"}, func(s *goalFault, input *GoalTransition) {
+		if !input.Command.ExpectedRevision.Null {
+			read := input.Command.ExpectedRevision.Value
+			input.Read = &read
+		}
+	}),
+	"goal.repeat.current": func(f *goalFault) {
+		seen := map[string]GoalAnswer{}
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			key := string(goalJSON(input.Command))
+			if answer, ok := seen[key]; ok {
+				answer.Goal = deepCloneGoal(answer.Goal)
+				return answer, nil
+			}
+			answer, err := s.durableGoalStore.CommandGoal(ctx, input)
+			if err == nil {
+				answer.Goal = deepCloneGoal(answer.Goal)
+				seen[key] = answer
+			}
+			return answer, err
+		}
+	},
+	"goal.unfenced.history": func(f *goalFault) {
+		f.history = func(s *goalFault, ctx context.Context, input RunHistoryCommit) (receipt RunHistoryReceipt, err error) {
+			s.withoutGoal(input.Run.RunID, func() { receipt, err = s.durableGoalStore.CommitHistory(ctx, input) })
+			return receipt, err
+		}
+	},
+	"goal.unfenced.terminal": func(f *goalFault) {
+		f.commit = func(s *goalFault, ctx context.Context, input RunCommit) (receipt RunReceipt, err error) {
+			if current := s.currentOf(input.RunID); current != nil && goalTerminal(current.State) {
+				s.withoutGoal(input.RunID, func() { receipt, err = s.durableGoalStore.Commit(ctx, input) })
+				return receipt, err
+			}
+			return s.durableGoalStore.Commit(ctx, input)
+		}
+	},
+	"goal.achieve.unproven": reading([]string{"achieve"}, func(s *goalFault, input GoalTransition) func() {
+		held := s.MemoryRunStore.jobs.rows[input.Command.Resource]
+		s.MemoryRunStore.jobs.rows[input.Command.Resource] = slices.DeleteFunc(slices.Clone(held), func(job *RunJob) bool { return job.State == "unproven" })
+		return func() { s.MemoryRunStore.jobs.rows[input.Command.Resource] = held }
+	}),
+	"goal.achieve.woken": reading([]string{"achieve"}, goalWokenAsResolved),
+	"goal.abandon.woken": reading([]string{"abandon"}, goalWokenAsResolved),
+	"goal.create.woken":  reading([]string{"create"}, goalWokenAsResolved),
+	"goal.create.later": reading([]string{"create"}, func(s *goalFault, input GoalTransition) func() {
+		left := map[string]bool{}
+		if current := s.currentOf(input.Command.Resource); current != nil && current.Abandoned != nil {
+			for _, wait := range current.Abandoned.Waits {
+				left[wait.Wait] = true
+			}
+		}
+		changed := []*RunWait{}
+		for _, wait := range s.MemoryRunStore.waits.rows[input.Command.Resource] {
+			if !left[wait.Wait] && wait.State == "parked" {
+				wait.State = "resumed"
+				changed = append(changed, wait)
+			}
+		}
+		return func() {
+			for _, wait := range changed {
+				wait.State = "parked"
+			}
+		}
+	}),
+	"goal.terminal.pause": func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			var paused *GoalStamp
+			if current := s.currentOf(input.Command.Resource); current != nil && current.Paused != nil {
+				held := *current.Paused
+				paused = &held
+			}
+			answer, err := s.durableGoalStore.CommandGoal(ctx, input)
+			if current := s.currentOf(input.Command.Resource); err == nil && paused != nil && current != nil && goalTerminal(current.State) {
+				current.Paused = paused
+			}
+			return answer, err
+		}
+	},
 	"goal.declared": func(f *goalFault) { f.version = 2 },
 	"goal.create.commits": func(f *goalFault) {
 		f.read = func(*goalFault, context.Context, string) (*RunGoal, error) { return nil, nil }

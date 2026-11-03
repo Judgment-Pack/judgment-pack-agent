@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -554,5 +557,126 @@ func TestGoalReadsTheStoresAnswerBack(t *testing.T) {
 	defer f.run.Context.Close()
 	if _, err := RunGoalCommand(context.Background(), goalWrongEntry{f.store}, f.command("pause", bound.Goal.Revision, nil)); !goalRefusedWith(err, "invalid") {
 		t.Fatal(err)
+	}
+}
+
+// goalReadsBefore runs once, just after the achievement's read of the record: the bind it follows lands there.
+type goalReadsBefore struct {
+	durableGoalStore
+	mu   *sync.Mutex
+	once *func()
+}
+
+func (s goalReadsBefore) ReadGoal(ctx context.Context, resource string) (*RunGoal, error) {
+	out, err := s.durableGoalStore.ReadGoal(ctx, resource)
+	s.mu.Lock()
+	f := *s.once
+	*s.once = nil
+	s.mu.Unlock()
+	if f != nil {
+		f()
+	}
+	return out, err
+}
+
+// goalIgnoresRead is a host store that does not compare the revision an achievement's finding was read from.
+type goalIgnoresRead struct{ goalReadsBefore }
+
+func (s goalIgnoresRead) CommandGoal(ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+	if input.Command.Kind == "achieve" && !input.Command.ExpectedRevision.Null {
+		read := input.Command.ExpectedRevision.Value
+		input.Read = &read
+	}
+	return s.goalReadsBefore.CommandGoal(ctx, input)
+}
+
+// H-1 (#313): an achievement whose read of the record precedes the bind it follows is refused, sent together with it
+// or read just before it lands, and under a store that does not compare the revision read the package's own finding,
+// plan-unbound, still refuses it. Nothing of the objective is achieved, and the steps stay as the model left them.
+func TestGoalAnAchievementReadBeforeItsBindIsRefused(t *testing.T) {
+	for _, how := range []string{"together", "read before the bind", "a store that does not compare what was read"} {
+		t.Run(how, func(t *testing.T) {
+			f := newGoalFlow(t)
+			defer f.run.Context.Close()
+			f.tool("update_plan", `{"explanation":"work","plan":[{"id":"step-1","step":"Inspect","status":"in_progress"},{"id":"step-2","step":"Report","status":"pending"}]}`)
+			f.tool("lookup", `{"n":1}`)
+			created := f.must(f.command("create", 0, func(c *GoalCommand) { c.Objective = goalKitString("objective-1") }))
+			head := f.head()
+			bind := f.command("bind", created.Goal.Revision, func(c *GoalCommand) { c.Steps = []string{"step-1", "step-2"}; c.Head = &head })
+			achieve := f.command("achieve", created.Goal.Revision+1, func(c *GoalCommand) { c.Head = &head })
+			var bindErr, achieveErr error
+			if how == "together" {
+				var wg sync.WaitGroup
+				wg.Add(2)
+				go func() { defer wg.Done(); _, bindErr = f.send(bind) }()
+				go func() { defer wg.Done(); _, achieveErr = f.send(achieve) }()
+				wg.Wait()
+			} else {
+				once := func() { _, bindErr = f.send(bind) }
+				var store RunStore = goalReadsBefore{durableGoalStore: f.store, mu: &sync.Mutex{}, once: &once}
+				if how != "read before the bind" {
+					store = goalIgnoresRead{goalReadsBefore{durableGoalStore: f.store, mu: &sync.Mutex{}, once: &once}}
+				}
+				_, achieveErr = RunGoalCommand(context.Background(), store, achieve)
+			}
+			reason := "revision-changed"
+			if how == "a store that does not compare what was read" {
+				reason = "plan-unbound"
+			}
+			if bindErr != nil || !goalRefusedWith(achieveErr, reason) {
+				t.Fatal(bindErr, achieveErr)
+			}
+			held, _ := ReadGoal(context.Background(), f.store, goalRun)
+			last := held.Objectives[len(held.Objectives)-1]
+			outcomes := []string{}
+			for _, entry := range held.Journal {
+				outcomes = append(outcomes, entry.Kind+":"+entry.Outcome)
+			}
+			sort.Strings(outcomes)
+			steps := []string{}
+			for _, row := range f.saved().Get("plan").Items() {
+				steps = append(steps, planText(row.Get("status")))
+			}
+			if last.State != "active" || last.Plan == nil || last.Achieved != nil || !slices.Equal(outcomes, []string{"achieve:" + reason, "bind:accepted", "create:accepted"}) || !slices.Equal(steps, []string{"in_progress", "pending"}) {
+				t.Fatal(last, outcomes, steps)
+			}
+		})
+	}
+}
+
+// H-2 (#313): a repeat of an old objective's abandon, after a new objective's run started job B, sends B nothing,
+// moves no lease and writes nothing: the journal and objective 2 say what happened.
+func TestGoalARepeatOfAnOldAbandonActsOnNoNewObjective(t *testing.T) {
+	ctx := context.Background()
+	f, bound := goalBound(t)
+	defer f.run.Context.Close()
+	jobA := f.goalStartedJob("op-1", "goal.job.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K")
+	sent := []string{}
+	cancel := func(_ context.Context, input JobCancelInput) error { sent = append(sent, input.Job); return nil }
+	abandon := f.command("abandon", bound.Goal.Revision, nil)
+	first, err := AbandonGoal(ctx, f.store, f.host, abandon, 3600000, cancel)
+	if err != nil || first.Fence == nil || !slices.Equal(sent, []string{jobA}) {
+		t.Fatal(err, sent)
+	}
+	created := f.must(f.command("create", first.Goal.Revision, func(c *GoalCommand) { c.Objective = goalKitString("objective-2") }))
+	f.fence = *first.Fence
+	jobB := f.goalStartedJob("op-2", "goal.job.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
+	lease, _ := f.store.ReadLease(ctx, goalRun)
+	before, _ := ReadGoal(ctx, f.store, goalRun)
+	if _, err := AbandonGoal(ctx, f.store, f.host, abandon, 3600000, cancel); !goalRefusedWith(err, "revision-changed") {
+		t.Fatal(err)
+	}
+	leaseAfter, _ := f.store.ReadLease(ctx, goalRun)
+	after, _ := ReadGoal(ctx, f.store, goalRun)
+	if !slices.Equal(sent, []string{jobA}) || slices.Contains(sent, jobB) || !goalKitSame(leaseAfter, lease) || !goalKitSame(after, before) {
+		t.Fatal(sent, leaseAfter, after)
+	}
+	last := after.Objectives[len(after.Objectives)-1]
+	tail := []string{}
+	for _, entry := range after.Journal[len(after.Journal)-3:] {
+		tail = append(tail, entry.Kind+":"+entry.Outcome+":"+entry.Objective)
+	}
+	if last.ID != "objective-2" || last.State != "active" || after.Revision != created.Goal.Revision || !slices.Equal(tail, []string{"abandon:accepted:objective-1", "abandon:delivered:objective-1", "create:accepted:objective-2"}) {
+		t.Fatal(last, tail)
 	}
 }

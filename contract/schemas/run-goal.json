@@ -627,7 +627,8 @@
             "lineage-changed",
             "step-incomplete",
             "evidence-refused",
-            "history-unsupported"
+            "history-unsupported",
+            "plan-unbound"
           ]
         },
         "step": {
@@ -637,7 +638,7 @@
       "additionalProperties": false
     },
     "transition": {
-      "description": "What the store is handed: a bind carries its steps or what refused them, an achievement may carry a finding, and nothing else carries either.",
+      "description": "What the store is handed: a bind carries its steps or what refused them, an achievement carries the revision it read and may carry a finding, and nothing else carries any of them.",
       "type": "object",
       "required": [
         "version",
@@ -655,6 +656,11 @@
         },
         "refused": {
           "$ref": "#/$defs/finding"
+        },
+        "read": {
+          "description": "An achievement's: the goal record's revision its finding was computed from. The store refuses revision-changed unless it is the command's expected revision, so a finding read before another command landed is never taken for the record that command made (#313 H-1).",
+          "type": "integer",
+          "minimum": 1
         }
       },
       "additionalProperties": false

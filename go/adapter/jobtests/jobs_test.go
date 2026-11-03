@@ -155,6 +155,7 @@ type options struct {
 	resume       bool
 	decision     *contract.CheckpointApprovalDecision
 	continuation *runcontext.RunJob
+	plan         *runcontext.Value
 }
 
 // drive runs the tools: the model or the agent makes each call, then ends.
@@ -166,7 +167,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 	g.SetOffer(contract.ToolOffer{})
 	start := ""
 	run := &adapter.Run{Prompt: "Run the job.", Wire: "openai-compatible", ModelName: "fixture", Thinking: "off", Critic: "off", AllowConversation: true, Gate: g.Calls(), HostTools: tools,
-		Context: &runcontext.Input{RequestCap: with.requestCap, Authorize: with.authorize, CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation},
+		Context: &runcontext.Input{RequestCap: with.requestCap, Authorize: with.authorize, CurrentRequest: &runcontext.CurrentRequest{Message: "Run the job.", Input: "job"}, RunStore: &runcontext.DurableRunInput{Store: store, ID: jobRun, Resume: with.resume}, Approval: with.decision, JobContinuation: with.continuation, Plan: with.plan, Phase: phaseOf(with.plan)},
 		Emit: func(event contract.RunEvent) {
 			mu.Lock()
 			out.events = append(out.events, event)
@@ -2111,4 +2112,114 @@ func TestJobsWhatIsSentIsTheRecordOfTheJobAskedFor(t *testing.T) {
 			}
 		})
 	}
+}
+
+// phaseOf is the run's phase: work under an accepted Plan, none without one.
+func phaseOf(plan *runcontext.Value) string {
+	if plan == nil {
+		return ""
+	}
+	return "work"
+}
+
+// durableGoalJobStore is the memory kind held as a durable one, with the goal port's lifetime declared too.
+type durableGoalJobStore struct{ durableJobStore }
+
+func (durableGoalJobStore) GoalLifetime() string { return runcontext.GoalLifetimeDurable }
+
+// #313 (C10's twin): a start cited as a required step's evidence proves it only as its job reads now. Through the
+// real eino adapter: the model starts a job and closes its step with the start's row; the objective binds that
+// step; the achievement is accepted once the job succeeded and refused once it failed.
+func TestJobsAStartCitedAsEvidenceProvesItsStepOnlyAsItsJobReadsNow(t *testing.T) {
+	plan := runcontext.ObjectOf("id", runcontext.String("accepted-plan"), "revision", runcontext.Number(1), "objective", runcontext.String("Run and report"), "steps", runcontext.Array(runcontext.String("Run")), "questions", runcontext.Array(), "references", runcontext.Array(), "status", runcontext.String("accepted"), "createdAt", runcontext.String("2026-01-01T00:00:00.000Z"), "acceptedAt", runcontext.String("2026-01-01T00:00:00.000Z"))
+	for _, outcome := range []string{"succeeded", "failed"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx := context.Background()
+			clock := &jobClock{at: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+			store := durableGoalJobStore{durableJobStore{runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{Now: clock.now})}}
+			lease, err := store.AcquireLease(ctx, runcontext.LeaseAcquire{Resource: jobRun, Owner: "worker-a", DurationMs: jobHour})
+			if err != nil {
+				t.Fatal(err)
+			}
+			view, err := runcontext.UnattendedRunStore(store, runcontext.FenceOf(lease), runcontext.NewReferenceEffectHost(store))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tool := startTool(t, &startCalls{}, answered(startedAnswer, nil), "allow", nil)
+			drive(t, view, "eino", []runcontext.HostTool{tool}, []jobCall{{"update_plan", `{"explanation":"work","plan":[{"id":"step-1","step":"Run","status":"in_progress"}]}`}, {"start", jobArgs}}, options{plan: plan})
+			job := onlyJob(t, store)
+			var saved struct {
+				PlanState struct {
+					Revision string `json:"revision"`
+				} `json:"planState"`
+			}
+			head, _ := store.Load(ctx, jobRun)
+			if err := json.Unmarshal(head.Checkpoint, &saved); err != nil || saved.PlanState.Revision == "" {
+				t.Fatal(err, string(head.Checkpoint))
+			}
+			goal := func(kind, id string, revision int64, edit func(*runcontext.GoalCommand)) runcontext.GoalCommand {
+				c := runcontext.GoalCommand{Version: 1, Resource: jobRun, Command: id, Actor: "person-1", Kind: kind}
+				if revision == 0 {
+					c.ExpectedRevision.Null = true
+				} else {
+					c.ExpectedRevision.Value = revision
+				}
+				if edit != nil {
+					edit(&c)
+				}
+				return c
+			}
+			created, err := runcontext.RunGoalCommand(ctx, store, goal("create", "cmd-1", 0, func(c *runcontext.GoalCommand) { objective := "objective-1"; c.Objective = &objective }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The objective binds the open step; the step is closed after.
+			at := runcontext.GoalHead{Revision: head.Revision, Digest: runcontext.CheckpointBytesDigest(head.Checkpoint)}
+			bound, err := runcontext.RunGoalCommand(ctx, store, goal("bind", "cmd-2", created.Goal.Revision, func(c *runcontext.GoalCommand) { c.Steps = []string{"step-1"}; c.Head = &at }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The step is closed by the start's row once its job has succeeded, as complete_plan_step requires.
+			if _, err := runcontext.CompleteJob(ctx, store, completion(job.Job, nil)); err != nil {
+				t.Fatal(err)
+			}
+			closed := drive(t, view, "eino", []runcontext.HostTool{tool}, []jobCall{{"complete_plan_step", `{"id":"step-1","expectedRevision":"` + saved.PlanState.Revision + `","outcome":"completed","evidence":{"operations":["` + job.Operation + `"],"artifacts":[]}}`}}, options{plan: plan, resume: true})
+			if strings.Contains(lastToolResult(t, closed), `"isError":true`) {
+				t.Fatal(lastToolResult(t, closed))
+			}
+			head, _ = store.Load(ctx, jobRun)
+			at = runcontext.GoalHead{Revision: head.Revision, Digest: runcontext.CheckpointBytesDigest(head.Checkpoint)}
+			// The job as it reads now: a store whose record says, since, that it failed.
+			var reads runcontext.RunStore = store
+			if outcome == "failed" {
+				reads = jobsSayFailed{store, job.Job}
+			}
+			done, err := runcontext.RunGoalCommand(ctx, reads, goal("achieve", "cmd-3", bound.Goal.Revision, func(c *runcontext.GoalCommand) { c.Head = &at }))
+			var refused *runcontext.GoalRefused
+			if outcome == "succeeded" && (err != nil || done.Goal.Objectives[0].State != "achieved") {
+				t.Fatal(err, done.Goal.Objectives)
+			}
+			if outcome == "failed" && (!errors.As(err, &refused) || refused.Reason != "evidence-refused") {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// jobsSayFailed lists the job as completed with failed.
+type jobsSayFailed struct {
+	durableGoalJobStore
+	job string
+}
+
+func (s jobsSayFailed) ListJobs(ctx context.Context, resource, after string, limit int) (runcontext.JobPage, error) {
+	page, err := s.durableGoalJobStore.ListJobs(ctx, resource, after, limit)
+	for i := range page.Jobs {
+		if page.Jobs[i].Job == s.job && page.Jobs[i].Completion != nil {
+			completion := *page.Jobs[i].Completion
+			completion.Outcome = "failed"
+			page.Jobs[i].Completion = &completion
+		}
+	}
+	return page, err
 }

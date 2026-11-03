@@ -837,13 +837,15 @@ run with no record. `goalCommand({store, command})` (Go `RunGoalCommand`) runs `
 `achieve` (`head`, `waive?`), `pause`, `resume`, `block` (`condition`) and `unblock`; `abandonGoal` (Go `AbandonGoal`) runs
 `abandon`; `inspectGoal` is a counted read, `readGoal` a plain one and `goalReport` the report. An accepted command answers the record
 and its entry; a refused one throws `GoalRefused`, journaled where the run has a record. A repeat of a command id answers as the
-first did; another command under it is `conflict`, and a host that wants to try again uses a new id.
+first did while its entry is in the journal, with the record as it is now; another command under it is `conflict`, and a host that
+wants to try again uses a new id. A repeat of an abandon asks the jobs again only while the objective it abandoned is current, and
+refuses `revision-changed` with nothing sent once another objective exists.
 
 | Command | Accepted when | Refused |
 | --- | --- | --- |
-| `create` | No objective, or a terminal one; an identity never used in the run; fewer than eight; every wait the last abandon left resumed or ended | `objective-exists`, `objective-reused`, `goals-exhausted`, `wait-unresolved` (M10) |
+| `create` | No objective, or a terminal one; an identity never used in the run; fewer than eight; over a terminal one, every wait of the run resumed or ended, those the last abandon left and any parked since | `objective-exists`, `objective-reused`, `goals-exhausted`, `wait-unresolved` (M10) |
 | `bind` | The head is the command's; the package read the head's accepted Plan, the steps named in it with origins, none closed; no earlier objective of the run bound that Plan | `plan-bound`, `head-changed`, `plan-invalid`, `step-settled`, `plan-reused` (M11) |
-| `achieve` | Not blocked; a Plan bound; the head is the command's; the package found nothing (below); no wait of the run unresolved; every unsettled job waived, and only unsettled ones | `objective-blocked`, `plan-unbound`, `head-changed`, a finding, `wait-pending`, `waiver-invalid`, `jobs-unsettled` |
+| `achieve` | The package's finding read from the record at the command's revision; not blocked; a Plan bound; the head is the command's; the package found nothing (below); no wait of the run unresolved, a woken one included; every unsettled job, `unproven` or `started`, waived, and only unsettled ones | `revision-changed`, `objective-blocked`, `plan-unbound`, `head-changed`, a finding, `wait-pending`, `waiver-invalid`, `jobs-unsettled` |
 | `pause`, `resume` | Not paused; paused | `objective-paused`, `not-paused` |
 | `block`, `unblock` | Not blocked; blocked | `objective-blocked`, `not-blocked` |
 | `abandon` | An open objective | `objective-terminal`, as every command on a terminal objective is |
@@ -865,12 +867,14 @@ new run.
 under the same serialization as its commits, with the record surviving the store's own restarts.
 
 - `commandGoal(transition)`: decides one command against the record's revision and the run's head, waits, jobs and lease as they are
-  in that transaction, and journals it. `transition` is `{version, command, plan?, refused?}`: a bind carries the steps the package
-  read or what refused them, an achievement may carry a finding, and the store journals a finding as the refusal. It answers a pause
-  and a resume with the run's lease as it holds it.
+  in that transaction, and journals it. `transition` is `{version, command, plan?, refused?, read?}`: a bind carries the steps the
+  package read or what refused them; an achievement carries `read`, the revision of the record its finding was computed from, which
+  must be the command's expected revision (`revision-changed` otherwise), and may carry a finding; the store journals a finding as the
+  refusal. It answers a pause and a resume with the run's lease as it holds it, and a repeat with the record as it is now.
 - While the current objective is paused, `acquireLease` and `resumeWait` refuse `objective-paused` (M8). `renewLease`, `releaseLease`,
   fenced commits and the abandon's seizure are unchanged: a held lease runs on to its expiry, and paused is not stopped.
-- From `create` on, an unfenced `commit` of the run refuses `lease-required`: an objective's run is leased.
+- From `create` on, an unfenced commit of the run refuses `lease-required`, through `commit` and `commitHistory` alike, and after the
+  objective has ended too: an objective's run is leased. An objective that ends paused keeps no pause.
 - `inspectGoal(input)`: the record, with the inspection counted and its last row kept; no revision moves, and a repeat of the last id
   is not counted again (M12). Nothing is written for a run with no record.
 - `recordGoalDeliveries(input)`: journals an abandon's deliveries on the objective that command abandoned (`invalid` otherwise).

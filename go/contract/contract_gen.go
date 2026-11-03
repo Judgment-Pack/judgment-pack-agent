@@ -20411,15 +20411,17 @@ func (v RunGoalStep) MarshalJSON() ([]byte, error) {
 }
 
 // From run-goal.json#/$defs/transition. What the store is handed: a bind carries its steps or what
-// refused them, an achievement may carry a finding, and nothing else carries either.
+// refused them, an achievement carries the revision it read and may carry a finding, and nothing
+// else carries any of them.
 type RunGoalTransition struct {
 	Version int64             `json:"version"`
 	Command RunGoalCommand    `json:"command"`
 	Plan    *RunGoalPlanSteps `json:"plan,omitzero"`
 	Refused *RunGoalFinding   `json:"refused,omitzero"`
+	Read    *int64            `json:"read,omitzero"`
 }
 
-var runGoalTransitionMembers = []string{"version", "command", "plan", "refused"}
+var runGoalTransitionMembers = []string{"version", "command", "plan", "refused", "read"}
 
 // UnmarshalJSON decodes a RunGoalTransition object and refuses a member the closed schema does not name.
 func (v *RunGoalTransition) UnmarshalJSON(data []byte) error {

@@ -906,7 +906,7 @@ fresh fence, and stable cancel identities through the effect host.
 commands with an id, an actor and the record's expected revision, with no model call and no run commit. `goalCommand` runs `create`,
 `bind`, `achieve`, `pause`, `resume`, `block` and `unblock`; `abandonGoal` runs `abandon` with `abandonJobs` and journals what it left
 and delivered; `inspectGoal` is a counted read and `goalReport` the report. An achievement re-verifies every required step from the
-head's own book, a delegated one through the writer's history check (`verifyTaskEvidence`), and refuses unsettled jobs unless waived.
+head's own book against the record at the command's revision, a delegated one through the writer's history check (`verifyTaskEvidence`), and refuses unsettled jobs unless waived.
 While paused, a run is leased by no acquisition and resumed by no claim; from `create` on, it is leased. A store kind is certified by
 `runStoreGoalConformance` (`storage/goalConformance`).
 

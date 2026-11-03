@@ -77,7 +77,8 @@ async function finish(held:Held,moves:Parameters<typeof plan>[0]=[{id:'step-1',s
 const achieve=async(held:Held,revision:number,over:Partial<GoalCommand>={})=>goalCommand({store:held.store,command:command('achieve',revision,{head:await headOf(held.store),...over})})
 const lastEntry=async(store:RunStore,resource=RUN)=>(await readGoal(store,resource))!.journal.at(-1)!
 
-vi.setConfig({testTimeout:120_000})
+// L-7: two of these runs take 70 to 80 s unloaded; a slow or loaded runner gets the room to finish them.
+vi.setConfig({testTimeout:300_000})
 describe('the objective: host commands without a model turn (#230)',()=>{
  it('creates, binds the accepted Plan and is achieved by the steps\' own evidence; a helper step the model added is no departure (M17)',async()=>{
   const held=await bound()
@@ -119,6 +120,34 @@ describe('the objective: host commands without a model turn (#230)',()=>{
   await held.store.commitFenced({runId:RUN,expectedRevision:head.revision,commitId:'tampered',checkpoint:new TextEncoder().encode(JSON.stringify(broken)),events:[]},held.fence)
   await expect(achieve(held,held.binding.goal.revision)).rejects.toEqual(refusal('evidence-refused'))
   expect(await lastEntry(held.store)).toMatchObject({outcome:'evidence-refused',step:'step-1'})
+ })
+ it('H-1: an achievement whose read of the record precedes the bind it follows is refused, sent together or read just before the bind lands',async()=>{
+  // The third: a host store that does not compare the revision read; the package's own finding, plan-unbound, still refuses.
+  for(const how of ['together','read before the bind','a store that does not compare what was read'] as const){
+   const held=await leased()
+   const first=provider([plan([{id:'step-1',step:'Inspect',status:'in_progress'},{id:'step-2',step:'Report',status:'pending'}]),{call:{tool:'lookup',arguments:{}}},{say:'Read.'}])
+   await drive(held.view,[LOOKUP],first.call)
+   const created=await goalCommand({store:held.store,command:command('create',null,{objective:'objective-1'})})
+   const head=await headOf(held.store),r=created.goal.revision
+   const bind=()=>goalCommand({store:held.store,command:command('bind',r,{steps:['step-1','step-2'],head})})
+   const achieveIt=()=>goalCommand({store:held.store,command:command('achieve',r+1,{head})})
+   if(how==='together'){
+    const [bound,achieved]=await Promise.allSettled([bind(),achieveIt()])
+    expect(bound.status).toBe('fulfilled')
+    expect(achieved).toMatchObject({status:'rejected',reason:refusal('revision-changed')})
+   }else{
+    // The achievement reads the record, then the bind lands, then the achievement's transaction runs at the bind's revision.
+    const store=held.store as unknown as {readGoal:(resource:string,signal?:AbortSignal)=>Promise<unknown>;commandGoal:(input:{command:GoalCommand;read?:number},signal?:AbortSignal)=>Promise<unknown>},real=store.readGoal.bind(store)
+    let once=false
+    store.readGoal=async(resource,signal)=>{const out=await real(resource,signal);if(!once){once=true;await bind()};return out}
+    if(how==='a store that does not compare what was read'){const command=store.commandGoal.bind(store);store.commandGoal=(input,signal)=>command(input.command.kind==='achieve'?{...input,read:input.command.expectedRevision!}:input,signal)}
+    await expect(achieveIt()).rejects.toEqual(refusal(how==='read before the bind'?'revision-changed':'plan-unbound'))
+   }
+   const goal=(await readGoal(held.store,RUN))!,steps=(await checkpoint(held.store)).plan.map(row=>row.status)
+   expect(goal.objectives[0]).toMatchObject({state:'active',plan:{id:'accepted-plan'}});expect(goal.objectives[0]!.achieved).toBeUndefined()
+   expect(steps).toEqual(['in_progress','pending'])
+   expect(goal.journal.map(entry=>`${entry.kind}:${entry.outcome}`).sort()).toEqual([how==='a store that does not compare what was read'?'achieve:plan-unbound':'achieve:revision-changed','bind:accepted','create:accepted'])
+  }
  })
  it('competing and repeated commands: one wins by revision, a repeat answers as the first did, another under its id is conflict',async()=>{
   const held=await bound(),revision=held.binding.goal.revision

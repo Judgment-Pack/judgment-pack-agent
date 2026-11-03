@@ -363,7 +363,8 @@
     "waive": [
      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
     ]
-   }
+   },
+   "read": 5
   },
   {
    "version": 1,
@@ -451,7 +452,8 @@
    },
    "refused": {
     "reason": "decision-pending"
-   }
+   },
+   "read": 5
   },
   {
    "version": 1,
@@ -472,7 +474,8 @@
    },
    "refused": {
     "reason": "lineage-changed"
-   }
+   },
+   "read": 5
   },
   {
    "version": 1,
@@ -494,7 +497,8 @@
    "refused": {
     "reason": "step-incomplete",
     "step": "step-1"
-   }
+   },
+   "read": 5
   },
   {
    "version": 1,
@@ -516,7 +520,8 @@
    "refused": {
     "reason": "evidence-refused",
     "step": "step-1"
-   }
+   },
+   "read": 5
   },
   {
    "version": 1,
@@ -538,6 +543,29 @@
    "refused": {
     "reason": "history-unsupported",
     "step": "step-1"
+   },
+   "read": 5
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "read": 5,
+   "refused": {
+    "reason": "plan-unbound"
    }
   }
  ],
@@ -563,7 +591,30 @@
     },
     "refused": {
      "reason": "jobs-unsettled"
-    }
+    },
+    "read": 5
+   }
+  },
+  {
+   "problem": "a revision read of 0",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-8",
+     "actor": "person-1",
+     "expectedRevision": 5,
+     "kind": "achieve",
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     "waive": [
+      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+     ]
+    },
+    "read": 0
    }
   }
  ],
@@ -706,7 +757,8 @@
        "index": 1
       }
      ]
-    }
+    },
+    "read": 5
    }
   },
   {
@@ -731,7 +783,66 @@
     "refused": {
      "reason": "head-changed",
      "step": "step-1"
+    },
+    "read": 5
+   }
+  },
+  {
+   "problem": "an achievement without the revision it read",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-8",
+     "actor": "person-1",
+     "expectedRevision": 5,
+     "kind": "achieve",
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     "waive": [
+      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+     ]
     }
+   }
+  },
+  {
+   "problem": "a bind carrying a revision read",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-7",
+     "actor": "person-1",
+     "expectedRevision": 4,
+     "kind": "bind",
+     "steps": [
+      "step-2",
+      "step-1"
+     ],
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    },
+    "plan": {
+     "id": "accepted-plan",
+     "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "steps": [
+      {
+       "step": "step-1",
+       "index": 0
+      },
+      {
+       "step": "step-2",
+       "index": 1
+      }
+     ]
+    },
+    "read": 4
    }
   }
  ],

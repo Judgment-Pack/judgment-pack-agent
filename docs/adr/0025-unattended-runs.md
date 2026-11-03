@@ -608,10 +608,12 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
 
 - Host commands only, each with an id, an actor and the record's expected revision (`null` with no record); no model call and no run
   commit. The store decides each in one transaction against the run's head, waits, jobs and lease as they are in it, and journals
-  it, accepted or refused. A repeat of an id answers as the first did; another command under it is `conflict`, not journaled.
+  it, accepted or refused. A repeat of an id answers as the first did while its entry is in the journal (the last 64 entries,
+  refused ones dropped first); once that entry has gone, the id is decided afresh. Another command under it is `conflict`, not
+  journaled.
 - `create` makes one from none or from terminal, under an identity never used in this run, at most eight a run; there is no
   `replace`. Earlier objectives are kept whole. `create` over an abandoned objective refuses `wait-unresolved` while a wait the
-  abandon left is neither resumed nor ended (M10).
+  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1).
 - `bind` takes the head's accepted Plan as the package reads it from the head the command names: nonempty unique steps with
   origins, in plan order, none `completed` or `not-needed` (`step-settled`), and no Plan an earlier objective of the run bound
   (`plan-reused`, M11). The run's accepted Plan is fixed for the run's life, so a later objective cannot bind it: new work under a new
@@ -623,7 +625,10 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
   `completed` (`step-incomplete`) with evidence that proves it from the head's book now, every job of the run read afresh, so a cited
   start needs its job `completed`, `succeeded` (`evidence-refused`). A delegated step goes through the writer's history check, now
   `verifyTaskEvidence`, which the writer and the objective both call; a store without history refuses `history-unsupported` (M16).
-  The package hands its finding to the store, which journals it and checks the head is still the one read. Unsettled jobs refuse
+  The package hands its finding to the store with the revision of the record it read, and the store takes it only at the command's
+  own expected revision (`revision-changed` otherwise), so a finding read before a bind landed is never taken for the bound record
+  (#313 H-1); with no Plan bound in what it read, the finding is `plan-unbound`. The store journals the finding and checks the head
+  is still the one read. Unsettled jobs, `unproven` ones among them, refuse
   `jobs-unsettled` unless the command waives each by id (a waiver of anything else is `waiver-invalid`); the waiver and the settled
   jobs that did not succeed, contradictions included, are on the achievement. No wait of the run may be unresolved (`wait-pending`).
 - `pause` and `resume` move a disposition, never a state: `acquireLease` and `resumeWait` refuse `objective-paused`, and the answer
@@ -635,7 +640,10 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
   build's: decision 8 names `blocked`, and nothing else would move to it.
 - `abandon` (`abandonGoal`) abandons the objective in its own transaction, which records the run's waits not resumed or ended and its
   jobs not settled, then runs `abandonJobs` under the same command id and journals each attempt's deliveries. It closes nothing more
-  than `abandonJobs` does; what it left is recorded, and the next `create` is held to the waits (M10).
+  than `abandonJobs` does; what it left is recorded, and the next `create` is held to the run's waits (M10). A repeat of the command
+  runs `abandonJobs` again only while the objective it abandoned is still the current one: after another objective is created it
+  refuses `revision-changed`, with nothing sent, no lease taken and nothing journaled (#313 H-2). The objective's pause and block end
+  with it, so the run can be leased again.
 - `inspect` is a counted read: a count and a last row, no revision moved. The journal holds at most 64 entries; past it the oldest
   refused entry goes first, then the oldest entry, and `discarded` counts them, so no command is ever refused for size (M12). A
   refusal on a run with no record is not written.

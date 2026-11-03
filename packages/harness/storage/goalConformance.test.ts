@@ -39,8 +39,23 @@ const ahead=(kinds:string[],before:(input:Held,goals:Held,tables:Held)=>Held|voi
 const answered=(kinds:string[],after:(answer:Held)=>void):Fault=>store=>wrap(store,'commandGoal',original=>async(input,signal)=>{const answer=await original(input,signal);if(kinds.includes(input.command.kind))after(answer);return answer})
 /** A store that does not refuse with `reason`: it answers the record as it is. */
 const swallows=(reason:string):Fault=>(store,{goals})=>wrap(store,'commandGoal',original=>async(input,signal)=>{try{return await original(input,signal)}catch(error){if(error instanceof GoalRefused&&error.reason===reason)return {goal:structuredClone(rowOf(goals,input.command.resource)),entry:{command:input.command.command,outcome:'accepted'}};throw error}})
+/** What a goal transaction of these kinds reads of the run, changed by `edit`: a store that reads less than it holds. */
+const reading=(kinds:string[],edit:(context:Held,goals:Held,input:Held)=>Held):Fault=>(_,{goals})=>{const original=goals.command.bind(goals);goals.command=(input:Held,context:(resource:string)=>Held)=>original(input,kinds.includes(input.command?.kind)?(resource:string)=>edit(context(resource),goals,input):context)}
+/** A store that reads a woken wait as resolved. */
+const withoutWoken=(context:Held)=>({...context,waits:context.waits.map((wait:Held)=>wait.state==='woken'?{...wait,state:'resumed'}:wait)})
 /** For each property of the kit, a store that breaks exactly it. */
 const FAULTS:[string,Fault][]=[
+ // #313's review: H-1, H-2 and the seven stores of M-2, with M-1.
+ ['goal.achieve.read',ahead(['achieve'],input=>({...input,read:input.command.expectedRevision}))],
+ ['goal.repeat.current',store=>{const seen=new Map<string,unknown>();wrap(store,'commandGoal',original=>async(input,signal)=>{const key=JSON.stringify(input.command);if(seen.has(key))return structuredClone(seen.get(key));const answer=await original(input,signal);seen.set(key,structuredClone(answer));return answer})}],
+ ['goal.unfenced.history',(store,{goals})=>wrap(store,'commitHistory',original=>async(input,signal)=>{const admit=goals.admitUnfenced;goals.admitUnfenced=()=>undefined;try{return await original(input,signal)}finally{goals.admitUnfenced=admit}})],
+ ['goal.unfenced.terminal',(_,{goals})=>{const admit=goals.admitUnfenced.bind(goals);goals.admitUnfenced=(resource:string)=>{const state=currentOf(goals,resource)?.state;if(state==='active'||state==='blocked')admit(resource)}}],
+ ['goal.achieve.unproven',reading(['achieve'],context=>({...context,jobs:context.jobs.filter((job:Held)=>job.state!=='unproven')}))],
+ ['goal.achieve.woken',reading(['achieve'],withoutWoken)],
+ ['goal.abandon.woken',reading(['abandon'],withoutWoken)],
+ ['goal.create.woken',reading(['create'],withoutWoken)],
+ ['goal.create.later',reading(['create'],(context,goals,input)=>{const left=new Set((currentOf(goals,input.command.resource)?.abandoned?.waits??[]).map((wait:Held)=>wait.wait));return {...context,waits:context.waits.filter((wait:Held)=>left.has(wait.wait))}})],
+ ['goal.terminal.pause',(_,{goals})=>{const original=goals.command.bind(goals);goals.command=(input:Held,context:Held)=>{const paused=currentOf(goals,input.command?.resource)?.paused,answer=original(input,context),current=currentOf(goals,input.command.resource);if(paused&&current&&(current.state==='abandoned'||current.state==='achieved'))current.paused=paused;return answer}}],
  ['goal.declared',store=>{Object.defineProperty(store,'goalVersion',{value:2})}],
  ['goal.create.commits',store=>{store.readGoal=async()=>undefined}],
  ['goal.create.cas',ahead(['create'],(input,goals)=>({...input,command:{...input.command,expectedRevision:rowOf(goals,input.command.resource)?.revision??null}}))],

@@ -183,6 +183,16 @@
      "digest": "sha256:d38c595dd8ffe9f3b3d2fa42d7ac5b31e776bfd02c78703ef722efc9791e3792"
     },
     {
+     "command": "t-11b",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:11:30.000Z",
+     "objective": "goal-a",
+     "outcome": "revision-changed",
+     "revision": 6,
+     "digest": "sha256:0f9e748cdb8774352ae75f3a03e07831f9d7e5eec479c491d34b27813496f12c"
+    },
+    {
      "command": "t-12",
      "kind": "achieve",
      "actor": "host-1",
@@ -363,6 +373,16 @@
      "outcome": "wait-unresolved",
      "revision": 3,
      "digest": "sha256:4b420b5405d79d1ab0f9e825a73de036afc9e69883c096d0fd7645f2f736e5f2"
+    },
+    {
+     "command": "t-21b",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:06:30.000Z",
+     "objective": "goal-c",
+     "outcome": "wait-unresolved",
+     "revision": 3,
+     "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
     },
     {
      "command": "t-22",
@@ -1198,7 +1218,8 @@
         "revision": "rev-1",
         "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
        }
-      }
+      },
+      "read": 4
      },
      "refused": "objective-blocked",
      "context": {
@@ -1340,6 +1361,27 @@
      }
     },
     {
+     "at": "2026-02-01T00:11:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-11b",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "read": 5
+     },
+     "refused": "revision-changed"
+    },
+    {
      "at": "2026-02-01T00:12:00.000Z",
      "op": "command",
      "input": {
@@ -1355,7 +1397,8 @@
         "revision": "rev-1",
         "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
        }
-      }
+      },
+      "read": 6
      },
      "refused": "jobs-unsettled",
      "context": {
@@ -1411,7 +1454,8 @@
        "waive": [
         "sha256:4444444444444444444444444444444444444444444444444444444444444444"
        ]
-      }
+      },
+      "read": 6
      },
      "refused": "waiver-invalid",
      "context": {
@@ -1464,7 +1508,8 @@
         "revision": "rev-1",
         "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
        }
-      }
+      },
+      "read": 6
      },
      "refused": "wait-pending",
      "context": {
@@ -1500,7 +1545,8 @@
        "waive": [
         "sha256:1111111111111111111111111111111111111111111111111111111111111111"
        ]
-      }
+      },
+      "read": 6
      },
      "context": {
       "head": {
@@ -1767,6 +1813,16 @@
       "digest": "sha256:d38c595dd8ffe9f3b3d2fa42d7ac5b31e776bfd02c78703ef722efc9791e3792"
      },
      {
+      "command": "t-11b",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:11:30.000Z",
+      "objective": "goal-a",
+      "outcome": "revision-changed",
+      "revision": 6,
+      "digest": "sha256:0f9e748cdb8774352ae75f3a03e07831f9d7e5eec479c491d34b27813496f12c"
+     },
+     {
       "command": "t-12",
       "kind": "achieve",
       "actor": "host-1",
@@ -2018,6 +2074,37 @@
      }
     },
     {
+     "at": "2026-02-01T00:06:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-21b",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "expired"
+       },
+       {
+        "wait": "w-2",
+        "reason": "approval",
+        "state": "parked"
+       }
+      ]
+     },
+     "refused": "wait-unresolved"
+    },
+    {
      "at": "2026-02-01T00:07:00.000Z",
      "op": "command",
      "input": {
@@ -2164,6 +2251,16 @@
       "outcome": "wait-unresolved",
       "revision": 3,
       "digest": "sha256:4b420b5405d79d1ab0f9e825a73de036afc9e69883c096d0fd7645f2f736e5f2"
+     },
+     {
+      "command": "t-21b",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:30.000Z",
+      "objective": "goal-c",
+      "outcome": "wait-unresolved",
+      "revision": 3,
+      "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
      },
      {
       "command": "t-22",

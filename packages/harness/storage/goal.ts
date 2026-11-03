@@ -30,7 +30,7 @@ export const GOAL_COMMAND_KINDS:readonly GoalCommandKind[]=['create','bind','ach
 export const GOAL_REFUSAL_REASONS:readonly GoalRefusalReason[]=['invalid','conflict','revision-changed','no-objective','objective-exists','objective-reused','goals-exhausted','objective-terminal','objective-paused','not-paused','objective-blocked','not-blocked','plan-bound','plan-unbound','plan-invalid','plan-reused','step-settled','head-changed','lineage-changed','decision-pending','wait-pending','step-incomplete','evidence-refused','history-unsupported','jobs-unsettled','waiver-invalid','wait-unresolved','lease-required']
 export const GOAL_CAPABILITY_REASONS:readonly GoalCapabilityReason[]=['store-unsupported','store-lifetime']
 /** What only the package can find, from the head it read: the store records it as the command's refusal. */
-export const GOAL_FINDINGS:readonly GoalRefusalReason[]=['head-changed','plan-invalid','step-settled','decision-pending','lineage-changed','step-incomplete','evidence-refused','history-unsupported']
+export const GOAL_FINDINGS:readonly GoalRefusalReason[]=['head-changed','plan-invalid','step-settled','decision-pending','lineage-changed','step-incomplete','evidence-refused','history-unsupported','plan-unbound']
 /** A refusal that names a step. */
 const STEP_FINDINGS:readonly GoalRefusalReason[]=['step-settled','step-incomplete','evidence-refused','history-unsupported']
 /** Neither is journaled: an invalid command has no id to journal, and a conflict is another command's id. */
@@ -62,8 +62,11 @@ export interface GoalInspections {count:number;last:{command:string;actor:string
 export interface RunGoal {version:1;kind:'goal';resource:string;revision:number;objectives:Objective[];journal:GoalEntry[];discarded?:number;inspections?:GoalInspections}
 export interface GoalCommand {version:1;resource:string;command:string;actor:string;expectedRevision:number|null;kind:GoalCommandKind;objective?:string;steps?:string[];head?:GoalHead;waive?:string[];condition?:string}
 export interface GoalFinding {reason:GoalRefusalReason;step?:string}
-/** What the store is handed: the host's command, and what the package found from the head (a bind's steps, or a refusal). */
-export interface GoalTransition {version:1;command:GoalCommand;plan?:GoalPlanSteps;refused?:GoalFinding}
+/** What the store is handed: the host's command, and what the package found from the head (a bind's steps, or a refusal). An
+ * achievement carries `read`, the goal record's revision its finding was computed from: the store refuses revision-changed unless
+ * it is the command's expected revision, so a finding read before another command landed is never taken for that command's record
+ * (#313 H-1). */
+export interface GoalTransition {version:1;command:GoalCommand;plan?:GoalPlanSteps;refused?:GoalFinding;read?:number}
 export interface GoalInspect {version:1;resource:string;command:string;actor:string}
 export interface GoalDeliveries {version:1;resource:string;command:string;deliveries:GoalDelivery[]}
 /** An accepted command's answer. `lease` (a pause or a resume): the run's lease as the store holds it, since a held lease
@@ -188,9 +191,12 @@ export function readGoalCommand(v:unknown):GoalCommand{
  return command
 }
 export function readGoalTransition(v:unknown):GoalTransition{
- const held=shape(v,['version','command'],['plan','refused'])
+ const held=shape(v,['version','command'],['plan','refused','read'])
  if(held.version!==GOAL_RECORD_VERSION)return invalid()
  const command=readGoalCommand(held.command),transition:GoalTransition={version:1,command}
+ // An achievement carries the revision it read, and nothing else does.
+ if((held.read!==undefined)!==(command.kind==='achieve'))return invalid()
+ if(held.read!==undefined)transition.read=count(held.read,1)
  if(held.plan!==undefined)transition.plan=readGoalPlanSteps(held.plan)
  if(held.refused!==undefined){const refused=shape(held.refused,['reason'],['step']),reason=one(refused.reason,GOAL_FINDINGS);transition.refused={reason,...(refused.step===undefined?{}:{step:STEP_FINDINGS.includes(reason)?stepId(refused.step):invalid()})}}
  // A bind carries its steps or what refused them, never both; an achievement may carry a finding; nothing else carries either.
@@ -239,6 +245,8 @@ export class GoalTable {
    throw new GoalRefused(reason)
   }
   if((row?.revision??null)!==c.expectedRevision)return refuse('revision-changed')
+  // H-1: an achievement's finding is the record's at the command's revision, or it is no finding of this record.
+  if(c.kind==='achieve'&&held.read!==c.expectedRevision)return refuse('revision-changed')
   const run=context(c.resource)
   const headIs=(head:GoalHead)=>run.head!==undefined&&run.head.checkpoint!==null&&run.head.revision===head.revision&&checkpointBytesDigest(run.head.checkpoint)===head.digest
   let next:Objective
@@ -246,8 +254,10 @@ export class GoalTable {
    if(current&&!terminal(current.state))return refuse('objective-exists')
    if(row?.objectives.some(objective=>objective.id===c.objective))return refuse('objective-reused')
    if((row?.objectives.length??0)>=GOAL_OBJECTIVE_LIMIT)return refuse('goals-exhausted')
-   // M10: a wait parked before the abandon is resumed or ended before another objective is created over it.
+   // M10: a wait parked before the abandon, or after it (an abandon closes nothing), is resumed or ended before another
+   // objective is created over a terminal one.
    if(current?.abandoned?.waits.some(left=>unresolvedWait(run.waits.find(wait=>wait.wait===left.wait))))return refuse('wait-unresolved')
+   if(current&&run.waits.some(wait=>unresolvedWait(wait)))return refuse('wait-unresolved')
    next={id:c.objective!,state:'active',created:by}
   }else{
    if(!current)return refuse('no-objective')
@@ -312,7 +322,9 @@ export class GoalTable {
 /** The goal port a store kind implements beside its lease, wait and job ports. Every transition is atomic with the store's
  * commits and checked against its own clock, and the record survives the store's restarts. commandGoal decides one command in
  * one transaction against the record's revision, the run's head, waits, jobs and lease as they are in it, and journals it,
- * accepted or refused; a repeat of a command id answers as the first did, and another command under it is conflict. While the
+ * accepted or refused; a repeat of a command id answers as the first did, with the record as it is now, while its entry is in
+ * the journal, and another command under it is conflict. An achievement's finding is taken only from the record at the command's
+ * revision (`read`). While the
  * current objective is paused, acquireLease and resumeWait refuse objective-paused; once the run has a goal record an unfenced
  * commit refuses lease-required. The package checks none of this in a host store; runStoreGoalConformance
  * (storage/goalConformance) does. */

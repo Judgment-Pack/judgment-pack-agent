@@ -62,39 +62,42 @@ async function runJobs(port:GoalPort,resource:string,signal?:AbortSignal):Promis
 /** An achievement's evidence, re-verified from the head's own book: the accepted Plan as bound, nothing pending, no required
  * step changed, removed or moved out of the required steps' order (M17), each required step completed with evidence that
  * proves it now, and a delegated one by the writer's history check (M16). */
-async function achieveFinding(port:GoalPort,command:GoalCommand,signal?:AbortSignal):Promise<{refused?:GoalFinding}>{
- const held=await port.readGoal(command.resource,signal),bound=held===undefined?undefined:readBack(held,command.resource).objectives.at(-1)?.plan
- // Without a Plan bound the store refuses what its record says.
- if(!bound)return {}
+async function achieveFinding(port:GoalPort,command:GoalCommand,signal?:AbortSignal):Promise<{read:number;refused?:GoalFinding}>{
+ const held=await port.readGoal(command.resource,signal)
+ if(held===undefined)throw new GoalRefused('no-objective')
+ // H-1: the finding is of this record, at this revision: the store takes it only at the command's own expected revision.
+ const goal=readBack(held,command.resource),read=goal.revision,bound=goal.objectives.at(-1)?.plan
+ if(!bound)return {read,refused:{reason:'plan-unbound'}}
  const head=await headOf(port,command,signal)
- if(!head)return {refused:{reason:'head-changed'}}
+ if(!head)return {read,refused:{reason:'head-changed'}}
  const state=checkpointOf(head.checkpoint)
- if(!state)return {refused:{reason:'lineage-changed'}}
- if(state.status==='paused'||state.approval?.state==='asked'||state.planState?.pending!==undefined)return {refused:{reason:'decision-pending'}}
+ if(!state)return {read,refused:{reason:'lineage-changed'}}
+ if(state.status==='paused'||state.approval?.state==='asked'||state.planState?.pending!==undefined)return {read,refused:{reason:'decision-pending'}}
  const accepted=state.planState?.accepted
- if(!accepted||accepted.id!==bound.id||accepted.revision!==bound.revision)return {refused:{reason:'lineage-changed'}}
+ if(!accepted||accepted.id!==bound.id||accepted.revision!==bound.revision)return {read,refused:{reason:'lineage-changed'}}
  // M17: steps the model added, and moves among them, are no departure here; a required step changed, removed or reordered
  // against the other required steps is, whoever approved it.
  const at=bound.steps.map(required=>state.plan.findIndex(row=>row.origin?.plan===accepted.id&&row.origin.revision===accepted.revision&&row.origin.index===required.index))
- if(at.some((index,k)=>index<0||state.plan[index]!.step!==accepted.steps[bound.steps[k]!.index]||k>0&&index<=at[k-1]!))return {refused:{reason:'lineage-changed'}}
- for(const [k,required] of bound.steps.entries()){const row=state.plan[at[k]!]!;if(row.status!=='completed'||!row.evidence)return {refused:{reason:'step-incomplete',step:required.step}}}
+ if(at.some((index,k)=>index<0||state.plan[index]!.step!==accepted.steps[bound.steps[k]!.index]||k>0&&index<=at[k-1]!))return {read,refused:{reason:'lineage-changed'}}
+ for(const [k,required] of bound.steps.entries()){const row=state.plan[at[k]!]!;if(row.status!=='completed'||!row.evidence)return {read,refused:{reason:'step-incomplete',step:required.step}}}
  const proof={book:state.durable??{dispatches:[],observations:[],children:[]},scope:{execution:command.resource,role:'author'},jobs:await runJobs(port,command.resource,signal)}
  const history=port as Partial<HistoryRunStore>
  let delegated:Map<string,{task:string;checkpointDigest:string;resultDigest:string;eventDigest:string;commitId:string}>|null|undefined
  for(const [k,required] of bound.steps.entries()){
   const evidence=state.plan[at[k]!]!.evidence!
-  if(!evidence.child){if(evidenceFailure(evidence,proof))return {refused:{reason:'evidence-refused',step:required.step}};continue}
+  if(!evidence.child){if(evidenceFailure(evidence,proof))return {read,refused:{reason:'evidence-refused',step:required.step}};continue}
   // M16: a delegated step is proven only by the history transaction that recorded its child; a store without history cannot.
-  if(history.historyVersion!==1||typeof history.readHistoryHead!=='function')return {refused:{reason:'history-unsupported',step:required.step}}
+  if(history.historyVersion!==1||typeof history.readHistoryHead!=='function')return {read,refused:{reason:'history-unsupported',step:required.step}}
   if(delegated===undefined)delegated=await verifyTaskEvidence(port as unknown as HistoryRunStore,{run:command.resource,revision:head.revision,checkpoint:head.checkpoint,saved:state.planState?.taskSchedule?.rows.filter(row=>row.child?.result)??[],scope:proof.scope},signal).catch(()=>null)
   const row=state.planState?.taskSchedule?.rows.find(item=>item.id===required.step),verified=delegated?.get(required.step)
-  if(!verified||!row?.child?.result||evidence.operations.length||evidence.artifacts.length||canonicalJSON(evidence.child)!==canonicalJSON({task:verified.task,checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId})||canonicalJSON(row.child.result)!==canonicalJSON({checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId}))return {refused:{reason:'evidence-refused',step:required.step}}
+  if(!verified||!row?.child?.result||evidence.operations.length||evidence.artifacts.length||canonicalJSON(evidence.child)!==canonicalJSON({task:verified.task,checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId})||canonicalJSON(row.child.result)!==canonicalJSON({checkpointDigest:verified.checkpointDigest,resultDigest:verified.resultDigest,eventDigest:verified.eventDigest,commitId:verified.commitId}))return {read,refused:{reason:'evidence-refused',step:required.step}}
  }
- return {}
+ return {read}
 }
 /** A host's goal command: create, bind, achieve, pause, resume, block or unblock (abandon is abandonGoal). One goal transaction:
  * no model call, no run commit, no checkpoint, wait, budget or approval written. Accepted: the record and the command's entry.
- * Refused: GoalRefused, journaled where the run has a goal record. A repeat of the command answers as the first did. */
+ * Refused: GoalRefused, journaled where the run has a goal record. A repeat of the command answers as the first did while its
+ * entry is in the journal. */
 export async function goalCommand(input:{store:RunStore;command:GoalCommand;signal?:AbortSignal}):Promise<GoalAnswer>{
  const port=goalPort(input.store),command=readGoalCommand(input.command)
  if(command.kind==='abandon')return invalid()
@@ -105,13 +108,18 @@ export interface GoalAbandonAnswer extends GoalAnswer {fence?:LeaseFence;jobs:Jo
 /** ADR-0025 decision 8: abandon the objective, then ask a cancel of every started job of the run (abandonJobs: the lease under
  * its reserved owner at a new epoch, the command standing for the person's approval). The objective's record holds what the
  * abandon left, the run's waits not resumed or ended and its jobs not settled, and each attempt's deliveries are journaled:
- * the job abandon closes and journals nothing itself. A retry of the command is answered from the record and sends again only
- * what the effect host has not admitted. None of it proves anything stopped. */
+ * the job abandon closes and journals nothing itself. A retry of the command is answered from the record and, while the objective
+ * it abandoned is still the current one, sends again only what the effect host has not admitted; after another objective is
+ * created it refuses revision-changed and sends nothing (#313 H-2). None of it proves anything stopped. */
 export async function abandonGoal(input:{store:RunStore;effectHost:EffectHost;command:GoalCommand;durationMs:number;cancel:JobCancelSeam['cancel'];signal?:AbortSignal}):Promise<GoalAbandonAnswer>{
  const port=goalPort(input.store),command=readGoalCommand(input.command)
  if(command.kind!=='abandon')return invalid()
  admitJobs({store:port,effectHost:input.effectHost})
  const answer=answerOf(await port.commandGoal({version:1,command},input.signal),command)
+ // H-2: a repeat is answered from the journal whatever has happened since. Only while the objective this command abandoned is
+ // still the current one does it ask anything of the run's jobs; otherwise nothing is sent, no lease is taken and nothing is
+ // journaled.
+ if(answer.goal.objectives.at(-1)?.abandoned?.command!==command.command)throw new GoalRefused('revision-changed')
  const taken=await abandonJobs({store:port,effectHost:input.effectHost,resource:command.resource,command:command.command,durationMs:input.durationMs,cancel:input.cancel,...(input.signal?{signal:input.signal}:{})})
  const goal=readBack(await port.recordGoalDeliveries({version:1,resource:command.resource,command:command.command,deliveries:taken.jobs},input.signal),command.resource)
  return {goal,entry:answer.entry,...(taken.fence?{fence:taken.fence}:{}),jobs:taken.jobs}

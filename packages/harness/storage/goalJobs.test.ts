@@ -86,6 +86,28 @@ describe('jobs and the abandon at the objective (#230)',()=>{
   expect(sent).toHaveLength(1);expect(retry.entry).toEqual(first.entry)
   expect(retry.goal.journal.at(-1)).toMatchObject({outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'already-sent'}])})
  })
+ it('H-2: a repeat of an old objective\'s abandon after a new objective started work sends nothing, takes no lease and writes nothing',async()=>{
+  const held=await leased(),tool=await startTool(),call=(name:string)=>({call:{tool:'runner__start_job',arguments:{name}}})
+  const created=await goalCommand({store:held.store,command:command('create',null,{objective:'objective-1'})})
+  await drive(held.view,[tool],provider([call('a'),{say:'Started a.'}]).call)
+  const sent:string[]=[],cancel=async(input:{job:string})=>{sent.push(input.job)}
+  const abandonCmd=command('abandon',created.goal.revision)
+  const abandoned=await abandonGoal({store:held.store,effectHost:held.host,command:abandonCmd,durationMs:HOUR,cancel})
+  const jobA=(await listJobs(held.store,RUN)).jobs[0]!.job
+  expect(sent).toEqual([jobA])
+  const second=await goalCommand({store:held.store,command:command('create',abandoned.goal.revision,{objective:'objective-2'})})
+  // Objective 2's run goes on under the abandon's fence and starts job B.
+  await drive(unattendedRunStore({store:held.store,fence:abandoned.fence!,effectHost:held.host}),[tool],provider([call('b'),{say:'Started b.'}]).call,{resume:true})
+  const jobB=(await listJobs(held.store,RUN)).jobs.map(job=>job.job).find(job=>job!==jobA)!
+  const lease=await held.store.readLease(RUN),before=(await readGoal(held.store,RUN))!
+  await expect(abandonGoal({store:held.store,effectHost:held.host,command:abandonCmd,durationMs:HOUR,cancel})).rejects.toEqual(refusal('revision-changed'))
+  expect(sent).toEqual([jobA]);expect(sent).not.toContain(jobB)
+  expect(await held.store.readLease(RUN)).toEqual(lease)
+  const after=(await readGoal(held.store,RUN))!
+  expect(after).toEqual(before);expect(after.objectives.at(-1)).toMatchObject({id:'objective-2',state:'active'})
+  expect(after.journal.slice(-3).map(entry=>`${entry.kind}:${entry.outcome}:${entry.objective}`)).toEqual(['abandon:accepted:objective-1','abandon:delivered:objective-1','create:accepted:objective-2'])
+  expect(second.goal.revision).toBe(after.revision)
+ })
  it('M10: a wait parked before the abandon holds the next create until it is resumed or ended',async()=>{
   const held=await withJobs(),revision=held.bound.goal.revision
   await parkRun({store:held.store,fence:held.fence,wait:'wait-g',continuation:'k-g',job:held.jobs[2]!.job,condition:{event:{kind:'job-completion',subject:held.jobs[2]!.job}},model:MODEL,wakeKeyDigest:wakeKeyDigest(WAKE),release:[]} as never)

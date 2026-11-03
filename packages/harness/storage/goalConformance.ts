@@ -19,6 +19,8 @@ const iso=(ms:number)=>new Date(ms).toISOString()
 const bytes=(text:string)=>new TextEncoder().encode(text)
 const KEYS=['kit.goal-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1','kit.goal-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2','kit.goal-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4','kit.goal-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8'] as const
 const WAKE='kit.goal-wake.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf'
+const KEY_UNPROVEN='kit.goal-e.Wd3Gk8Np1Rs6Tb9Hy2Lm5Qc',KEY_V='kit.goal-v.Fj2Ns7Kc4Pw9Rd1Xt6Hb3Mg',KEY_V2='kit.goal-v2.Lq5Ty8Ab3Ze6Wn1Gs4Pc9Uk'
+const WAKE_V='kit.goal-wake-v.Hc7Rn2Xp9Kd4Tm1Sb6Wq3',WAKE_V2='kit.goal-wake-v2.Gd8Pt3Zm6Bx1Wk4Ns9Rq2'
 const REQUEST=`sha256:${'a'.repeat(64)}`,PLAN_REVISION=`sha256:${'c'.repeat(64)}`
 const PINS:ResumePins={model:{provider:'kit',model:'kit'},policy:`sha256:${'b'.repeat(64)}`,sources:[],artifacts:[]}
 const PLAN:GoalPlanSteps={id:'kit-plan',revision:PLAN_REVISION,steps:[{step:'step-1',index:0},{step:'step-2',index:1}]}
@@ -39,7 +41,8 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const restart=async(property:string)=>{const next=await create(now,store);check(property,next!==store);store=next}
  let n=0
  const command=(run:string,kind:GoalCommand['kind'],expectedRevision:number|null,over:Partial<GoalCommand>={}):GoalCommand=>({version:1,resource:run,command:`${run}-command-${++n}`,actor:'kit-person',expectedRevision,kind,...over})
- const send=(c:GoalCommand,over:{plan?:GoalPlanSteps;refused?:GoalFinding}={})=>store.commandGoal({version:1,command:c,...over})
+ // An achievement carries the revision its finding was read from: here, the command's own, unless a property says otherwise.
+ const send=(c:GoalCommand,over:{plan?:GoalPlanSteps;refused?:GoalFinding;read?:number}={})=>store.commandGoal({version:1,command:c,...(c.kind==='achieve'&&c.expectedRevision!==null?{read:c.expectedRevision}:{}),...over})
  const head=async(run:string)=>{const held=(await store.load(run))!;return {revision:held.revision,digest:checkpointBytesDigest(held.checkpoint!)}}
  const open=async(run:string)=>{const opened=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint:bytes(`{"kit":"${run}"}`),events:[]});return {revision:opened.revision,fence:fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR}))}}
  /** A refusal journals the command and changes nothing else: the whole record compared. With no record, nothing is written. */
@@ -74,6 +77,12 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const before=(await store.load('run-p'))!.revision
  await refuses('goal.unfenced',()=>store.commit({runId:'run-p',expectedRevision:before,commitId:'run-p-unfenced',checkpoint:bytes('{"kit":"unfenced"}'),events:[]}),'lease-required')
  check('goal.unfenced',(await store.load('run-p'))!.revision===before)
+ // The history path too: a store with history commits an objective's run under a fence only.
+ const historyPort=store as unknown as {historyVersion?:number;commitHistory?:(input:unknown)=>Promise<unknown>}
+ if(historyPort.historyVersion===1&&typeof historyPort.commitHistory==='function'){
+  await refuses('goal.unfenced.history',()=>historyPort.commitHistory!({run:{runId:'run-p',expectedRevision:before,commitId:'run-p-unfenced-history',checkpoint:bytes('{"kit":"unfenced"}'),events:[]},observations:[]}),'lease-required')
+  check('goal.unfenced.history',(await store.load('run-p'))!.revision===before)
+ }
  const plain=await store.commit({runId:'run-plain',expectedRevision:null,commitId:'run-plain-1',checkpoint:bytes('{"kit":"plain"}'),events:[]})
  check('goal.unfenced',!!plain.revision)
 
@@ -125,6 +134,9 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  // Achieve: against the head, after the package's finding, with nothing waiting and every job settled.
  const achieveStale=command('run-p','achieve',6,{head:{revision:before,digest:checkpointBytesDigest(bytes(`{"kit":"run-p"}`))}})
  await journaled('goal.achieve.head',achieveStale,()=>send(achieveStale),'head-changed')
+ // H-1: a finding read from another revision of the record is no finding of this one.
+ const achieveRead=command('run-p','achieve',6,{head:await head('run-p')})
+ await journaled('goal.achieve.read',achieveRead,()=>send(achieveRead,{read:5}),'revision-changed')
  const achieveFound=command('run-p','achieve',6,{head:await head('run-p')})
  await journaled('goal.achieve.finding',achieveFound,()=>send(achieveFound,{refused:{reason:'evidence-refused',step:'step-2'}}),'evidence-refused','step-2')
  const achieve=command('run-p','achieve',6,{head:await head('run-p')})
@@ -132,6 +144,10 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  check('goal.achieve.commits',achieved.goal.objectives[0]!.state==='achieved'&&same(achieved.goal.objectives[0]!.achieved,{command:achieve.command,actor:'kit-person',at:iso(at),head:achieve.head}))
  const terminal=command('run-p','pause',7)
  await journaled('goal.terminal',terminal,()=>send(terminal),'objective-terminal')
+ // An objective's run stays leased once the objective has ended.
+ const endedHead=(await store.load('run-p'))!.revision
+ await refuses('goal.unfenced.terminal',()=>store.commit({runId:'run-p',expectedRevision:endedHead,commitId:'run-p-unfenced-terminal',checkpoint:bytes('{"kit":"unfenced"}'),events:[]}),'lease-required')
+ check('goal.unfenced.terminal',(await store.load('run-p'))!.revision===endedHead)
  // M11: a later objective of the run never binds a Plan an earlier one bound.
  const reused=command('run-p','create',7,{objective:'objective-1'})
  await journaled('goal.create.reused',reused,()=>send(reused),'objective-reused')
@@ -139,6 +155,10 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  check('goal.create.terminal',second.goal.objectives.length===2&&second.goal.objectives[0]!.state==='achieved'&&second.goal.objectives[1]!.state==='active')
  const rebind=command('run-p','bind',8,{steps:['step-1'],head:await head('run-p')})
  await journaled('goal.bind.reused',rebind,()=>send(rebind,{plan:{...PLAN,steps:[PLAN.steps[0]!]}}),'plan-reused')
+ // H-2: a repeat is answered with the record as it is now, so that the package can see what has happened since.
+ const nowP=await store.readGoal('run-p')
+ const repeatNow=await answers('goal.repeat.current',()=>send(first))
+ check('goal.repeat.current',same(repeatNow.entry,created.entry)&&same(repeatNow.goal,nowP))
 
  // Jobs at an achievement, two of them and a contradiction: unsettled ones block unless waived; failed ones are listed.
  const j=await open('run-j')
@@ -146,7 +166,7 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  let revision=(await store.load('run-j'))!.revision
  const register=async(operation:string,key:string)=>{const receipt=await store.commitFenced({runId:'run-j',expectedRevision:revision,commitId:`run-j-${operation}`,checkpoint:bytes(`{"kit":"${operation}"}`),events:[],job:{job:jobIdentity('run-j',operation),operation,source:'kit-source',tool:'kit-start',requestDigest:REQUEST,keyDigest:jobKeyDigest(key)}},j.fence);revision=receipt.revision;return jobIdentity('run-j',operation)}
  const complete=(job:string,key:string,over:Partial<JobCompletionEvidence>={}):JobCompletionEvidence=>({version:1,resource:'run-j',job,generation:1,evidence:'done-1',outcome:'succeeded',key,...over})
- const running=await register('op-1',KEYS[0]),failed=await register('op-2',KEYS[1]),contradicted=await register('op-3',KEYS[2])
+ const running=await register('op-1',KEYS[0]),failed=await register('op-2',KEYS[1]),contradicted=await register('op-3',KEYS[2]),pending=await register('op-4',KEY_UNPROVEN)
  await store.answerJob({version:1,resource:'run-j',job:running,generation:1,answer:'started',handle:'kit-handle'},j.fence)
  await store.answerJob({version:1,resource:'run-j',job:failed,generation:1,answer:'started',handle:'kit-handle'},j.fence)
  await store.completeJob(complete(failed,KEYS[1],{outcome:'failed'}))
@@ -158,9 +178,12 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  await journaled('goal.achieve.jobs',unsettled,()=>send(unsettled),'jobs-unsettled')
  const waivedSettled=command('run-j','achieve',2,{head:jobHead,waive:[failed]})
  await journaled('goal.achieve.waiver',waivedSettled,()=>send(waivedSettled),'waiver-invalid')
- const waived=command('run-j','achieve',2,{head:jobHead,waive:[running]})
+ // An unproven job may be running: it is unsettled, as a started one is.
+ const unprovenOpen=command('run-j','achieve',2,{head:jobHead,waive:[running]})
+ await journaled('goal.achieve.unproven',unprovenOpen,()=>send(unprovenOpen),'jobs-unsettled')
+ const waived=command('run-j','achieve',2,{head:jobHead,waive:[running,pending]})
  const done=await answers('goal.achieve.jobs',()=>send(waived))
- check('goal.achieve.jobs',same(done.goal.objectives[0]!.achieved,{command:waived.command,actor:'kit-person',at:iso(at),head:jobHead,waived:[running],unsuccessful:[{job:failed,state:'completed',outcome:'failed'},{job:contradicted,state:'not-started',contradicted:true}]}))
+ check('goal.achieve.jobs',same(done.goal.objectives[0]!.achieved,{command:waived.command,actor:'kit-person',at:iso(at),head:jobHead,waived:[running,pending],unsuccessful:[{job:failed,state:'completed',outcome:'failed'},{job:contradicted,state:'not-started',contradicted:true}]}))
  // Owner: a record is looked up by its run.
  check('goal.owner',(await store.readGoal('run-other'))===undefined&&(await store.readGoal('run-j'))!.objectives[0]!.id==='objective-j')
 
@@ -193,6 +216,42 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  await answers('goal.create.unresolved',()=>store.resumeWait(claim))
  const recreated=await answers('goal.create.unresolved',()=>send(command('run-w','create',3,{objective:'objective-w2'})))
  check('goal.create.unresolved',recreated.goal.objectives.length===2&&recreated.goal.objectives[1]!.state==='active')
+
+ // A woken wait is unresolved at an achievement, an abandon and a create; and a wait parked after the abandon holds the next
+ // create too (M-1).
+ const v=await open('run-v')
+ await answers('goal.achieve.woken',()=>send(command('run-v','create',null,{objective:'objective-v'})))
+ const vReceipt=await store.commitFenced({runId:'run-v',expectedRevision:v.revision,commitId:'run-v-op-1',checkpoint:bytes('{"kit":"run-v-op-1"}'),events:[],job:{job:jobIdentity('run-v','op-1'),operation:'op-1',source:'kit-source',tool:'kit-start',requestDigest:REQUEST,keyDigest:jobKeyDigest(KEY_V)}},v.fence)
+ const vJob=jobIdentity('run-v','op-1')
+ await store.answerJob({version:1,resource:'run-v',job:vJob,generation:1,answer:'started',handle:'kit-handle'},v.fence)
+ await store.parkWait({...park,resource:'run-v',pending:{kind:'job',job:vJob,generation:1},condition:{event:{kind:'job-completion',subject:vJob}},checkpoint:{revision:vReceipt.revision,digest:checkpointBytesDigest(bytes('{"kit":"run-v-op-1"}'))},wakeKeyDigest:wakeKeyDigest(WAKE_V)},v.fence)
+ await store.completeJob({version:1,resource:'run-v',job:vJob,generation:1,evidence:'done-1',outcome:'succeeded',key:KEY_V})
+ check('goal.achieve.woken',(await store.readWait('run-v','wait-1'))?.state==='woken')
+ const vHead=await head('run-v')
+ await answers('goal.achieve.woken',()=>send(command('run-v','bind',1,{steps:['step-1'],head:vHead}),{plan:{...PLAN,id:'kit-plan-v'}}))
+ const wokenAchieve=command('run-v','achieve',2,{head:vHead})
+ await journaled('goal.achieve.woken',wokenAchieve,()=>send(wokenAchieve),'wait-pending')
+ const vAbandoned=await answers('goal.abandon.woken',()=>send(command('run-v','abandon',2)))
+ check('goal.abandon.woken',same(vAbandoned.goal.objectives[0]!.abandoned?.waits,[{wait:'wait-1',reason:'job',state:'woken'}]))
+ const wokenCreate=command('run-v','create',3,{objective:'objective-v2'})
+ await journaled('goal.create.woken',wokenCreate,()=>send(wokenCreate),'wait-unresolved')
+ const vClaimed=await answers('goal.create.later',()=>store.resumeWait({...claim,resource:'run-v',lease:{...claim.lease,resource:'run-v',expectedRevision:vReceipt.revision},revalidation:{...claim.revalidation,resource:'run-v'}}))
+ const vFence=fenceOf(vClaimed.lease)
+ const vLater=await store.commitFenced({runId:'run-v',expectedRevision:vReceipt.revision,commitId:'run-v-op-2',checkpoint:bytes('{"kit":"run-v-op-2"}'),events:[],job:{job:jobIdentity('run-v','op-2'),operation:'op-2',source:'kit-source',tool:'kit-start',requestDigest:REQUEST,keyDigest:jobKeyDigest(KEY_V2)}},vFence)
+ const vJob2=jobIdentity('run-v','op-2')
+ await store.answerJob({version:1,resource:'run-v',job:vJob2,generation:1,answer:'started',handle:'kit-handle'},vFence)
+ await store.parkWait({...park,resource:'run-v',wait:'wait-2',pending:{kind:'job',job:vJob2,generation:1},condition:{event:{kind:'job-completion',subject:vJob2}},checkpoint:{revision:vLater.revision,digest:checkpointBytesDigest(bytes('{"kit":"run-v-op-2"}'))},wakeKeyDigest:wakeKeyDigest(WAKE_V2)},vFence)
+ const laterCreate=command('run-v','create',3,{objective:'objective-v2'})
+ await journaled('goal.create.later',laterCreate,()=>send(laterCreate),'wait-unresolved')
+ // An objective that ends paused keeps no pause: its run can be leased again.
+ const z=await open('run-z')
+ await answers('goal.terminal.pause',()=>send(command('run-z','create',null,{objective:'objective-z'})))
+ await answers('goal.terminal.pause',()=>send(command('run-z','pause',1)))
+ const zGone=await answers('goal.terminal.pause',()=>send(command('run-z','abandon',2)))
+ await store.releaseLease(z.fence)
+ check('goal.terminal.pause',zGone.goal.objectives[0]!.paused===undefined&&(await store.readGoal('run-z'))!.objectives[0]!.paused===undefined)
+ const zHead=(await store.load('run-z'))!.revision
+ await answers('goal.terminal.pause',()=>store.acquireLease({resource:'run-z',owner:'worker-b',expectedRevision:zHead,durationMs:HOUR}))
 
  // A paused run is resumed by no claim either.
  const q=await open('run-q')

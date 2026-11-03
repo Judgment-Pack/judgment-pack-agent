@@ -203,22 +203,28 @@ func goalRunJobs(ctx context.Context, port GoalRunStore, resource string) (map[s
 // bound, nothing pending, no required step changed, removed or moved out of the required steps' order (M17), each
 // required step completed with evidence that proves it now, and a delegated one by the writer's history check
 // (M16).
-func goalAchieveFinding(ctx context.Context, port GoalRunStore, command GoalCommand) (*GoalFinding, error) {
+func goalAchieveFinding(ctx context.Context, port GoalRunStore, command GoalCommand) (int64, *GoalFinding, error) {
 	record, err := port.ReadGoal(ctx, command.Resource)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
-	// Without a Plan bound the store refuses what its record says.
 	if record == nil {
-		return nil, nil
+		return 0, nil, goalRefused("no-objective")
 	}
 	goal, err := goalReadBack(*record, command.Resource)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
+	// H-1: the finding is of this record, at this revision: the store takes it only at the command's own expected
+	// revision.
+	read := goal.Revision
+	finding, err := goalAchieveFindingOf(ctx, port, command, goal)
+	return read, finding, err
+}
+func goalAchieveFindingOf(ctx context.Context, port GoalRunStore, command GoalCommand, goal RunGoal) (*GoalFinding, error) {
 	bound := goal.Objectives[len(goal.Objectives)-1].Plan
 	if bound == nil {
-		return nil, nil
+		return goalFindingOf("plan-unbound", ""), nil
 	}
 	head, err := goalHeadOf(ctx, port, command)
 	if err != nil {
@@ -331,7 +337,7 @@ func goalCanonical(raw []byte) []byte {
 // RunGoalCommand is a host's goal command: create, bind, achieve, pause, resume, block or unblock (abandon is
 // AbandonGoal). One goal transaction: no model call, no run commit, no checkpoint, wait, budget or approval
 // written. Accepted: the record and the command's entry. Refused: GoalRefused, journaled where the run has a goal
-// record. A repeat of the command answers as the first did.
+// record. A repeat of the command answers as the first did while its entry is in the journal.
 func RunGoalCommand(ctx context.Context, store RunStore, input GoalCommand) (GoalAnswer, error) {
 	port, err := goalPortOf(store)
 	if err != nil {
@@ -353,11 +359,11 @@ func RunGoalCommand(ctx context.Context, store RunStore, input GoalCommand) (Goa
 		}
 		transition.Plan, transition.Refused = plan, finding
 	case "achieve":
-		finding, err := goalAchieveFinding(ctx, port, command)
+		read, finding, err := goalAchieveFinding(ctx, port, command)
 		if err != nil {
 			return GoalAnswer{}, err
 		}
-		transition.Refused = finding
+		transition.Refused, transition.Read = finding, &read
 	}
 	answer, err := port.CommandGoal(ctx, transition)
 	if err != nil {
@@ -378,7 +384,9 @@ type GoalAbandonAnswer struct {
 // (AbandonJobs: the lease under its reserved owner at a new epoch, the command standing for the person's
 // approval). The objective's record holds what the abandon left, the run's waits not resumed or ended and its jobs
 // not settled, and each attempt's deliveries are journaled: the job abandon closes and journals nothing itself. A
-// retry of the command is answered from the record and sends again only what the effect host has not admitted.
+// retry of the command is answered from the record and, while the objective it abandoned is still the current one, sends
+// again only what the effect host has not admitted; after another objective is created it refuses revision-changed and
+// sends nothing (#313 H-2).
 // None of it proves anything stopped.
 func AbandonGoal(ctx context.Context, store RunStore, host EffectHost, input GoalCommand, durationMs int64, cancel func(context.Context, JobCancelInput) error) (GoalAbandonAnswer, error) {
 	port, err := goalPortOf(store)
@@ -402,6 +410,12 @@ func AbandonGoal(ctx context.Context, store RunStore, host EffectHost, input Goa
 	held, err := goalAnswerOf(answer, command)
 	if err != nil {
 		return GoalAbandonAnswer{}, err
+	}
+	// H-2: a repeat is answered from the journal whatever has happened since. Only while the objective this command
+	// abandoned is still the current one does it ask anything of the run's jobs; otherwise nothing is sent, no lease is
+	// taken and nothing is journaled.
+	if current := held.Goal.Objectives[len(held.Goal.Objectives)-1]; current.Abandoned == nil || current.Abandoned.Command != command.Command {
+		return GoalAbandonAnswer{}, goalRefused("revision-changed")
 	}
 	taken, err := AbandonJobs(ctx, port, host, command.Resource, command.Command, durationMs, cancel)
 	if err != nil {

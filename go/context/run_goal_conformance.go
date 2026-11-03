@@ -21,11 +21,17 @@ type GoalStoreFactory func(now func() time.Time, restart GoalRunStore) GoalRunSt
 var goalKitKeys = []string{"kit.goal-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1", "kit.goal-b.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2", "kit.goal-c.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4", "kit.goal-d.Zc3Ri7Oq1Xe5Pk9Ls2Gu6Ty8"}
 
 const (
-	goalKitWake   = "kit.goal-wake.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf"
-	goalKitQKey   = "kit.goal-q.Mb6Sj1Wg8Ku3Ne7Ax2Qo5Di"
-	goalKitQWake  = "kit.goal-qw.Ct9Fh4Lp7Xr2Gv6Jz1Ys3Em"
-	goalKitHour   = int64(3600000)
-	goalKitMinute = time.Minute
+	goalKitWake  = "kit.goal-wake.Vx4Hd9Tn2Bq7Ym5Rc1Pz8Lf"
+	goalKitQKey  = "kit.goal-q.Mb6Sj1Wg8Ku3Ne7Ax2Qo5Di"
+	goalKitQWake = "kit.goal-qw.Ct9Fh4Lp7Xr2Gv6Jz1Ys3Em"
+	// #313's review: an unproven job, and a run whose waits wake before an abandon and park after it.
+	goalKitUnproven = "kit.goal-e.Wd3Gk8Np1Rs6Tb9Hy2Lm5Qc"
+	goalKitVKey     = "kit.goal-v.Fj2Ns7Kc4Pw9Rd1Xt6Hb3Mg"
+	goalKitV2Key    = "kit.goal-v2.Lq5Ty8Ab3Ze6Wn1Gs4Pc9Uk"
+	goalKitVWake    = "kit.goal-wake-v.Hc7Rn2Xp9Kd4Tm1Sb6Wq3"
+	goalKitV2Wake   = "kit.goal-wake-v2.Gd8Pt3Zm6Bx1Wk4Ns9Rq2"
+	goalKitHour     = int64(3600000)
+	goalKitMinute   = time.Minute
 )
 
 type goalKit struct {
@@ -71,8 +77,19 @@ func (k *goalKit) command(run, kind string, revision int64) GoalCommand {
 }
 func goalKitWith(c GoalCommand, edit func(*GoalCommand)) GoalCommand { edit(&c); return c }
 func goalKitString(text string) *string                              { return &text }
+
+// send hands the store a transition. An achievement carries the revision its finding was read from: here, the
+// command's own, unless a property says otherwise (sendRead).
 func (k *goalKit) send(c GoalCommand, plan *GoalPlanSteps, refused *GoalFinding) (GoalAnswer, error) {
-	return k.store.CommandGoal(k.ctx, GoalTransition{Version: 1, Command: c, Plan: plan, Refused: refused})
+	transition := GoalTransition{Version: 1, Command: c, Plan: plan, Refused: refused}
+	if c.Kind == "achieve" && !c.ExpectedRevision.Null {
+		read := c.ExpectedRevision.Value
+		transition.Read = &read
+	}
+	return k.store.CommandGoal(k.ctx, transition)
+}
+func (k *goalKit) sendRead(c GoalCommand, read int64) (GoalAnswer, error) {
+	return k.store.CommandGoal(k.ctx, GoalTransition{Version: 1, Command: c, Read: &read})
 }
 func (k *goalKit) read(run string) *RunGoal {
 	held, err := k.store.ReadGoal(k.ctx, run)
@@ -153,6 +170,15 @@ func (k *goalKit) parkOn(run, job, wake, revision string) {
 		panic(err)
 	}
 }
+
+// parkAt parks wait on job, at the head the job's own registration committed (checkpoint text {"kit":"<operation>"}).
+func (k *goalKit) parkAt(run, wait, job, operation, wake, revision string, fence LeaseFence) {
+	digest, _ := WakeKeyDigest(wake)
+	park := RunWait{Version: 1, Resource: run, Wait: wait, Reason: "job", Pending: contract.RunWaitPending{Job: &contract.RunWaitPendingJob{Kind: "job", Job: job, Generation: 1}}, Condition: WaitCondition{Event: &contract.RunWaitEventCondition{Kind: JobWaitEvent, Subject: job}}, Continuation: "k", Checkpoint: contract.RunWaitCheckpointBinding{Revision: revision, Digest: CheckpointBytesDigest([]byte(`{"kit":"` + operation + `"}`))}, Pins: jobKitPins, WakeKeyDigest: digest, Release: []WaitRelease{}}
+	if _, _, err := k.store.ParkWait(k.ctx, park, fence); err != nil {
+		panic(err)
+	}
+}
 func (k *goalKit) fenceOf(run string) LeaseFence {
 	lease, err := k.store.ReadLease(k.ctx, run)
 	if err != nil || lease == nil {
@@ -210,6 +236,13 @@ func (k *goalKit) properties() {
 	k.refuses("goal.unfenced", err, "lease-required")
 	still, _ := k.store.Load(k.ctx, "run-p")
 	k.check("goal.unfenced", still.Revision == before.Revision)
+	// The history path too: a store with history commits an objective's run under a fence only.
+	if history, ok := k.store.(HistoryRunStore); ok && history.HistoryVersion() == 1 {
+		_, err = history.CommitHistory(k.ctx, RunHistoryCommit{Run: RunCommit{RunID: "run-p", ExpectedRevision: before.Revision, CommitID: "run-p-unfenced-history", Checkpoint: []byte(`{"kit":"unfenced"}`), Events: [][]byte{}}, Observations: []HistoryObjectRef{}})
+		k.refuses("goal.unfenced.history", err, "lease-required")
+		still, _ = k.store.Load(k.ctx, "run-p")
+		k.check("goal.unfenced.history", still.Revision == before.Revision)
+	}
 	_, err = k.store.Commit(k.ctx, RunCommit{RunID: "run-plain", CommitID: "run-plain-1", Checkpoint: []byte(`{"kit":"plain"}`), Events: [][]byte{}})
 	k.check("goal.unfenced", err == nil)
 
@@ -286,6 +319,9 @@ func (k *goalKit) properties() {
 	// Achieve: against the head, after the package's finding, with nothing waiting and every job settled.
 	achieveStale := goalKitWith(k.command("run-p", "achieve", 6), func(c *GoalCommand) { c.Head = &oldHead })
 	k.journaled("goal.achieve.head", achieveStale, func() error { _, err := k.send(achieveStale, nil, nil); return err }, "head-changed", "")
+	// H-1: a finding read from another revision of the record is no finding of this one.
+	achieveRead := goalKitWith(k.command("run-p", "achieve", 6), func(c *GoalCommand) { c.Head = &headP })
+	k.journaled("goal.achieve.read", achieveRead, func() error { _, err := k.sendRead(achieveRead, 5); return err }, "revision-changed", "")
 	achieveFound := goalKitWith(k.command("run-p", "achieve", 6), func(c *GoalCommand) { c.Head = &headP })
 	k.journaled("goal.achieve.finding", achieveFound, func() error {
 		_, err := k.send(achieveFound, nil, &GoalFinding{Reason: "evidence-refused", Step: goalKitString("step-2")})
@@ -298,6 +334,12 @@ func (k *goalKit) properties() {
 	k.check("goal.achieve.commits", achieved.Goal.Objectives[0].State == "achieved" && achieved.Goal.Objectives[0].Achieved != nil && goalKitSame(*achieved.Goal.Objectives[0].Achieved, GoalAchievement{Command: achieveStamp.Command, Actor: achieveStamp.Actor, At: achieveStamp.At, Head: headP}))
 	terminal := k.command("run-p", "pause", 7)
 	k.journaled("goal.terminal", terminal, func() error { _, err := k.send(terminal, nil, nil); return err }, "objective-terminal", "")
+	// An objective's run stays leased once the objective has ended.
+	ended, _ := k.store.Load(k.ctx, "run-p")
+	_, err = k.store.Commit(k.ctx, RunCommit{RunID: "run-p", ExpectedRevision: ended.Revision, CommitID: "run-p-unfenced-terminal", Checkpoint: []byte(`{"kit":"unfenced"}`), Events: [][]byte{}})
+	k.refuses("goal.unfenced.terminal", err, "lease-required")
+	endedAfter, _ := k.store.Load(k.ctx, "run-p")
+	k.check("goal.unfenced.terminal", endedAfter.Revision == ended.Revision)
 	// M11: a later objective of the run never binds a Plan an earlier one bound.
 	reused := goalKitWith(k.command("run-p", "create", 7), func(c *GoalCommand) { c.Objective = goalKitString("objective-1") })
 	k.journaled("goal.create.reused", reused, func() error { _, err := k.send(reused, nil, nil); return err }, "objective-reused", "")
@@ -306,6 +348,11 @@ func (k *goalKit) properties() {
 	k.check("goal.create.terminal", len(second.Goal.Objectives) == 2 && second.Goal.Objectives[0].State == "achieved" && second.Goal.Objectives[1].State == "active")
 	rebind := goalKitWith(k.command("run-p", "bind", 8), func(c *GoalCommand) { c.Steps = []string{"step-1"}; c.Head = &headP })
 	k.journaled("goal.bind.reused", rebind, func() error { _, err := k.send(rebind, goalKitFirstStep(goalKitPlan), nil); return err }, "plan-reused", "")
+	// H-2: a repeat is answered with the record as it is now, so that the package can see what has happened since.
+	nowP := k.read("run-p")
+	repeatNow, err := k.send(first, nil, nil)
+	k.answers("goal.repeat.current", err)
+	k.check("goal.repeat.current", goalKitSame(repeatNow.Entry, created.Entry) && nowP != nil && goalKitSame(repeatNow.Goal, *nowP))
 
 	// Jobs at an achievement, two of them and a contradiction: unsettled ones block unless waived; failed ones are
 	// listed.
@@ -316,6 +363,7 @@ func (k *goalKit) properties() {
 	running := k.register("run-j", &revision, j.fence, "op-1", goalKitKeys[0])
 	failed := k.register("run-j", &revision, j.fence, "op-2", goalKitKeys[1])
 	contradicted := k.register("run-j", &revision, j.fence, "op-3", goalKitKeys[2])
+	pending := k.register("run-j", &revision, j.fence, "op-4", goalKitUnproven)
 	k.started("run-j", running, j.fence)
 	k.started("run-j", failed, j.fence)
 	if _, err := k.store.CompleteJob(k.ctx, jobKitComplete("run-j", failed, goalKitKeys[1], "done-1", "failed")); err != nil {
@@ -334,12 +382,15 @@ func (k *goalKit) properties() {
 	k.journaled("goal.achieve.jobs", unsettled, func() error { _, err := k.send(unsettled, nil, nil); return err }, "jobs-unsettled", "")
 	waivedSettled := goalKitWith(k.command("run-j", "achieve", 2), func(c *GoalCommand) { c.Head = &jobHead; c.Waive = []string{failed} })
 	k.journaled("goal.achieve.waiver", waivedSettled, func() error { _, err := k.send(waivedSettled, nil, nil); return err }, "waiver-invalid", "")
-	waived := goalKitWith(k.command("run-j", "achieve", 2), func(c *GoalCommand) { c.Head = &jobHead; c.Waive = []string{running} })
+	// An unproven job may be running: it is unsettled, as a started one is.
+	unprovenOpen := goalKitWith(k.command("run-j", "achieve", 2), func(c *GoalCommand) { c.Head = &jobHead; c.Waive = []string{running} })
+	k.journaled("goal.achieve.unproven", unprovenOpen, func() error { _, err := k.send(unprovenOpen, nil, nil); return err }, "jobs-unsettled", "")
+	waived := goalKitWith(k.command("run-j", "achieve", 2), func(c *GoalCommand) { c.Head = &jobHead; c.Waive = []string{running, pending} })
 	done, err := k.send(waived, nil, nil)
 	k.answers("goal.achieve.jobs", err)
 	waivedStamp := stamp(waived)
 	yes, failedOutcome := true, "failed"
-	k.check("goal.achieve.jobs", done.Goal.Objectives[0].Achieved != nil && goalKitSame(*done.Goal.Objectives[0].Achieved, GoalAchievement{Command: waivedStamp.Command, Actor: waivedStamp.Actor, At: waivedStamp.At, Head: jobHead, Waived: []string{running}, Unsuccessful: []GoalJob{{Job: failed, State: "completed", Outcome: &failedOutcome}, {Job: contradicted, State: "not-started", Contradicted: &yes}}}))
+	k.check("goal.achieve.jobs", done.Goal.Objectives[0].Achieved != nil && goalKitSame(*done.Goal.Objectives[0].Achieved, GoalAchievement{Command: waivedStamp.Command, Actor: waivedStamp.Actor, At: waivedStamp.At, Head: jobHead, Waived: []string{running, pending}, Unsuccessful: []GoalJob{{Job: failed, State: "completed", Outcome: &failedOutcome}, {Job: contradicted, State: "not-started", Contradicted: &yes}}}))
 	// Owner: a record is looked up by its run.
 	k.check("goal.owner", k.read("run-other") == nil && k.read("run-j").Objectives[0].ID == "objective-j")
 
@@ -385,6 +436,57 @@ func (k *goalKit) properties() {
 	recreated, err := k.send(goalKitWith(k.command("run-w", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-w2") }), nil, nil)
 	k.answers("goal.create.unresolved", err)
 	k.check("goal.create.unresolved", len(recreated.Goal.Objectives) == 2 && recreated.Goal.Objectives[1].State == "active")
+
+	// A woken wait is unresolved at an achievement, an abandon and a create; and a wait parked after the abandon holds
+	// the next create too (M-1).
+	v := k.open("run-v")
+	_, err = k.send(goalKitWith(k.command("run-v", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-v") }), nil, nil)
+	k.answers("goal.achieve.woken", err)
+	vRevision := v.revision
+	vJob := k.register("run-v", &vRevision, v.fence, "op-1", goalKitVKey)
+	k.started("run-v", vJob, v.fence)
+	k.parkAt("run-v", "wait-1", vJob, "op-1", goalKitVWake, vRevision, v.fence)
+	if _, err := k.store.CompleteJob(k.ctx, jobKitComplete("run-v", vJob, goalKitVKey, "done-1", "succeeded")); err != nil {
+		panic(err)
+	}
+	vWait, _ := k.store.ReadWait(k.ctx, "run-v", "wait-1")
+	k.check("goal.achieve.woken", vWait != nil && vWait.State == "woken")
+	vHead := k.head("run-v")
+	vPlan := goalKitPlan
+	vPlan.ID = "kit-plan-v"
+	_, err = k.send(goalKitWith(k.command("run-v", "bind", 1), func(c *GoalCommand) { c.Steps = []string{"step-1"}; c.Head = &vHead }), &vPlan, nil)
+	k.answers("goal.achieve.woken", err)
+	wokenAchieve := goalKitWith(k.command("run-v", "achieve", 2), func(c *GoalCommand) { c.Head = &vHead })
+	k.journaled("goal.achieve.woken", wokenAchieve, func() error { _, err := k.send(wokenAchieve, nil, nil); return err }, "wait-pending", "")
+	vAbandoned, err := k.send(k.command("run-v", "abandon", 2), nil, nil)
+	k.answers("goal.abandon.woken", err)
+	k.check("goal.abandon.woken", vAbandoned.Goal.Objectives[0].Abandoned != nil && goalKitSame(vAbandoned.Goal.Objectives[0].Abandoned.Waits, []GoalLeftWait{{Wait: "wait-1", Reason: "job", State: "woken"}}))
+	wokenCreate := goalKitWith(k.command("run-v", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-v2") })
+	k.journaled("goal.create.woken", wokenCreate, func() error { _, err := k.send(wokenCreate, nil, nil); return err }, "wait-unresolved", "")
+	_, vLease, err := k.store.ResumeWait(k.ctx, goalKitClaim("run-v", vRevision))
+	k.answers("goal.create.later", err)
+	vFence := FenceOf(vLease)
+	vJob2 := k.register("run-v", &vRevision, vFence, "op-2", goalKitV2Key)
+	k.started("run-v", vJob2, vFence)
+	k.parkAt("run-v", "wait-2", vJob2, "op-2", goalKitV2Wake, vRevision, vFence)
+	laterCreate := goalKitWith(k.command("run-v", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-v2") })
+	k.journaled("goal.create.later", laterCreate, func() error { _, err := k.send(laterCreate, nil, nil); return err }, "wait-unresolved", "")
+	// An objective that ends paused keeps no pause: its run can be leased again.
+	z := k.open("run-z")
+	_, err = k.send(goalKitWith(k.command("run-z", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-z") }), nil, nil)
+	k.answers("goal.terminal.pause", err)
+	_, err = k.send(k.command("run-z", "pause", 1), nil, nil)
+	k.answers("goal.terminal.pause", err)
+	zGone, err := k.send(k.command("run-z", "abandon", 2), nil, nil)
+	k.answers("goal.terminal.pause", err)
+	if _, err := k.store.ReleaseLease(k.ctx, z.fence); err != nil {
+		panic(err)
+	}
+	zRead := k.read("run-z")
+	k.check("goal.terminal.pause", zGone.Goal.Objectives[0].Paused == nil && zRead != nil && zRead.Objectives[0].Paused == nil)
+	zHead, _ := k.store.Load(k.ctx, "run-z")
+	_, err = k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-z", Owner: "worker-b", ExpectedRevision: zHead.Revision, DurationMs: goalKitHour})
+	k.answers("goal.terminal.pause", err)
 
 	// A paused run is resumed by no claim either.
 	q := k.open("run-q")
