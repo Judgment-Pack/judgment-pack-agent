@@ -14998,6 +14998,18 @@
    "note": "#303/#310. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
+   "name": "job B21 #314 the history observation reader reads members of what is no object",
+   "file": "history/metadata.ts",
+   "find": " if(!object(value)||value.version!==1||!scope(value.scope))return fail()\n",
+   "replace": " if(value.version!==1||!scope(value.scope))return fail()\n",
+   "tests": [
+    "history/metadata.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#303/#310. Go twin (by hand, in history_view.go): caught at TestHistoryReadersRefuseEveryShapeTheyCannotRead."
+  },
+  {
    "name": "job CA16 a cancel is sent from another job's record",
    "file": "storage/writer.ts",
    "find": "if(asked.resource!==this.id||asked.job!==jobCancel.job||!read||",
