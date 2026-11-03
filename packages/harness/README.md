@@ -898,7 +898,9 @@ package composed. A job is `unproven` until the host's typed answer, `reconcileJ
 by a completion key with no lease. `parkRun({job})` waits for one started job, a completion wakes it in its own transaction, and
 `job_read` (`jobReadTool`) reaches only the view's run. Nothing polls or synthesizes a completion, and a job's rows are never plan
 evidence. A store kind is certified by `runStoreJobConformance` (`storage/jobConformance`). With no job tool offered, no store call
-is made and no byte moves. `gatewayActionMembers` gives what a host adds to a gateway `/act`.
+is made and no byte moves. `gatewayActionMembers` gives what a host adds to a gateway `/act`. `jobCancelTool` is a start's cancel, declared as a
+pair on its source: it asks, and moves no state, and only a completion with `cancelled` says the job stopped. `abandonJobs` is a host's command: a
+fresh fence, and stable cancel identities through the effect host.
 
 `storage/reauth.ts` implements ADR-0025 decision 4 with `storage/lease.ts` and `storage/wait.ts`. The
 reference effect host takes an optional credential check (`new ReferenceEffectHost(store,

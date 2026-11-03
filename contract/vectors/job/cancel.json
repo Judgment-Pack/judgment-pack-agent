@@ -1,0 +1,172 @@
+{
+ "description": "Handwritten job evidence: what both readers accept with its digest (the key left out, computed apart from the package), what fails the schema, and what only the readers refuse.",
+ "schema": "run-job.json#/$defs/cancelAcknowledgement",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/job.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "ack-1",
+   "outcome": "accepted",
+   "receipt": "rcpt-3",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "ack-2",
+   "outcome": "refused",
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  }
+ ],
+ "digests": [
+  "sha256:f6a685dfd50cd54d00ed65ec5b271e93b166cf955ac0066ebbd4af22f41572c0",
+  "sha256:13e5cd32567cf571dde576ab4a499b4240c2557ae82b2bbbe16382b01187b5da"
+ ],
+ "refused": [
+  {
+   "problem": "an outcome not named",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "a",
+    "outcome": "maybe",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "no key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "ack-2",
+    "outcome": "refused"
+   }
+  },
+  {
+   "problem": "a short key",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "ack-2",
+    "outcome": "refused",
+    "key": "short"
+   }
+  },
+  {
+   "problem": "generation 2",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 2,
+    "evidence": "ack-2",
+    "outcome": "refused",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "no evidence id",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "outcome": "refused",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  }
+ ],
+ "readerRefused": [],
+ "asks": [
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "by": "tool",
+   "operation": "op-c"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "by": "command",
+   "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057",
+   "command": "cmd-1"
+  }
+ ],
+ "asksRefused": [
+  {
+   "problem": "a tool with a command",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "by": "tool",
+    "operation": "op-c",
+    "command": "cmd-1"
+   }
+  },
+  {
+   "problem": "a command with none",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "by": "command",
+    "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057"
+   }
+  },
+  {
+   "problem": "another by",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "by": "worker",
+    "operation": "op-c"
+   }
+  },
+  {
+   "problem": "generation 2",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 2,
+    "by": "tool",
+    "operation": "op-c"
+   }
+  }
+ ],
+ "operations": [
+  {
+   "command": "cmd-1",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057"
+  }
+ ]
+}

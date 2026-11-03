@@ -3,10 +3,10 @@ import type {HistoryObject} from '../history/codec'
 import {canonicalJSON} from '../context/chat'
 import {bytesCopy,requireId,requireLimit,sameBytes,storageId,StorageCommitMismatch,StorageConflict,StorageCursorInvalid,StorageInputError,STORAGE_EVENT_LIMIT,STORAGE_TRANSACTION_BYTES} from './common'
 import type {StorageRevision,StorageCursor} from './common'
-import {LeaseRefused,LeaseTable,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
+import {LeaseRefused,LeaseTable,fenceOf,readLeaseFence,type LeaseAcquire,type LeaseFence,type LeaseLifetime,type LeaseRunStore,type RunLease} from './lease'
 import {WaitTable,type AttentionDelivery,type WaitClaim,type WaitLifetime,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 import type {RunLimit} from './resume'
-import {JobRefused,JobTable,readJobRegistration,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStore} from './job'
+import {JOB_ABANDON_OWNER,JobRefused,JobTable,jobCancelOperation,readJobRegistration,type JobAbandon,type JobAnswer,type JobCancelAcknowledgement,type JobCancelAsk,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStore} from './job'
 export type RunStoreDurability = 'host'|'memory'|'single-writer-callback'
 export interface RunCommit {
  runId:string;expectedRevision:StorageRevision|null;commitId:string
@@ -107,6 +107,14 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  reconcileJob(evidence:JobReconciliation,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.reconcile(evidence))}
  completeJob(evidence:JobCompletionEvidence,signal?:AbortSignal){return this.serial(signal,()=>{const done=this.jobs.complete(evidence);if(done.wake)this.waits.wakeJob(done.job.resource,done.job.job,done.wake);return done.job})}
  reclaimJob(resource:string,job:string,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>{const held=readLeaseFence(fence);if(held.resource!==resource)throw new LeaseRefused('resource-mismatch');this.leases.check(held);return this.jobs.reclaim(resource,job,held)})}
+ requestJobCancel(ask:JobCancelAsk,fence:LeaseFence,signal?:AbortSignal){return this.serial(signal,()=>{const held=readLeaseFence(fence);if(ask?.resource!==held.resource)throw new LeaseRefused('resource-mismatch');this.leases.check(held);return this.jobs.requestCancel(ask,held)})}
+ acknowledgeJobCancel(evidence:JobCancelAcknowledgement,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.acknowledgeCancel(evidence))}
+ abandonJobs(input:JobAbandon,signal?:AbortSignal){return this.serial(signal,()=>{
+  const lease=this.waits.leasable(input.resource)?this.leases.seize(input.resource,JOB_ABANDON_OWNER,input.durationMs,this.waits.ceiling(input.resource)):undefined
+  const fence=lease?fenceOf(lease):undefined
+  for(const job of this.jobs.started(input.resource))this.jobs.requestCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation:jobCancelOperation(input.command,job.job),command:input.command},fence)
+  return {...(lease?{lease}:{}),jobs:this.jobs.export(input.resource).jobs}
+ })}
  readJob(resource:string,job:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.read(resource,job))}
  listJobs(resource:string,after:string|null,limit:number,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.list(resource,after,limit))}
  exportJobs(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.jobs.export(resource))}

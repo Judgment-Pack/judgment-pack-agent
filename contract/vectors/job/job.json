@@ -13,6 +13,13 @@
  "names": [
   "unproven",
   "started by the typed answer",
+  "a cancel asked for by a tool",
+  "a cancel the host accepted",
+  "a cancel the host refused",
+  "a cancel asked for by a command",
+  "a cancel left undelivered",
+  "completed with cancelled after a cancel",
+  "started with a handle kept as its digest",
   "started by a reconciliation",
   "closed by a reconciliation",
   "closed by the typed answer",
@@ -64,6 +71,262 @@
     "by": "answer",
     "at": "2026-01-01T00:01:00.000Z",
     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "tool",
+     "operation": "op-c",
+     "at": "2026-01-01T00:02:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "tool",
+     "operation": "op-c",
+     "at": "2026-01-01T00:02:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1"
+    },
+    "acknowledged": {
+     "evidence": "ack-1",
+     "outcome": "accepted",
+     "at": "2026-01-01T00:03:00.000Z",
+     "digest": "sha256:f6a685dfd50cd54d00ed65ec5b271e93b166cf955ac0066ebbd4af22f41572c0",
+     "receipt": "rcpt-3"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "tool",
+     "operation": "op-c",
+     "at": "2026-01-01T00:02:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1"
+    },
+    "acknowledged": {
+     "evidence": "ack-2",
+     "outcome": "refused",
+     "at": "2026-01-01T00:03:00.000Z",
+     "digest": "sha256:13e5cd32567cf571dde576ab4a499b4240c2557ae82b2bbbe16382b01187b5da"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "command",
+     "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057",
+     "at": "2026-01-01T00:02:00.000Z",
+     "owner": "job-abandon",
+     "epoch": "2",
+     "command": "cmd-1"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "command",
+     "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057",
+     "at": "2026-01-01T00:02:00.000Z",
+     "command": "cmd-1",
+     "undelivered": true
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "completed",
+   "handle": "ext-1",
+   "receipt": "rcpt-1",
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+   },
+   "cancel": {
+    "requested": {
+     "by": "tool",
+     "operation": "op-c",
+     "at": "2026-01-01T00:02:00.000Z",
+     "owner": "worker-a",
+     "epoch": "1"
+    },
+    "acknowledged": {
+     "evidence": "ack-1",
+     "outcome": "accepted",
+     "at": "2026-01-01T00:03:00.000Z",
+     "digest": "sha256:f6a685dfd50cd54d00ed65ec5b271e93b166cf955ac0066ebbd4af22f41572c0",
+     "receipt": "rcpt-3"
+    }
+   },
+   "completion": {
+    "evidence": "done-3",
+    "outcome": "cancelled",
+    "at": "2026-01-01T00:04:00.000Z",
+    "digest": "sha256:74a3bb531daa1ed87c402c9e0cb6543d1705e8ddc16356d1e4d50f2064f4ede2"
+   }
+  },
+  {
+   "version": 1,
+   "kind": "job",
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "operation": "op-1",
+   "source": "runner",
+   "tool": "start_job",
+   "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+   "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+   "registered": {
+    "owner": "worker-a",
+    "epoch": "1",
+    "at": "2026-01-01T00:00:00.000Z"
+   },
+   "state": "started",
+   "handle": "sha256:7501aff06f185bd2ac47a4a687343ce3d91d52c9e5022364b36fd1b7ed6fddee",
+   "handleDigested": true,
+   "started": {
+    "by": "answer",
+    "at": "2026-01-01T00:01:00.000Z",
+    "digest": "sha256:ab9dfe5e725e7c763fba8397cf9df18431dad5e904c07ff8d1c139bcd640e0dd"
    }
   },
   {
@@ -286,6 +549,181 @@
   }
  ],
  "refused": [
+  {
+   "problem": "a cancel with no request",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {}
+   }
+  },
+  {
+   "problem": "a cancel by no one named",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "worker",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a",
+      "epoch": "1"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a host's word not named",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a",
+      "epoch": "1"
+     },
+     "acknowledged": {
+      "evidence": "a",
+      "outcome": "maybe",
+      "at": "2026-01-01T00:03:00.000Z",
+      "digest": "sha256:f6a685dfd50cd54d00ed65ec5b271e93b166cf955ac0066ebbd4af22f41572c0"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a cancel with another member",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a",
+      "epoch": "1"
+     },
+     "text": "x"
+    }
+   }
+  },
+  {
+   "problem": "a marker that is not true",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "sha256:7501aff06f185bd2ac47a4a687343ce3d91d52c9e5022364b36fd1b7ed6fddee",
+    "handleDigested": false,
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:ab9dfe5e725e7c763fba8397cf9df18431dad5e904c07ff8d1c139bcd640e0dd"
+    }
+   }
+  },
   {
    "problem": "version 2",
    "record": {
@@ -674,6 +1112,271 @@
   }
  ],
  "readerRefused": [
+  {
+   "problem": "a cancel of a start not known",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "unproven",
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a",
+      "epoch": "1"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a tool's cancel with no fence",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a tool's cancel with a command",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "op-c",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a",
+      "epoch": "1",
+      "command": "cmd-1"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a command's cancel neither fenced nor undelivered",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "command",
+      "operation": "o",
+      "at": "2026-01-01T00:02:00.000Z",
+      "command": "cmd-1"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a command's cancel fenced and undelivered",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "command",
+      "operation": "sha256:7019f732b9458ed1a713331646fa9d2df93eb8aa6a2a27a50d81d3e192448057",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "job-abandon",
+      "epoch": "2",
+      "command": "cmd-1",
+      "undelivered": true
+     }
+    }
+   }
+  },
+  {
+   "problem": "an owner with no epoch",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "cancel": {
+     "requested": {
+      "by": "tool",
+      "operation": "o",
+      "at": "2026-01-01T00:02:00.000Z",
+      "owner": "worker-a"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a marker with no handle",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "unproven",
+    "handleDigested": true
+   }
+  },
+  {
+   "problem": "a marker on a handle that is no digest",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "operation": "op-1",
+    "source": "runner",
+    "tool": "start_job",
+    "requestDigest": "sha256:b0a87a70484e065a64a9b87603d49bcd726e2fd9b3335704e3ca21171463e5a0",
+    "keyDigest": "sha256:4b0fbc96e9c8c8c8198e244ef0966dbcc95d54a657f8bdbe96cf4ff27890c13d",
+    "registered": {
+     "owner": "worker-a",
+     "epoch": "1",
+     "at": "2026-01-01T00:00:00.000Z"
+    },
+    "state": "started",
+    "handle": "ext-1",
+    "receipt": "rcpt-1",
+    "started": {
+     "by": "answer",
+     "at": "2026-01-01T00:01:00.000Z",
+     "digest": "sha256:1f6c17980bb47239639527a89a58332a696216fb2b20e542056d2d69af9206dd"
+    },
+    "handleDigested": true
+   }
+  },
   {
    "problem": "an identity that is not its run and operation",
    "record": {

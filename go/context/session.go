@@ -1934,6 +1934,23 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		if err := binding.Writer.AttachJobs(ctx); err != nil {
 			return nil, err
 		}
+		// H5: a cancel is offered only beside its start, and what its job's record refuses is never put to the person.
+		for _, tool := range session.HostTools {
+			if tool.job != nil && tool.job.pair != nil && !slices.ContainsFunc(session.HostTools, func(other HostTool) bool { return other.job == tool.job.pair }) {
+				return nil, &JobCapabilityRefused{Reason: "job-host-unsupported"}
+			}
+		}
+		if held.Sources != nil {
+			held.Sources.beforeAsking = func(ctx context.Context, entry *SourceEntry, args json.RawMessage) string {
+				if entry.Declared.job == nil || entry.Declared.job.cancel == nil {
+					return ""
+				}
+				if refused := held.jobCancelRefusal(ctx, entry.Declared.job, args); refused != "" {
+					return "JobRefused: " + refused + "."
+				}
+				return ""
+			}
+		}
 		held.Execution.PlanJobsHeld = binding.Writer.JobProof
 		held.Execution.PlanJobs = func(ctx context.Context) (map[string]RunJob, error) {
 			if err := binding.Writer.RefreshJobs(ctx); err != nil {

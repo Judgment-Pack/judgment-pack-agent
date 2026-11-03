@@ -562,7 +562,7 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 			// person was shown, a text kept or not. Refused here, before the claim, so the pause stands and the
 			// call can be asked again.
 			if decision.Approved && decision.ShownDigest == nil && slices.ContainsFunc(c.session.HostTools, func(tool HostTool) bool {
-				return tool.job != nil && tool.job.start != nil && tool.Name == saved.Approval.Name
+				return tool.job != nil && (tool.job.start != nil || tool.job.cancel != nil) && tool.Name == saved.Approval.Name
 			}) {
 				return failure.Authored("stale-state", approvalNotShownDetail, "context")
 			}

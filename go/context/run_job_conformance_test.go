@@ -3,6 +3,7 @@ package runcontext
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,9 +55,14 @@ type jobFault struct {
 	complete  func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error)
 	reclaim   func(s jobFault, ctx context.Context, resource, job string, fence LeaseFence) (RunJob, error)
 	export    func(s jobFault, ctx context.Context, resource string) (JobExport, error)
-	park      func(s jobFault, ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error)
-	wake      func(s jobFault, ctx context.Context, evidence WakeEvidence) (WakeDisposition, error)
-	resume    func(s jobFault, ctx context.Context, claim WaitClaim) (RunWait, RunLease, error)
+	ask       func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error)
+	word      func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error)
+	abandon   func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error)
+	// opened is told of each instance the kit builds: the third is the one the last restart builds.
+	opened func()
+	park   func(s jobFault, ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error)
+	wake   func(s jobFault, ctx context.Context, evidence WakeEvidence) (WakeDisposition, error)
+	resume func(s jobFault, ctx context.Context, claim WaitClaim) (RunWait, RunLease, error)
 }
 
 func (s jobFault) JobVersion() int {
@@ -227,7 +233,8 @@ var jobFaults = map[string]jobFault{
 		return s.durableJobStore.AnswerJob(ctx, input, fence)
 	}},
 	"job.answer.late": {answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
-		if fence.Owner == "worker-a" && fence.Resource == input.Resource {
+		held, _ := s.durableJobStore.ReadJob(ctx, input.Resource, input.Job)
+		if fence.Owner == "worker-a" && fence.Resource == input.Resource && held != nil && held.Registered.Epoch == fence.Epoch {
 			if err := s.CheckFence(ctx, fence); err != nil {
 				return RunJob{}, err
 			}
@@ -483,6 +490,250 @@ var jobFaults = map[string]jobFault{
 	}},
 }
 
+func (s jobFault) RequestJobCancel(ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+	if s.ask != nil {
+		return s.ask(s, ctx, input, fence)
+	}
+	return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+}
+func (s jobFault) AcknowledgeJobCancel(ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+	if s.word != nil {
+		return s.word(s, ctx, input)
+	}
+	return s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+}
+func (s jobFault) AbandonJobs(ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+	if s.abandon != nil {
+		return s.abandon(s, ctx, input)
+	}
+	return s.durableJobStore.AbandonJobs(ctx, input)
+}
+
+func (s jobFault) rowOf(resource, job string) *RunJob {
+	for _, row := range s.jobs.rows[resource] {
+		if row.Job == job {
+			return row
+		}
+	}
+	return nil
+}
+
+// jobCancelStores: a store for each thing a cancel or an abandon must hold.
+func jobCancelStores() map[string]struct {
+	property string
+	fault    jobFault
+} {
+	requested := JobCancelRequest{By: "tool", Operation: "cancel-x", At: "2026-01-01T00:00:00.000Z"}
+	skips := func(when func(fence LeaseFence, lease *RunLease) bool) jobFault {
+		return jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			lease, _ := s.ReadLease(ctx, input.Resource)
+			if when(fence, lease) {
+				return s.jobs.RequestCancel(input, &fence)
+			}
+			return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		}}
+	}
+	takes := func(state string) jobFault {
+		return jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			if row := s.rowOf(input.Resource, input.Job); row != nil && row.State == state {
+				return cloneRunJob(*row), nil
+			}
+			return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		}}
+	}
+	swallows := func(reason string) jobFault {
+		return jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+			var refused *JobRefused
+			if errors.As(err, &refused) && refused.Reason == reason {
+				if row := s.rowOf(input.Resource, input.Job); row != nil {
+					return cloneRunJob(*row), nil
+				}
+			}
+			return job, err
+		}}
+	}
+	once := false
+	return map[string]struct {
+		property string
+		fault    jobFault
+	}{
+		"another owner took effect": {"job.cancel.fence", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			if err != nil && fence.Owner == "worker-x" {
+				if row := s.rowOf(input.Resource, input.Job); row != nil && row.State == "started" {
+					row.Cancel = &JobCancel{Requested: requested}
+				}
+			}
+			return job, err
+		}}},
+		"a stale fence": {"job.cancel.stale", skips(func(fence LeaseFence, lease *RunLease) bool {
+			return lease != nil && lease.Owner == fence.Owner && lease.Epoch != fence.Epoch
+		})},
+		"an expired fence": {"job.cancel.expired", skips(func(fence LeaseFence, lease *RunLease) bool {
+			return lease != nil && lease.Owner == fence.Owner && lease.Epoch == fence.Epoch && fence.Resource == "run-cancel-stale"
+		})},
+		"unproven": {"job.cancel.unproven", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			if row := s.rowOf(input.Resource, input.Job); row != nil && row.State == "unproven" {
+				out := cloneRunJob(*row)
+				out.Cancel = &JobCancel{Requested: requested}
+				return out, nil
+			}
+			return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		}}},
+		"completed": {"job.cancel.settled", takes("completed")},
+		"closed":    {"job.cancel.closed", takes("not-started")},
+		"another job of the run": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Job != input.Job {
+					return cloneRunJob(*row), err
+				}
+			}
+			return job, err
+		}}},
+		"moves the state": {"job.cancel.records", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			job.State = "completed"
+			return job, err
+		}}},
+		"a later request replaces": {"job.cancel.first", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			if row := s.rowOf(input.Resource, input.Job); row != nil {
+				row.Cancel = nil
+			}
+			return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		}}},
+		"a wrong key took effect": {"job.cancel.key", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+			var refused *JobRefused
+			if errors.As(err, &refused) && refused.Reason == "unauthenticated" {
+				if row := s.rowOf(input.Resource, input.Job); row != nil && row.Cancel != nil {
+					row.Cancel.Acknowledged = &JobCancelAcknowledged{Evidence: input.Evidence, Outcome: input.Outcome, At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("a", 64)}
+				}
+			}
+			return job, err
+		}}},
+		"a word with no cancel": {"job.cancel.none", swallows("no-cancel")},
+		"a word moves the state": {"job.cancel.word", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+			job.State = "completed"
+			return job, err
+		}}},
+		"the same word refused": {"job.cancel.same", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			if input.Resource == "run-cancel" && input.Evidence == "word-1" && input.Outcome == "accepted" && input.Key != jobKitWrong {
+				if once {
+					return RunJob{}, jobRefused("stale")
+				}
+				job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+				once = err == nil
+				return job, err
+			}
+			return s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+		}}},
+		"another content taken": {"job.cancel.conflict", swallows("conflict")},
+		"another word taken":    {"job.cancel.again", swallows("stale")},
+		"a completion drops the cancel": {"job.cancel.completes", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+			job, err := s.durableJobStore.CompleteJob(ctx, input)
+			if input.Resource == "run-cancel" {
+				if row := s.rowOf(input.Resource, input.Job); row != nil {
+					row.Cancel = nil
+				}
+				job.Cancel = nil
+			}
+			return job, err
+		}}},
+		"a word wakes": {"job.cancel.nowake", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+			for _, row := range s.waits.rows[input.Resource] {
+				if row.State == "parked" {
+					row.State, row.Disposition = "woken", &WakeDisposition{Evidence: input.Evidence, Kind: "event", At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("a", 64)}
+				}
+			}
+			return job, err
+		}}},
+		"an abandon at the same epoch": {"job.abandon.lease", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			before, _ := s.ReadLease(ctx, input.Resource)
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if before != nil && taken.Lease != nil {
+				taken.Lease.Epoch = before.Epoch
+			}
+			return taken, err
+		}}},
+		"an abandon commits": {"job.abandon.nocommit", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			if input.Resource == "run-abandon" {
+				head, _ := s.durableJobStore.Load(ctx, input.Resource)
+				lease, _ := s.ReadLease(ctx, input.Resource)
+				if _, err := s.durableJobStore.CommitFenced(ctx, RunCommit{RunID: input.Resource, ExpectedRevision: head.Revision, CommitID: "abandon", Checkpoint: head.Checkpoint, Events: [][]byte{}}, FenceOf(*lease)); err != nil {
+					return JobAbandonTaken{}, err
+				}
+			}
+			return s.durableJobStore.AbandonJobs(ctx, input)
+		}}},
+		"an old worker keeps its fence": {"job.abandon.epoch", jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+			if input.CommitID == "run-abandon-op-late" {
+				return RunReceipt{}, nil
+			}
+			return s.durableJobStore.CommitFenced(ctx, input, fence)
+		}}},
+		"an abandon asks nothing": {"job.abandon.asks", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for _, row := range s.jobs.rows[input.Resource] {
+				row.Cancel = nil
+			}
+			for i := range taken.Jobs {
+				taken.Jobs[i].Cancel = nil
+			}
+			return taken, err
+		}}},
+		"an abandon asks of what cannot be asked": {"job.abandon.only", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.State != "started" {
+					row.Cancel = &JobCancel{Requested: requested}
+				}
+			}
+			return taken, err
+		}}},
+		"an abandon drops the principals": {"job.abandon.principal", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if taken.Lease != nil && taken.Lease.Principal != nil {
+				taken.Lease.Principal, taken.Lease.Version = nil, 1
+			}
+			return taken, err
+		}}},
+		"an abandon answers no jobs": {"job.abandon.jobs", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			taken.Jobs = []RunJob{}
+			return taken, err
+		}}},
+		"past a deadline, silent": {"job.abandon.past", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if input.Resource == "run-abandon-late" {
+				for _, row := range s.jobs.rows[input.Resource] {
+					row.Cancel = nil
+				}
+			}
+			return taken, err
+		}}},
+	}
+}
+
+func TestJobConformanceKitHoldsACancelAndAnAbandon(t *testing.T) {
+	for name, c := range jobCancelStores() {
+		t.Run(name, func(t *testing.T) {
+			create := memoryJobKind(func(store *MemoryRunStore) JobRunStore {
+				held := c.fault
+				held.durableJobStore = durableJobStore{store}
+				return &held
+			}, nil)
+			var failure *StorageConformanceFailure
+			if err := CheckRunStoreJobConformance(context.Background(), create); !errors.As(err, &failure) || failure.Property != c.property {
+				t.Fatalf("got %v, want the property %s", err, c.property)
+			}
+		})
+	}
+}
+
 func (s jobFault) ExportJobs(ctx context.Context, resource string) (JobExport, error) {
 	if s.export != nil {
 		return s.export(s, ctx, resource)
@@ -541,6 +792,29 @@ func repeatRegisters(history bool) jobFault {
 		seen[input.CommitID] = err == nil
 		return receipt, err
 	}}
+}
+
+func staleOnceSettled(settled string) jobFault {
+	last := map[string]*RunJob{}
+	return jobFault{read: func(s jobFault, ctx context.Context, resource, job string) (*RunJob, error) {
+		held, err := s.durableJobStore.ReadJob(ctx, resource, job)
+		if held == nil || held.State != settled {
+			last[job] = held
+			return held, err
+		}
+		if stale, ok := last[job]; ok && stale != nil {
+			return stale, nil
+		}
+		return held, err
+	}}
+}
+
+// afterLastRestart counts the instances the kit builds: the third is the one its second restart builds.
+func afterLastRestart(by func(*int) jobFault) jobFault {
+	n := 0
+	fault := by(&n)
+	fault.opened = func() { n++ }
+	return fault
 }
 
 func firstJobReads() jobFault {
@@ -664,6 +938,101 @@ func jobStores() map[string]struct {
 			}
 			return s.durableJobStore.ParkWait(ctx, park, fence)
 		}}},
+		"R-3 a completion refused took effect": {"job.complete.key", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+			job, err := s.durableJobStore.CompleteJob(ctx, input)
+			var refused *JobRefused
+			if errors.As(err, &refused) && refused.Reason == "unauthenticated" {
+				for _, row := range s.jobs.rows[input.Resource] {
+					if row.Job == input.Job {
+						row.State, row.Completion = "completed", &JobCompletion{Evidence: input.Evidence, Outcome: input.Outcome, At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("a", 64)}
+					}
+				}
+			}
+			return job, err
+		}}},
+		"R-3 a reconciliation refused took effect": {"job.reconcile.key", jobFault{reconcile: func(s jobFault, ctx context.Context, input JobReconciliation) (RunJob, error) {
+			job, err := s.durableJobStore.ReconcileJob(ctx, input)
+			var refused *JobRefused
+			if errors.As(err, &refused) && refused.Reason == "unauthenticated" {
+				for _, row := range s.jobs.rows[input.Resource] {
+					if row.Job == input.Job {
+						evidence := input.Evidence
+						row.State, row.Closed = "not-started", &JobFact{By: "reconcile", At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("a", 64), Evidence: &evidence}
+					}
+				}
+			}
+			return job, err
+		}}},
+		"R-3 an answer refused took effect": {"job.answer.other", jobFault{answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.AnswerJob(ctx, input, fence)
+			if err != nil && fence.Owner == "worker-x" {
+				for _, row := range s.jobs.rows[input.Resource] {
+					if row.Job == input.Job {
+						row.State, row.Handle, row.Started = "started", input.Handle, &JobFact{By: "answer", At: "2026-01-01T00:00:00.000Z", Digest: "sha256:" + strings.Repeat("a", 64)}
+					}
+				}
+			}
+			return job, err
+		}}},
+		"R-3 a completion wakes whichever": {"job.wake.other", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+			job, err := s.durableJobStore.CompleteJob(ctx, input)
+			for _, row := range s.waits.rows[input.Resource] {
+				if input.Resource == "run-two" && row.State == "parked" && job.Completion != nil {
+					row.State, row.Disposition = "woken", &WakeDisposition{Evidence: input.Evidence, Kind: "event", At: job.Completion.At, Digest: job.Completion.Digest}
+				}
+			}
+			return job, err
+		}}},
+		"R-3 read stale once completed": {"job.read.completed", staleOnceSettled("completed")},
+		"R-3 read stale once closed":    {"job.read.closed", staleOnceSettled("not-started")},
+		"R-3 an answer ignores the epoch": {"job.answer.epoch", jobFault{answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Job == input.Job && row.Registered.Owner == fence.Owner {
+					fence.Epoch = row.Registered.Epoch
+					if row.Reclaimed != nil {
+						fence.Epoch = row.Reclaimed.Epoch
+					}
+				}
+			}
+			return s.durableJobStore.AnswerJob(ctx, input, fence)
+		}}},
+		"R-3 a commit id forgotten": {"job.restart.commit", afterLastRestart(func(n *int) jobFault {
+			return jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+				if *n >= 3 && input.CommitID == "run-after-op-1" {
+					return RunReceipt{}, nil
+				}
+				return s.durableJobStore.CommitFenced(ctx, input, fence)
+			}}
+		})},
+		"R-3 a wake key free for a job": {"job.restart.wakekey", afterLastRestart(func(n *int) jobFault {
+			return jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+				if *n >= 3 && input.CommitID == "run-after-op-wake" {
+					s.jobs.Register(input.RunID, *input.Job, fence)
+					return RunReceipt{}, nil
+				}
+				return s.durableJobStore.CommitFenced(ctx, input, fence)
+			}}
+		})},
+		"R-3 a job key free for a wait": {"job.restart.jobkey", afterLastRestart(func(n *int) jobFault {
+			return jobFault{park: func(s jobFault, ctx context.Context, park RunWait, fence LeaseFence) (RunWait, AttentionEvent, error) {
+				if *n >= 3 && park.Resource == "run-after" {
+					return park, AttentionEvent{}, nil
+				}
+				return s.durableJobStore.ParkWait(ctx, park, fence)
+			}}
+		})},
+		"R-3 a completion unauthenticated": {"job.restart.auth", afterLastRestart(func(n *int) jobFault {
+			return jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
+				if *n >= 3 && input.Resource == "run-after" {
+					held, err := s.durableJobStore.ReadJob(ctx, input.Resource, input.Job)
+					if err != nil || held == nil {
+						return RunJob{}, err
+					}
+					return *held, nil
+				}
+				return s.durableJobStore.CompleteJob(ctx, input)
+			}}
+		})},
 		"E12 list": {"job.list.fresh", firstJobLists()},
 		"E13 read": {"job.read.fresh", firstJobReads()},
 		"a repeated contradiction id": {"job.contradiction.conflict", jobFault{complete: func(s jobFault, ctx context.Context, input JobCompletionEvidence) (RunJob, error) {
@@ -686,6 +1055,9 @@ func TestJobConformanceKitFailsAStoreThatLosesAJobOrACompletion(t *testing.T) {
 			create := memoryJobKind(func(store *MemoryRunStore) JobRunStore {
 				held := c.fault
 				held.durableJobStore = durableJobStore{store}
+				if held.opened != nil {
+					held.opened()
+				}
 				return &held
 			}, nil)
 			var failure *StorageConformanceFailure
@@ -753,6 +1125,22 @@ func TestJobConformanceKitHoldsARestart(t *testing.T) {
 			}
 		}},
 		{"job.restart.wait", func(fresh *MemoryRunStore) { fresh.waits.rows = map[string][]*RunWait{} }},
+		{"job.restart.record", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.jobs.rows {
+				for _, row := range rows {
+					row.Cancel = nil
+				}
+			}
+		}},
+		{"job.restart.wait", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.waits.rows {
+				for _, row := range rows {
+					if row.State != "parked" {
+						row.State, row.Disposition = "parked", nil
+					}
+				}
+			}
+		}},
 		{"job.restart.contradiction", func(fresh *MemoryRunStore) {
 			for _, rows := range fresh.jobs.rows {
 				for _, row := range rows {

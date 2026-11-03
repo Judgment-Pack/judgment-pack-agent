@@ -65,7 +65,7 @@ pinned VM image**: nothing here chooses, holds or attests the machine a job runs
 
 - `.github/runner-identity.json` is the kit's manifest, revision 1, vendored unchanged and pinned
   by SHA-256 in the configuration's `identity` member.
-- Every profile (`base` for `contract`, `check` for the `check`, `go-race-a` and `go-race-b` jobs, `mutation` for
+- Every profile (`base` for `contract`, `check` for the `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs, `mutation` for
   the shards) is variant `linux-x64`,
   pins `ImageOS` `ubuntu26` and records its tools. Every profile compares with the release runner:
   the release's `CI at the tag` job sets up Node, Go and Python from `dev.json` with the same pinned
@@ -99,9 +99,9 @@ No timing after it has been measured.
 
 The status names `contract`, `check` and `dependency-audit` are unchanged. The shards' are
 `every row (shard N of 10)` since #281. Branch protection requires `DCO` and `contract`. Since #292
-`go-race-a` and `go-race-b` are statuses as well, in place of the one `go-race` of #254.
+`go-race-a`, `go-race-b` and `go-race-c` are statuses as well, in place of the one `go-race` of #254.
 
-**Pull-request-to-branch reuse.** The `check`, `go-race-a` and `go-race-b` jobs (one job of 45 minutes
+**Pull-request-to-branch reuse.** The `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs (one job of 45 minutes
 on the run above, the race step 1,341 s and `unit-tests` 484 s of it, before #254) may each take from the same job
 of the merged pull request's newest run the checks `pull_request_reuse.checks` lists, where that run
 passed them. Tree equality alone never qualifies:
@@ -120,7 +120,7 @@ Listed as reusable, because each result depends only on the tree and the recorde
 `release-quality-engine`, `reference`, `unit-tests`, the three certification suites,
 `differential`, `gateway-receipt-process`, `gateway-receipts` (the Gateway checkout is pinned by
 commit in `tests/fixtures/gateway-receipts/source.json`), `go-module-path`, `gofmt`, `go-vet`,
-`go-generate`, `go-test`, `go-race-a`, `go-race-b`, `harness-check` and `parity` (the Desk checkout is pinned by
+`go-generate`, `go-test`, `go-race-a`, `go-race-b`, `go-race-c`, `harness-check` and `parity` (the Desk checkout is pinned by
 commit in `scripts/parity.sh`).
 
 Not reusable, run on every branch push:
@@ -295,8 +295,8 @@ and no evidence is false, but it costs an hour on a release candidate. So the on
 runner of its own. No limit was raised and no test was dropped: both steps are the same `go test` flags,
 under the same 40-minute limit per binary and the same 3,000 s per step.
 
-- **The two steps.** `go-race-a` names its packages, `./gate` among them. `go-race-b` asks `go list ./context/... ./adapter/...`
-  and takes every package `go-race-a` does not name, so a new package runs, in `go-race-b`, before anyone
+- **The steps.** `go-race-a` names its packages, `./gate` among them, and `go-race-c` names `./adapter/jobtests`. `go-race-b` asks `go list ./context/... ./adapter/...`
+  and takes every package the other two do not name, so a new package runs, in `go-race-b`, before anyone
   has placed it. `tests/test_release_evidence.py` runs both steps' own text with a stand-in `go`, over this
   tree and over this tree with a package added: together they are the packages of the one pattern, each
   once. A package `go-race-a` names that has moved stops that step, and a `go list` that fails part of the
@@ -319,21 +319,29 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   `GOMAXPROCS=4`, the hosted runner's size. `./gate` (2 s, #302) was in neither leg: it is outside the pattern
   `go-race-b` lists, so it is named here and the exclusion does not need it.
 
+  **A third leg (#306).** `go-race-c` runs `./adapter/jobtests` alone, and `go-race-b` excludes it. On the hosted
+  run of #306's job core, `go-race-b` printed its step warning at 2,406 s of 3,000 s, with `./adapter/jobtests`
+  at 1,467 s of it, and cancellation and the objective add to that binary. Locally, under race and with other work
+  beside it, the binary took 1,271 s at #306's head. Expected on a hosted runner: `go-race-c` about 1,600 s (the
+  binary and its compile), well under its 2,250 s warning; `go-race-b` about 1,000 to 1,500 s, back to room for
+  the packages still to come; `go-race-a` unchanged. A binary that outgrows its leg moves the same way: name it
+  in its step, and in `go-race-b`'s exclusion.
+
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
   tests still to come add to that side first. To move a binary to `go-race-a`, name it in that step and in
   `go-race-b`'s exclusion; a name in only one of the two fails the test. The job's warning below says when
   that is due.
-- **The jobs.** `go-race` in `ci.yml` is one matrix job with two legs, `go-race-a` and `go-race-b`, as the
+- **The jobs.** `go-race` in `ci.yml` is one matrix job with three legs, `go-race-a`, `go-race-b` and `go-race-c`, as the
   mutation table is one job with ten shards. In `.github/ci-evidence.json` each leg is a job of its own,
   with one check; each has its own status, its own artifact (`ci-evidence-ci-go-race-a-<attempt>`,
-  `ci-evidence-ci-go-race-b-<attempt>`), its own plan, capture and readmission, under the same rules as
+  `ci-evidence-ci-go-race-b-<attempt>`, `ci-evidence-ci-go-race-c-<attempt>`), its own plan, capture and readmission, under the same rules as
   #254's one job. Neither cancels the other on a failure. A leg skips every other step of the manifest, the
   other leg's among them, and the `check` job skips both.
-- **What a release requires.** Both. The gate holds a candidate's job names to the configuration's, so a
-  run without either leg refuses (`job-coverage`), as does a run with the one old `go-race` job; without
+- **What a release requires.** Every leg. The gate holds a candidate's job names to the configuration's, so a
+  run without any one leg refuses (`job-coverage`), as does a run with the one old `go-race` job; without
   either artifact, `artifact-coverage`; without either result, `check-coverage` or `check-result`. A leg's
   evidence holding the other's step refuses too. A merged pull request's run from before the division has
-  neither leg, so on main both steps run fresh (`reuse-job`), and the `check` job's reuse is unaffected.
+  none of the legs, so on main each step runs fresh (`reuse-job`), and the `check` job's reuse is unaffected.
 - **The warning.** As well as the warning for a binary, each job warns when its step passes three quarters
   of the 3,000 s, 2,250 s: the sign that a binary should move to the other step, or that a third is due.
 

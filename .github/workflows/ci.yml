@@ -2,9 +2,9 @@ name: CI
 
 # The check list is dev.json, run by scripts/dev/check.sh (the devkit's vendored runner). Four jobs
 # divide it between them, each check run once: `contract`, which branch protection requires by
-# name, runs the four cheap steps on every event; `go-race-a` and `go-race-b` each run one of the two
-# race steps on a runner of its own (#254: the race tests were more than half of the time of one job;
-# #292: together they had too little room under the step's limit); `check` sets the toolchains up from
+# name, runs the four cheap steps on every event; `go-race-a`, `go-race-b` and `go-race-c` each run one of the
+# three race steps on a runner of its own (#254: the race tests were more than half of the time of one job;
+# #292: together they had too little room under the step's limit; #306: the job tests alone filled half a leg); `check` sets the toolchains up from
 # the manifest and runs every other step, the Desk parity step included. On a pull request `check` and
 # the race jobs run the steps jpdev.json maps the changed paths to (`check.sh --changed`), each its own
 # part of them; on a push to main and on a dispatch, their whole part of the list.
@@ -178,7 +178,7 @@ jobs:
           COVERED: ${{ steps.plan.outputs.covered }}
         run: |
           set -o pipefail
-          skip=contract,local-paths,agent-docs,diff-check,go-race-a,go-race-b
+          skip=contract,local-paths,agent-docs,diff-check,go-race-a,go-race-b,go-race-c
           if [ -n "$COVERED" ]; then skip="$skip,$COVERED"; fi
           if [ "$EVENT" = pull_request ]; then
             scripts/dev/check.sh --all --changed "origin/$BASE_REF" --skip "$skip" | tee "${{ runner.temp }}/checks.log"
@@ -204,7 +204,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # dev.json's two race steps, each alone on a runner of its own (#254, #292): the same command and
+  # dev.json's three race steps, each alone on a runner of its own (#254, #292, #306): the same command and
   # limits over the same packages as the one step they were, divided by the hosted time of each test
   # binary, and any new package falls to go-race-b. Each needs Go, and Node for the scripted server the
   # Eino adapter's tests start; neither the Desk nor the Gateway checkout. Each leg's evidence and reuse
@@ -218,7 +218,7 @@ jobs:
       # A leg that fails must not cancel the other: each one's times and evidence are worth having.
       fail-fast: false
       matrix:
-        part: [a, b]
+        part: [a, b, c]
     # The reuse plan reads the merged pull request, its timeline and its run; nothing is written.
     permissions:
       contents: read

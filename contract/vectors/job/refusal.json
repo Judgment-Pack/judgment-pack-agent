@@ -46,6 +46,10 @@
   {
    "version": 1,
    "reason": "job-unproven"
+  },
+  {
+   "version": 1,
+   "reason": "no-cancel"
   }
  ],
  "capability": [
@@ -68,6 +72,10 @@
   {
    "version": 1,
    "reason": "store-inconsistent"
+  },
+  {
+   "version": 1,
+   "reason": "chat-store-unsupported"
   }
  ],
  "refused": [

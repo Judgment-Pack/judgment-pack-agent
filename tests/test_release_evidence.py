@@ -51,7 +51,7 @@ CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
 SHARDS = 10
 # The race steps and their jobs: the two legs of one matrix job (#292), each its own key, name, check
 # and evidence in the configuration, the same way the mutation shards are.
-RACE_JOBS = ['go-race-a', 'go-race-b']
+RACE_JOBS = ['go-race-a', 'go-race-b', 'go-race-c']
 # The jobs that plan reuse from the merged pull request: the check job, and the race steps' own (#254).
 PLANNING_JOBS = ['check'] + RACE_JOBS
 # The check job's checks that run on every branch push, and why none of them is reusable from a
@@ -384,8 +384,8 @@ class Workflows(unittest.TestCase):
         # The matrix makes exactly the configuration's two legs, under the names the gate reads.
         race = job_block(read('.github/workflows/ci.yml'), 'go-race')
         self.assertIn('    name: go-race-${{ matrix.part }}\n', race)
-        self.assertIn('      fail-fast: false\n      matrix:\n        part: [a, b]\n', race)
-        self.assertEqual(['go-race-%s' % part for part in ('a', 'b')], RACE_JOBS)
+        self.assertIn('      fail-fast: false\n      matrix:\n        part: [a, b, c]\n', race)
+        self.assertEqual(['go-race-%s' % part for part in ('a', 'b', 'c')], RACE_JOBS)
 
     def test_the_table_runs_nightly_and_by_dispatch_and_only_a_dispatch_records_evidence(self):
         mutation = read('.github/workflows/mutation.yml')
@@ -521,7 +521,7 @@ class Workflows(unittest.TestCase):
         """The job selects by skipping (check.sh refuses --changed with --only), so the list is
         derived from the manifest: a step added later is not run here, each leg skips the other's
         step, and a leg's own is never skipped but for what the plan covered."""
-        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+        for leg, other in zip(RACE_JOBS, RACE_JOBS[1:] + RACE_JOBS[:1]):
             with self.subTest(leg=leg):
                 manifest = json.loads(read('dev.json'))
                 others = self.go_race_others(manifest, leg)['others'].split(',')
@@ -599,7 +599,8 @@ class Workflows(unittest.TestCase):
         parts = self.race_parts(every)
         self.assertTrue(all(parts.values()))
         self.assertEqual(sorted(sum(parts.values(), [])), sorted(every))
-        self.assertFalse(set(parts['go-race-a']) & set(parts['go-race-b']))
+        for one, other in (('go-race-a', 'go-race-b'), ('go-race-a', 'go-race-c'), ('go-race-b', 'go-race-c')):
+            self.assertFalse(set(parts[one]) & set(parts[other]), (one, other))
 
     def test_a_new_test_binary_cannot_be_left_out_of_both_race_steps(self):
         """A package nobody has placed runs, and exactly once, in the step that takes what the other
@@ -817,7 +818,7 @@ TOOLS = {'base': {'python': 'Python 3.12.15'},
          'mutation': {'node': 'v22.23.4', 'npm': '10.9.9'}}
 ENVIRONMENT_VALUES = {'CI': 'true', 'JPDEV_DESK': 'desk-checkout', 'JP_AGENT_GATEWAY_SOURCE': 'gateway-checkout'}
 # The race jobs make neither checkout, so they run without those two (unset, on both sides of a reuse).
-JOB_ENVIRONMENT = {'check': ENVIRONMENT_VALUES, 'go-race-a': {'CI': 'true'}, 'go-race-b': {'CI': 'true'}}
+JOB_ENVIRONMENT = {'check': ENVIRONMENT_VALUES, 'go-race-a': {'CI': 'true'}, 'go-race-b': {'CI': 'true'}, 'go-race-c': {'CI': 'true'}}
 BASE = 'e' * 40
 HEAD = 'b' * 40
 MERGE = 'd' * 40
@@ -1015,7 +1016,7 @@ class AgentGate(AgentWorld):
         self.assertEqual(sorted(identity['groups']), ['linux-x64/base', 'linux-x64/check', 'linux-x64/mutation'])
         self.assertEqual(identity['groups']['linux-x64/mutation']['jobs'],
                          ['mutation/full-%d' % shard for shard in range(1, SHARDS + 1)])
-        self.assertEqual(identity['groups']['linux-x64/check']['jobs'], ['ci/check', 'ci/go-race-a', 'ci/go-race-b'])
+        self.assertEqual(identity['groups']['linux-x64/check']['jobs'], ['ci/check', 'ci/go-race-a', 'ci/go-race-b', 'ci/go-race-c'])
         self.assertEqual(self.record['workflows']['ci']['jobs']['check']['reused'], None)
         for leg in RACE_JOBS:
             self.assertEqual(self.record['workflows']['ci']['jobs'][leg]['coverage'],
@@ -1024,7 +1025,7 @@ class AgentGate(AgentWorld):
     def test_a_release_requires_both_race_jobs(self):
         """Each race step is as required as the one step was: without either job, its artifact or its
         result, the release refuses, and neither leg can stand for the other."""
-        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+        for leg, other in zip(RACE_JOBS, RACE_JOBS[1:] + RACE_JOBS[:1]):
             with self.subTest(leg=leg):
                 self.data = self.world()
                 listing = self.data['actions/runs/100/attempts/1/jobs?per_page=100&page=1']
@@ -1411,7 +1412,7 @@ class ReuseWorld(AgentWorld):
 
     COVERED = ['go-test', 'unit-tests']
     # The pull request run's job and artifact ids, for each job.
-    IDS = {'check': (551, 651), 'go-race-a': (552, 652), 'go-race-b': (553, 653)}
+    IDS = {'check': (551, 651), 'go-race-a': (552, 652), 'go-race-b': (553, 653), 'go-race-c': (554, 654)}
 
     def setUp(self):
         super().setUp()
@@ -1619,10 +1620,10 @@ class AgentReusePlan(ReuseWorld):
         jobs = self.data['actions/runs/50/attempts/1/jobs?per_page=100&page=1']
         artifacts = self.data['actions/runs/50/artifacts?per_page=100&page=1']
         jobs['jobs'] = [dict(job, name='go-race') if job['name'] == 'go-race-a' else job for job in jobs['jobs']
-                        if job['name'] != 'go-race-b']
+                        if job['name'] not in ('go-race-b', 'go-race-c')]
         jobs['total_count'] = len(jobs['jobs'])
         artifacts['artifacts'] = [dict(item, name='ci-evidence-ci-go-race-1') if item['name'] == 'ci-evidence-ci-go-race-a-1'
-                                  else item for item in artifacts['artifacts'] if item['name'] != 'ci-evidence-ci-go-race-b-1']
+                                  else item for item in artifacts['artifacts'] if item['name'] not in ('ci-evidence-ci-go-race-b-1', 'ci-evidence-ci-go-race-c-1')]
         artifacts['total_count'] = len(artifacts['artifacts'])
         for leg in RACE_JOBS:
             with self.subTest(leg=leg):
@@ -1733,7 +1734,7 @@ class AgentCapture(AtCommit):
                 self.assertEqual(caught.exception.code, 'check-coverage')
 
     def test_a_race_job_refuses_a_log_in_which_it_ran_another_step(self):
-        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+        for leg, other in zip(RACE_JOBS, RACE_JOBS[1:] + RACE_JOBS[:1]):
             for extra in ('go-test', other):
                 with self.subTest(leg=leg, extra=extra):
                     with self.assertRaises(g.Refusal) as caught:
@@ -1741,7 +1742,7 @@ class AgentCapture(AtCommit):
                     self.assertEqual(caught.exception.code, 'check-coverage')
 
     def test_a_race_job_refuses_a_log_without_its_step(self):
-        for leg, other in zip(RACE_JOBS, reversed(RACE_JOBS)):
+        for leg, other in zip(RACE_JOBS, RACE_JOBS[1:] + RACE_JOBS[:1]):
             for ran in ([], [other]):
                 with self.subTest(leg=leg, ran=ran):
                     with self.assertRaises(g.Refusal) as caught:

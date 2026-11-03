@@ -20,11 +20,13 @@
     "reclaimed": {"$ref": "#/$defs/actor", "description": "The fence a re-authorization grant re-sent the start under."},
     "principal": {"$ref": "run-principal.json#/$defs/binding"},
     "state": {"$ref": "#/$defs/state"},
-    "handle": {"$ref": "#/$defs/id", "description": "The host's reference to the external job. Never shown to the model."},
+    "handle": {"$ref": "#/$defs/id", "description": "The host's reference to the external job, or, with handleDigested, the SHA-256 digest of bytes the record could not hold, which is no reference and is never sent as one. Never shown to the model."},
+    "handleDigested": {"const": true, "description": "The handle is the digest of the host's bytes, not the host's reference. A real handle can read the same, so only this member says which it is."},
     "receipt": {"$ref": "#/$defs/id", "description": "A bounded reference to the host's receipt, not the receipt. Never shown to the model."},
     "started": {"$ref": "#/$defs/fact"},
     "closed": {"$ref": "#/$defs/fact"},
     "completion": {"$ref": "#/$defs/completionRecord"},
+    "cancel": {"$ref": "#/$defs/cancel"},
     "contradictions": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/contradiction"}}
   },
   "additionalProperties": false,
@@ -63,6 +65,41 @@
       "properties": {"kind": {"enum": ["started", "completed"]}, "at": {"$ref": "#/$defs/time"}, "digest": {"$ref": "#/$defs/digest"}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "handle": {"$ref": "#/$defs/id"}},
       "additionalProperties": false
     },
+    "cancelRequest": {
+      "description": "A cancel asked for: by a cancel tool under its fence, or by a host's command under the abandon's fence, or undelivered where no lease could be had. It says nothing was stopped.",
+      "type": "object",
+      "required": ["by", "operation", "at"],
+      "properties": {"by": {"enum": ["tool", "command"]}, "operation": {"$ref": "#/$defs/id"}, "at": {"$ref": "#/$defs/time"}, "owner": {"$ref": "#/$defs/id"}, "epoch": {"$ref": "#/$defs/epoch"}, "command": {"$ref": "#/$defs/id"}, "undelivered": {"const": true}},
+      "additionalProperties": false
+    },
+    "cancelAcknowledged": {
+      "description": "The host's word on a cancel, by the completion key. Only a completion with cancelled says the job stopped.",
+      "type": "object",
+      "required": ["evidence", "outcome", "at", "digest"],
+      "properties": {"evidence": {"$ref": "#/$defs/id"}, "outcome": {"enum": ["accepted", "refused"]}, "at": {"$ref": "#/$defs/time"}, "digest": {"$ref": "#/$defs/digest"}, "receipt": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "cancel": {
+      "description": "Cancellation never moves state. What was asked for, and the host's word on it.",
+      "type": "object",
+      "required": ["requested"],
+      "properties": {"requested": {"$ref": "#/$defs/cancelRequest"}, "acknowledged": {"$ref": "#/$defs/cancelAcknowledged"}},
+      "additionalProperties": false
+    },
+    "cancelAsk": {
+      "description": "What the writer or an abandon records before a cancel is sent, under a current fence.",
+      "type": "object",
+      "required": ["version", "resource", "job", "generation", "by", "operation"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "by": {"enum": ["tool", "command"]}, "operation": {"$ref": "#/$defs/id"}, "command": {"$ref": "#/$defs/id"}},
+      "additionalProperties": false
+    },
+    "cancelAcknowledgement": {
+      "description": "A host's word on a cancel, authenticated by the completion key, with no lease. Its digest leaves the key out.",
+      "type": "object",
+      "required": ["version", "resource", "job", "generation", "evidence", "outcome", "key"],
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"enum": ["accepted", "refused"]}, "receipt": {"$ref": "#/$defs/id"}, "key": {"$ref": "#/$defs/key"}},
+      "additionalProperties": false
+    },
     "registration": {
       "description": "What a start's dispatch claim commit registers in its own transaction.",
       "type": "object",
@@ -74,7 +111,7 @@
       "description": "The writer's record of the host's typed answer to a start, under the fence that admitted it.",
       "type": "object",
       "required": ["version", "resource", "job", "generation", "answer"],
-      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "answer": {"enum": ["started", "not-started"]}, "handle": {"$ref": "#/$defs/id"}, "receipt": {"$ref": "#/$defs/id"}},
+      "properties": {"version": {"const": 1}, "resource": {"$ref": "#/$defs/id"}, "job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "answer": {"enum": ["started", "not-started"]}, "handle": {"$ref": "#/$defs/id"}, "handleDigested": {"const": true}, "receipt": {"$ref": "#/$defs/id"}},
       "additionalProperties": false
     },
     "reconciliation": {
@@ -95,7 +132,7 @@
       "description": "What the model is told of a job: states and digests, never a handle, a receipt or host text.",
       "type": "object",
       "required": ["job", "generation", "state"],
-      "properties": {"job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "state": {"$ref": "#/$defs/state"}, "outcome": {"$ref": "#/$defs/outcome"}, "resultDigest": {"$ref": "#/$defs/digest"}, "contradicted": {"const": true}, "changed": {"type": "boolean"}, "note": {"type": "string"}},
+      "properties": {"job": {"$ref": "#/$defs/digest"}, "generation": {"$ref": "#/$defs/generation"}, "state": {"$ref": "#/$defs/state"}, "outcome": {"$ref": "#/$defs/outcome"}, "resultDigest": {"$ref": "#/$defs/digest"}, "contradicted": {"const": true}, "cancel": {"enum": ["requested", "accepted", "refused"]}, "changed": {"type": "boolean"}, "note": {"type": "string"}},
       "additionalProperties": false
     },
     "gatewayMembers": {
@@ -109,14 +146,14 @@
       "description": "A named job refusal. Nothing changed.",
       "type": "object",
       "required": ["version", "reason"],
-      "properties": {"version": {"const": 1}, "reason": {"enum": ["invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven"]}},
+      "properties": {"version": {"const": 1}, "reason": {"enum": ["invalid", "no-job", "unauthenticated", "conflict", "stale", "key-reused", "jobs-exhausted", "job-settled", "job-unproven", "no-cancel"]}},
       "additionalProperties": false
     },
     "capabilityRefusal": {
       "description": "A store or tool that cannot give the guarantee refuses by name before anything is offered.",
       "type": "object",
       "required": ["version", "reason"],
-      "properties": {"version": {"const": 1}, "reason": {"enum": ["store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent"]}},
+      "properties": {"version": {"const": 1}, "reason": {"enum": ["store-unsupported", "store-lifetime", "job-host-unsupported", "child-unsupported", "store-inconsistent", "chat-store-unsupported"]}},
       "additionalProperties": false
     },
     "export": {
@@ -129,7 +166,7 @@
     "reportEntry": {
       "type": "object",
       "required": ["job", "decision", "at"],
-      "properties": {"job": {"$ref": "#/$defs/digest"}, "decision": {"enum": ["register", "start", "not-started", "reclaim", "complete", "contradiction"]}, "at": {"$ref": "#/$defs/time"}, "owner": {"$ref": "#/$defs/id"}, "epoch": {"$ref": "#/$defs/epoch"}, "by": {"enum": ["answer", "reconcile"]}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "contradicts": {"enum": ["started", "completed"]}, "tool": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/id"}},
+      "properties": {"job": {"$ref": "#/$defs/digest"}, "decision": {"enum": ["register", "start", "not-started", "reclaim", "complete", "contradiction", "cancel-requested", "cancel-acknowledged"]}, "at": {"$ref": "#/$defs/time"}, "owner": {"$ref": "#/$defs/id"}, "epoch": {"$ref": "#/$defs/epoch"}, "by": {"enum": ["answer", "reconcile", "tool", "command"]}, "evidence": {"$ref": "#/$defs/id"}, "outcome": {"$ref": "#/$defs/outcome"}, "contradicts": {"enum": ["started", "completed"]}, "tool": {"$ref": "#/$defs/id"}, "source": {"$ref": "#/$defs/id"}, "command": {"$ref": "#/$defs/id"}, "undelivered": {"const": true}, "acknowledged": {"enum": ["accepted", "refused"]}},
       "additionalProperties": false
     },
     "report": {

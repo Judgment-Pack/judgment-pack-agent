@@ -269,7 +269,8 @@ lease in the claim's own transaction, which `ResumeParked` reads back through th
 ### Run-owned jobs (#229)
 
 `context/run_job.go` is the Go twin of `storage/job.ts`: `JobStartTool`, `JobReadTool`, `CompleteJob`, `ReconcileJob`, `ReadJob`,
-`ListJobs`, `ExportJobs`, `JobReportOf`, `GatewayActionMembers`, `GatewayRefusalFinding` and the `JobStore` port, certified by
+`ListJobs`, `ExportJobs`, `JobReportOf`, `JobCancelTool`, `AcknowledgeJobCancel`, `AbandonJobs`, `GatewayActionMembers`, `GatewayRefusalFinding` and the
+`JobStore` port, certified by
 `CheckRunStoreJobConformance`. `ParkInput.Job` parks a job wait, `ResumedWait.Job` carries the job on, and `Input.JobContinuation`
 tells the resumed run. A registration travels as `RunCommit.Job`; a store without the port is never handed one. Nothing changes
 unless a host offers a job tool.

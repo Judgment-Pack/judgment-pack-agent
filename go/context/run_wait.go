@@ -1642,6 +1642,16 @@ func (t *WaitTable) passed(resource, now string) bool {
 
 // AdmitAcquire (#265 M2): a committed park closes the run. It refuses acquiring the run's lease while a
 // wait not yet resumed holds it, for good once a wait ended terminally, and from the run's deadline.
+// Leasable (#229) is whether an abandon can have a lease: a closed run and one past its deadline grant none. A parked
+// run can: its wait stands.
+func (t *WaitTable) Leasable(resource string) bool {
+	if slices.ContainsFunc(t.rows[resource], terminalWait) {
+		return false
+	}
+	ceiling := t.Ceiling(resource)
+	return ceiling == nil || t.now().UnixMilli() < *ceiling
+}
+
 func (t *WaitTable) AdmitAcquire(resource string) error {
 	rows := t.rows[resource]
 	if slices.ContainsFunc(rows, terminalWait) {

@@ -5,7 +5,7 @@ import {dataMarker,frameData} from '../framing'
 import {approvalNotShown,approvalShownArguments} from '../execution/state'
 import {validPrincipalBinding,type PrincipalBinding} from '../principal'
 import {storageId} from './common'
-import {admitUnattended,effectIdempotencyKey,leasedAdmission,leasedViewOf,readLeaseFence,validLeaseEpoch,type EffectHost,type LeaseFence} from './lease'
+import {LeaseRefused,admitUnattended,effectIdempotencyKey,fenceOf,fencedEffect,fencedRunStore,leasedAdmission,leasedViewOf,readLeaseFence,readRunLease,validLeaseEpoch,type EffectHost,type LeaseFence,type RunLease} from './lease'
 import type {RunStore} from './run'
 import type {ChatStore} from './chat'
 import type {HostTool,McpToolResult} from '../engine'
@@ -26,36 +26,48 @@ export type JobState='unproven'|'started'|'not-started'|'completed'
 export type JobOutcome='succeeded'|'failed'|'cancelled'|'unknown'
 export type JobFinding='started'|'not-started'|'unknown'
 export type JobLifetime='durable'|'process'
-export type JobRefusalReason='invalid'|'no-job'|'unauthenticated'|'conflict'|'stale'|'key-reused'|'jobs-exhausted'|'job-settled'|'job-unproven'
-export type JobCapabilityReason='store-unsupported'|'store-lifetime'|'job-host-unsupported'|'child-unsupported'|'store-inconsistent'
-export const JOB_REFUSAL_REASONS:readonly JobRefusalReason[]=['invalid','no-job','unauthenticated','conflict','stale','key-reused','jobs-exhausted','job-settled','job-unproven']
-export const JOB_CAPABILITY_REASONS:readonly JobCapabilityReason[]=['store-unsupported','store-lifetime','job-host-unsupported','child-unsupported','store-inconsistent']
+export type JobRefusalReason='invalid'|'no-job'|'unauthenticated'|'conflict'|'stale'|'key-reused'|'jobs-exhausted'|'job-settled'|'job-unproven'|'no-cancel'
+export type JobCapabilityReason='store-unsupported'|'store-lifetime'|'job-host-unsupported'|'child-unsupported'|'store-inconsistent'|'chat-store-unsupported'
+export const JOB_REFUSAL_REASONS:readonly JobRefusalReason[]=['invalid','no-job','unauthenticated','conflict','stale','key-reused','jobs-exhausted','job-settled','job-unproven','no-cancel']
+export const JOB_CAPABILITY_REASONS:readonly JobCapabilityReason[]=['store-unsupported','store-lifetime','job-host-unsupported','child-unsupported','store-inconsistent','chat-store-unsupported']
 export interface JobActor {owner:string;epoch:string;at:string}
 /** How a start became known or closed: the writer's typed answer, or a host's reconciliation with its evidence id. */
 export interface JobFact {by:'answer'|'reconcile';at:string;digest:string;evidence?:string}
 export interface JobCompletion {evidence:string;outcome:JobOutcome;at:string;digest:string;resultDigest?:string;receipt?:string}
 /** Evidence that arrived after the job was closed as not-started: kept and reported, never dropped, and it moves nothing. */
 export interface JobContradiction {kind:'started'|'completed';at:string;digest:string;evidence?:string;outcome?:JobOutcome;handle?:string}
+/** A cancel asked for, under a fence or, past a deadline, undelivered. It says nothing was stopped. */
+export interface JobCancelRequest {by:'tool'|'command';operation:string;at:string;owner?:string;epoch?:string;command?:string;undelivered?:true}
+/** The host's word on a cancel, by the completion key. Only a completion with `cancelled` says it stopped. */
+export interface JobCancelAcknowledged {evidence:string;outcome:'accepted'|'refused';at:string;digest:string;receipt?:string}
+export interface JobCancel {requested:JobCancelRequest;acknowledged?:JobCancelAcknowledged}
 export interface RunJob {
  version:1;kind:'job';resource:string;job:string;generation:1;operation:string;source:string;tool:string;requestDigest:string;keyDigest:string
  registered:JobActor;reclaimed?:JobActor;principal?:PrincipalBinding;state:JobState
- handle?:string;receipt?:string;started?:JobFact;closed?:JobFact;completion?:JobCompletion;contradictions?:JobContradiction[]
+ /** handleDigested: `handle` is the digest of the host's bytes, not its reference, and is never sent as one. */
+ handle?:string;handleDigested?:true;receipt?:string;started?:JobFact;closed?:JobFact;completion?:JobCompletion;contradictions?:JobContradiction[];cancel?:JobCancel
 }
 /** What a start's dispatch claim commit registers in its own transaction (RunCommit.job). */
 export interface JobRegistration {job:string;operation:string;source:string;tool:string;requestDigest:string;keyDigest:string}
 /** The writer's record of the host's typed answer to a start, under the fence that admitted it. */
-export interface JobAnswer {version:1;resource:string;job:string;generation:1;answer:'started'|'not-started';handle?:string;receipt?:string}
+export interface JobAnswer {version:1;resource:string;job:string;generation:1;answer:'started'|'not-started';handle?:string;handleDigested?:true;receipt?:string}
 /** A host's finding about an unproven start, authenticated by the completion key, with no lease. not-started means the
  * authority that would run it has closed it: nothing can start it afterwards. */
 export interface JobReconciliation {version:1;resource:string;job:string;generation:1;evidence:string;finding:JobFinding;handle?:string;receipt?:string;key:string}
 /** A host's completion of a job, authenticated by the completion key, with no lease. */
 export interface JobCompletionEvidence {version:1;resource:string;job:string;generation:1;evidence:string;outcome:JobOutcome;resultDigest?:string;receipt?:string;key:string}
+/** What the writer or an abandon records before a cancel is sent, under a current fence. */
+export interface JobCancelAsk {version:1;resource:string;job:string;generation:1;by:'tool'|'command';operation:string;command?:string}
+/** A host's word on a cancel, authenticated by the completion key, with no lease. */
+export interface JobCancelAcknowledgement {version:1;resource:string;job:string;generation:1;evidence:string;outcome:'accepted'|'refused';receipt?:string;key:string}
+/** An abandon's command: the lease under the reserved owner at a new epoch, and a cancel asked for each started job. */
+export interface JobAbandon {version:1;resource:string;command:string;durationMs:number}
 export interface JobExport {version:1;resource:string;jobs:RunJob[]}
 export interface JobPage {jobs:RunJob[];next:string|null}
-export interface JobReportEntry {job:string;decision:'register'|'start'|'not-started'|'reclaim'|'complete'|'contradiction';at:string;owner?:string;epoch?:string;by?:'answer'|'reconcile';evidence?:string;outcome?:JobOutcome;contradicts?:'started'|'completed';tool?:string;source?:string}
+export interface JobReportEntry {job:string;decision:'register'|'start'|'not-started'|'reclaim'|'complete'|'contradiction'|'cancel-requested'|'cancel-acknowledged';at:string;owner?:string;epoch?:string;by?:'answer'|'reconcile'|'tool'|'command';evidence?:string;outcome?:JobOutcome;contradicts?:'started'|'completed';tool?:string;source?:string;command?:string;undelivered?:true;acknowledged?:'accepted'|'refused'}
 export interface JobReport {version:1;resource:string;entries:JobReportEntry[]}
 /** What the model is told of a job: states and digests, never a handle, a receipt or host text. */
-export interface JobProjection {job:string;generation:1;state:JobState;outcome?:JobOutcome;resultDigest?:string;contradicted?:true}
+export interface JobProjection {job:string;generation:1;state:JobState;outcome?:JobOutcome;resultDigest?:string;contradicted?:true;cancel?:'requested'|'accepted'|'refused'}
 
 /** A named job refusal. Nothing changed. A refusal that reaches the model is a tool error, and the run goes on. */
 export class JobRefused extends AIFailureError {
@@ -104,6 +116,18 @@ function readContradiction(v:unknown):JobContradiction{
  if((kind==='completed')!==(held.outcome!==undefined)||kind==='completed'&&(held.evidence===undefined||held.handle!==undefined))return invalid()
  return {kind,at:time(held.at),digest:digest(held.digest),...(held.evidence===undefined?{}:{evidence:id(held.evidence)}),...(held.outcome===undefined?{}:{outcome:one(held.outcome,OUTCOMES)}),...(held.handle===undefined?{}:{handle:id(held.handle)})}
 }
+function readCancelRequest(v:unknown):JobCancelRequest{
+ const held=shape(v,['by','operation','at'],['owner','epoch','command','undelivered']),by=one(held.by,['tool','command'] as const)
+ if((held.owner===undefined)!==(held.epoch===undefined)||held.undelivered!==undefined&&held.undelivered!==true)return invalid()
+ // By a tool: under its fence, and no command. By a command: under its fence, or undelivered where no lease could be had.
+ if(by==='tool'?held.command!==undefined||held.owner===undefined||held.undelivered!==undefined:held.command===undefined||(held.owner===undefined)!==(held.undelivered===true))return invalid()
+ return {by,operation:id(held.operation),at:time(held.at),...(held.owner===undefined?{}:{owner:id(held.owner),epoch:validLeaseEpoch(held.epoch)?held.epoch:invalid()}),...(held.command===undefined?{}:{command:id(held.command)}),...(held.undelivered===true?{undelivered:true as const}:{})}
+}
+function readCancel(v:unknown):JobCancel{
+ const held=shape(v,['requested'],['acknowledged'])
+ const ack=held.acknowledged===undefined?undefined:shape(held.acknowledged,['evidence','outcome','at','digest'],['receipt'])
+ return {requested:readCancelRequest(held.requested),...(ack===undefined?{}:{acknowledged:{evidence:id(ack.evidence),outcome:one(ack.outcome,['accepted','refused'] as const),at:time(ack.at),digest:digest(ack.digest),...(ack.receipt===undefined?{}:{receipt:id(ack.receipt)})}})}
+}
 export function readJobRegistration(v:unknown):JobRegistration{
  const held=shape(v,['job','operation','source','tool','requestDigest','keyDigest'])
  return {job:digest(held.job),operation:id(held.operation),source:id(held.source),tool:id(held.tool),requestDigest:digest(held.requestDigest),keyDigest:digest(held.keyDigest)}
@@ -111,18 +135,21 @@ export function readJobRegistration(v:unknown):JobRegistration{
 /** Reads a version 1 job record and holds every rule the schema cannot state: its identity follows its run and operation,
  * and each state holds exactly what proves it. */
 export function readRunJob(v:unknown):RunJob{
- const held=shape(v,['version','kind','resource','job','generation','operation','source','tool','requestDigest','keyDigest','registered','state'],['reclaimed','principal','handle','receipt','started','closed','completion','contradictions'])
+ const held=shape(v,['version','kind','resource','job','generation','operation','source','tool','requestDigest','keyDigest','registered','state'],['reclaimed','principal','handle','handleDigested','receipt','started','closed','completion','contradictions','cancel'])
  if(held.version!==JOB_RECORD_VERSION||held.kind!=='job')return invalid()
  const job:RunJob={version:1,kind:'job',resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),operation:id(held.operation),source:id(held.source),tool:id(held.tool),requestDigest:digest(held.requestDigest),keyDigest:digest(held.keyDigest),registered:readActor(held.registered),state:one(held.state,['unproven','started','not-started','completed'] as const)}
  if(job.job!==jobIdentity(job.resource,job.operation))return invalid()
  if(held.reclaimed!==undefined)job.reclaimed=readActor(held.reclaimed)
  if(held.principal!==undefined){if(!validPrincipalBinding(held.principal))return invalid();job.principal={sub:{...held.principal.sub},rootActor:held.principal.rootActor,host:held.principal.host}}
  if(held.handle!==undefined)job.handle=id(held.handle)
+ if(held.handleDigested!==undefined){if(held.handleDigested!==true||typeof held.handle!=='string'||!DIGEST.test(held.handle))return invalid();job.handleDigested=true}
  if(held.receipt!==undefined)job.receipt=id(held.receipt)
  if(held.started!==undefined)job.started=readFact(held.started)
  if(held.closed!==undefined)job.closed=readFact(held.closed)
  if(held.completion!==undefined)job.completion=readCompletion(held.completion)
  if(held.contradictions!==undefined){if(!Array.isArray(held.contradictions)||held.contradictions.length<1||held.contradictions.length>JOB_CONTRADICTION_LIMIT)return invalid();job.contradictions=held.contradictions.map(readContradiction)}
+ // A cancel is asked of a start that is known, and it moves no state.
+ if(held.cancel!==undefined){job.cancel=readCancel(held.cancel);if(job.started===undefined)return invalid()}
  // A handle is known exactly when a start was; a receipt only beside a handle.
  if((job.handle===undefined)!==(job.started===undefined)||job.receipt!==undefined&&job.handle===undefined)return invalid()
  const proves=job.state==='unproven'?!job.started&&!job.closed&&!job.completion:job.state==='started'?job.started&&!job.closed&&!job.completion:job.state==='not-started'?job.closed&&!job.started&&!job.completion:job.completion&&!job.closed
@@ -130,11 +157,12 @@ export function readRunJob(v:unknown):RunJob{
  return job
 }
 export function readJobAnswer(v:unknown):JobAnswer{
- const held=shape(v,['version','resource','job','generation','answer'],['handle','receipt'])
+ const held=shape(v,['version','resource','job','generation','answer'],['handle','handleDigested','receipt'])
  if(held.version!==JOB_RECORD_VERSION)return invalid()
  const answer=one(held.answer,['started','not-started'] as const)
+ if(held.handleDigested!==undefined&&(held.handleDigested!==true||typeof held.handle!=='string'||!DIGEST.test(held.handle)))return invalid()
  if((answer==='started')!==(held.handle!==undefined)||answer==='not-started'&&held.receipt!==undefined)return invalid()
- return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),answer,...(held.handle===undefined?{}:{handle:id(held.handle)}),...(held.receipt===undefined?{}:{receipt:id(held.receipt)})}
+ return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),answer,...(held.handle===undefined?{}:{handle:id(held.handle)}),...(held.handleDigested===undefined?{}:{handleDigested:true as const}),...(held.receipt===undefined?{}:{receipt:id(held.receipt)})}
 }
 export function readJobReconciliation(v:unknown):JobReconciliation{
  const held=shape(v,['version','resource','job','generation','evidence','finding','key'],['handle','receipt'])
@@ -148,6 +176,17 @@ export function readJobCompletion(v:unknown):JobCompletionEvidence{
  if(held.version!==JOB_RECORD_VERSION||!validJobKey(held.key))return invalid()
  return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),evidence:id(held.evidence),outcome:one(held.outcome,OUTCOMES),...(held.resultDigest===undefined?{}:{resultDigest:digest(held.resultDigest)}),...(held.receipt===undefined?{}:{receipt:id(held.receipt)}),key:held.key}
 }
+export function readJobCancelAsk(v:unknown):JobCancelAsk{
+ const held=shape(v,['version','resource','job','generation','by','operation'],['command']);if(held.version!==JOB_RECORD_VERSION)return invalid()
+ const by=one(held.by,['tool','command'] as const)
+ if((by==='command')!==(held.command!==undefined))return invalid()
+ return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),by,operation:id(held.operation),...(held.command===undefined?{}:{command:id(held.command)})}
+}
+export function readJobCancelAcknowledgement(v:unknown):JobCancelAcknowledgement{
+ const held=shape(v,['version','resource','job','generation','evidence','outcome','key'],['receipt'])
+ if(held.version!==JOB_RECORD_VERSION||!validJobKey(held.key))return invalid()
+ return {version:1,resource:id(held.resource),job:digest(held.job),generation:generation(held.generation),evidence:id(held.evidence),outcome:one(held.outcome,['accepted','refused'] as const),...(held.receipt===undefined?{}:{receipt:id(held.receipt)}),key:held.key}
+}
 export function readJobExport(v:unknown):JobExport{
  const held=shape(v,['version','resource','jobs']);if(held.version!==JOB_RECORD_VERSION||!Array.isArray(held.jobs)||held.jobs.length>JOB_RUN_LIMIT)return invalid()
  const resource=id(held.resource),jobs=held.jobs.map(readRunJob)
@@ -157,7 +196,7 @@ export function readJobExport(v:unknown):JobExport{
 export function readJobRefusal(v:unknown):{version:1;reason:JobRefusalReason}{const held=shape(v,['version','reason']);if(held.version!==JOB_RECORD_VERSION)return invalid();return {version:1,reason:one(held.reason,JOB_REFUSAL_REASONS)}}
 export function readJobCapabilityRefusal(v:unknown):{version:1;reason:JobCapabilityReason}{const held=shape(v,['version','reason']);if(held.version!==JOB_RECORD_VERSION)return invalid();return {version:1,reason:one(held.reason,JOB_CAPABILITY_REASONS)}}
 /** The evidence's digest, without its key: a duplicate is the same evidence id with this digest. */
-export const jobEvidenceDigest=(evidence:JobAnswer|Omit<JobReconciliation,'key'>|Omit<JobCompletionEvidence,'key'>)=>{const {key:_,...rest}=evidence as JobReconciliation;return `sha256:${sha256(canonicalJSON(rest))}`}
+export const jobEvidenceDigest=(evidence:JobAnswer|Omit<JobReconciliation,'key'>|Omit<JobCompletionEvidence,'key'>|Omit<JobCancelAcknowledgement,'key'>)=>{const {key:_,...rest}=evidence as JobReconciliation;return `sha256:${sha256(canonicalJSON(rest))}`}
 
 /** The job transitions, held in memory. MemoryRunStore calls them inside its own serialized transactions; a host store kind
  * implements the same transitions against its own durable rows. */
@@ -191,12 +230,12 @@ export class JobTable {
   return structuredClone(row)
  }
  /** The one rule for a start being known or closed, whichever way the fact arrives. */
- private settle(row:RunJob,finding:'started'|'not-started',fact:JobFact,handle?:string,receipt?:string):RunJob{
+ private settle(row:RunJob,finding:'started'|'not-started',fact:JobFact,handle?:string,receipt?:string,digested?:true):RunJob{
   if(finding==='started'){
    if(row.state==='not-started')return this.contradict(row,{kind:'started',at:fact.at,digest:fact.digest,...(fact.evidence===undefined?{}:{evidence:fact.evidence}),handle:handle!})
-   if(row.started&&row.handle!==handle)throw new JobRefused('conflict')
+   if(row.started&&(row.handle!==handle||row.handleDigested!==digested))throw new JobRefused('conflict')
    if(row.started)return structuredClone(row)
-   row.handle=handle!;if(receipt!==undefined)row.receipt=receipt
+   row.handle=handle!;if(digested)row.handleDigested=true;if(receipt!==undefined)row.receipt=receipt
    row.started=fact
    if(row.state==='unproven')row.state='started'
    return structuredClone(row)
@@ -212,7 +251,7 @@ export class JobTable {
  answer(input:JobAnswer,fence:LeaseFence):RunJob{
   const held=readJobAnswer(input),presented=readLeaseFence(fence),row=this.held(held.resource,held.job),admitter=row.reclaimed??row.registered
   if(presented.resource!==row.resource||presented.owner!==admitter.owner||presented.epoch!==admitter.epoch)throw new JobRefused('unauthenticated')
-  return this.settle(row,held.answer,{by:'answer',at:this.now(),digest:jobEvidenceDigest(held)},held.handle,held.receipt)
+  return this.settle(row,held.answer,{by:'answer',at:this.now(),digest:jobEvidenceDigest(held)},held.handle,held.receipt,held.handleDigested)
  }
  private authenticate(row:RunJob,key:string):void{if(jobKeyDigest(key)!==row.keyDigest)throw new JobRefused('unauthenticated')}
  /** Evidence already taken: the same id and digest is retained; the same id with other content is conflict. */
@@ -253,6 +292,30 @@ export class JobTable {
   row.reclaimed={owner:presented.owner,epoch:presented.epoch,at:this.now()}
   return structuredClone(row)
  }
+ /** A cancel asked for, before it is sent. It moves no state, and the store checks the fence with its leases: unlike a start's
+  * answer, a stale worker asks nothing. With no fence, an abandon past its deadline: it stays undelivered and says so. Only a
+  * started job has something to cancel; the first request stands. */
+ requestCancel(input:JobCancelAsk,fence?:LeaseFence):RunJob{
+  const held=readJobCancelAsk(input),row=this.held(held.resource,held.job),presented=fence===undefined?undefined:readLeaseFence(fence)
+  if(row.state==='not-started'||row.state==='completed')throw new JobRefused('job-settled')
+  if(row.state==='unproven')throw new JobRefused('job-unproven')
+  if(!presented&&held.by==='tool')return invalid()
+  if(row.cancel)return structuredClone(row)
+  row.cancel={requested:{by:held.by,operation:held.operation,at:this.now(),...(presented?{owner:presented.owner,epoch:presented.epoch}:{undelivered:true as const}),...(held.command===undefined?{}:{command:held.command})}}
+  return structuredClone(row)
+ }
+ /** The host's word on a cancel, by the completion key, with no lease. It moves no state and wakes nothing. First write wins. */
+ acknowledgeCancel(input:JobCancelAcknowledgement):RunJob{
+  const held=readJobCancelAcknowledgement(input),row=this.held(held.resource,held.job)
+  this.authenticate(row,held.key)
+  if(!row.cancel)throw new JobRefused('no-cancel')
+  const digested=jobEvidenceDigest(held),ack=row.cancel.acknowledged
+  if(ack){if(ack.evidence!==held.evidence)throw new JobRefused('stale');if(ack.digest!==digested)throw new JobRefused('conflict');return structuredClone(row)}
+  row.cancel.acknowledged={evidence:held.evidence,outcome:held.outcome,at:this.now(),digest:digested,...(held.receipt===undefined?{}:{receipt:held.receipt})}
+  return structuredClone(row)
+ }
+ /** The run's jobs, for an abandon's own transaction. */
+ started(resource:string):RunJob[]{return (this.rows.get(resource)??[]).filter(row=>row.state==='started').map(row=>structuredClone(row))}
  /** A park on a job: only a started job has a completion to wait for. */
  admitPark(resource:string,job:string):RunJob{
   const row=this.held(resource,job)
@@ -294,6 +357,13 @@ export interface JobStore {
  completeJob(evidence:JobCompletionEvidence,signal?:AbortSignal):Promise<RunJob>
  /** H2: under a current fence, only while the job is unproven (job-settled otherwise). It records who re-claimed it. */
  reclaimJob(resource:string,job:string,fence:LeaseFence,signal?:AbortSignal):Promise<RunJob>
+ /** Under a current fence, before a cancel is sent (job-settled, job-unproven otherwise). The first request stands. It moves no state. */
+ requestJobCancel(ask:JobCancelAsk,fence:LeaseFence,signal?:AbortSignal):Promise<RunJob>
+ /** Authenticated by the completion key, with no lease. First write wins; it moves no state and wakes nothing; no-cancel with no request. */
+ acknowledgeJobCancel(evidence:JobCancelAcknowledgement,signal?:AbortSignal):Promise<RunJob>
+ /** One transaction: the lease under JOB_ABANDON_OWNER at a new epoch, so old workers get stale-epoch, and a cancel asked for each
+  * started job. A closed run or one past its deadline grants no lease: each is then asked undelivered, and it says so. */
+ abandonJobs(input:JobAbandon,signal?:AbortSignal):Promise<{lease?:RunLease;jobs:RunJob[]}>
  /** Looked up by run and job together: another run's job does not exist here. */
  readJob(resource:string,job:string,signal?:AbortSignal):Promise<RunJob|undefined>
  /** The run's jobs in registration order, at most JOB_PAGE_LIMIT a page. */
@@ -303,7 +373,7 @@ export interface JobStore {
 type JobPort=RunStore&JobStore&{waitVersion?:unknown;leaseLifetime?:unknown;waitLifetime?:unknown}
 function jobPort(store:RunStore):JobPort{
  const held=store as Partial<JobPort>
- if(held.jobVersion!==1||held.waitVersion!==1||['answerJob','reconcileJob','completeJob','reclaimJob','readJob','listJobs','exportJobs'].some(name=>typeof (held as Record<string,unknown>)[name]!=='function')||store.durability==='single-writer-callback')throw new JobCapabilityRefused('store-unsupported')
+ if(held.jobVersion!==1||held.waitVersion!==1||['answerJob','reconcileJob','completeJob','reclaimJob','requestJobCancel','acknowledgeJobCancel','abandonJobs','readJob','listJobs','exportJobs'].some(name=>typeof (held as Record<string,unknown>)[name]!=='function')||store.durability==='single-writer-callback')throw new JobCapabilityRefused('store-unsupported')
  return held as JobPort
 }
 const durablePort=(store:RunStore):JobPort=>{const held=jobPort(store);if(held.jobLifetime!=='durable'||held.leaseLifetime!=='durable'||held.waitLifetime!=='durable')throw new JobCapabilityRefused('store-lifetime');return held}
@@ -327,6 +397,8 @@ function readBack(value:unknown,resource:string,job:string):RunJob{const held=re
 export async function completeJob(store:RunStore,evidence:JobCompletionEvidence,signal?:AbortSignal):Promise<RunJob>{const held=readJobCompletion(evidence);return readBack(await jobPort(store).completeJob(held,signal),held.resource,held.job)}
 /** Deliver a host's finding about an unproven start. not-started must mean closed at the authority that would run it. */
 export async function reconcileJob(store:RunStore,evidence:JobReconciliation,signal?:AbortSignal):Promise<RunJob>{const held=readJobReconciliation(evidence);return readBack(await jobPort(store).reconcileJob(held,signal),held.resource,held.job)}
+/** Deliver a host's word on a cancel. Only a completion with `cancelled` says the job stopped. */
+export async function acknowledgeJobCancel(store:RunStore,evidence:JobCancelAcknowledgement,signal?:AbortSignal):Promise<RunJob>{const held=readJobCancelAcknowledgement(evidence);return readBack(await jobPort(store).acknowledgeJobCancel(held,signal),held.resource,held.job)}
 /** The host's run-scoped read: another run's job answers undefined, as an absent one does. */
 export async function readJob(store:RunStore,resource:string,job:string,signal?:AbortSignal):Promise<RunJob|undefined>{const held=await jobPort(store).readJob(id(resource),digest(job),signal);return held===undefined?undefined:readBack(held,resource,job)}
 /** The host's run-scoped list. */
@@ -339,7 +411,7 @@ export async function exportJobs(store:RunStore,resource:string,signal?:AbortSig
 
 /** What the model may be told. No handle, receipt or host text ever reaches it. */
 export function jobProjection(job:RunJob):JobProjection{
- return {job:job.job,generation:1,state:job.state,...(job.completion?{outcome:job.completion.outcome,...(job.completion.resultDigest===undefined?{}:{resultDigest:job.completion.resultDigest})}:{}),...(job.contradictions?{contradicted:true as const}:{})}
+ return {job:job.job,generation:1,state:job.state,...(job.completion?{outcome:job.completion.outcome,...(job.completion.resultDigest===undefined?{}:{resultDigest:job.completion.resultDigest})}:{}),...(job.contradictions?{contradicted:true as const}:{}),...(job.cancel?{cancel:job.cancel.acknowledged?.outcome??'requested' as const}:{})}
 }
 export const JOB_NOT_FINISHED='started, not finished: do not poll; end your turn; the host resumes you when this job changes'
 export const JOB_UNPROVEN='not proven to have started; it was not started again; do not poll; end your turn; the host resumes you when this job changes'
@@ -353,6 +425,23 @@ export function jobStartResult(job:RunJob):McpToolResult{
  const note=job.state==='started'?JOB_NOT_FINISHED:job.state==='unproven'?JOB_UNPROVEN:job.state==='not-started'?job.contradictions?JOB_CONTRADICTED:JOB_NOT_STARTED:undefined
  return textResult({...jobProjection(job),...(note===undefined?{}:{note})},job.state==='not-started'||job.state==='unproven')
 }
+export const JOB_CANCEL_REQUESTED='cancel requested; it may not have been delivered, and only a completion says the job stopped; do not poll'
+/** F-1: where the cancel never left (refused or failed before it was handed to the host), whatever its record says it asked. */
+export const JOB_CANCEL_NOT_SENT_NOTE='this cancel was not sent: the job may still be running; tell the person'
+export const JOB_CANCEL_ACCEPTED='cancel accepted by the host: that does not say it stopped, only its completion does; do not poll'
+export const JOB_CANCEL_REFUSED='the host refused this cancel: it may still be running; tell the person'
+/** A cancel's row and answer are composed here, from the job as it reads now. A row says nothing about its job. */
+export function jobCancelResult(job:RunJob,sent=true):McpToolResult{
+ if(!sent)return textResult({...jobProjection(job),note:JOB_CANCEL_NOT_SENT_NOTE},true)
+ const said=job.state!=='started'?undefined:job.cancel?.acknowledged?.outcome==='refused'?JOB_CANCEL_REFUSED:job.cancel?.acknowledged?JOB_CANCEL_ACCEPTED:job.cancel?JOB_CANCEL_REQUESTED:undefined
+ return textResult({...jobProjection(job),...(said===undefined?{}:{note:said})},job.state!=='started'&&job.state!=='completed')
+}
+/** What a cancel's row holds when what it did could not be recorded, or when it was refused before it was sent. Fixed: no host
+ * text reaches the row, and neither reads as the job refusal's invalid input. */
+export const JOB_CANCEL_UNRECORDED='JobCancelUnrecorded: this cancel may have been sent, and what came of it could not be recorded. It was not sent again. Read its job.'
+export const JOB_CANCEL_NOT_SENT='JobCancelNotSent: this cancel was not sent, because of what its job says now. It will not be sent. Read its job.'
+export const jobCancelUnrecorded=():AIFailureError=>new AIFailureError({...failure('unknown','tool','unknown'),detail:JOB_CANCEL_UNRECORDED})
+export const jobCancelNotSent=():AIFailureError=>new AIFailureError({...failure('unknown','tool','not-started'),detail:JOB_CANCEL_NOT_SENT})
 /** H-1: what a start's row holds once the start ran and what it answered could not be recorded. It is never the job refusal's
  * shape: that says the input was invalid and nothing ran, which asks a model to change its arguments and start a second job.
  * Fixed, so no host text reaches the row. The model is answered from the job (jobStartResult), as a repeat is. */
@@ -364,21 +453,29 @@ export function jobContinuation(job:RunJob,marker=dataMarker()):string{return `$
 
 /** The host's typed answer to a start. Anything else leaves the job unproven. A handle or receipt the record cannot hold (over
  * 256 bytes, or with a control character) is kept as the SHA-256 digest of its bytes, `sha256:<hex>`: the start is known, the job
- * is started and can complete, and the same bytes answer the same. The host, not the job, then holds the means to reach it. */
-export type JobStartAnswer={started:true;handle:string;receipt?:string}|{started:false}
+ * is started and can complete, and the same bytes answer the same. The host, not the job, then holds the means to reach it, and
+ * `handleDigested` on the record says so, because a real handle can read the same. A host does not send that member. */
+export type JobStartAnswer={started:true;handle:string;handleDigested?:true;receipt?:string}|{started:false}
 const keptEvidence=(v:unknown):string=>typeof v!=='string'||v===''?invalid():storageId(v)?v:`sha256:${sha256(v)}`
 export function readJobStartAnswer(v:unknown):JobStartAnswer{
  if(!object(v))return invalid()
  if(v.started===false){shape(v,['started']);return {started:false}}
  if(v.started!==true)return invalid()
  const held=shape(v,['started','handle'],['receipt'])
- return {started:true,handle:keptEvidence(held.handle),...(held.receipt===undefined?{}:{receipt:keptEvidence(held.receipt)})}
+ const handle=keptEvidence(held.handle)
+ return {started:true,handle,...(handle===held.handle?{}:{handleDigested:true as const}),...(held.receipt===undefined?{}:{receipt:keptEvidence(held.receipt)})}
 }
 const JOB_TOOL=Symbol('run-owned job tool')
 /** A start tool's seam: `mint` gives the digest of a fresh completion key for the job (jobKeyDigest), which stays the host's;
  * `start` runs the start with the row's own request bytes under the effect host's admission. */
 export interface JobStartSeam {kind:'start';mint:(job:string,signal?:AbortSignal)=>Promise<string>;start:(input:{job:string;request:string;signal?:AbortSignal})=>Promise<JobStartAnswer>}
-export type JobToolSeam=JobStartSeam|{kind:'read'}
+/** What a cancel is handed: the record's job, never model bytes. `handle` is the host's own reference. A handle kept as its digest
+ * is no reference (handleDigested): it comes as `handleDigest` and no `handle`, and the host maps the job itself or answers so. */
+export interface JobCancelInput {job:string;generation:1;source:string;tool:string;handle?:string;handleDigest?:string;signal?:AbortSignal}
+export const jobCancelInput=(job:RunJob,signal?:AbortSignal):JobCancelInput=>({job:job.job,generation:1,source:job.source,tool:job.tool,...(job.handleDigested?{handleDigest:job.handle!}:{handle:job.handle!}),...(signal?{signal}:{})})
+/** A cancel tool's seam, paired with its start's. */
+export interface JobCancelSeam {kind:'cancel';start:JobStartSeam;cancel:(input:JobCancelInput)=>Promise<unknown>}
+export type JobToolSeam=JobStartSeam|JobCancelSeam|{kind:'read'}
 /** @internal */
 export const jobSeamOf=(tool:object):JobToolSeam|undefined=>(tool as Record<symbol,JobToolSeam|undefined>)[JOB_TOOL]
 export interface JobStartSpec {
@@ -391,7 +488,7 @@ export interface JobStartSpec {
 /** #229: job tools are a new surface, so no host has yet to move: a decision approving a held start proves what the person
  * was shown, a text kept or not. The words are #275's. It is refused before the claim, so the pause stands and nothing has run. */
 export function heldStartNotShown(tools:readonly HostTool[]|undefined,asked:{name:string;tool:string;source:{id:string};request?:string;args?:Record<string,unknown>},decision:{approved:boolean;shownDigest?:string}):string|undefined{
- if(!decision.approved||decision.shownDigest!==undefined||!tools?.some(tool=>jobSeamOf(tool)?.kind==='start'&&(tool.name===asked.name||tool.name===asked.tool&&tool.source?.id===asked.source.id)))return undefined
+ if(!decision.approved||decision.shownDigest!==undefined||!tools?.some(tool=>(jobSeamOf(tool)?.kind==='start'||jobSeamOf(tool)?.kind==='cancel')&&(tool.name===asked.name||tool.name===asked.tool&&tool.source?.id===asked.source.id)))return undefined
  return approvalNotShown({request:approvalShownArguments(asked)},decision)
 }
 const noBinding=async():Promise<McpToolResult>=>{throw new JobCapabilityRefused('store-unsupported')}
@@ -401,6 +498,33 @@ export function jobStartTool(spec:JobStartSpec):HostTool{
  if(spec.source.kind==='gateway'&&spec.gatewayKeyScope!==true)throw new JobCapabilityRefused('job-host-unsupported')
  const seam:JobStartSeam={kind:'start',mint:spec.mint,start:spec.start}
  return {name:spec.name,description:spec.description,inputSchema:spec.inputSchema,source:spec.source,effectClass:'act',taxonomy:{operation:'run',effect:'act'},...(spec.approval===undefined?{}:{approval:spec.approval}),...(spec.approve===undefined?{}:{approve:spec.approve}),execute:noBinding,[JOB_TOOL]:seam} as HostTool
+}
+/** A cancel tool's schema and taxonomy, which a source's tool list holds beside its start's. */
+export const JOB_CANCEL_SCHEMA={type:'object' as const,properties:{job:{type:'string',pattern:'^sha256:[a-f0-9]{64}$'},generation:{const:JOB_GENERATION}},required:['job','generation'],additionalProperties:false}
+export interface JobCancelSpec {name:string;description:string;source:ToolSource;start:HostTool;approve?:HostTool['approve'];approval?:HostTool['approval'];cancel:JobCancelSeam['cancel']}
+/** H5: a start's cancel, declared as a pair with it on one source: a job's handle goes only to the source that started it. Its
+ * arguments are exactly {job, generation}, and what is sent is the record's. Its rows are never evidence, and no child is offered one. */
+export function jobCancelTool(spec:JobCancelSpec):HostTool{
+ const start=jobSeamOf(spec.start)
+ if(start?.kind!=='start'||spec.start.source?.id!==spec.source.id)throw new JobCapabilityRefused('job-host-unsupported')
+ const seam:JobCancelSeam={kind:'cancel',start,cancel:spec.cancel}
+ return {name:spec.name,description:spec.description,inputSchema:JOB_CANCEL_SCHEMA,source:spec.source,effectClass:'act',taxonomy:{operation:'run',effect:'act'},...(spec.approval===undefined?{}:{approval:spec.approval}),...(spec.approve===undefined?{}:{approve:spec.approve}),execute:noBinding,[JOB_TOOL]:seam} as HostTool
+}
+/** M4: a card reader over the record: what a person is shown is what the record says, not what the model wrote. */
+export interface JobCancelCard {source:string;tool:string;state:JobState;generation:1;operation:string}
+export function jobCancelCard(job:RunJob):JobCancelCard{const held=readRunJob(structuredClone(job));return {source:held.source,tool:held.tool,state:held.state,generation:1,operation:held.job}}
+/** A cancel's arguments: exactly {job, generation}, generation 1. Anything else is no job of this run. */
+export function readJobCancelArgument(args:unknown):string{
+ if(!object(args)||Object.keys(args).length!==2||args.generation!==JOB_GENERATION||typeof args.job!=='string'||!DIGEST.test(args.job))throw new JobRefused('no-job')
+ return args.job
+}
+/** Whether this job may be asked to cancel through this pair, from what its record says now, before anyone is asked and before
+ * any claim. `pair` is the start tool's name and its row source in this run. */
+export function jobCancelRefusal(job:RunJob|undefined,pair:{name:string;identity:string}):JobRefusalReason|undefined{
+ if(job===undefined||job.source!==pair.identity||job.tool!==pair.name)return 'no-job'
+ if(job.state==='completed'||job.state==='not-started')return 'job-settled'
+ if(job.state==='unproven')return 'job-unproven'
+ return undefined
 }
 const JOB_ARGUMENT_FAILURE=():never=>{throw new JobRefused('no-job')}
 /** A model's job id: exactly {job}, a digest. Go also refuses repeated and folded names on the raw bytes. */
@@ -447,9 +571,46 @@ export function jobReportFromExport(source:JobExport):JobReport{
   if(job.reclaimed)entries.push({job:job.job,decision:'reclaim',at:job.reclaimed.at,owner:job.reclaimed.owner,epoch:job.reclaimed.epoch})
   if(job.started)entries.push({job:job.job,decision:'start',at:job.started.at,by:job.started.by,...(job.started.evidence===undefined?{}:{evidence:job.started.evidence})})
   if(job.closed)entries.push({job:job.job,decision:'not-started',at:job.closed.at,by:job.closed.by,...(job.closed.evidence===undefined?{}:{evidence:job.closed.evidence})})
+  if(job.cancel){const r=job.cancel.requested;entries.push({job:job.job,decision:'cancel-requested',at:r.at,by:r.by,...(r.owner===undefined?{}:{owner:r.owner,epoch:r.epoch!}),...(r.command===undefined?{}:{command:r.command}),...(r.undelivered?{undelivered:true as const}:{})})}
+  if(job.cancel?.acknowledged){const a=job.cancel.acknowledged;entries.push({job:job.job,decision:'cancel-acknowledged',at:a.at,evidence:a.evidence,acknowledged:a.outcome})}
   if(job.completion)entries.push({job:job.job,decision:'complete',at:job.completion.at,evidence:job.completion.evidence,outcome:job.completion.outcome})
   for(const c of job.contradictions??[])entries.push({job:job.job,decision:'contradiction',at:c.at,contradicts:c.kind,...(c.evidence===undefined?{}:{evidence:c.evidence}),...(c.outcome===undefined?{}:{outcome:c.outcome})})
  }
  return {version:1,resource:held.resource,entries}
 }
 export async function jobReport(store:RunStore,resource:string,signal?:AbortSignal):Promise<JobReport>{return jobReportFromExport(await exportJobs(store,resource,signal))}
+
+/** The owner an abandon's lease is taken under. A host's workers do not use it. */
+export const JOB_ABANDON_OWNER='job-abandon'
+/** A stable identity for an abandon's cancel of a job: a host's retry of the command is the same operation, and the effect host
+ * admits it once. */
+export const jobCancelOperation=(command:string,job:string)=>`sha256:${sha256(canonicalJSON({command:id(command),job:digest(job),generation:JOB_GENERATION}))}`
+export type JobDelivery='sent'|'already-sent'|'failed'|'undelivered'|'no-handle'|'settled'|'contradicted'|'acknowledged'
+export interface JobAbandonAnswer {fence?:LeaseFence;jobs:{job:string;delivery:JobDelivery}[]}
+/** ADR-0025 decision 8: a host's command to stop what the run owns. The command stands for the person's approval, the one stated
+ * exception to decision 7's approval boundary, so a source's policy is not asked. It takes the lease under a reserved owner at a new
+ * epoch and hands the fence back: old workers get stale-epoch. Each cancel goes through the effect host with a stable operation and
+ * no run commit, so a retry of the command sends nothing twice. A start with no handle cannot be cancelled and says so; past a
+ * deadline no lease can be granted, so each cancel is recorded undelivered and says so. None of it proves anything stopped. */
+export async function abandonJobs(input:{store:RunStore;effectHost:EffectHost;resource:string;command:string;durationMs:number;cancel:JobCancelSeam['cancel'];signal?:AbortSignal}):Promise<JobAbandonAnswer>{
+ admitJobs({store:input.store,effectHost:input.effectHost})
+ const port=durablePort(input.store),taken=await port.abandonJobs({version:1,resource:id(input.resource),command:id(input.command),durationMs:input.durationMs},input.signal)
+ const fence=taken.lease===undefined?undefined:fenceOf(readRunLease(taken.lease))
+ if(fence&&(fence.owner!==JOB_ABANDON_OWNER||fence.resource!==input.resource))throw new LeaseRefused('invalid')
+ const view=fence?fencedRunStore(input.store,fence,input.effectHost):undefined,jobs:JobAbandonAnswer['jobs']=[]
+ for(const row of taken.jobs){
+  const job=readRunJob(structuredClone(row))
+  if(job.resource!==input.resource)return invalid()
+  const delivery=async():Promise<JobDelivery>=>{
+   if(job.state==='unproven')return 'no-handle'
+   // `not-started` is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing to stop.
+   if(job.state!=='started')return job.contradictions?'contradicted':'settled'
+   if(job.cancel?.acknowledged?.outcome==='accepted')return 'acknowledged'
+   if(!view)return 'undelivered'
+   try{await fencedEffect(view,{run:job.resource,operation:jobCancelOperation(input.command,job.job),source:job.source,tool:job.tool,requestDigest:`sha256:${sha256(canonicalJSON({job:job.job,generation:JOB_GENERATION}))}`},()=>input.cancel(jobCancelInput(job,input.signal)),input.signal);return 'sent'}
+   catch(error){return error instanceof LeaseRefused&&error.reason==='already-admitted'?'already-sent':'failed'}
+  }
+  jobs.push({job:job.job,delivery:await delivery()})
+ }
+ return {...(fence?{fence}:{}),jobs}
+}
