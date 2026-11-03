@@ -1,0 +1,4037 @@
+{
+ "description": "Handwritten scenarios over the goal transitions, each step at its store time with what the transaction reads of the run (its head as checkpoint text, its waits and jobs as far as a goal reads them, its lease), and the record each scenario ends with, which items lists in order. A step that names refused is refused with that reason.",
+ "schema": "run-goal.json",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/goal.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-t",
+   "revision": 7,
+   "objectives": [
+    {
+     "id": "goal-a",
+     "state": "achieved",
+     "created": {
+      "command": "t-1",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z"
+     },
+     "plan": {
+      "id": "plan-t",
+      "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "steps": [
+       {
+        "step": "step-1",
+        "index": 0
+       },
+       {
+        "step": "step-3",
+        "index": 2
+       }
+      ],
+      "bound": {
+       "command": "t-11",
+       "actor": "host-1",
+       "at": "2026-02-01T00:11:00.000Z"
+      }
+     },
+     "achieved": {
+      "command": "t-15",
+      "actor": "host-1",
+      "at": "2026-02-01T00:15:00.000Z",
+      "head": {
+       "revision": "rev-1",
+       "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+      },
+      "waived": [
+       "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "unsuccessful": [
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "outcome": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "not-started",
+        "contradicted": true
+       }
+      ]
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "t-1",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:01:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:9ec467137708c324dd747b78c0f285c70580af1edb3c8b5c18307d0ebc3e0edb"
+    },
+    {
+     "command": "t-2",
+     "kind": "pause",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:a50472dbdd84e7933e33539e8b3a088c8b654db3dc2514062f642f55282328be"
+    },
+    {
+     "command": "t-3",
+     "kind": "pause",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:00.000Z",
+     "objective": "goal-a",
+     "outcome": "objective-paused",
+     "revision": 2,
+     "digest": "sha256:087e845cb84cc820d4a023ac4740c6236b783d0b49f06104a62f6c6d19ea0b16"
+    },
+    {
+     "command": "t-4",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:04:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:e33bc107310fede3ef502d00be301152c71edf8d9c4c9f06af31a5ce5b8ec29c"
+    },
+    {
+     "command": "t-5",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:05:00.000Z",
+     "objective": "goal-a",
+     "outcome": "not-paused",
+     "revision": 3,
+     "digest": "sha256:a155fe2953733743903ed1f1c8be5bc3a9cee92ec3d2388bb7f20702898b1b43"
+    },
+    {
+     "command": "t-6",
+     "kind": "block",
+     "actor": "host-1",
+     "at": "2026-02-01T00:06:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 4,
+     "digest": "sha256:9aafb33376495452b9fd6a41412e7c8789a6c6a403c8b2f1b6fd58629f6030c0"
+    },
+    {
+     "command": "t-7",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:07:00.000Z",
+     "objective": "goal-a",
+     "outcome": "objective-blocked",
+     "revision": 4,
+     "digest": "sha256:0f59d0c5bd169cb8f55f9cfb61b5bc185090f2590baf6068a5121c646f9d46d5"
+    },
+    {
+     "command": "t-8",
+     "kind": "unblock",
+     "actor": "host-1",
+     "at": "2026-02-01T00:08:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 5,
+     "digest": "sha256:cf82ee1d4bb8b509d737aa789c01f034937cd4db7b985ad01430394b5a408881"
+    },
+    {
+     "command": "t-9",
+     "kind": "bind",
+     "actor": "host-1",
+     "at": "2026-02-01T00:09:00.000Z",
+     "objective": "goal-a",
+     "outcome": "head-changed",
+     "revision": 5,
+     "digest": "sha256:733f4bf8efc470c123df99d98ef7ff5203b015920f213e8d2f45e32e33ed28eb"
+    },
+    {
+     "command": "t-10",
+     "kind": "bind",
+     "actor": "host-1",
+     "at": "2026-02-01T00:10:00.000Z",
+     "objective": "goal-a",
+     "outcome": "step-settled",
+     "revision": 5,
+     "digest": "sha256:b7b9ce4c874b12f8f73b06569b048b348664c100bdd2858d07ac956b28eb81ad",
+     "step": "step-3"
+    },
+    {
+     "command": "t-11",
+     "kind": "bind",
+     "actor": "host-1",
+     "at": "2026-02-01T00:11:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 6,
+     "digest": "sha256:d38c595dd8ffe9f3b3d2fa42d7ac5b31e776bfd02c78703ef722efc9791e3792"
+    },
+    {
+     "command": "t-11b",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:11:30.000Z",
+     "objective": "goal-a",
+     "outcome": "revision-changed",
+     "revision": 6,
+     "digest": "sha256:0f9e748cdb8774352ae75f3a03e07831f9d7e5eec479c491d34b27813496f12c"
+    },
+    {
+     "command": "t-12",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:12:00.000Z",
+     "objective": "goal-a",
+     "outcome": "jobs-unsettled",
+     "revision": 6,
+     "digest": "sha256:01a85250285ad8299425fb3ecc0446812c31f3bdf7f8dfd5b05d28bfa5b99b00"
+    },
+    {
+     "command": "t-13",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:13:00.000Z",
+     "objective": "goal-a",
+     "outcome": "waiver-invalid",
+     "revision": 6,
+     "digest": "sha256:a6d31c747bcb8800c22d765541f1e23ef05ed51fb41a8a8fb58cfd52b1a2470a"
+    },
+    {
+     "command": "t-14",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:14:00.000Z",
+     "objective": "goal-a",
+     "outcome": "wait-pending",
+     "revision": 6,
+     "digest": "sha256:21becff121a556b73d8f5fcc778da5f08befbb674602f793855d156a0c738c1f"
+    },
+    {
+     "command": "t-15",
+     "kind": "achieve",
+     "actor": "host-1",
+     "at": "2026-02-01T00:15:00.000Z",
+     "objective": "goal-a",
+     "outcome": "accepted",
+     "revision": 7,
+     "digest": "sha256:3204675676fbadaf7dd18b585a4c1cba41fdcefac6a5d9de7f65d14b27b18717"
+    },
+    {
+     "command": "t-16",
+     "kind": "pause",
+     "actor": "host-1",
+     "at": "2026-02-01T00:16:00.000Z",
+     "objective": "goal-a",
+     "outcome": "objective-terminal",
+     "revision": 7,
+     "digest": "sha256:1653fc38c20e785b7d67c3aee677e282cfe8960b3e14efbf2488266fe1cb2520"
+    }
+   ],
+   "inspections": {
+    "count": 2,
+    "last": {
+     "command": "look-2",
+     "actor": "viewer",
+     "at": "2026-02-01T00:19:00.000Z"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-t",
+   "revision": 4,
+   "objectives": [
+    {
+     "id": "goal-b",
+     "state": "abandoned",
+     "created": {
+      "command": "t-17",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z"
+     },
+     "abandoned": {
+      "command": "t-19",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:00.000Z",
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "parked"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       }
+      ]
+     }
+    },
+    {
+     "id": "goal-c",
+     "state": "active",
+     "created": {
+      "command": "t-22",
+      "actor": "host-1",
+      "at": "2026-02-01T00:07:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "t-17",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:01:00.000Z",
+     "objective": "goal-b",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:4bddc52d98ec0092e2200f2044524882810174fc63c8dbd861a92a4f2556ecf8"
+    },
+    {
+     "command": "t-18",
+     "kind": "pause",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:00.000Z",
+     "objective": "goal-b",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:a78700f763c6ebde664b32275b2b55ed030abd27ba35b968a2b973b922b77043"
+    },
+    {
+     "command": "t-19",
+     "kind": "abandon",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:00.000Z",
+     "objective": "goal-b",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:44bc354ec08b2a021d56c65ab4145ec407ed2c5827d123f963599c277e83c97e"
+    },
+    {
+     "command": "t-19",
+     "kind": "abandon",
+     "actor": "host-1",
+     "at": "2026-02-01T00:04:00.000Z",
+     "objective": "goal-b",
+     "outcome": "delivered",
+     "revision": 3,
+     "digest": "sha256:e6d340de2821d0df0b1e5e65498bcfc1db13f75a1af81577dfa1e6faaf73b5b7",
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "no-handle"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "sent"
+      },
+      {
+       "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+       "delivery": "settled"
+      }
+     ]
+    },
+    {
+     "command": "t-20",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:05:00.000Z",
+     "objective": "goal-b",
+     "outcome": "objective-reused",
+     "revision": 3,
+     "digest": "sha256:eb454cc2224fe86ed915b1a929dd2493e44eace3cb7c694fa368dd3c5a2ac174"
+    },
+    {
+     "command": "t-21",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:06:00.000Z",
+     "objective": "goal-c",
+     "outcome": "wait-unresolved",
+     "revision": 3,
+     "digest": "sha256:4b420b5405d79d1ab0f9e825a73de036afc9e69883c096d0fd7645f2f736e5f2"
+    },
+    {
+     "command": "t-21b",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:06:30.000Z",
+     "objective": "goal-c",
+     "outcome": "wait-unresolved",
+     "revision": 3,
+     "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
+    },
+    {
+     "command": "t-22",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:07:00.000Z",
+     "objective": "goal-c",
+     "outcome": "accepted",
+     "revision": 4,
+     "digest": "sha256:b52800c76271b706e1d7c923eb33d15b712f804153fef771f719d1d1f5175026"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-t",
+   "revision": 2,
+   "objectives": [
+    {
+     "id": "goal-d",
+     "state": "active",
+     "created": {
+      "command": "t-23",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "t-90",
+      "actor": "host-1",
+      "at": "2026-02-01T00:04:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "t-23",
+     "kind": "create",
+     "actor": "host-1",
+     "at": "2026-02-01T00:01:00.000Z",
+     "objective": "goal-d",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:40db351e6c9a2012d84a3fe953118b1ad775d71b07e09bbd285ef07a3956fb8c"
+    },
+    {
+     "command": "t-28",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:04.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:0207b417c5b11b365270856a55369d67858f79ed273aa2223c720c1a5cad5d43"
+    },
+    {
+     "command": "t-29",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:05.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:c67c31d9743d70b2077e4a7c549eb5ce7ebab052903ee899fd34ddc50b218517"
+    },
+    {
+     "command": "t-30",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:06.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:613774bec788be8099d1b4ebd1811a8aa203e2f903b6b5afec7f366a83fb262e"
+    },
+    {
+     "command": "t-31",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:07.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:24abadde2f2c638d0af569d22f57195aab0a9a802ed9b562ce389f23e7457c58"
+    },
+    {
+     "command": "t-32",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:08.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:e63041abc2c1bd43a101d0c0c65b3e3f4570d8da0577e60e6e96e1dea583b2ad"
+    },
+    {
+     "command": "t-33",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:09.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:3d84ba0e8657b6d29dd0217650f955b54392996f86040fa60a263a54f02ae04d"
+    },
+    {
+     "command": "t-34",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:10.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:7bd9c94b6b469f487d6a80d1fcb1f85d246774d8c1788f8e2c182bbaef61af8c"
+    },
+    {
+     "command": "t-35",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:11.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4fe68f4058bfd9ed41c803011c7f827725cb72613c13f4d978915eeb23a52777"
+    },
+    {
+     "command": "t-36",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:12.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:6e7a15eb22d60e5ac53315538d579b9aa5403fb9e7a616d7c98d87bdab16b23f"
+    },
+    {
+     "command": "t-37",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:13.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:c3de4489fe98d1bc85579f7af458e068fbc28ed5cf4d167fe4bc10da64e4a7d3"
+    },
+    {
+     "command": "t-38",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:14.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4f84dc6b3ea369a73df7b7a624d41b5f4f377277a7c6b5857e4d41068ba4b64f"
+    },
+    {
+     "command": "t-39",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:15.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:65e4cdb6937dab91ab69bbef820176e4f68824f16d72f81b04ed1852e53b2475"
+    },
+    {
+     "command": "t-40",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:16.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4797ee698b1f8b08d1affd86e4e5f3afe0764b55b852fba7a453e13f517e6e61"
+    },
+    {
+     "command": "t-41",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:17.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:3b7afcc684ce0f12e77790373699d41156d881739a2e2c83791d0b70ed67239e"
+    },
+    {
+     "command": "t-42",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:18.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:0eb8e83424c1cca8e751c2eee029759637dd869ee79f2bdffac3b8b36546488c"
+    },
+    {
+     "command": "t-43",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:19.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:f33b57e0d5684bcb97b82feac4212c95e2fb3b0be166fd8fcf883293029cec2e"
+    },
+    {
+     "command": "t-44",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:20.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:13dfa30baabef3420320a7979c2bd4f3924a06a9572b29a1d14596195871f420"
+    },
+    {
+     "command": "t-45",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:21.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:7be76bcfc58154f75872a6ca9ed6bf0e8ad425f55467756ac67d2f2b1f123f36"
+    },
+    {
+     "command": "t-46",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:22.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:ae7038034cda6cba79b3a808253127d3807c8c03fb07e6eae964fb9ea63f553a"
+    },
+    {
+     "command": "t-47",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:23.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:18f9969825a6d5871edf2d22c334668dad111eab84172b0ea585bb50f393bbf3"
+    },
+    {
+     "command": "t-48",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:24.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:291d51349e7e9959838c652ab546d9e01d5faf4de035729f4af96a4293688c45"
+    },
+    {
+     "command": "t-49",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:25.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:750bd0e4fa2c38995dbeb98c064f05601063c8930bf171561774cc862b2eeaa8"
+    },
+    {
+     "command": "t-50",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:26.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4eb66b3842a53d3c8fa964f029c8b0dc11cbcecd81383888950db806625aded0"
+    },
+    {
+     "command": "t-51",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:27.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:d62ba7e7fce8082eba49c88b07ce49659c49bc9a24affc975421b61f7a746cb9"
+    },
+    {
+     "command": "t-52",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:28.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:7fb23f83a958957125d64e303266a39a6f50dc8692c470dcd9f5042bbf9282cf"
+    },
+    {
+     "command": "t-53",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:29.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:61c09c827951b4baa51e5a9915c00a9d0ca8cb72487bf7582f1cd2025714f455"
+    },
+    {
+     "command": "t-54",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:30.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:f0b5ce057d858bedf5dafe243ea8903d2ef9bfe12a36459459befd96856c9cb4"
+    },
+    {
+     "command": "t-55",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:31.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:28c5941960ddaf2e85a26c54c005c94dc878d497a3386a01ad49684ebc66942d"
+    },
+    {
+     "command": "t-56",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:32.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:21a8cb201f86661a2020a3fcaeb960c377a011582368e53ff76b31857a64ba13"
+    },
+    {
+     "command": "t-57",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:33.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:ab3355651195def698d7d69df95d9951a1669a0b6298d75ce2478a5d2f51083e"
+    },
+    {
+     "command": "t-58",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:34.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:7453cf21aadb6d0616ed2b377c6d2834b138c7570f53e520fb245cfe0f6cd8fc"
+    },
+    {
+     "command": "t-59",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:35.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4e2a906243314114a4e13096cf5daec5748e33101d33bdb44224323c06880408"
+    },
+    {
+     "command": "t-60",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:36.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:c1ad9b4d8f48ec0ac82da8cdadc6a4bdfc12c1a9ffb2648646ae9972d7ef4afa"
+    },
+    {
+     "command": "t-61",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:37.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:ac709b4e5bda0f100e9f97b0ac13e58116d7cff5bdee39df5f5ea3319f3e561e"
+    },
+    {
+     "command": "t-62",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:38.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:efab3159bb9cc1bab5e528ab4e2aaaa0581410e11740a5d7952bda0e41b2e172"
+    },
+    {
+     "command": "t-63",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:39.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:e1cbd44a48ad9d93e78d77ca9c041be3760e0d0455888f151696ad15a91a5a3d"
+    },
+    {
+     "command": "t-64",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:40.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:d0ab704ad22c8e4a4cc20b713ab467e2326f25e9166097f8a1fd23341fd1f929"
+    },
+    {
+     "command": "t-65",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:41.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:a12b7052da955796022070f88ac4f8f8a74fd53261d0cc2d0aaadb4c0dfe680b"
+    },
+    {
+     "command": "t-66",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:42.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:ce9cd308339d7ae922078cb88c03d8a13804b412c18c9b09bd3057eb1b586c17"
+    },
+    {
+     "command": "t-67",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:43.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:2e94f01f4170ebb19e19b8cba72f49902e77986f4979bbbfbd174fcbb36436fc"
+    },
+    {
+     "command": "t-68",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:44.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:c89d1642b84ad7a96dfd35b0b84bb5998d8fef60301f90f34abd8fe53fb9fedd"
+    },
+    {
+     "command": "t-69",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:45.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:09278eb5a00e1085ba2210031383fb2ce21cbf0d864f9c0ee20ee248ba704f49"
+    },
+    {
+     "command": "t-70",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:46.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:f5e3cd79842243bf08f29778b96b1ce3b834f06750b466550fda87342bfc50fc"
+    },
+    {
+     "command": "t-71",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:47.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:88d1fbdebd50ee0809beebefaeb5c774c55f6e505b205a6732c00d911ed85ad4"
+    },
+    {
+     "command": "t-72",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:48.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:4135df12b868b301fac97c0345d48d0db9f69b1bad03789026cff4514c840a75"
+    },
+    {
+     "command": "t-73",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:49.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:225728e23b2fb8c0db54c8fc02bb128a2402c883d7603b11cbea5932a68584e8"
+    },
+    {
+     "command": "t-74",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:50.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:edcc072368d715efad17e55f9377171a71f5981d2b372d7a18ac07887fb41313"
+    },
+    {
+     "command": "t-75",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:51.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:e214ea2fb007c22ad1195fb8ac0066b6384d8e8cca6ee4e9a7fca30858b6816f"
+    },
+    {
+     "command": "t-76",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:52.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:5b8b4cbced99d7c746e1c3e9b80d0d93b252cf7dd8c61b07aa8eedbc3b857c78"
+    },
+    {
+     "command": "t-77",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:53.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:fd124506182e0cce73d25e7690716e2f63e69014b3d501a96039446d8ef3d1a3"
+    },
+    {
+     "command": "t-78",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:54.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:c82eeb35d35fedbfae50b12323decbadfac1586a861e3aa84e8997991ba7ea30"
+    },
+    {
+     "command": "t-79",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:55.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:0485d95a189f39734ada3d528264217da7aea2d4f1c832243308f77a62c9d183"
+    },
+    {
+     "command": "t-80",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:56.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:fca895693359ec1606fc5ccd63c1fe69b8c382087d204eae3b2ec7e5917ef1e9"
+    },
+    {
+     "command": "t-81",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:57.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:5019ce88e9482b102027ebb0f57f39d85decb4aebf27e44088a9b2fe78cc14ab"
+    },
+    {
+     "command": "t-82",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:58.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:cdf9d17e5fe38dde798ee82084e8bed4969b1e2cf5490a67ad9f51ad7c0f79a5"
+    },
+    {
+     "command": "t-83",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:02:59.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:5779406fc95f3c996c5c9f2d5c4d1c1a24be6cc9bb4d41c4cc40f18bcc9efa70"
+    },
+    {
+     "command": "t-84",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:00.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:f0ae144ba94df747beca5aae2d0fd7cca054aa581ef45fa4a089219d6eceae27"
+    },
+    {
+     "command": "t-85",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:01.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:ad1279f853b2a087112faca17ef3a25e75d51dc4cda192eeaaf5f444bbf594fd"
+    },
+    {
+     "command": "t-86",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:02.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:946e3d776e8023ce0d446978d77fa1c12a131211e10263ae51be02fee1427348"
+    },
+    {
+     "command": "t-87",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:03.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:499d8c951e9fde6c59b47ac61734a32ff0f8fecab0a2ccde614e4f880835dd8f"
+    },
+    {
+     "command": "t-88",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:04.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:9420f8148b6a9f652be0e43df6633971f53e98c6d00f1b22c31bcade8818d8bc"
+    },
+    {
+     "command": "t-89",
+     "kind": "resume",
+     "actor": "host-1",
+     "at": "2026-02-01T00:03:05.000Z",
+     "objective": "goal-d",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:43a4c244ae12de0e25efc38900cdc19f40149e0e90e7b7fc9816ea07b4b8f641"
+    },
+    {
+     "command": "t-90",
+     "kind": "pause",
+     "actor": "host-1",
+     "at": "2026-02-01T00:04:00.000Z",
+     "objective": "goal-d",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:922d9c572217247e9943908cc6591c211957875742e96621fda3a81f42178d8f"
+    }
+   ],
+   "discarded": 4
+  }
+ ],
+ "scenarios": [
+  {
+   "name": "a life: commands, refusals, repeats, a bind and an achievement",
+   "resource": "run-t",
+   "steps": [
+    {
+     "at": "2026-02-01T00:01:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-1",
+       "actor": "host-1",
+       "expectedRevision": null,
+       "kind": "create",
+       "objective": "goal-a"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:02:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-2",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "pause"
+      }
+     },
+     "context": {
+      "lease": {
+       "version": 1,
+       "resource": "run-t",
+       "owner": "worker-a",
+       "epoch": "3",
+       "expiry": "2026-02-01T00:50:00.000Z",
+       "state": "held"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:03:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-3",
+       "actor": "host-1",
+       "expectedRevision": 2,
+       "kind": "pause"
+      }
+     },
+     "refused": "objective-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-2",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "pause"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:03:40.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-2",
+       "actor": "host-2",
+       "expectedRevision": 1,
+       "kind": "pause"
+      }
+     },
+     "refused": "conflict"
+    },
+    {
+     "at": "2026-02-01T00:04:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-4",
+       "actor": "host-1",
+       "expectedRevision": 2,
+       "kind": "resume"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:05:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-5",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:06:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-6",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "block",
+       "condition": "waiting"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:07:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-7",
+       "actor": "host-1",
+       "expectedRevision": 4,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "read": 4
+     },
+     "refused": "objective-blocked",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:08:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-8",
+       "actor": "host-1",
+       "expectedRevision": 4,
+       "kind": "unblock"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:09:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-9",
+       "actor": "host-1",
+       "expectedRevision": 5,
+       "kind": "bind",
+       "steps": [
+        "step-1"
+       ],
+       "head": {
+        "revision": "rev-0",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "plan": {
+       "id": "plan-t",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        }
+       ]
+      }
+     },
+     "refused": "head-changed",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:10:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-10",
+       "actor": "host-1",
+       "expectedRevision": 5,
+       "kind": "bind",
+       "steps": [
+        "step-1",
+        "step-3"
+       ],
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "refused": {
+       "reason": "step-settled",
+       "step": "step-3"
+      }
+     },
+     "refused": "step-settled",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:11:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-11",
+       "actor": "host-1",
+       "expectedRevision": 5,
+       "kind": "bind",
+       "steps": [
+        "step-1",
+        "step-3"
+       ],
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "plan": {
+       "id": "plan-t",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-3",
+         "index": 2
+        }
+       ]
+      }
+     },
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:11:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-11b",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "read": 5
+     },
+     "refused": "revision-changed"
+    },
+    {
+     "at": "2026-02-01T00:12:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-12",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "read": 6
+     },
+     "refused": "jobs-unsettled",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      },
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "started"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "completion": {
+         "outcome": "failed"
+        }
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "not-started",
+        "contradictions": [
+         {}
+        ]
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "state": "completed",
+        "completion": {
+         "outcome": "succeeded"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:13:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-13",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       },
+       "waive": [
+        "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+       ]
+      },
+      "read": 6
+     },
+     "refused": "waiver-invalid",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      },
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "started"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "completion": {
+         "outcome": "failed"
+        }
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "not-started",
+        "contradictions": [
+         {}
+        ]
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "state": "completed",
+        "completion": {
+         "outcome": "succeeded"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:14:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-14",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       }
+      },
+      "read": 6
+     },
+     "refused": "wait-pending",
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      },
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "job",
+        "state": "woken"
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:15:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-15",
+       "actor": "host-1",
+       "expectedRevision": 6,
+       "kind": "achieve",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       },
+       "waive": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ]
+      },
+      "read": 6
+     },
+     "context": {
+      "head": {
+       "revision": "rev-1",
+       "checkpoint": "{\"kit\":\"goal\"}"
+      },
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "started"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "completion": {
+         "outcome": "failed"
+        }
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "not-started",
+        "contradictions": [
+         {}
+        ]
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "state": "completed",
+        "completion": {
+         "outcome": "succeeded"
+        }
+       }
+      ],
+      "waits": [
+       {
+        "wait": "w-0",
+        "reason": "job",
+        "state": "resumed"
+       },
+       {
+        "wait": "w-x",
+        "reason": "approval",
+        "state": "timed-out"
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:16:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-16",
+       "actor": "host-1",
+       "expectedRevision": 7,
+       "kind": "pause"
+      }
+     },
+     "refused": "objective-terminal"
+    },
+    {
+     "at": "2026-02-01T00:17:00.000Z",
+     "op": "inspect",
+     "input": {
+      "version": 1,
+      "resource": "run-t",
+      "command": "look-1",
+      "actor": "viewer"
+     }
+    },
+    {
+     "at": "2026-02-01T00:18:00.000Z",
+     "op": "inspect",
+     "input": {
+      "version": 1,
+      "resource": "run-t",
+      "command": "look-1",
+      "actor": "viewer"
+     }
+    },
+    {
+     "at": "2026-02-01T00:19:00.000Z",
+     "op": "inspect",
+     "input": {
+      "version": 1,
+      "resource": "run-t",
+      "command": "look-2",
+      "actor": "viewer"
+     }
+    }
+   ],
+   "final": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-t",
+    "revision": 7,
+    "objectives": [
+     {
+      "id": "goal-a",
+      "state": "achieved",
+      "created": {
+       "command": "t-1",
+       "actor": "host-1",
+       "at": "2026-02-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "plan-t",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-3",
+         "index": 2
+        }
+       ],
+       "bound": {
+        "command": "t-11",
+        "actor": "host-1",
+        "at": "2026-02-01T00:11:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "t-15",
+       "actor": "host-1",
+       "at": "2026-02-01T00:15:00.000Z",
+       "head": {
+        "revision": "rev-1",
+        "digest": "sha256:0f8bb40087745f736969662facbc68dffcfd4fc3692702a28871e48d0a87da64"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "t-1",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:9ec467137708c324dd747b78c0f285c70580af1edb3c8b5c18307d0ebc3e0edb"
+     },
+     {
+      "command": "t-2",
+      "kind": "pause",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:a50472dbdd84e7933e33539e8b3a088c8b654db3dc2514062f642f55282328be"
+     },
+     {
+      "command": "t-3",
+      "kind": "pause",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:00.000Z",
+      "objective": "goal-a",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:087e845cb84cc820d4a023ac4740c6236b783d0b49f06104a62f6c6d19ea0b16"
+     },
+     {
+      "command": "t-4",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:04:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:e33bc107310fede3ef502d00be301152c71edf8d9c4c9f06af31a5ce5b8ec29c"
+     },
+     {
+      "command": "t-5",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:05:00.000Z",
+      "objective": "goal-a",
+      "outcome": "not-paused",
+      "revision": 3,
+      "digest": "sha256:a155fe2953733743903ed1f1c8be5bc3a9cee92ec3d2388bb7f20702898b1b43"
+     },
+     {
+      "command": "t-6",
+      "kind": "block",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:9aafb33376495452b9fd6a41412e7c8789a6c6a403c8b2f1b6fd58629f6030c0"
+     },
+     {
+      "command": "t-7",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:07:00.000Z",
+      "objective": "goal-a",
+      "outcome": "objective-blocked",
+      "revision": 4,
+      "digest": "sha256:0f59d0c5bd169cb8f55f9cfb61b5bc185090f2590baf6068a5121c646f9d46d5"
+     },
+     {
+      "command": "t-8",
+      "kind": "unblock",
+      "actor": "host-1",
+      "at": "2026-02-01T00:08:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:cf82ee1d4bb8b509d737aa789c01f034937cd4db7b985ad01430394b5a408881"
+     },
+     {
+      "command": "t-9",
+      "kind": "bind",
+      "actor": "host-1",
+      "at": "2026-02-01T00:09:00.000Z",
+      "objective": "goal-a",
+      "outcome": "head-changed",
+      "revision": 5,
+      "digest": "sha256:733f4bf8efc470c123df99d98ef7ff5203b015920f213e8d2f45e32e33ed28eb"
+     },
+     {
+      "command": "t-10",
+      "kind": "bind",
+      "actor": "host-1",
+      "at": "2026-02-01T00:10:00.000Z",
+      "objective": "goal-a",
+      "outcome": "step-settled",
+      "revision": 5,
+      "digest": "sha256:b7b9ce4c874b12f8f73b06569b048b348664c100bdd2858d07ac956b28eb81ad",
+      "step": "step-3"
+     },
+     {
+      "command": "t-11",
+      "kind": "bind",
+      "actor": "host-1",
+      "at": "2026-02-01T00:11:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:d38c595dd8ffe9f3b3d2fa42d7ac5b31e776bfd02c78703ef722efc9791e3792"
+     },
+     {
+      "command": "t-11b",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:11:30.000Z",
+      "objective": "goal-a",
+      "outcome": "revision-changed",
+      "revision": 6,
+      "digest": "sha256:0f9e748cdb8774352ae75f3a03e07831f9d7e5eec479c491d34b27813496f12c"
+     },
+     {
+      "command": "t-12",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:12:00.000Z",
+      "objective": "goal-a",
+      "outcome": "jobs-unsettled",
+      "revision": 6,
+      "digest": "sha256:01a85250285ad8299425fb3ecc0446812c31f3bdf7f8dfd5b05d28bfa5b99b00"
+     },
+     {
+      "command": "t-13",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:13:00.000Z",
+      "objective": "goal-a",
+      "outcome": "waiver-invalid",
+      "revision": 6,
+      "digest": "sha256:a6d31c747bcb8800c22d765541f1e23ef05ed51fb41a8a8fb58cfd52b1a2470a"
+     },
+     {
+      "command": "t-14",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:14:00.000Z",
+      "objective": "goal-a",
+      "outcome": "wait-pending",
+      "revision": 6,
+      "digest": "sha256:21becff121a556b73d8f5fcc778da5f08befbb674602f793855d156a0c738c1f"
+     },
+     {
+      "command": "t-15",
+      "kind": "achieve",
+      "actor": "host-1",
+      "at": "2026-02-01T00:15:00.000Z",
+      "objective": "goal-a",
+      "outcome": "accepted",
+      "revision": 7,
+      "digest": "sha256:3204675676fbadaf7dd18b585a4c1cba41fdcefac6a5d9de7f65d14b27b18717"
+     },
+     {
+      "command": "t-16",
+      "kind": "pause",
+      "actor": "host-1",
+      "at": "2026-02-01T00:16:00.000Z",
+      "objective": "goal-a",
+      "outcome": "objective-terminal",
+      "revision": 7,
+      "digest": "sha256:1653fc38c20e785b7d67c3aee677e282cfe8960b3e14efbf2488266fe1cb2520"
+     }
+    ],
+    "inspections": {
+     "count": 2,
+     "last": {
+      "command": "look-2",
+      "actor": "viewer",
+      "at": "2026-02-01T00:19:00.000Z"
+     }
+    }
+   }
+  },
+  {
+   "name": "an abandon records what it left; its deliveries are journaled; a create waits for its waits",
+   "resource": "run-t",
+   "steps": [
+    {
+     "at": "2026-02-01T00:01:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-17",
+       "actor": "host-1",
+       "expectedRevision": null,
+       "kind": "create",
+       "objective": "goal-b"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:02:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-18",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "pause"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:03:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-19",
+       "actor": "host-1",
+       "expectedRevision": 2,
+       "kind": "abandon"
+      }
+     },
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "w-0",
+        "reason": "job",
+        "state": "resumed"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "completed",
+        "completion": {
+         "outcome": "succeeded"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:04:00.000Z",
+     "op": "deliver",
+     "input": {
+      "version": 1,
+      "resource": "run-t",
+      "command": "t-19",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "settled"
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:04:30.000Z",
+     "op": "deliver",
+     "input": {
+      "version": 1,
+      "resource": "run-t",
+      "command": "t-other",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "settled"
+       }
+      ]
+     },
+     "refused": "invalid"
+    },
+    {
+     "at": "2026-02-01T00:05:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-20",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-b"
+      }
+     },
+     "refused": "objective-reused",
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "w-0",
+        "reason": "job",
+        "state": "resumed"
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:06:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-21",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "refused": "wait-unresolved",
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "w-0",
+        "reason": "job",
+        "state": "resumed"
+       }
+      ]
+     }
+    },
+    {
+     "at": "2026-02-01T00:06:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-21b",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "expired"
+       },
+       {
+        "wait": "w-2",
+        "reason": "approval",
+        "state": "parked"
+       }
+      ]
+     },
+     "refused": "wait-unresolved"
+    },
+    {
+     "at": "2026-02-01T00:07:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-22",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     },
+     "context": {
+      "waits": [
+       {
+        "wait": "w-1",
+        "reason": "approval",
+        "state": "expired"
+       }
+      ]
+     }
+    }
+   ],
+   "final": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-t",
+    "revision": 4,
+    "objectives": [
+     {
+      "id": "goal-b",
+      "state": "abandoned",
+      "created": {
+       "command": "t-17",
+       "actor": "host-1",
+       "at": "2026-02-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "t-19",
+       "actor": "host-1",
+       "at": "2026-02-01T00:03:00.000Z",
+       "waits": [
+        {
+         "wait": "w-1",
+         "reason": "approval",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     },
+     {
+      "id": "goal-c",
+      "state": "active",
+      "created": {
+       "command": "t-22",
+       "actor": "host-1",
+       "at": "2026-02-01T00:07:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "t-17",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z",
+      "objective": "goal-b",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:4bddc52d98ec0092e2200f2044524882810174fc63c8dbd861a92a4f2556ecf8"
+     },
+     {
+      "command": "t-18",
+      "kind": "pause",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:00.000Z",
+      "objective": "goal-b",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:a78700f763c6ebde664b32275b2b55ed030abd27ba35b968a2b973b922b77043"
+     },
+     {
+      "command": "t-19",
+      "kind": "abandon",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:00.000Z",
+      "objective": "goal-b",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:44bc354ec08b2a021d56c65ab4145ec407ed2c5827d123f963599c277e83c97e"
+     },
+     {
+      "command": "t-19",
+      "kind": "abandon",
+      "actor": "host-1",
+      "at": "2026-02-01T00:04:00.000Z",
+      "objective": "goal-b",
+      "outcome": "delivered",
+      "revision": 3,
+      "digest": "sha256:e6d340de2821d0df0b1e5e65498bcfc1db13f75a1af81577dfa1e6faaf73b5b7",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "settled"
+       }
+      ]
+     },
+     {
+      "command": "t-20",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:05:00.000Z",
+      "objective": "goal-b",
+      "outcome": "objective-reused",
+      "revision": 3,
+      "digest": "sha256:eb454cc2224fe86ed915b1a929dd2493e44eace3cb7c694fa368dd3c5a2ac174"
+     },
+     {
+      "command": "t-21",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:00.000Z",
+      "objective": "goal-c",
+      "outcome": "wait-unresolved",
+      "revision": 3,
+      "digest": "sha256:4b420b5405d79d1ab0f9e825a73de036afc9e69883c096d0fd7645f2f736e5f2"
+     },
+     {
+      "command": "t-21b",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:30.000Z",
+      "objective": "goal-c",
+      "outcome": "wait-unresolved",
+      "revision": 3,
+      "digest": "sha256:dc651d59eb14934637f3598e293a58950cfe7f31765e305e3a413057cee1c951"
+     },
+     {
+      "command": "t-22",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:07:00.000Z",
+      "objective": "goal-c",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:b52800c76271b706e1d7c923eb33d15b712f804153fef771f719d1d1f5175026"
+     }
+    ]
+   }
+  },
+  {
+   "name": "past the journal's bound refusals go first, and a command is never refused for size",
+   "resource": "run-t",
+   "steps": [
+    {
+     "at": "2026-02-01T00:01:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-23",
+       "actor": "host-1",
+       "expectedRevision": null,
+       "kind": "create",
+       "objective": "goal-d"
+      }
+     }
+    },
+    {
+     "at": "2026-02-01T00:02:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-24",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:01.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-25",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:02.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-26",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:03.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-27",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:04.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-28",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:05.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-29",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:06.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-30",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:07.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-31",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:08.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-32",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:09.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-33",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:10.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-34",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:11.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-35",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:12.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-36",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:13.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-37",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:14.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-38",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:15.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-39",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:16.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-40",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:17.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-41",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:18.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-42",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:19.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-43",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:20.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-44",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:21.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-45",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:22.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-46",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:23.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-47",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:24.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-48",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:25.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-49",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:26.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-50",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:27.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-51",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:28.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-52",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:29.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-53",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:30.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-54",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:31.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-55",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:32.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-56",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:33.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-57",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:34.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-58",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:35.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-59",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:36.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-60",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:37.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-61",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:38.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-62",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:39.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-63",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:40.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-64",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:41.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-65",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:42.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-66",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:43.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-67",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:44.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-68",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:45.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-69",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:46.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-70",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:47.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-71",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:48.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-72",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:49.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-73",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:50.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-74",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:51.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-75",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:52.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-76",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:53.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-77",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:54.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-78",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:55.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-79",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:56.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-80",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:57.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-81",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:58.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-82",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:02:59.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-83",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-84",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:01.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-85",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:02.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-86",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:03.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-87",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:04.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-88",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:03:05.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-89",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "resume"
+      }
+     },
+     "refused": "not-paused"
+    },
+    {
+     "at": "2026-02-01T00:04:00.000Z",
+     "op": "command",
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-90",
+       "actor": "host-1",
+       "expectedRevision": 1,
+       "kind": "pause"
+      }
+     }
+    }
+   ],
+   "final": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-t",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "goal-d",
+      "state": "active",
+      "created": {
+       "command": "t-23",
+       "actor": "host-1",
+       "at": "2026-02-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "t-90",
+       "actor": "host-1",
+       "at": "2026-02-01T00:04:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "t-23",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:01:00.000Z",
+      "objective": "goal-d",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:40db351e6c9a2012d84a3fe953118b1ad775d71b07e09bbd285ef07a3956fb8c"
+     },
+     {
+      "command": "t-28",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:04.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:0207b417c5b11b365270856a55369d67858f79ed273aa2223c720c1a5cad5d43"
+     },
+     {
+      "command": "t-29",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:05.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:c67c31d9743d70b2077e4a7c549eb5ce7ebab052903ee899fd34ddc50b218517"
+     },
+     {
+      "command": "t-30",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:06.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:613774bec788be8099d1b4ebd1811a8aa203e2f903b6b5afec7f366a83fb262e"
+     },
+     {
+      "command": "t-31",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:07.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:24abadde2f2c638d0af569d22f57195aab0a9a802ed9b562ce389f23e7457c58"
+     },
+     {
+      "command": "t-32",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:08.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:e63041abc2c1bd43a101d0c0c65b3e3f4570d8da0577e60e6e96e1dea583b2ad"
+     },
+     {
+      "command": "t-33",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:09.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:3d84ba0e8657b6d29dd0217650f955b54392996f86040fa60a263a54f02ae04d"
+     },
+     {
+      "command": "t-34",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:10.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:7bd9c94b6b469f487d6a80d1fcb1f85d246774d8c1788f8e2c182bbaef61af8c"
+     },
+     {
+      "command": "t-35",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:11.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4fe68f4058bfd9ed41c803011c7f827725cb72613c13f4d978915eeb23a52777"
+     },
+     {
+      "command": "t-36",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:12.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:6e7a15eb22d60e5ac53315538d579b9aa5403fb9e7a616d7c98d87bdab16b23f"
+     },
+     {
+      "command": "t-37",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:13.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:c3de4489fe98d1bc85579f7af458e068fbc28ed5cf4d167fe4bc10da64e4a7d3"
+     },
+     {
+      "command": "t-38",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:14.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4f84dc6b3ea369a73df7b7a624d41b5f4f377277a7c6b5857e4d41068ba4b64f"
+     },
+     {
+      "command": "t-39",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:15.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:65e4cdb6937dab91ab69bbef820176e4f68824f16d72f81b04ed1852e53b2475"
+     },
+     {
+      "command": "t-40",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:16.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4797ee698b1f8b08d1affd86e4e5f3afe0764b55b852fba7a453e13f517e6e61"
+     },
+     {
+      "command": "t-41",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:17.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:3b7afcc684ce0f12e77790373699d41156d881739a2e2c83791d0b70ed67239e"
+     },
+     {
+      "command": "t-42",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:18.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:0eb8e83424c1cca8e751c2eee029759637dd869ee79f2bdffac3b8b36546488c"
+     },
+     {
+      "command": "t-43",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:19.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:f33b57e0d5684bcb97b82feac4212c95e2fb3b0be166fd8fcf883293029cec2e"
+     },
+     {
+      "command": "t-44",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:20.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:13dfa30baabef3420320a7979c2bd4f3924a06a9572b29a1d14596195871f420"
+     },
+     {
+      "command": "t-45",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:21.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:7be76bcfc58154f75872a6ca9ed6bf0e8ad425f55467756ac67d2f2b1f123f36"
+     },
+     {
+      "command": "t-46",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:22.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:ae7038034cda6cba79b3a808253127d3807c8c03fb07e6eae964fb9ea63f553a"
+     },
+     {
+      "command": "t-47",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:23.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:18f9969825a6d5871edf2d22c334668dad111eab84172b0ea585bb50f393bbf3"
+     },
+     {
+      "command": "t-48",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:24.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:291d51349e7e9959838c652ab546d9e01d5faf4de035729f4af96a4293688c45"
+     },
+     {
+      "command": "t-49",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:25.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:750bd0e4fa2c38995dbeb98c064f05601063c8930bf171561774cc862b2eeaa8"
+     },
+     {
+      "command": "t-50",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:26.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4eb66b3842a53d3c8fa964f029c8b0dc11cbcecd81383888950db806625aded0"
+     },
+     {
+      "command": "t-51",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:27.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:d62ba7e7fce8082eba49c88b07ce49659c49bc9a24affc975421b61f7a746cb9"
+     },
+     {
+      "command": "t-52",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:28.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:7fb23f83a958957125d64e303266a39a6f50dc8692c470dcd9f5042bbf9282cf"
+     },
+     {
+      "command": "t-53",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:29.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:61c09c827951b4baa51e5a9915c00a9d0ca8cb72487bf7582f1cd2025714f455"
+     },
+     {
+      "command": "t-54",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:30.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:f0b5ce057d858bedf5dafe243ea8903d2ef9bfe12a36459459befd96856c9cb4"
+     },
+     {
+      "command": "t-55",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:31.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:28c5941960ddaf2e85a26c54c005c94dc878d497a3386a01ad49684ebc66942d"
+     },
+     {
+      "command": "t-56",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:32.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:21a8cb201f86661a2020a3fcaeb960c377a011582368e53ff76b31857a64ba13"
+     },
+     {
+      "command": "t-57",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:33.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:ab3355651195def698d7d69df95d9951a1669a0b6298d75ce2478a5d2f51083e"
+     },
+     {
+      "command": "t-58",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:34.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:7453cf21aadb6d0616ed2b377c6d2834b138c7570f53e520fb245cfe0f6cd8fc"
+     },
+     {
+      "command": "t-59",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:35.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4e2a906243314114a4e13096cf5daec5748e33101d33bdb44224323c06880408"
+     },
+     {
+      "command": "t-60",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:36.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:c1ad9b4d8f48ec0ac82da8cdadc6a4bdfc12c1a9ffb2648646ae9972d7ef4afa"
+     },
+     {
+      "command": "t-61",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:37.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:ac709b4e5bda0f100e9f97b0ac13e58116d7cff5bdee39df5f5ea3319f3e561e"
+     },
+     {
+      "command": "t-62",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:38.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:efab3159bb9cc1bab5e528ab4e2aaaa0581410e11740a5d7952bda0e41b2e172"
+     },
+     {
+      "command": "t-63",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:39.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:e1cbd44a48ad9d93e78d77ca9c041be3760e0d0455888f151696ad15a91a5a3d"
+     },
+     {
+      "command": "t-64",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:40.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:d0ab704ad22c8e4a4cc20b713ab467e2326f25e9166097f8a1fd23341fd1f929"
+     },
+     {
+      "command": "t-65",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:41.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:a12b7052da955796022070f88ac4f8f8a74fd53261d0cc2d0aaadb4c0dfe680b"
+     },
+     {
+      "command": "t-66",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:42.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:ce9cd308339d7ae922078cb88c03d8a13804b412c18c9b09bd3057eb1b586c17"
+     },
+     {
+      "command": "t-67",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:43.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:2e94f01f4170ebb19e19b8cba72f49902e77986f4979bbbfbd174fcbb36436fc"
+     },
+     {
+      "command": "t-68",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:44.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:c89d1642b84ad7a96dfd35b0b84bb5998d8fef60301f90f34abd8fe53fb9fedd"
+     },
+     {
+      "command": "t-69",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:45.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:09278eb5a00e1085ba2210031383fb2ce21cbf0d864f9c0ee20ee248ba704f49"
+     },
+     {
+      "command": "t-70",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:46.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:f5e3cd79842243bf08f29778b96b1ce3b834f06750b466550fda87342bfc50fc"
+     },
+     {
+      "command": "t-71",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:47.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:88d1fbdebd50ee0809beebefaeb5c774c55f6e505b205a6732c00d911ed85ad4"
+     },
+     {
+      "command": "t-72",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:48.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:4135df12b868b301fac97c0345d48d0db9f69b1bad03789026cff4514c840a75"
+     },
+     {
+      "command": "t-73",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:49.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:225728e23b2fb8c0db54c8fc02bb128a2402c883d7603b11cbea5932a68584e8"
+     },
+     {
+      "command": "t-74",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:50.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:edcc072368d715efad17e55f9377171a71f5981d2b372d7a18ac07887fb41313"
+     },
+     {
+      "command": "t-75",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:51.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:e214ea2fb007c22ad1195fb8ac0066b6384d8e8cca6ee4e9a7fca30858b6816f"
+     },
+     {
+      "command": "t-76",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:52.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:5b8b4cbced99d7c746e1c3e9b80d0d93b252cf7dd8c61b07aa8eedbc3b857c78"
+     },
+     {
+      "command": "t-77",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:53.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:fd124506182e0cce73d25e7690716e2f63e69014b3d501a96039446d8ef3d1a3"
+     },
+     {
+      "command": "t-78",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:54.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:c82eeb35d35fedbfae50b12323decbadfac1586a861e3aa84e8997991ba7ea30"
+     },
+     {
+      "command": "t-79",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:55.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:0485d95a189f39734ada3d528264217da7aea2d4f1c832243308f77a62c9d183"
+     },
+     {
+      "command": "t-80",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:56.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:fca895693359ec1606fc5ccd63c1fe69b8c382087d204eae3b2ec7e5917ef1e9"
+     },
+     {
+      "command": "t-81",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:57.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:5019ce88e9482b102027ebb0f57f39d85decb4aebf27e44088a9b2fe78cc14ab"
+     },
+     {
+      "command": "t-82",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:58.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:cdf9d17e5fe38dde798ee82084e8bed4969b1e2cf5490a67ad9f51ad7c0f79a5"
+     },
+     {
+      "command": "t-83",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:02:59.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:5779406fc95f3c996c5c9f2d5c4d1c1a24be6cc9bb4d41c4cc40f18bcc9efa70"
+     },
+     {
+      "command": "t-84",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:00.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:f0ae144ba94df747beca5aae2d0fd7cca054aa581ef45fa4a089219d6eceae27"
+     },
+     {
+      "command": "t-85",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:01.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:ad1279f853b2a087112faca17ef3a25e75d51dc4cda192eeaaf5f444bbf594fd"
+     },
+     {
+      "command": "t-86",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:02.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:946e3d776e8023ce0d446978d77fa1c12a131211e10263ae51be02fee1427348"
+     },
+     {
+      "command": "t-87",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:03.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:499d8c951e9fde6c59b47ac61734a32ff0f8fecab0a2ccde614e4f880835dd8f"
+     },
+     {
+      "command": "t-88",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:04.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:9420f8148b6a9f652be0e43df6633971f53e98c6d00f1b22c31bcade8818d8bc"
+     },
+     {
+      "command": "t-89",
+      "kind": "resume",
+      "actor": "host-1",
+      "at": "2026-02-01T00:03:05.000Z",
+      "objective": "goal-d",
+      "outcome": "not-paused",
+      "revision": 1,
+      "digest": "sha256:43a4c244ae12de0e25efc38900cdc19f40149e0e90e7b7fc9816ea07b4b8f641"
+     },
+     {
+      "command": "t-90",
+      "kind": "pause",
+      "actor": "host-1",
+      "at": "2026-02-01T00:04:00.000Z",
+      "objective": "goal-d",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:922d9c572217247e9943908cc6591c211957875742e96621fda3a81f42178d8f"
+     }
+    ],
+    "discarded": 4
+   }
+  }
+ ]
+}

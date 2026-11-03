@@ -2224,6 +2224,12 @@ func (m *MemoryRunStore) WakeWait(ctx context.Context, evidence WakeEvidence) (d
 }
 func (m *MemoryRunStore) ResumeWait(ctx context.Context, claim WaitClaim) (held RunWait, lease RunLease, err error) {
 	err = m.leaseTransition(ctx, func() error {
+		// #230 (M8): a paused objective's run is resumed by no claim, as it is leased by no acquisition.
+		if validStorageID(claim.Resource) {
+			if err := m.goals.AdmitLease(claim.Resource); err != nil {
+				return err
+			}
+		}
 		held, lease, err = m.waits.Resume(claim, m.headOf(claim.Resource), m.leases)
 		return err
 	})

@@ -275,6 +275,13 @@ lease in the claim's own transaction, which `ResumeParked` reads back through th
 tells the resumed run. A registration travels as `RunCommit.Job`; a store without the port is never handed one. Nothing changes
 unless a host offers a job tool.
 
+### One durable goal (#230)
+
+`context/run_goal.go` and `context/run_goal_commands.go` are the Go twins of `storage/goal.ts` and `storage/goalCommands.ts`:
+`RunGoalCommand`, `AbandonGoal`, `InspectGoal`, `ReadGoal`, `GoalReportFor`, `AdmitGoals`, the readers and the `GoalStore` port,
+certified by `CheckRunStoreGoalConformance`. `verifyTaskEvidence` is the writer's history check of delegated evidence, which an
+achievement calls too. Nothing changes unless a host creates an objective.
+
 ### Re-authorization waits (#226)
 
 `context/run_reauth.go` is the Go twin of `storage/reauth.ts`: `NewReferenceEffectHostWith` with a

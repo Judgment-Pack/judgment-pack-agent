@@ -125,10 +125,11 @@ type MemoryRunStore struct {
 	leases      *LeaseTable
 	waits       *WaitTable
 	jobs        *JobTable
+	goals       *GoalTable
 }
 
 func NewMemoryRunStore(options MemoryRunStoreOptions) *MemoryRunStore {
-	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now), jobs: NewJobTable(options.Now)}
+	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now), jobs: NewJobTable(options.Now), goals: NewGoalTable(options.Now)}
 }
 func (m *MemoryRunStore) Durability() string { return m.durability }
 func validStorageID(id string) bool {
@@ -241,6 +242,12 @@ func (m *MemoryRunStore) commitTransaction(ctx context.Context, input RunCommit,
 	// deadline.
 	if fence == nil {
 		if err := m.waits.AdmitAcquire(frozen.RunID); err != nil {
+			return RunReceipt{}, RunHistoryReceipt{}, err
+		}
+	}
+	// #230: once the run has an objective it is leased, and an unfenced commit is refused.
+	if fence == nil {
+		if err := m.goals.AdmitUnfenced(frozen.RunID); err != nil {
 			return RunReceipt{}, RunHistoryReceipt{}, err
 		}
 	}

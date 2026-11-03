@@ -423,6 +423,8 @@ export interface WaitRunStore extends LeaseRunStore,WaitStore {}
 const copy=<T,>(v:T):T=>structuredClone(v)
 /** A terminal wait ends its run: a timed-out approval or budget wait, or one past its deadline. */
 const terminal=(row:RunWait)=>row.state==='expired'||row.state==='timed-out'&&!timeoutContinues(row.reason)
+/** #230: whether a wait has ended its run for good, so nothing of it is left to resolve. */
+export const terminalWait=(row:RunWait):boolean=>terminal(row)
 function readClaim(v:unknown):WaitClaim{
  const held=shape(v,['resource','wait','evidence','lease','reconciled','revalidation'],['reauthorized'])
  if(!object(held.lease))return invalid()
