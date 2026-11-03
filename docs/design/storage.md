@@ -817,11 +817,16 @@ first commit is a run seen, and so is a goal's run no worker has leased yet. The
 decides and builds its cancel from that record, as a tool's cancel is (#325): a job the record does not bear out (none held, another
 job's, or an answer whose source, tool, or handle and marker are not the record's) is answered `invalid` and sent nothing, and the others
 still go. A start that answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses
-the abandon whole only where it cannot read the store's answer (a malformed job, or a lease that is not the abandon's): the lease is
-then taken and nothing sent, and a retry of the same command finishes it. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
+the abandon whole where it cannot read the store's answer (a lease that is not the abandon's, or a malformed job) and where `readJob`
+fails with an error that is not a `JobRefused`; the lease is then taken. Jobs are decided and sent one at a time, so a refusal at a later
+job (a malformed job or a read error) comes after the earlier jobs' cancels were sent, and
+the host treats the refusal as "some cancels may have gone". A retry of the same command answers those `already-admitted` only while the
+effect host remembers their operations, and is refused again while the store keeps answering so. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
 admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
-`cancel` is handed that operation. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
-nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-admitted`, `failed`, `undelivered`, `no-handle`, `settled`,
+`cancel` is handed that operation. Past a deadline or on a closed run there is no lease: a cancel the transaction asks is `undelivered`,
+nothing is sent, and the answer says so; a start that answered after the transaction is answered `undelivered` with no request on its
+record. After `invalid` the host treats the store as faulty for that job, does not retry it until its record and its answer agree, and
+stops the job, if it must, at the external system and reports that through `completeJob`; after `undelivered` it takes the same route. It answers each job's delivery: `sent`, `already-admitted`, `failed`, `undelivered`, `no-handle`, `settled`,
 `contradicted` (closed, with evidence since that it ran), `acknowledged`, `invalid` (the record does not bear the answer out; nothing sent). None of it proves
 anything stopped.
 
