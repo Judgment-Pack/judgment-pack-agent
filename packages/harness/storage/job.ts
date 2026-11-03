@@ -617,9 +617,17 @@ export async function abandonJobs(input:{store:RunStore;effectHost:EffectHost;re
  const fence=taken.lease===undefined?undefined:fenceOf(readRunLease(taken.lease))
  if(fence&&(fence.owner!==JOB_ABANDON_OWNER||fence.resource!==input.resource))throw new LeaseRefused('invalid')
  const view=fence?fencedRunStore(input.store,fence,input.effectHost):undefined,jobs:JobAbandonAnswer['jobs']=[]
+ // #325: what is sent is the record's, as a tool's cancel is (F-2b). Each job the store's answer names is read back before
+ // anything is sent, and an answer whose handle, marker, source or tool is not the record's is refused: nothing is sent.
+ const answered:RunJob[]=[]
  for(const row of taken.jobs){
   const job=readRunJob(structuredClone(row))
   if(job.resource!==input.resource)return invalid()
+  const held=await port.readJob(input.resource,job.job,input.signal),read=held===undefined?undefined:readRunJob(structuredClone(held))
+  if(!read||job.handle!==read.handle||job.handleDigested!==read.handleDigested||job.source!==read.source||job.tool!==read.tool)return invalid()
+  answered.push(job)
+ }
+ for(const job of answered){
   const delivery=async():Promise<JobDelivery>=>{
    if(job.state==='unproven')return 'no-handle'
    // `not-started` is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing to stop.

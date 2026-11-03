@@ -603,8 +603,11 @@ The rows of cancel tools are not evidence, and no child is offered one: they car
 **Abandon (#229, built; the objective's command is #230).** `abandonJobs` is a host's command to stop what the run owns. Its store
 transaction (`JobStore.abandonJobs`) takes the lease under the reserved owner `job-abandon` at a new epoch rather than lowering it, whoever
 holds it, keeps the lease's principals, and asks a cancel of each `started` job; it returns that fence. Old workers get `stale-epoch`, and the
-same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen (no commit, lease, wait or job)
-it takes no lease; a worker's lease before its first commit is a run seen, so its first claim gets `stale-epoch` too. Cancels go
+same fence serves what follows. It refuses before it moves anything, and on a run the store has never seen (no commit, lease, wait, job
+or goal record) it takes no lease; a worker's lease before its first commit is a run seen, so its first claim gets `stale-epoch` too, and
+so is a goal's run no worker has leased yet (#325). What is sent is the record's, as for a tool's cancel (F-2b): the package reads each
+job the store's answer names back, and an answer whose handle, `handleDigested`, source or tool is not the record's is refused `invalid`
+before anything is sent (#325). Cancels go
 through `EffectHost.dispatch` with the stable operation `sha256({command, job, generation})`, admitted under the tool `job-abandon` and
 the job's source, and no run commit, so a retry of the command is admitted once by the same effect host; `cancel` gets that operation. **The command stands for the person's approval. That is the one
 exception to decision 7's approval boundary:** a source's policy on the cancel tool is not asked, and a delegated run's principal stays on

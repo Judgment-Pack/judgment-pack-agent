@@ -1261,11 +1261,12 @@ func (m *MemoryRunStore) AbandonJobs(ctx context.Context, input JobAbandon) (tak
 			return jobInvalid()
 		}
 		// F-10: a run the store has never seen has nothing to abandon, and its first worker's lease is not taken. A lease, a
-		// wait or a job is a run seen as much as a commit is (#316 review, MEDIUM-3): a worker's lease before its first
-		// commit is fenced.
+		// wait, a job or a goal record is a run seen as much as a commit is (#316 review, MEDIUM-3; #325 LOW-6): a worker's
+		// lease before its first commit is fenced, and so is a goal's run no worker has leased yet.
 		_, committed := m.runs[input.Resource]
 		_, leased := m.leases.rows[input.Resource]
-		if !committed && !leased && len(m.waits.rows[input.Resource]) == 0 && len(m.jobs.rows[input.Resource]) == 0 {
+		_, goaled := m.goals.rows[input.Resource]
+		if !committed && !leased && !goaled && len(m.waits.rows[input.Resource]) == 0 && len(m.jobs.rows[input.Resource]) == 0 {
 			taken.Jobs = []RunJob{}
 			return nil
 		}
@@ -1917,11 +1918,32 @@ func AbandonJobs(ctx context.Context, store RunStore, host EffectHost, resource,
 			return JobAbandonAnswer{}, err
 		}
 	}
+	// #325: what is sent is the record's, as a tool's cancel is (F-2b). Each job the store's answer names is read back
+	// before anything is sent, and an answer whose handle, marker, source or tool is not the record's is refused: nothing
+	// is sent.
+	answered := make([]RunJob, 0, len(taken.Jobs))
 	for _, row := range taken.Jobs {
 		job, err := jobReadBack(row, resource, row.Job)
 		if err != nil {
 			return JobAbandonAnswer{}, err
 		}
+		found, err := port.ReadJob(ctx, resource, job.Job)
+		if err != nil {
+			return JobAbandonAnswer{}, err
+		}
+		if found == nil {
+			return JobAbandonAnswer{}, jobInvalid()
+		}
+		read, err := jobReadBack(*found, resource, job.Job)
+		if err != nil {
+			return JobAbandonAnswer{}, err
+		}
+		if !sameJobOptional(job.Handle, read.Handle) || (job.HandleDigested != nil) != (read.HandleDigested != nil) || job.Source != read.Source || job.Tool != read.Tool {
+			return JobAbandonAnswer{}, jobInvalid()
+		}
+		answered = append(answered, job)
+	}
+	for _, job := range answered {
 		delivery := "settled"
 		// not-started is someone's word: evidence since says it ran, so an abandon says so and does not read as nothing
 		// to stop.

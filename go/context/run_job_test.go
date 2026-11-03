@@ -972,3 +972,57 @@ func TestAnAbandonFencesALeasedRunWithNoCommitYet(t *testing.T) {
 		})
 	}
 }
+
+// #325: what an abandon sends is the record's, as a tool's cancel is (F-2b). A store whose abandon answers a job with
+// another handle, marker, source or tool than the record holds is refused invalid, and nothing is sent.
+func TestAnAbandonSendsNothingWhereItsAnswerIsNotTheRecord(t *testing.T) {
+	digest, marked := "sha256:"+strings.Repeat("d", 64), true
+	for _, fault := range []struct {
+		name   string
+		change func(*RunJob)
+	}{
+		{"the record", func(*RunJob) {}},
+		{"drops the marker", func(job *RunJob) { job.HandleDigested = nil }},
+		{"another handle", func(job *RunJob) { other := "sha256:" + strings.Repeat("f", 64); job.Handle = &other }},
+		{"another source", func(job *RunJob) { job.Source = "kit-other-source" }},
+		{"another tool", func(job *RunJob) { job.Tool = "kit-other-tool" }},
+	} {
+		t.Run(fault.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := &jobFault{durableJobStore: durableJobStore{NewMemoryRunStore(MemoryRunStoreOptions{})}, abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+				taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+				for i := range taken.Jobs {
+					fault.change(&taken.Jobs[i])
+				}
+				return taken, err
+			}}
+			lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-a", Owner: "worker-a", DurationMs: 3600000})
+			if err != nil {
+				t.Fatal(err)
+			}
+			key, _ := JobKeyDigest("kit.job-a.Q7z2Xm9LpV4cR8tNb3Yh6Df1")
+			job := JobIdentity("run-a", "op-1")
+			if _, err = store.CommitFenced(ctx, RunCommit{RunID: "run-a", CommitID: "c1", Checkpoint: []byte(`{}`), Events: [][]byte{}, Job: &JobRegistration{Job: job, Operation: "op-1", Source: "runner", Tool: "start_job", RequestDigest: "sha256:" + strings.Repeat("a", 64), KeyDigest: key}}, FenceOf(lease)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = store.AnswerJob(ctx, JobAnswer{Version: 1, Resource: "run-a", Job: job, Generation: 1, Answer: "started", Handle: &digest, HandleDigested: &marked}, FenceOf(lease)); err != nil {
+				t.Fatal(err)
+			}
+			sent := []JobCancelInput{}
+			answer, err := AbandonJobs(ctx, store, NewReferenceEffectHost(store), "run-a", "cmd-1", 3600000, func(_ context.Context, input JobCancelInput) error {
+				sent = append(sent, input)
+				return nil
+			})
+			if fault.name == "the record" {
+				if err != nil || len(answer.Jobs) != 1 || answer.Jobs[0].Delivery != "sent" || len(sent) != 1 || sent[0].Handle != nil || sent[0].HandleDigest == nil || *sent[0].HandleDigest != digest {
+					t.Fatal(answer, err, sent)
+				}
+				return
+			}
+			var refused *JobRefused
+			if !errors.As(err, &refused) || refused.Reason != "invalid" || len(sent) != 0 {
+				t.Fatal(answer, err, sent)
+			}
+		})
+	}
+}

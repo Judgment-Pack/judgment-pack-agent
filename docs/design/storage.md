@@ -812,8 +812,10 @@ asked, and sent, again.
 **Abandoning.** `abandonJobs({store, effectHost, resource, command, durationMs, cancel})` (Go `AbandonJobs`) is a host's command, standing for the
 person's approval: no source policy is asked. `JobStore.abandonJobs` takes the lease under `job-abandon` at a new epoch in one transaction with a
 cancel asked of each `started` job, and old workers get `stale-epoch`. What it would refuse it refuses before it moves anything, and on a run the
-store has never seen (no commit, lease, wait or job) it takes no lease and answers no jobs; a worker's lease before its first commit is a
-run seen. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
+store has never seen (no commit, lease, wait, job or goal record) it takes no lease and answers no jobs; a worker's lease before its first
+commit is a run seen, and so is a goal's run no worker has leased yet. The package reads back each job the store's answer names, and an
+answer whose handle, `handleDigested`, source or tool is not the record's is refused `invalid` before anything is sent, as a tool's
+cancel is (#325). Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
 admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
 `cancel` is handed that operation. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
 nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-admitted`, `failed`, `undelivered`, `no-handle`, `settled`,
@@ -870,7 +872,7 @@ refuses `revision-changed` with nothing sent once another objective exists.
 | `achieve` | The package's finding read from the record at the command's revision; not blocked; a Plan bound; the head is the command's; the package found nothing (below); no wait of the run unresolved, a woken one included; every unsettled job, `unproven` or `started`, waived, and only unsettled ones | `revision-changed`, `objective-blocked`, `plan-unbound`, `head-changed`, a finding, `wait-pending`, `waiver-invalid`, `jobs-unsettled` |
 | `pause`, `resume` | Not paused; paused | `objective-paused`, `not-paused` |
 | `block`, `unblock` | Not blocked; blocked | `objective-blocked`, `not-blocked` |
-| `abandon` | An open objective | `objective-terminal`, as every command on a terminal objective is |
+| `abandon` | An open objective | `objective-terminal`, as every command on a terminal objective is. So a delivery that `failed` has no goal path to be sent again: `abandonJobs` under a new command sends it, and journals nothing on the goal |
 
 Before every one: `revision-changed` where the expected revision is not the record's, and `no-objective` where there is none.
 

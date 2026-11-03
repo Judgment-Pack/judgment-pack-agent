@@ -3,6 +3,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -710,5 +711,31 @@ func TestGoalARepeatOfAnOldAbandonActsOnNoNewObjective(t *testing.T) {
 	goalLater, _ := ReadGoal(ctx, f.store, goalRun)
 	if len(sent) != sends || !goalKitSame(leaseLater, leaseNow) || !goalKitSame(goalLater, goalNow) {
 		t.Fatal(sent, leaseLater, goalLater)
+	}
+}
+
+// #325 LOW-6: a goal's run no worker has leased is a run seen. Its abandon takes the lease, and a worker after it is
+// refused until that lease lapses.
+func TestGoalAnAbandonOnARunNoWorkerLeasedTakesTheLease(t *testing.T) {
+	ctx := context.Background()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store := durableGoalStore{NewMemoryRunStore(MemoryRunStoreOptions{Now: func() time.Time { return at }})}
+	objective := "objective-fresh"
+	created, err := RunGoalCommand(ctx, store, GoalCommand{Version: 1, Resource: "run-goal-fresh", Command: "cmd-create", Actor: "person", ExpectedRevision: goalKitRevision(0), Kind: "create", Objective: &objective})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, err := AbandonGoal(ctx, store, NewReferenceEffectHost(store), GoalCommand{Version: 1, Resource: "run-goal-fresh", Command: "cmd-abandon", Actor: "person", ExpectedRevision: goalKitRevision(created.Goal.Revision), Kind: "abandon"}, 3600000, func(context.Context, JobCancelInput) error { return nil })
+	if err != nil || gone.Fence == nil || gone.Fence.Owner != JobAbandonOwner || len(gone.Jobs) != 0 || gone.Goal.Objectives[len(gone.Goal.Objectives)-1].State != "abandoned" {
+		t.Fatal(gone, err)
+	}
+	held, err := store.ReadLease(ctx, "run-goal-fresh")
+	if err != nil || held == nil || held.Owner != JobAbandonOwner || held.State != "held" || held.Epoch != gone.Fence.Epoch {
+		t.Fatal(held, err)
+	}
+	_, err = store.AcquireLease(ctx, LeaseAcquire{Resource: "run-goal-fresh", Owner: "worker-a", DurationMs: 3600000})
+	var refused *LeaseRefused
+	if !errors.As(err, &refused) || refused.Reason != "held" {
+		t.Fatal(err)
 	}
 }

@@ -803,6 +803,25 @@ describe('an abandon takes a fresh fence, and its cancels are stable (#229, M9)'
   expect((await readJob(held.store,RUN,held.job.job))?.cancel?.requested).toMatchObject({by:'command',command:'cmd-1',owner:JOB_ABANDON_OWNER,epoch:answer.fence!.epoch,operation:jobCancelOperation('cmd-1',held.job.job)})
   expect((await readJob(held.store,RUN,held.job.job))?.state).toBe('started')
  })
+ it('#325: an abandon reads back each job its store answers, and sends nothing where the answer is not the record',async()=>{
+  const digest=`sha256:${'d'.repeat(64)}`,job=jobIdentity(RUN,'op-1')
+  const faults:[string,(held:RunJob)=>RunJob][]=[['the record',held=>held],['drops the marker',({handleDigested:_,...held})=>held],['another handle',held=>({...held,handle:`sha256:${'f'.repeat(64)}`})],['another source',held=>({...held,source:'kit-other-source'})],['another tool',held=>({...held,tool:'kit-other-tool'})]]
+  for(const [name,fault] of faults){
+   const held=await leased(),sent=vi.fn(async(_:JobCancelInput)=>undefined)
+   await held.store.commitFenced({runId:RUN,expectedRevision:null,commitId:'c1',checkpoint:new TextEncoder().encode('{}'),events:[],job:{job,operation:'op-1',source:'runner',tool:'start_job',requestDigest:`sha256:${'a'.repeat(64)}`,keyDigest:jobKeyDigest(KEY)}},held.fence)
+   await held.store.answerJob({version:1,resource:RUN,job,generation:1,answer:'started',handle:digest,handleDigested:true},held.fence)
+   const original=held.store.abandonJobs.bind(held.store)
+   held.store.abandonJobs=async(input,signal)=>{const taken=await original(input,signal);return {...taken,jobs:taken.jobs.map(fault)}}
+   const answer=abandonJobs({store:held.store,effectHost:held.host,resource:RUN,command:'cmd-1',durationMs:HOUR,cancel:sent})
+   if(name==='the record'){
+    expect((await answer).jobs).toEqual([{job,delivery:'sent'}])
+    expect(sent).toHaveBeenCalledWith(expect.objectContaining({job,handleDigest:digest}));expect(sent.mock.calls[0]![0]).not.toHaveProperty('handle')
+   }else{
+    await expect(answer,name).rejects.toMatchObject({name:'JobRefused',reason:'invalid'})
+    expect(sent,name).not.toHaveBeenCalled()
+   }
+  }
+ })
  it('a retry of the command sends nothing twice: the effect host admits its stable operation once',async()=>{
   const tools=await pair(),held=await started2(tools),sent=vi.fn(async(_:JobCancelInput)=>undefined)
   await abandon(held,sent)
