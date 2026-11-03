@@ -468,3 +468,91 @@ func TestGoalAWaitParkedBeforeTheAbandonHoldsTheNextCreate(t *testing.T) {
 		t.Fatal(last)
 	}
 }
+
+func TestGoalARequiredStepRemovedWhereRemovalsGoThroughStrandsTheAchievement(t *testing.T) {
+	f := newGoalFlowWith(t, goalAcceptedPlan("Inspect", "Report"), []string{"added"})
+	defer f.run.Context.Close()
+	f.tool("update_plan", `{"explanation":"work","plan":[{"id":"step-1","step":"Inspect","status":"pending"},{"id":"step-2","step":"Report","status":"pending"}]}`)
+	created := f.must(f.command("create", 0, func(c *GoalCommand) { c.Objective = goalKitString("objective-r") }))
+	head := f.head()
+	bound := f.must(f.command("bind", created.Goal.Revision, func(c *GoalCommand) { c.Steps = []string{"step-1", "step-2"}; c.Head = &head }))
+	// The first required step goes: no other check stands in for this one.
+	f.tool("update_plan", `{"explanation":"Drop the inspection.","plan":[{"id":"step-2","step":"Report","status":"in_progress"}]}`)
+	if f.saved().Get("plan").Len() != 1 {
+		t.Fatal("the removal paused")
+	}
+	now := f.head()
+	f.refused(f.command("achieve", bound.Goal.Revision, func(c *GoalCommand) { c.Head = &now }), "lineage-changed")
+}
+
+func TestGoalBindsOnlyStepsOfTheAcceptedPlanAndAchievesOnlyThePlanItBound(t *testing.T) {
+	f := newGoalFlow(t)
+	defer f.run.Context.Close()
+	f.tool("update_plan", `{"explanation":"work","plan":[{"id":"step-1","step":"Inspect","status":"in_progress"},{"step":"Check the inputs","status":"pending"},{"id":"step-2","step":"Report","status":"pending"}]}`)
+	helper := ""
+	for _, row := range f.saved().Get("plan").Items() {
+		if row.Get("origin") == nil {
+			helper = planText(row.Get("id"))
+		}
+	}
+	created := f.must(f.command("create", 0, func(c *GoalCommand) { c.Objective = goalKitString("objective-p") }))
+	head := f.head()
+	f.refused(f.command("bind", created.Goal.Revision, func(c *GoalCommand) { c.Steps = []string{"step-1", helper}; c.Head = &head }), "plan-invalid")
+	bound := f.must(f.command("bind", created.Goal.Revision, func(c *GoalCommand) { c.Steps = []string{"step-1"}; c.Head = &head }))
+	// Another accepted Plan's head under this run: the objective bound this Plan, not that one.
+	plan := goalAcceptedPlan("Inspect", "Report")
+	plan.Set("id", String("other-plan"))
+	fresh := newGoalFlowWith(t, plan, nil)
+	defer fresh.run.Context.Close()
+	fresh.tool("update_plan", `{"explanation":"work","plan":[{"id":"step-1","step":"Inspect","status":"in_progress"},{"id":"step-2","step":"Report","status":"pending"}]}`)
+	foreign, _ := fresh.store.Load(context.Background(), goalRun)
+	held, _ := f.store.Load(context.Background(), goalRun)
+	if _, err := f.store.CommitFenced(context.Background(), RunCommit{RunID: goalRun, ExpectedRevision: held.Revision, CommitID: "other-plan-head", Checkpoint: foreign.Checkpoint, Events: [][]byte{}}, f.fence); err != nil {
+		t.Fatal(err)
+	}
+	now := f.head()
+	f.refused(f.command("achieve", bound.Goal.Revision, func(c *GoalCommand) { c.Head = &now }), "lineage-changed")
+}
+
+// newGoalFlowWith is newGoalFlow over another accepted Plan and departure policy, on a store of its own.
+func newGoalFlowWith(t *testing.T, plan *Value, drift []string) *goalFlow {
+	t.Helper()
+	f := newGoalFlow(t)
+	f.run.Context.Close()
+	session, _ := trackedSession(t)
+	session.Context.RunStore = &DurableRunInput{Store: f.view, ID: goalRun}
+	session.Context.Plan = plan
+	session.Context.Phase = "work"
+	session.Context.PlanDrift = drift
+	fresh := durableGoalStore{NewMemoryRunStore(MemoryRunStoreOptions{Now: func() time.Time { return *f.clock }})}
+	lease, err := fresh.AcquireLease(context.Background(), LeaseAcquire{Resource: goalRun, Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.store, f.fence, f.host = fresh, FenceOf(lease), NewReferenceEffectHost(fresh)
+	if f.view, err = UnattendedRunStore(f.store, f.fence, f.host); err != nil {
+		t.Fatal(err)
+	}
+	session.Context.RunStore = &DurableRunInput{Store: f.view, ID: goalRun}
+	f.run = openRun(t, session)
+	return f
+}
+
+// goalWrongEntry answers each command with the record's first entry.
+type goalWrongEntry struct{ durableGoalStore }
+
+func (s goalWrongEntry) CommandGoal(ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+	answer, err := s.durableGoalStore.CommandGoal(ctx, input)
+	if err == nil {
+		answer.Entry = answer.Goal.Journal[0]
+	}
+	return answer, err
+}
+
+func TestGoalReadsTheStoresAnswerBack(t *testing.T) {
+	f, bound := goalBound(t)
+	defer f.run.Context.Close()
+	if _, err := RunGoalCommand(context.Background(), goalWrongEntry{f.store}, f.command("pause", bound.Goal.Revision, nil)); !goalRefusedWith(err, "invalid") {
+		t.Fatal(err)
+	}
+}

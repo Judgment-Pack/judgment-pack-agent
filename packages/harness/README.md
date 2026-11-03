@@ -902,6 +902,14 @@ is made and no byte moves. `gatewayActionMembers` gives what a host adds to a ga
 pair on its source: it asks, and moves no state, and only a completion with `cancelled` says the job stopped. `abandonJobs` is a host's command: a
 fresh fence, and stable cancel identities through the effect host.
 
+`storage/goal.ts` and `storage/goalCommands.ts` implement ADR-0025 decision 8 (#230): one objective per run, changed only by host
+commands with an id, an actor and the record's expected revision, with no model call and no run commit. `goalCommand` runs `create`,
+`bind`, `achieve`, `pause`, `resume`, `block` and `unblock`; `abandonGoal` runs `abandon` with `abandonJobs` and journals what it left
+and delivered; `inspectGoal` is a counted read and `goalReport` the report. An achievement re-verifies every required step from the
+head's own book, a delegated one through the writer's history check (`verifyTaskEvidence`), and refuses unsettled jobs unless waived.
+While paused, a run is leased by no acquisition and resumed by no claim; from `create` on, it is leased. A store kind is certified by
+`runStoreGoalConformance` (`storage/goalConformance`).
+
 `storage/reauth.ts` implements ADR-0025 decision 4 with `storage/lease.ts` and `storage/wait.ts`. The
 reference effect host takes an optional credential check (`new ReferenceEffectHost(store,
 {credentials})`); a refusal at its admission boundary (`reauthorizationRequired(admission, refusal)`:

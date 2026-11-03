@@ -405,6 +405,14 @@ $pkg/storage/job.test.ts
 $pkg/storage/jobRecords.test.ts
 $pkg/storage/jobConformance.ts
 $pkg/storage/jobConformance.test.ts
+$pkg/storage/goal.ts
+$pkg/storage/goal.test.ts
+$pkg/storage/goalJobs.test.ts
+$pkg/storage/goalDelegated.test.ts
+$pkg/storage/goalCommands.ts
+$pkg/storage/goalRecords.test.ts
+$pkg/storage/goalConformance.ts
+$pkg/storage/goalConformance.test.ts
 $pkg/storage/startRefusal.test.ts
 EOF
 }

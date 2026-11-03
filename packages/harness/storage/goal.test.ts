@@ -5,25 +5,18 @@ import {answerWith} from '../testing/scenarioDriver'
 import {readExecution} from '../execution/state'
 import {MemoryRunStore,checkpointCallbackRunStore,type RunStore} from './run'
 import {ReferenceEffectHost,fenceOf,unattendedRunStore,type LeaseLifetime} from './lease'
-import {wakeKeyDigest,parkRun,wakeRun,resumeParked,type WaitLifetime} from './wait'
-import {completeJob,jobKeyDigest,jobStartTool,listJobs,type JobLifetime,type JobStartAnswer} from './job'
-import {toolListDigest} from '../toolSources'
+import type {WaitLifetime} from './wait'
+import type {JobLifetime} from './job'
 import {GOAL_JOURNAL_LIMIT,goalReportFromRecord,readGoalReport,readRunGoal,type GoalCommand,type GoalLifetime} from './goal'
 import {abandonGoal,admitGoals,goalCommand,goalReport,inspectGoal,readGoal} from './goalCommands'
 import {checkpointBytesDigest} from './wait'
-import type {Engine} from '../engine'
-import {managedContext,contextOf} from '../context/managed'
-import {contextualSession} from '../context/session'
-import {withDelegation} from '../delegation'
-import {subagentRecord,type SubagentDeclaration} from '../subagents'
-import declaration from '../../../contract/vectors/subagents/declaration.json'
 
 /* #230: one durable goal through the real Vercel engine, the package's writer and the memory store kind as a durable one. Every
- * command is the host's: no model is called. The Go twins are go/context/run_goal_test.go and go/adapter/goaltests. */
+ * command is the host's: no model is called. Jobs and the abandon are goalJobs.test.ts, a delegated step goalDelegated.test.ts. The
+ * Go twin is go/context/run_goal_flow_test.go. */
 const T0=Date.parse('2026-01-01T00:00:00.000Z'),HOUR=3_600_000
 class DurableGoalStore extends MemoryRunStore {override readonly leaseLifetime:LeaseLifetime='durable';override readonly waitLifetime:WaitLifetime='durable';override readonly jobLifetime:JobLifetime='durable';override readonly goalLifetime:GoalLifetime='durable'}
-const RUN='run-g',MODEL={provider:'openai',model:'fixture'}
-const WAKE='wk.goal.0001.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U'
+const RUN='run-g'
 const refusal=(reason:string)=>expect.objectContaining({name:'GoalRefused',reason})
 const PLAN={id:'accepted-plan',revision:1,objective:'Inspect and report',steps:['Inspect','Report'],questions:[],references:[],status:'accepted' as const,createdAt:'2026-01-01T00:00:00.000Z',acceptedAt:'2026-01-01T00:00:00.000Z'}
 const LOOKUP:HostTool={name:'lookup',effect:'read',taxonomy:{operation:'read',effect:'read'},description:'Read supplied evidence.',inputSchema:{type:'object'},execute:async()=>({content:[{type:'text',text:'Evidence.'}]})}
@@ -31,9 +24,9 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0}
  return {state,call:async()=>{const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
-async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean}={}):Promise<AssistantEvent[]>{
+async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;plan?:typeof PLAN;planDrift?:string[]}={}):Promise<AssistantEvent[]>{
  const session:EngineSession={prompt:'Work.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:new AbortController().signal,allowConversation:true,critic:'off',
-  context:{currentRequest:{message:'Work.',input:'work'},plan:PLAN,runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
+  context:{currentRequest:{message:'Work.',input:'work'},plan:extra.plan??PLAN,...(extra.planDrift?{planDrift:extra.planDrift}:{}),runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
 }
 async function leased(){
@@ -195,110 +188,33 @@ describe('the objective: host commands without a model turn (#230)',()=>{
   const held=await leased()
   expect(()=>admitGoals(held.view)).not.toThrow()
  })
-})
-
-describe('jobs and the abandon at the objective (#230)',()=>{
- const START={name:'start_job',description:'Start one background job.',inputSchema:{type:'object'},taxonomy:{operation:'run',effect:'act'} as const}
- const keys=['goal.job.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K','goal.job.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U','goal.job.0003.Ka5Ue2Jy8Gt3Wo6Bf9Mn1Sv4Zc3R']
- async function startTool(){let n=0;return jobStartTool({...START,source:{kind:'custom',id:'runner',trust:'person',version:'1',toolListDigest:await toolListDigest([START] as never),identity:{kind:'connection',label:'runner'}} as never,approve:(()=>'allow') as never,mint:async()=>jobKeyDigest(keys[n++]!),start:async():Promise<JobStartAnswer>=>({started:true,handle:'runner-handle'})})}
- /** Three jobs: the first will prove the step, the second fails, the third is left running. */
- async function withJobs(){
-  const held=await leased(),tool=await startTool(),call=(name:string)=>({call:{tool:'runner__start_job',arguments:{name}}})
-  const first=provider([plan([{id:'step-1',step:'Inspect',status:'in_progress'},{id:'step-2',step:'Report',status:'pending'}]),call('a'),call('b'),call('c'),{say:'Started.'}])
-  await drive(held.view,[tool],first.call)
-  const created=await goalCommand({store:held.store,command:command('create',null,{objective:'objective-j'})})
+ it('M17: a required step removed where the host lets removals through strands the achievement too',async()=>{
+  const held=await leased(),first=provider([plan([{id:'step-1',step:'Inspect',status:'pending'},{id:'step-2',step:'Report',status:'pending'}]),{say:'Begun.'}])
+  await drive(held.view,[LOOKUP],first.call,{planDrift:['added']})
+  const created=await goalCommand({store:held.store,command:command('create',null,{objective:'objective-r'})})
+  const bound=await goalCommand({store:held.store,command:command('bind',created.goal.revision,{steps:['step-1','step-2'],head:await headOf(held.store)})})
+  // The first required step goes: no other check stands in for this one.
+  await drive(held.view,[LOOKUP],provider([plan([{id:'step-2',step:'Report',status:'in_progress'}],'Drop the inspection.'),{say:'Dropped.'}]).call,{resume:true,planDrift:['added']})
+  expect((await checkpoint(held.store)).plan.map(row=>row.id)).toEqual(['step-2'])
+  await expect(achieve(held,bound.goal.revision)).rejects.toEqual(refusal('lineage-changed'))
+ })
+ it('binds only steps of the accepted Plan, and achieves only the accepted Plan it bound',async()=>{
+  const held=await leased()
+  await drive(held.view,[LOOKUP],provider([plan([{id:'step-1',step:'Inspect',status:'in_progress'},{step:'Check the inputs',status:'pending'},{id:'step-2',step:'Report',status:'pending'}]),{say:'Begun.'}]).call)
+  const helper=(await checkpoint(held.store)).plan.find(row=>!row.origin)!.id!
+  const created=await goalCommand({store:held.store,command:command('create',null,{objective:'objective-p'})})
+  await expect(goalCommand({store:held.store,command:command('bind',created.goal.revision,{steps:['step-1',helper],head:await headOf(held.store)})})).rejects.toEqual(refusal('plan-invalid'))
   const bound=await goalCommand({store:held.store,command:command('bind',created.goal.revision,{steps:['step-1'],head:await headOf(held.store)})})
-  const jobs=(await listJobs(held.store,RUN)).jobs
-  await completeJob(held.store,{version:1,resource:RUN,job:jobs[0]!.job,generation:1,evidence:'done-a',outcome:'succeeded',key:keys[0]!})
-  await completeJob(held.store,{version:1,resource:RUN,job:jobs[1]!.job,generation:1,evidence:'done-b',outcome:'failed',key:keys[1]!})
-  const leg=provider([close('step-1',(await checkpoint(held.store)).planState!.revision,jobs[0]!.operation),{say:'Closed.'}])
-  await drive(held.view,[tool],leg.call,{resume:true})
-  return {...held,tool,jobs,bound}
- }
- it('a start cited as evidence proves its step only as its job reads now; unsettled jobs block unless waived; failures are listed',async()=>{
-  const held=await withJobs(),revision=held.bound.goal.revision
-  expect((await checkpoint(held.store)).plan[0]!.status).toBe('completed')
-  await expect(achieve(held,revision)).rejects.toEqual(refusal('jobs-unsettled'))
-  await expect(achieve(held,revision,{waive:[held.jobs[1]!.job]})).rejects.toEqual(refusal('waiver-invalid'))
-  // A store whose job record says, since, that the cited job failed: the step is not proven.
-  const list=held.store.listJobs.bind(held.store)
-  const spy=vi.spyOn(held.store,'listJobs').mockImplementation(async(...args)=>{const page=await list(...args);return {...page,jobs:page.jobs.map(job=>job.job===held.jobs[0]!.job?{...job,completion:{...job.completion!,outcome:'failed' as const}}:job)}})
-  await expect(achieve(held,revision,{waive:[held.jobs[2]!.job]})).rejects.toEqual(refusal('evidence-refused'))
-  spy.mockRestore()
-  const done=await achieve(held,revision,{waive:[held.jobs[2]!.job]})
-  expect(done.goal.objectives[0]!.achieved).toMatchObject({waived:[held.jobs[2]!.job],unsuccessful:[{job:held.jobs[1]!.job,state:'completed',outcome:'failed'}]})
+  // Another accepted Plan's head under this run: the objective bound this Plan, not that one.
+  const other=await leased()
+  await drive(other.view,[LOOKUP],provider([plan([{id:'step-1',step:'Inspect',status:'in_progress'},{id:'step-2',step:'Report',status:'pending'}]),{say:'Begun.'}]).call,{plan:{...PLAN,id:'other-plan'}})
+  const foreign=(await other.store.load(RUN))!.checkpoint!,head=(await held.store.load(RUN))!
+  await held.store.commitFenced({runId:RUN,expectedRevision:head.revision,commitId:'other-plan-head',checkpoint:foreign,events:[]},held.fence)
+  await expect(achieve(held,bound.goal.revision)).rejects.toEqual(refusal('lineage-changed'))
  })
- it('the abandon asks a cancel of every started job, records what it left and journals its deliveries; a retry sends nothing again',async()=>{
-  const held=await withJobs(),revision=held.bound.goal.revision,sent:string[]=[]
-  const cmd=command('abandon',revision)
-  const first=await abandonGoal({store:held.store,effectHost:held.host,command:cmd,durationMs:HOUR,cancel:async input=>{sent.push(input.job)}})
-  expect(first.goal.objectives[0]).toMatchObject({state:'abandoned',abandoned:{waits:[],jobs:[{job:held.jobs[2]!.job,state:'started'}]}})
-  expect(sent).toEqual([held.jobs[2]!.job]);expect(first.fence?.owner).toBe('job-abandon')
-  expect(first.goal.journal.at(-1)).toMatchObject({kind:'abandon',outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'sent'}])})
-  const retry=await abandonGoal({store:held.store,effectHost:held.host,command:cmd,durationMs:HOUR,cancel:async input=>{sent.push(input.job)}})
-  expect(sent).toHaveLength(1);expect(retry.entry).toEqual(first.entry)
-  expect(retry.goal.journal.at(-1)).toMatchObject({outcome:'delivered',deliveries:expect.arrayContaining([{job:held.jobs[2]!.job,delivery:'already-sent'}])})
- })
- it('M10: a wait parked before the abandon holds the next create until it is resumed or ended',async()=>{
-  const held=await withJobs(),revision=held.bound.goal.revision
-  await parkRun({store:held.store,fence:held.fence,wait:'wait-g',continuation:'k-g',job:held.jobs[2]!.job,condition:{event:{kind:'job-completion',subject:held.jobs[2]!.job}},model:MODEL,wakeKeyDigest:wakeKeyDigest(WAKE),release:[]} as never)
-  const gone=await abandonGoal({store:held.store,effectHost:held.host,command:command('abandon',revision),durationMs:HOUR,cancel:async()=>undefined})
-  expect(gone.goal.objectives[0]!.abandoned!.waits).toEqual([{wait:'wait-g',reason:'job',state:'parked'}])
-  const next=command('create',gone.goal.revision,{objective:'objective-k'})
-  await expect(goalCommand({store:held.store,command:next})).rejects.toEqual(refusal('wait-unresolved'))
-  expect(await lastEntry(held.store)).toMatchObject({kind:'create',outcome:'wait-unresolved',objective:'objective-k'})
-  void wakeRun;void resumeParked
- })
-})
-
-describe('M16: a delegated required step is re-verified by the writer\'s history check (#230)',()=>{
- const response=()=>new Response(JSON.stringify({id:'answer',object:'chat.completion',model:'fixture',choices:[{index:0,message:{role:'assistant',content:'Done.'},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:1}}),{headers:{'content-type':'application/json'}})
- const RUN_T='task-goal-230'
- /** A run whose accepted Plan's two steps were delegated, whose children completed, and whose objective bound both steps
-  * before the model closed them with the children's evidence. */
- async function delegated(){
-  const clock={at:T0},store=new DurableGoalStore({now:()=>new Date(clock.at)}),host=new ReferenceEffectHost(store)
-  const fence=fenceOf(await store.acquireLease({resource:RUN_T,owner:'worker-a',expectedRevision:null,durationMs:HOUR})),view=unattendedRunStore({store,fence,effectHost:host})
-  const call=vi.fn(async()=>response())
-  const base=(resume=false)=>({prompt:'Work',testPrompt:'',allowConversation:true,interactive:true,critic:'off' as const,tools:[],callTool:vi.fn(),model:{family:'openai-compatible' as const,model:'fixture',call},signal:new AbortController().signal,subagents:declaration.items as SubagentDeclaration[],hostTools:[LOOKUP],context:{taskSteps:true,requestCap:4,currentRequest:{message:'Work',input:'Work'},plan:{...PLAN,steps:['Inspect first source','Inspect second source']},runStore:{store:view,id:RUN_T,...(resume?{resume:true}:{})}}})
-  const engine:Engine={id:'vercel',start:input=>managedContext(input,async function*(request){
-   const context=contextOf(request),tools=request.values.hostTools
-   if(!('model'in request.values))throw Error('model fixture expected')
-   await request.values.model.call('',{method:'POST',body:JSON.stringify({model:'fixture',messages:[{role:'user',content:input.prompt}]})})
-   if(input.context?.objective){await tools.find(tool=>tool.name==='update_plan')!.execute({explanation:'Track child work.',plan:[{step:'Inspect supplied evidence',status:'pending'}]},request.signal);yield {type:'message',text:'Evidence checked.'};yield {type:'end'};return}
-   const pin=subagentRecord(context.subagents[0]!),plan=context.execution.state.plan
-   await tools.find(tool=>tool.name==='update_plan')!.execute({explanation:'Inspect independent sources.',plan:plan.map(step=>({id:step.id,step:step.step,status:'pending',budget:{requests:1},delegation:pin}))},request.signal)
-   await tools.find(tool=>tool.name==='delegate_plan_steps')!.execute({planRevision:context.execution.state.planState!.revision,steps:['step-1','step-2']},request.signal)
-  },'vercel')}
-  const events=[];for await(const event of withDelegation(engine).start({...base(),policy:{concurrency:{children:2,requests:2}}} as never))events.push(event)
-  expect(events.filter(event=>event.type==='error')).toEqual([])
-  const head=async()=>{const held=(await store.load(RUN_T))!;return {revision:held.revision,digest:checkpointBytesDigest(held.checkpoint!)}}
-  const cmd=(kind:GoalCommand['kind'],expectedRevision:number|null,over:Partial<GoalCommand>={}):GoalCommand=>({version:1,resource:RUN_T,command:`m16-${++ids}`,actor:'person-1',expectedRevision,kind,...over})
-  const created=await goalCommand({store,command:cmd('create',null,{objective:'objective-m16'})})
-  const bound=await goalCommand({store,command:cmd('bind',created.goal.revision,{steps:['step-1','step-2'],head:await head()})})
-  const resumed=await contextualSession({...base(true),policy:{concurrency:{children:2,requests:2}}} as unknown as Parameters<typeof contextualSession>[0])
-  try{
-   const proof=resumed.context.execution.proof?.()?.children!
-   expect(proof).toHaveLength(2)
-   const complete=resumed.session.values.hostTools.find(tool=>tool.name==='complete_plan_step')!
-   for(const [i,row] of proof.entries()){const {step:_step,planRevision:_revision,...child}=row;await complete.execute({id:`step-${i+1}`,expectedRevision:resumed.context.execution.state.planState!.revision,outcome:'completed',evidence:{operations:[],artifacts:[],child}},resumed.session.signal)}
-  }finally{resumed.context.close()}
-  return {store,fence,head,cmd,bound}
- }
- it('a delegated step proven by its history transaction is achieved; without history, or with evidence the history does not hold, it is refused',async()=>{
-  const held=await delegated(),revision=held.bound.goal.revision
-  // A store that hides its history: the steps cannot be re-verified, and the store says so.
-  const hidden=new Proxy(held.store,{get:(target,name)=>{if(name==='historyVersion')return undefined;const value=Reflect.get(target,name,target);return typeof value==='function'?value.bind(target):value}})
-  await expect(goalCommand({store:hidden as never,command:held.cmd('achieve',revision,{head:await held.head()})})).rejects.toEqual(refusal('history-unsupported'))
-  expect(await lastEntry(held.store,RUN_T)).toMatchObject({outcome:'history-unsupported',step:'step-1'})
-  // A history that no longer holds what recorded the children: the step is not proven.
-  const altered=new Proxy(held.store,{get:(target,name)=>{
-   if(name==='readHistoryObject')return async(...args:Parameters<typeof target.readHistoryObject>)=>{const page=await target.readHistoryObject(...args);return {...page,value:new Uint8Array(page.value).map((byte,i)=>i===0?byte^1:byte)}}
-   const value=Reflect.get(target,name,target);return typeof value==='function'?value.bind(target):value}})
-  await expect(goalCommand({store:altered as never,command:held.cmd('achieve',revision,{head:await held.head()})})).rejects.toEqual(refusal('evidence-refused'))
-  expect(await lastEntry(held.store,RUN_T)).toMatchObject({outcome:'evidence-refused',step:'step-1'})
-  // The honest head: both steps are proven by the transactions that recorded their children.
-  const done=await goalCommand({store:held.store,command:held.cmd('achieve',revision,{head:await held.head()})})
-  expect(done.goal.objectives[0]!.state).toBe('achieved')
+ it('reads the store\'s answer back: an entry that is not this command\'s is refused',async()=>{
+  const held=await bound(),send=held.store.commandGoal.bind(held.store)
+  vi.spyOn(held.store,'commandGoal').mockImplementation(async(input,signal)=>{const answer=await send(input,signal);return {...answer,entry:answer.goal.journal[0]!}})
+  await expect(goalCommand({store:held.store,command:command('pause',held.binding.goal.revision)})).rejects.toEqual(refusal('invalid'))
  })
 })
