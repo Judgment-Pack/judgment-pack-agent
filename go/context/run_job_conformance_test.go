@@ -677,6 +677,9 @@ func jobCancelStores() map[string]struct {
 		}}},
 		"an abandon asks nothing": {"job.abandon.asks", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
 			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if input.Resource != "run-abandon" {
+				return taken, err
+			}
 			for _, row := range s.jobs.rows[input.Resource] {
 				row.Cancel = nil
 			}
@@ -698,6 +701,160 @@ func jobCancelStores() map[string]struct {
 			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
 			if taken.Lease != nil && taken.Lease.Principal != nil {
 				taken.Lease.Principal, taken.Lease.Version = nil, 1
+			}
+			return taken, err
+		}}},
+		"F-6 C3 an abandon's command rewrites a tool's first request": {"job.abandon.first", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Cancel != nil && row.Cancel.Requested.By == "tool" {
+					command := input.Command
+					row.Cancel.Requested.By, row.Cancel.Requested.Command = "command", &command
+				}
+			}
+			return taken, err
+		}}},
+		"F-6 C4 a made-up handle": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			made := "kit-made-up-handle"
+			job.Handle = &made
+			return job, err
+		}}},
+		"F-2b C4b the job asked for with another job's handle": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Job != input.Job && row.Handle != nil && !sameJobOptional(row.Handle, job.Handle) {
+					other := *row.Handle
+					job.Handle = &other
+					break
+				}
+			}
+			return job, err
+		}}},
+		"F-2b a marker the job does not have": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			marked := true
+			job.HandleDigested = &marked
+			return job, err
+		}}},
+		"F-2b another source": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			job.Source = "kit-other-source"
+			return job, err
+		}}},
+		"F-2b another tool": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			job.Tool = "kit-other-tool"
+			return job, err
+		}}},
+		"F-21 the ask recorded on every started job": {"job.cancel.which", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.RequestJobCancel(ctx, input, fence)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Job != input.Job && row.State == "started" && row.Cancel == nil && job.Cancel != nil {
+					row.Cancel = cloneRunJob(job).Cancel
+				}
+			}
+			return job, err
+		}}},
+		"F-6 C6 a fence of another run": {"job.cancel.run", jobFault{ask: func(s jobFault, ctx context.Context, input JobCancelAsk, fence LeaseFence) (RunJob, error) {
+			if fence.Resource != input.Resource {
+				if lease, _ := s.ReadLease(ctx, input.Resource); lease != nil {
+					fence = FenceOf(*lease)
+				}
+			}
+			return s.durableJobStore.RequestJobCancel(ctx, input, fence)
+		}}},
+		"F-6 C7 an answer drops the marker": {"job.answer.digested", jobFault{answer: func(s jobFault, ctx context.Context, input JobAnswer, fence LeaseFence) (RunJob, error) {
+			job, err := s.durableJobStore.AnswerJob(ctx, input, fence)
+			for _, row := range s.jobs.rows[input.Resource] {
+				row.HandleDigested = nil
+			}
+			job.HandleDigested = nil
+			return job, err
+		}}},
+		"F-6 C12 a word drops its receipt": {"job.cancel.word", jobFault{word: func(s jobFault, ctx context.Context, input JobCancelAcknowledgement) (RunJob, error) {
+			job, err := s.durableJobStore.AcknowledgeJobCancel(ctx, input)
+			if row := s.rowOf(input.Resource, input.Job); row != nil && row.Cancel != nil && row.Cancel.Acknowledged != nil {
+				row.Cancel.Acknowledged.Receipt = nil
+			}
+			if job.Cancel != nil && job.Cancel.Acknowledged != nil {
+				job.Cancel.Acknowledged.Receipt = nil
+			}
+			return job, err
+		}}},
+		"F-6 C13 an abandon asks only the first started job": {"job.abandon.asks", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			first := true
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Cancel != nil && row.Cancel.Requested.Command != nil && *row.Cancel.Requested.Command == input.Command {
+					if first {
+						first = false
+					} else {
+						row.Cancel = nil
+					}
+				}
+			}
+			return taken, err
+		}}},
+		"F-6 C14 a second abandon keeps the epoch": {"job.abandon.again", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			before, _ := s.ReadLease(ctx, input.Resource)
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if before != nil && before.Owner == JobAbandonOwner && taken.Lease != nil {
+				taken.Lease.Epoch = before.Epoch
+			}
+			return taken, err
+		}}},
+		"F-6 C15 an abandon's lease outlives the deadline": {"job.abandon.deadline", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if input.Resource == "run-abandon-deadline" && taken.Lease != nil {
+				if expiry, parseErr := time.Parse(time.RFC3339Nano, taken.Lease.Expiry); parseErr == nil {
+					taken.Lease.Expiry = expiry.Add(time.Hour).UTC().Format("2006-01-02T15:04:05.000Z")
+				}
+			}
+			return taken, err
+		}}},
+		"F-6 C16 a lease on a closed run": {"job.abandon.closed", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			if input.Resource == "run-abandon-closed" && taken.Lease == nil {
+				taken.Lease = &RunLease{Version: 1, Resource: input.Resource, Owner: JobAbandonOwner, Epoch: "9", Expiry: "2099-01-01T00:00:00.000Z", State: "held"}
+			}
+			return taken, err
+		}}},
+		"F-6 C17 an abandon refuses a parked run": {"job.abandon.parked", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			if wait, _ := s.ReadWait(ctx, input.Resource, "wait-1"); wait != nil && wait.State == "parked" {
+				return JobAbandonTaken{}, &LeaseRefused{Reason: "held"}
+			}
+			return s.durableJobStore.AbandonJobs(ctx, input)
+		}}},
+		"F-6 C18 an abandon ends a parked wait": {"job.abandon.wait", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for _, row := range s.waits.rows[input.Resource] {
+				if row.State == "parked" {
+					row.State = "timed-out"
+				}
+			}
+			return taken, err
+		}}},
+		"F-9 a refused abandon has moved the lease": {"job.abandon.invalid", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			if input.Command == "" {
+				_, _ = s.durableJobStore.AbandonJobs(ctx, JobAbandon{Resource: input.Resource, Command: "cmd-seized", DurationMs: input.DurationMs})
+				return JobAbandonTaken{}, &JobRefused{Reason: "invalid"}
+			}
+			return s.durableJobStore.AbandonJobs(ctx, input)
+		}}},
+		"F-10 an abandon on a run never seen takes a lease": {"job.abandon.unknown", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			if input.Resource == "run-abandon-never" {
+				lease, err := s.AcquireLease(ctx, LeaseAcquire{Resource: input.Resource, Owner: JobAbandonOwner, DurationMs: input.DurationMs})
+				return JobAbandonTaken{Lease: &lease, Jobs: []RunJob{}}, err
+			}
+			return s.durableJobStore.AbandonJobs(ctx, input)
+		}}},
+		"F-6 C21 an abandon asks under another operation": {"job.abandon.operation", jobFault{abandon: func(s jobFault, ctx context.Context, input JobAbandon) (JobAbandonTaken, error) {
+			taken, err := s.durableJobStore.AbandonJobs(ctx, input)
+			for _, row := range s.jobs.rows[input.Resource] {
+				if row.Cancel != nil && row.Cancel.Requested.Command != nil && *row.Cancel.Requested.Command == input.Command {
+					row.Cancel.Requested.Operation = "kit-other-operation"
+				}
 			}
 			return taken, err
 		}}},
@@ -1004,6 +1161,14 @@ func jobStores() map[string]struct {
 				return s.durableJobStore.CommitFenced(ctx, input, fence)
 			}}
 		})},
+		"F-6 commit ids forgotten: a repeated id commits as new": {"job.restart.commit", afterLastRestart(func(n *int) jobFault {
+			return jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
+				if *n >= 3 && input.CommitID == "run-after-op-1" {
+					input.CommitID = "run-after-forgotten"
+				}
+				return s.durableJobStore.CommitFenced(ctx, input, fence)
+			}}
+		})},
 		"R-3 a wake key free for a job": {"job.restart.wakekey", afterLastRestart(func(n *int) jobFault {
 			return jobFault{fenced: func(s jobFault, ctx context.Context, input RunCommit, fence LeaseFence) (RunReceipt, error) {
 				if *n >= 3 && input.CommitID == "run-after-op-wake" {
@@ -1121,6 +1286,13 @@ func TestJobConformanceKitHoldsARestart(t *testing.T) {
 			for _, rows := range fresh.jobs.rows {
 				for _, row := range rows {
 					row.Reclaimed = nil
+				}
+			}
+		}},
+		{"job.restart.record", func(fresh *MemoryRunStore) {
+			for _, rows := range fresh.jobs.rows {
+				for _, row := range rows {
+					row.HandleDigested = nil
 				}
 			}
 		}},

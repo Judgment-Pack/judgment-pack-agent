@@ -1339,8 +1339,12 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		return zero, &ContinuationIdentityChanged{}
 	}
 	w := binding.Writer
-	jobStart := jobStartDispatchOf(ctx)
-	jobCancel := jobCancelDispatchOf(ctx)
+	// R-5: only a host tool's own call is a start or a cancel; a model's or an agent's row on this context is neither.
+	var jobStart *jobStartDispatch
+	var jobCancel *jobCancelDispatch
+	if kind == "host" {
+		jobStart, jobCancel = jobStartDispatchOf(ctx), jobCancelDispatchOf(ctx)
+	}
 	w.mu.Lock()
 	if w.fatal != nil {
 		err := w.fatal
@@ -1511,7 +1515,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		// the call's answer.
 		if jobStart != nil {
 			jobStart.job = JobIdentity(w.ID, claim.ID)
-			keyDigest, err := jobStart.mint(ctx, jobStart.job)
+			keyDigest, err := jobStart.mint(withoutJobDispatch(ctx), jobStart.job)
 			if err != nil || !jobDigest.MatchString(keyDigest) {
 				w.mu.Unlock()
 				return zero, jobInvalid()
@@ -1611,15 +1615,21 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		attempt.mu.Unlock()
 		w.mu.Unlock()
 	}
+	// R-4, F-17: set once the host's execute returned with no error inside the effect host's admission.
+	performed := false
 	if (kind == "host" || kind == "runtime") && !read && leaseViewOf(w.Store) != nil {
 		// #223: under a fenced store, a non-read host or runtime effect is admitted by the effect host with
 		// the fence; its idempotency identity is the acknowledged claim's, never the epoch.
 		inner, operation := execute, EffectOperation{Run: w.ID, Operation: claim.ID, Source: source, Tool: tool, RequestDigest: claim.RequestDigest}
 		execute = func(raw []byte) (T, error) {
 			var out T
-			err := fencedEffect(ctx, w.Store, operation, func(context.Context) error {
+			// R-5, F-15: the effect host gets a context that holds no job dispatch.
+			err := fencedEffect(withoutJobDispatch(ctx), w.Store, operation, func(context.Context) error {
 				var runErr error
 				out, runErr = inner(raw)
+				if runErr == nil {
+					performed = true
+				}
 				return runErr
 			})
 			return out, err
@@ -1644,6 +1654,18 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	}
 	if runErr == nil {
 		value, runErr = execute(request)
+	}
+	// R-4, F-17: the execute returned and the effect host refused afterwards. The start ran and the cancel left, so nothing
+	// reads as refused input: a start's answer goes to its job and the model is answered from it, and either row holds its
+	// fixed failure.
+	if performed && runErr != nil {
+		switch {
+		case jobStart != nil:
+			_, _ = w.finishJobStart(ctx, jobStart)
+			runErr, answeredFromJob = jobStartUnrecorded(), w.jobStartAsRecorded(ctx, jobStart.job)
+		case jobCancel != nil:
+			runErr = jobCancelUnrecorded()
+		}
 	}
 	if jobCancel != nil && runErr == nil {
 		if answer := w.jobCancelAnswer(ctx, jobCancel.job, true); answer != nil {
@@ -2121,8 +2143,9 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		admit = held.admit
 	}
 	return invokeDurable(ctx, binding, "host", source, tool.Name, args, durableReadingTool(&tool), func(raw []byte) (ToolResult, error) {
+		// R-5, F-15: the host's own checks run on a context that holds no job dispatch.
 		if c.session.Context != nil && c.session.Context.Authorize != nil {
-			if err := c.session.Context.Authorize(ctx); err != nil {
+			if err := c.session.Context.Authorize(withoutJobDispatch(ctx)); err != nil {
 				return ToolResult{}, err
 			}
 		}
@@ -2134,7 +2157,7 @@ func (c *SessionContext) ExecuteDurableHost(ctx context.Context, tool HostTool, 
 		if jobCancel != nil && jobCancel.record != nil {
 			// What a cancel returns as an error is no answer: its words reach neither the row nor the model.
 			jobCancel.sent = true
-			if err := tool.job.cancel(withoutReceiptAdmission(ctx), JobCancelInputOf(*jobCancel.record)); err != nil {
+			if err := tool.job.cancel(withoutReceiptAdmission(ctx), JobCancelInputOf(*jobCancel.record, jobCancel.operation)); err != nil {
 				return ToolResult{}, jobCancelUnrecorded()
 			}
 			return ToolResult{}, nil

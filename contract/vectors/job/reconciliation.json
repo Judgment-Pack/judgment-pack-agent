@@ -49,13 +49,25 @@
    "handle": "ext-1",
    "receipt": "rcpt-1",
    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+  },
+  {
+   "version": 1,
+   "resource": "run-j",
+   "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+   "generation": 1,
+   "evidence": "find-9",
+   "finding": "started",
+   "handle": "sha256:bbd2c3dd0750e45ddcfb5e96775912c67678c3f73c5e7ad4439c5efe14f586c7",
+   "handleDigested": true,
+   "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
   }
  ],
  "digests": [
   "sha256:6f6d89cb68935a80dc2eeab20e7fd8096ee316f4d691d005b96c396798d46464",
   "sha256:35f70286624fd801fbc53b15309de4a381d8a2a4db6f5e48ddb7f65e1ec87063",
   "sha256:b14db23bff5081d0ec906bc5f2bee0c444fddccdc9dcae709c50d4579782880b",
-  "sha256:eba35fbdfc37c4f38266045070266222745faf9ff53a164ec27ba938c4b337ab"
+  "sha256:eba35fbdfc37c4f38266045070266222745faf9ff53a164ec27ba938c4b337ab",
+  "sha256:973480a13e6c40e62ad3d34f93468ace6fc12a188d798bee928425c305bc36d9"
  ],
  "refused": [
   {
@@ -104,6 +116,20 @@
     "finding": "not-started",
     "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
    }
+  },
+  {
+   "problem": "a marker that is not true",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "find-9",
+    "finding": "started",
+    "handle": "sha256:bbd2c3dd0750e45ddcfb5e96775912c67678c3f73c5e7ad4439c5efe14f586c7",
+    "handleDigested": false,
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
   }
  ],
  "readerRefused": [
@@ -142,6 +168,20 @@
     "evidence": "f",
     "finding": "unknown",
     "receipt": "r",
+    "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
+   }
+  },
+  {
+   "problem": "a marker on a handle that is no digest",
+   "record": {
+    "version": 1,
+    "resource": "run-j",
+    "job": "sha256:29affde4dc30346a944609821e538c7d07b70af9530e3ba604e6c2332b287ebc",
+    "generation": 1,
+    "evidence": "find-9",
+    "finding": "started",
+    "handle": "ext-1",
+    "handleDigested": true,
     "key": "job.key.0001.Q7z2Xm9LpV4cR8tNb3Yh6Df1Gj5K"
    }
   }

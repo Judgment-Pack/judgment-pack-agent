@@ -50,6 +50,10 @@
   {
    "version": 1,
    "reason": "no-cancel"
+  },
+  {
+   "version": 1,
+   "reason": "job-contradicted"
   }
  ],
  "capability": [

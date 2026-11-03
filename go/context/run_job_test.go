@@ -346,12 +346,15 @@ func TestJobModelVectors(t *testing.T) {
 	}
 	for _, row := range jobVectorRows(t, file["cancelInputs"]) {
 		var want struct {
-			Job, Source, Tool, Handle, HandleDigest string
-			Generation                              int
+			Job, Source, Tool, Operation string
+			Handle, HandleDigest         *string
+			Generation                   int
 		}
+		var operation string
 		_ = json.Unmarshal(row["input"], &want)
-		got := JobCancelInputOf(jobOf(row["record"]))
-		if got.Job != want.Job || got.Source != want.Source || got.Tool != want.Tool || got.Handle != want.Handle || got.HandleDigest != want.HandleDigest || got.Generation != want.Generation {
+		_ = json.Unmarshal(row["operation"], &operation)
+		got := JobCancelInputOf(jobOf(row["record"]), operation)
+		if got.Job != want.Job || got.Source != want.Source || got.Tool != want.Tool || !sameJobOptional(got.Handle, want.Handle) || !sameJobOptional(got.HandleDigest, want.HandleDigest) || got.Generation != want.Generation || got.Operation != want.Operation {
 			t.Fatalf("%+v, want %+v", got, want)
 		}
 	}

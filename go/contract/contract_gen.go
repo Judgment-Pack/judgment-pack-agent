@@ -20172,20 +20172,22 @@ func (v RunJobProjection) MarshalJSON() ([]byte, error) {
 
 // From run-job.json#/$defs/reconciliation. A host's finding about an unproven start, authenticated
 // by the completion key, with no lease. not-started means the authority that would run it has
-// closed it.
+// closed it. handleDigested marks a handle kept as the SHA-256 digest of bytes the record cannot
+// hold (F-5): the package digests them, and such a handle is never sent as the reference.
 type RunJobReconciliation struct {
-	Version    int64   `json:"version"`
-	Resource   string  `json:"resource"`
-	Job        string  `json:"job"`
-	Generation int64   `json:"generation"`
-	Evidence   string  `json:"evidence"`
-	Finding    string  `json:"finding"`
-	Handle     *string `json:"handle,omitzero"`
-	Receipt    *string `json:"receipt,omitzero"`
-	Key        string  `json:"key"`
+	Version        int64   `json:"version"`
+	Resource       string  `json:"resource"`
+	Job            string  `json:"job"`
+	Generation     int64   `json:"generation"`
+	Evidence       string  `json:"evidence"`
+	Finding        string  `json:"finding"`
+	Handle         *string `json:"handle,omitzero"`
+	HandleDigested *bool   `json:"handleDigested,omitzero"`
+	Receipt        *string `json:"receipt,omitzero"`
+	Key            string  `json:"key"`
 }
 
-var runJobReconciliationMembers = []string{"version", "resource", "job", "generation", "evidence", "finding", "handle", "receipt", "key"}
+var runJobReconciliationMembers = []string{"version", "resource", "job", "generation", "evidence", "finding", "handle", "handleDigested", "receipt", "key"}
 
 // UnmarshalJSON decodes a RunJobReconciliation object and refuses a member the closed schema does not name.
 func (v *RunJobReconciliation) UnmarshalJSON(data []byte) error {

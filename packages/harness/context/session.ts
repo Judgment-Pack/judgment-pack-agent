@@ -1038,12 +1038,12 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   // is performed, so it never comes from here.
   const job=jobSeamOf(tool),hostSucceeded=job?()=>false:resultSucceeded
   let started:string|undefined
-  let cancelRecord:RunJob|undefined
-  const cancelDispatch=job?.kind==='cancel'?{job:readJobCancelArgument(args),held:(record:RunJob)=>{cancelRecord=record},sent:false}:undefined
+  let cancelRecord:RunJob|undefined,cancelOperation=''
+  const cancelDispatch=job?.kind==='cancel'?{job:readJobCancelArgument(args),held:(record:RunJob,operation:string)=>{cancelRecord=record;cancelOperation=operation},sent:false}:undefined
   if(job?.kind==='cancel'){
    const refused=await context.cancelRefusal(job,args,signal)
    if(refused!==undefined)throw new JobRefused(refused)
-   tool={...tool,execute:async()=>{if(cancelRecord===undefined)throw new JobCapabilityRefused('store-unsupported');cancelDispatch!.sent=true;try{await job.cancel(jobCancelInput(cancelRecord,signal))}catch{throw jobCancelUnrecorded()};return undefined as unknown as McpToolResult}}
+   tool={...tool,execute:async()=>{if(cancelRecord===undefined)throw new JobCapabilityRefused('store-unsupported');cancelDispatch!.sent=true;try{await job.cancel(jobCancelInput(cancelRecord,cancelOperation,signal))}catch{throw jobCancelUnrecorded()};return undefined as unknown as McpToolResult}}
   }
   if(job?.kind==='start')tool={...tool,execute:async given=>{if(started===undefined)throw new JobCapabilityRefused('store-unsupported');try{return await job.start({job:started,request:canonicalJSON(given),signal}) as unknown as McpToolResult}catch{return undefined as unknown as McpToolResult}}}
   const invoke=async(raw:string)=>{await session.context?.authorize?.(signal);signal.throwIfAborted();await dispatchAdmission(signal)?.();signal.throwIfAborted();return tool.execute(JSON.parse(raw),signal,callId)}
