@@ -833,6 +833,89 @@ HTTP 400, `request body carries a member this endpoint does not read`, before it
 answers a start `{started: false}`. A cancel on a gateway source presents its own action key, never the start's. `gatewayRefusalFinding(refusal)` reads
 a reconciling request's refusal: only `action-key-not-dispatched` is `not-started`. What the gateway builds is in ADR-0025's amendment (gateway #352, in v0.24.0).
 
+## One durable goal (#230)
+
+This section is for the implementer of a host store kind's goal port (beside its lease, wait and job ports) and for a host
+that runs an objective. It implements ADR-0025 decision 8, as its amendment fixes it. The record is
+`contract/schemas/run-goal.json`, version 1, with handwritten shared vectors in `contract/vectors/goal/`. TypeScript is
+`packages/harness/storage/goal.ts` (the record, the table and the port) with `goalCommands.ts` (the commands); Go is
+`go/context/run_goal.go` with `run_goal_commands.go`. Nothing here adds a member to a checkpoint, event, lease, wait, job or
+report, and with no objective created the store is not asked about one.
+
+**What the package does and what the host does.** Every command is the host's: no command calls a model, commits to the run, or
+writes a checkpoint, wait, budget or approval. The host decides who may issue one and says who did (`actor`), and owns
+scheduling, clocks (the store's), notifications and processes. The package reads what only it can, the head's accepted Plan and
+its evidence, and hands the store the head it read; the store decides against the head it holds.
+
+**The record.** One per run: its `revision` (the count of accepted commands), its `objectives` in order, the current one last and
+only it open, each kept whole (history is never overwritten, at most eight), its `journal`, `discarded` and `inspections`. An
+objective's state is `active`, `achieved`, `abandoned` or `blocked`; `paused` is a disposition of an open one, and a terminal one
+has none. Each state holds what proves it: `blocked` its condition, `achieved` its head, waiver and the jobs that did not succeed,
+`abandoned` what it left.
+
+**The commands.** Each is `{version, resource, command, actor, expectedRevision, kind, ...}`; `expectedRevision` is `null` for a
+run with no record. `goalCommand({store, command})` (Go `RunGoalCommand`) runs `create` (`objective`), `bind` (`steps`, `head`),
+`achieve` (`head`, `waive?`), `pause`, `resume`, `block` (`condition`) and `unblock`; `abandonGoal` (Go `AbandonGoal`) runs
+`abandon`; `inspectGoal` is a counted read, `readGoal` a plain one and `goalReport` the report. An accepted command answers the record
+and its entry; a refused one throws `GoalRefused`, journaled where the run has a record. A repeat of a command id answers as the
+first did while its entry is in the journal, with the record as it is now; another command under it is `conflict`, and a host that
+wants to try again uses a new id. A repeat of an abandon asks the jobs again only while the objective it abandoned is current, and
+refuses `revision-changed` with nothing sent once another objective exists.
+
+| Command | Accepted when | Refused |
+| --- | --- | --- |
+| `create` | No objective, or a terminal one; an identity never used in the run; fewer than eight; over a terminal one, every wait of the run resumed or ended, those the last abandon left and any parked since | `objective-exists`, `objective-reused`, `goals-exhausted`, `wait-unresolved` (M10) |
+| `bind` | The head is the command's; the package read the head's accepted Plan, the steps named in it with origins, none closed; no earlier objective of the run bound that Plan | `plan-bound`, `head-changed`, `plan-invalid`, `step-settled`, `plan-reused` (M11) |
+| `achieve` | The package's finding read from the record at the command's revision; not blocked; a Plan bound; the head is the command's; the package found nothing (below); no wait of the run unresolved, a woken one included; every unsettled job, `unproven` or `started`, waived, and only unsettled ones | `revision-changed`, `objective-blocked`, `plan-unbound`, `head-changed`, a finding, `wait-pending`, `waiver-invalid`, `jobs-unsettled` |
+| `pause`, `resume` | Not paused; paused | `objective-paused`, `not-paused` |
+| `block`, `unblock` | Not blocked; blocked | `objective-blocked`, `not-blocked` |
+| `abandon` | An open objective | `objective-terminal`, as every command on a terminal objective is |
+
+Before every one: `revision-changed` where the expected revision is not the record's, and `no-objective` where there is none.
+
+**What an achievement proves.** The package reads the head the command names and refuses, as the command's journaled refusal:
+`decision-pending` with a decision pending (a pause, an asked approval, a pending Plan departure); `lineage-changed` where the
+accepted Plan is not the one bound, or a required step is removed, has other text than the accepted step, or stands out of the
+required steps' order (steps the model added, and moves among them, are no departure: M17); `step-incomplete` where a required step
+is not `completed` with evidence; `evidence-refused` where its evidence does not prove it from the head's own book now, with every job
+the run has read afresh, so a cited start needs its job `completed` with `succeeded`; and, for a delegated step, `history-unsupported`
+on a store without history, or `evidence-refused` unless the writer's history check (`verifyTaskEvidence`) finds the transaction that
+recorded its child (M16). A departure a person approved changes nothing here: a required step it changed or removed strands the
+objective, which is then abandoned. A later objective in the same run cannot bind that Plan again, so new work under a new Plan is a
+new run.
+
+**The goal port.** A store kind implements `GoalStore` (Go `GoalStore`): `goalVersion` 1, `goalLifetime`, and these, each atomic
+under the same serialization as its commits, with the record surviving the store's own restarts.
+
+- `commandGoal(transition)`: decides one command against the record's revision and the run's head, waits, jobs and lease as they are
+  in that transaction, and journals it. `transition` is `{version, command, plan?, refused?, read?}`: a bind carries the steps the
+  package read or what refused them; an achievement carries `read`, the revision of the record its finding was computed from, which
+  must be the command's expected revision (`revision-changed` otherwise), and may carry a finding; the store journals a finding as the
+  refusal. It answers a pause and a resume with the run's lease as it holds it, and a repeat with the record as it is now.
+- While the current objective is paused, `acquireLease` and `resumeWait` refuse `objective-paused` (M8). `renewLease`, `releaseLease`,
+  fenced commits and the abandon's seizure are unchanged: a held lease runs on to its expiry, and paused is not stopped.
+- From `create` on, an unfenced commit of the run refuses `lease-required`, through `commit` and `commitHistory` alike, and after the
+  objective has ended too: an objective's run is leased. An objective that ends paused keeps no pause.
+- `inspectGoal(input)`: the record, with the inspection counted and its last row kept; no revision moves, and a repeat of the last id
+  is not counted again (M12). Nothing is written for a run with no record.
+- `recordGoalDeliveries(input)`: journals an abandon's deliveries on the objective that command abandoned (`invalid` otherwise).
+- `readGoal(resource)`: the record, or nothing.
+- The journal holds at most 64 entries. Past it the oldest refused entry goes first, then the oldest entry, and `discarded` counts
+  them, so no command is refused for size (M12).
+
+**The goal conformance kit.** `runStoreGoalConformance(create)` (`storage/goalConformance`; Go `CheckRunStoreGoalConformance`)
+certifies the port, with a run of each kind, a whole-record compare after each refusal, a two-job case with a contradiction and a
+restart at the end. It names the first property broken: `goal.create.*`, `goal.repeat`, `goal.conflict`, `goal.refusal.repeat`,
+`goal.unfenced`, `goal.pause.*`, `goal.resume.*`, `goal.block*`, `goal.unblock*`, `goal.bind.*`, `goal.achieve.*`, `goal.terminal`,
+`goal.abandon.left`, `goal.deliveries*`, `goal.none`, `goal.inspect.*`, `goal.journal.bound`, `goal.exhausted`, `goal.owner` and
+`goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+
+**Abandoning.** `abandonGoal({store, effectHost, command, durationMs, cancel})` abandons the objective in one goal transaction, which
+records the run's waits not resumed or ended and its jobs not settled, then runs `abandonJobs` under the same command id and journals
+each job's delivery. A retry is answered from the record and journals its own deliveries; the effect host admits each cancel once
+while it remembers the operation. It closes no more than `abandonJobs` does: a wait it left can still be resumed, but no new objective
+is created over it until it is resumed or has ended (M10).
+
 ## Re-authorization waits (#226)
 
 This section is for the same implementers. It implements ADR-0025 decision 4 as its amendment fixes

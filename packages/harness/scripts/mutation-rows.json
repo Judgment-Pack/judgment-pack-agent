@@ -15118,6 +15118,745 @@
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
   },
   {
+   "name": "goal G1 a command under another revision is taken",
+   "file": "storage/goal.ts",
+   "find": "  if((row?.revision??null)!==c.expectedRevision)return refuse('revision-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G2 another command under a used id is answered as the first",
+   "file": "storage/goal.ts",
+   "find": "if(prior.digest!==digested)throw new GoalRefused('conflict');",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G3 a refused command is answered as accepted on its repeat",
+   "file": "storage/goal.ts",
+   "find": "if(prior.outcome!=='accepted')throw new GoalRefused(prior.outcome as GoalRefusalReason);",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G4 a create replaces an open objective",
+   "file": "storage/goal.ts",
+   "find": "   if(current&&!terminal(current.state))return refuse('objective-exists')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G5 an identity is used twice in a run",
+   "file": "storage/goal.ts",
+   "find": "   if(row?.objectives.some(objective=>objective.id===c.objective))return refuse('objective-reused')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G6 a run holds a ninth objective",
+   "file": "storage/goal.ts",
+   "find": "   if((row?.objectives.length??0)>=GOAL_OBJECTIVE_LIMIT)return refuse('goals-exhausted')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G7 M10 a create goes over a wait the abandon left",
+   "file": "storage/goal.ts",
+   "find": "   if(current?.abandoned?.waits.some(left=>unresolvedWait(run.waits.find(wait=>wait.wait===left.wait))))return refuse('wait-unresolved')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G8 a terminal objective takes a command",
+   "file": "storage/goal.ts",
+   "find": "   if(terminal(current.state))return refuse('objective-terminal')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G9 M11 a later objective binds the Plan an earlier one bound",
+   "file": "storage/goal.ts",
+   "find": "    if(row!.objectives.some(objective=>objective.plan?.id===held.plan!.id&&objective.plan.revision===held.plan!.revision))return refuse('plan-reused')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G10 a bind is taken against another head",
+   "file": "storage/goal.ts",
+   "find": "    if(next.plan)return refuse('plan-bound')\n    if(!headIs(c.head!))return refuse('head-changed')\n",
+   "replace": "    if(next.plan)return refuse('plan-bound')\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G11 an achievement is taken against another head",
+   "file": "storage/goal.ts",
+   "find": "    if(!next.plan)return refuse('plan-unbound')\n    if(!headIs(c.head!))return refuse('head-changed')\n",
+   "replace": "    if(!next.plan)return refuse('plan-unbound')\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G12 a bind drops the package's finding",
+   "file": "storage/goal.ts",
+   "find": "    if(held.refused)return refuse(held.refused.reason,held.refused.step)\n    // M11",
+   "replace": "    // M11",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G13 an achievement drops the package's finding",
+   "file": "storage/goal.ts",
+   "find": "    if(held.refused)return refuse(held.refused.reason,held.refused.step)\n    if(run.waits",
+   "replace": "    if(run.waits",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G14 an achievement leaves a wait unresolved",
+   "file": "storage/goal.ts",
+   "find": "    if(run.waits.some(wait=>unresolvedWait(wait)))return refuse('wait-pending')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G15 a waiver names a settled job",
+   "file": "storage/goal.ts",
+   "find": "    if(waived.some(job=>!open.some(row=>row.job===job)))return refuse('waiver-invalid')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G16 an achievement leaves a job running unwaived",
+   "file": "storage/goal.ts",
+   "find": "    if(open.some(row=>!waived.includes(row.job)))return refuse('jobs-unsettled')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G17 a job closed as not started is counted a success",
+   "file": "storage/goal.ts",
+   "find": "run.jobs.filter(job=>job.state==='not-started'||job.state==='completed'&&",
+   "replace": "run.jobs.filter(job=>job.state==='completed'&&",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G18 an abandon records no wait it left",
+   "file": "storage/goal.ts",
+   "find": "const waits=run.waits.filter(wait=>unresolvedWait(wait)).map(",
+   "replace": "const waits=run.waits.filter(()=>false).map(",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G19 M8 a paused run is leased",
+   "file": "storage/goal.ts",
+   "find": "admitLease(resource:string):void{if(this.rows.get(resource)?.objectives.at(-1)?.paused)throw new GoalRefused('objective-paused')}",
+   "replace": "admitLease(resource:string):void{void resource}",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G20 an objective's run takes an unfenced commit",
+   "file": "storage/goal.ts",
+   "find": "admitUnfenced(resource:string):void{if(this.rows.has(resource))throw new GoalRefused('lease-required')}",
+   "replace": "admitUnfenced(resource:string):void{void resource}",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G21 M12 the journal drops the oldest entry first",
+   "file": "storage/goal.ts",
+   "find": "const refused=goal.journal.findIndex(row=>row.outcome!=='accepted'&&row.outcome!=='delivered')",
+   "replace": "const refused=-1",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G22 M12 a repeated inspection is counted again",
+   "file": "storage/goal.ts",
+   "find": "if(row.inspections?.last.command!==held.command)row.inspections=",
+   "replace": "row.inspections=",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal G23 deliveries are journaled on another command",
+   "file": "storage/goal.ts",
+   "find": "if(!row||!current?.abandoned||current.abandoned.command!==held.command)return invalid()",
+   "replace": "if(!row||!current?.abandoned)return invalid()",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal R1 a record holds two open objectives",
+   "file": "storage/goal.ts",
+   "find": " if(objectives.slice(0,-1).some(objective=>!terminal(objective.state)))return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalRecordVectors."
+  },
+  {
+   "name": "goal R2 a record binds one Plan twice",
+   "file": "storage/goal.ts",
+   "find": " return new Set(plans).size===plans.length?objectives:invalid()",
+   "replace": " return objectives",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalRecordVectors."
+  },
+  {
+   "name": "goal R3 a state is read without what proves it",
+   "file": "storage/goal.ts",
+   "find": " return proves?objective:invalid()",
+   "replace": " return objective",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalRecordVectors."
+  },
+  {
+   "name": "goal R4 a transition carries what its kind does not",
+   "file": "storage/goal.ts",
+   "find": " if(command.kind==='bind'?(transition.plan===undefined)===(transition.refused===undefined):transition.plan!==undefined||transition.refused!==undefined&&command.kind!=='achieve')return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalCommandVectors."
+  },
+  {
+   "name": "goal R5 a command carries what its kind does not",
+   "file": "storage/goal.ts",
+   "find": "[required,optional]=MEMBERS[kind]",
+   "replace": "[required,optional]=[[],['objective','steps','head','waive','condition']] as const",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalCommandVectors."
+  },
+  {
+   "name": "goal C1 M11 a bind takes a closed step",
+   "file": "storage/goalCommands.ts",
+   "find": "  if(row.status==='completed'||row.status==='not-needed')return {refused:{reason:'step-settled',step}}\n",
+   "replace": "",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAchievedByTheStepsOwnEvidenceAndAHelperStepIsNoDeparture."
+  },
+  {
+   "name": "goal C2 a bind takes a step the model added",
+   "file": "storage/goalCommands.ts",
+   "find": "  if(!row?.origin||row.origin.plan!==accepted.id||row.origin.revision!==accepted.revision)return {refused:{reason:'plan-invalid'}}\n",
+   "replace": "  if(!row)return {refused:{reason:'plan-invalid'}}\n",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalBindsOnlyStepsOfTheAcceptedPlanAndAchievesOnlyThePlanItBound."
+  },
+  {
+   "name": "goal C3 an achievement passes a pending decision",
+   "file": "storage/goalCommands.ts",
+   "find": " if(state.status==='paused'||state.approval?.state==='asked'||state.planState?.pending!==undefined)return {read,refused:{reason:'decision-pending'}}\n",
+   "replace": "",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAChangedOrMovedRequiredStepOrAPendingDecisionStrandsTheAchievement."
+  },
+  {
+   "name": "goal C4 an achievement takes another accepted Plan",
+   "file": "storage/goalCommands.ts",
+   "find": " if(!accepted||accepted.id!==bound.id||accepted.revision!==bound.revision)return {read,refused:{reason:'lineage-changed'}}",
+   "replace": " if(!accepted)return {read,refused:{reason:'lineage-changed'}}",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalBindsOnlyStepsOfTheAcceptedPlanAndAchievesOnlyThePlanItBound."
+  },
+  {
+   "name": "goal C5 M17 a removed required step passes",
+   "file": "storage/goalCommands.ts",
+   "find": "if(at.some((index,k)=>index<0||state.plan[index]!.step",
+   "replace": "if(at.some((index,k)=>index>=0&&state.plan[index]!.step",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalARequiredStepRemovedWhereRemovalsGoThroughStrandsTheAchievement."
+  },
+  {
+   "name": "goal C6 M17 a changed required step passes",
+   "file": "storage/goalCommands.ts",
+   "find": "index<0||state.plan[index]!.step!==accepted.steps[bound.steps[k]!.index]||k>0",
+   "replace": "index<0||k>0",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAChangedOrMovedRequiredStepOrAPendingDecisionStrandsTheAchievement."
+  },
+  {
+   "name": "goal C7 M17 required steps out of order pass",
+   "file": "storage/goalCommands.ts",
+   "find": "||k>0&&index<=at[k-1]!))return {read,refused:{reason:'lineage-changed'}}",
+   "replace": "))return {read,refused:{reason:'lineage-changed'}}",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAChangedOrMovedRequiredStepOrAPendingDecisionStrandsTheAchievement."
+  },
+  {
+   "name": "goal C8 an incomplete step passes",
+   "file": "storage/goalCommands.ts",
+   "find": "if(row.status!=='completed'||!row.evidence)return {read,refused:{reason:'step-incomplete',step:required.step}}",
+   "replace": "if(!row.evidence&&row.status==='completed')return {read,refused:{reason:'step-incomplete',step:required.step}}",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalRefusesAnIncompleteStepAMovedHeadAndABookThatNoLongerProvesAStep."
+  },
+  {
+   "name": "goal C9 evidence is taken as recorded, not proven from the book",
+   "file": "storage/goalCommands.ts",
+   "find": "if(!evidence.child){if(evidenceFailure(evidence,proof))return",
+   "replace": "if(!evidence.child){if(evidenceFailure(evidence,proof)&&!proof)return",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalRefusesAnIncompleteStepAMovedHeadAndABookThatNoLongerProvesAStep."
+  },
+  {
+   "name": "goal C10 the jobs are not read afresh",
+   "file": "storage/goalCommands.ts",
+   "find": "jobs:await runJobs(port,command.resource,signal)}",
+   "replace": "jobs:new Map<string,RunJob>()}",
+   "tests": [
+    "storage/goalJobs.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestJobsAStartCitedAsEvidenceProvesItsStepOnlyAsItsJobReadsNow (./adapter/jobtests, #313 fix round)."
+  },
+  {
+   "name": "goal C11 M16 a delegated step passes without history",
+   "file": "storage/goalCommands.ts",
+   "find": "  if(history.historyVersion!==1||typeof history.readHistoryHead!=='function')return {read,refused:{reason:'history-unsupported',step:required.step}}\n",
+   "replace": "",
+   "tests": [
+    "storage/goalDelegated.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalADelegatedStepIsReverifiedByTheWritersHistoryCheck."
+  },
+  {
+   "name": "goal C12 M16 a delegated step passes unverified",
+   "file": "storage/goalCommands.ts",
+   "find": "verifyTaskEvidence(port as unknown as HistoryRunStore,{run:command.resource,revision:head.revision,checkpoint:head.checkpoint,saved:state.planState?.taskSchedule?.rows.filter(row=>row.child?.result)??[],scope:proof.scope},signal).catch(()=>null)",
+   "replace": "verifyTaskEvidence(port as unknown as HistoryRunStore,{run:command.resource,revision:head.revision,checkpoint:head.checkpoint,saved:state.planState?.taskSchedule?.rows.filter(row=>row.child?.result)??[],scope:proof.scope},signal).catch(()=>new Map((state.planState?.taskSchedule?.rows??[]).filter(row=>row.child?.result).map(row=>[row.id,{task:row.child!.task,...row.child!.result!}])))",
+   "tests": [
+    "storage/goalDelegated.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalADelegatedStepIsReverifiedByTheWritersHistoryCheck."
+  },
+  {
+   "name": "goal C13 an abandon journals no delivery",
+   "file": "storage/goalCommands.ts",
+   "find": " const goal=readBack(await port.recordGoalDeliveries({version:1,resource:command.resource,command:command.command,deliveries:taken.jobs},input.signal),command.resource)",
+   "replace": " const goal=readBack(await port.readGoal(command.resource,input.signal),command.resource)",
+   "tests": [
+    "storage/goalJobs.test.ts",
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalInspectionsAreCountedAndTheJournalNeverRefusesForSize."
+  },
+  {
+   "name": "goal C14 the store's answer is taken unread",
+   "file": "storage/goalCommands.ts",
+   "find": "if(entry.command!==command.command||entry.kind!==command.kind||entry.digest!==goalCommandDigest(command)||entry.outcome!=='accepted'||!goal.journal.some(row=>canonicalJSON(row)===canonicalJSON(entry)))return invalid()",
+   "replace": "if(entry.outcome!=='accepted')return invalid()",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_goal_commands.go): caught at TestGoalReadsTheStoresAnswerBack."
+  },
+  {
+   "name": "goal S1 M8 a paused run is acquired",
+   "file": "storage/run.ts",
+   "find": "  if(resource!==undefined)this.goals.admitLease(resource)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_lease.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal S2 M8 a paused run is resumed",
+   "file": "storage/run.ts",
+   "find": "if(resource!==undefined)this.goals.admitLease(resource);return this.waits.resume(",
+   "replace": "return this.waits.resume(",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_wait.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal S3 an objective's run commits unfenced",
+   "file": "storage/run.ts",
+   "find": "   if(!fence)this.goals.admitUnfenced(frozen.runId)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#230. Go twin (by hand, in run_store.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal H1 #313 H-1 an achievement's finding is taken from another revision of the record",
+   "file": "storage/goal.ts",
+   "find": "  if(c.kind==='achieve'&&held.read!==c.expectedRevision)return refuse('revision-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal H2 #313 H-1 an achievement carries no revision read, or a bind carries one",
+   "file": "storage/goal.ts",
+   "find": " if((held.read!==undefined)!==(command.kind==='achieve'))return invalid()\n",
+   "replace": "",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal.go): caught at TestGoalCommandVectors."
+  },
+  {
+   "name": "goal H3 #313 M-1 a wait parked after the abandon does not hold the next create",
+   "file": "storage/goal.ts",
+   "find": "   if(current&&run.waits.some(wait=>unresolvedWait(wait)))return refuse('wait-unresolved')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal H4 #313 H-1 the package claims the command's revision as the one it read",
+   "file": "storage/goalCommands.ts",
+   "find": "const goal=readBack(held,command.resource),read=goal.revision,",
+   "replace": "const goal=readBack(held,command.resource),read=command.expectedRevision??goal.revision,",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAnAchievementReadBeforeItsBindIsRefused."
+  },
+  {
+   "name": "goal H5 #313 H-1 no Plan bound in what the package read is no finding",
+   "file": "storage/goalCommands.ts",
+   "find": " if(!bound)return {read,refused:{reason:'plan-unbound'}}\n",
+   "replace": " if(!bound)return {read}\n",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_commands.go): caught at TestGoalAnAchievementReadBeforeItsBindIsRefused."
+  },
+  {
+   "name": "goal H6 #313 H-2 a repeat of an abandon acts on whatever objective is current",
+   "file": "storage/goalCommands.ts",
+   "find": " if(answer.goal.objectives.at(-1)?.abandoned?.command!==command.command)throw new GoalRefused('revision-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalJobs.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_commands.go): caught at TestGoalARepeatOfAnOldAbandonActsOnNoNewObjective."
+  },
+  {
+   "name": "goal HK1 #313 H-1 the kit takes a finding read from another revision",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.achieve.read',achieveRead,()=>send(achieveRead,{read:5}),'revision-changed')\n",
+   "replace": " void achieveRead\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK2 #313 H-2 the kit takes a repeat answered with the record as it was",
+   "file": "storage/goalConformance.ts",
+   "find": "check('goal.repeat.current',same(",
+   "replace": "check('goal.repeat.current',true||same(",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK3 #313 M-2 the kit takes an unfenced history commit after create",
+   "file": "storage/goalConformance.ts",
+   "find": "  await refuses('goal.unfenced.history',()=>historyPort.commitHistory!({run:{runId:'run-p',expectedRevision:before,commitId:'run-p-unfenced-history',checkpoint:bytes('{\"kit\":\"unfenced\"}'),events:[]},observations:[]}),'lease-required')\n  check('goal.unfenced.history',(await store.load('run-p'))!.revision===before)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK4 #313 M-2 the kit takes an unfenced commit once the objective has ended",
+   "file": "storage/goalConformance.ts",
+   "find": " await refuses('goal.unfenced.terminal',()=>store.commit({runId:'run-p',expectedRevision:endedHead,commitId:'run-p-unfenced-terminal',checkpoint:bytes('{\"kit\":\"unfenced\"}'),events:[]}),'lease-required')\n check('goal.unfenced.terminal',(await store.load('run-p'))!.revision===endedHead)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK5 #313 M-2 the kit takes an achievement beside an unproven job",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.achieve.unproven',unprovenOpen,()=>send(unprovenOpen),'jobs-unsettled')\n",
+   "replace": " void unprovenOpen\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK6 #313 M-2 the kit takes an achievement beside a woken wait",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.achieve.woken',wokenAchieve,()=>send(wokenAchieve),'wait-pending')\n",
+   "replace": " void wokenAchieve\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK7 #313 M-2 the kit takes an abandon that records no woken wait",
+   "file": "storage/goalConformance.ts",
+   "find": "check('goal.abandon.woken',same(",
+   "replace": "check('goal.abandon.woken',true||same(",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK8 #313 M-2 the kit takes a create over a woken wait",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.create.woken',wokenCreate,()=>send(wokenCreate),'wait-unresolved')\n",
+   "replace": " void wokenCreate\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK9 #313 M-1 the kit takes a create over a wait parked after the abandon",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.create.later',laterCreate,()=>send(laterCreate),'wait-unresolved')\n",
+   "replace": " void laterCreate\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal HK10 #313 M-2 the kit takes a terminal objective that keeps its pause",
+   "file": "storage/goalConformance.ts",
+   "find": "check('goal.terminal.pause',zGone.goal.objectives[0]!.paused===undefined&&(await store.readGoal('run-z'))!.objectives[0]!.paused===undefined)\n const zHead=(await store.load('run-z'))!.revision\n await answers('goal.terminal.pause',()=>store.acquireLease({resource:'run-z',owner:'worker-b',expectedRevision:zHead,durationMs:HOUR}))",
+   "replace": "void zGone",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#230",
+   "note": "#313 fix round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
    "name": "approval A3 the next parent invocation takes the decision again",
    "file": "delegation.ts",
    "find": "        opened=true\n        const parent=bind(",

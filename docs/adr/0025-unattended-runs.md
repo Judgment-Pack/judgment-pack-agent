@@ -8,8 +8,8 @@ its amendment). Decision 2 (durable waits and questions, #224) and decision 6 (a
 and reporting, #228) are built for v0.13.0 (see their amendment); decisions 3 and 5
 (deadlines and approval expiry, #225; revalidation on every resume, #227), with the run
 closure of #265 (M2), are built for v0.13.0 (see their amendment); decision 4 (re-authorization,
-#226) is built for v0.13.0 (see its amendment); decision 7's job core is built for v0.13.0 (#229), and its
-cancellation and decision 8 (#230) are designed in the amendment after decision 8 and assigned to v0.13.0.
+#226) is built for v0.13.0 (see its amendment); decision 7, its job core and cancellation (#229), and decision 8
+(#230) are built for v0.13.0 (see the amendment after decision 8).
 
 ## Boundary and compatibility
 
@@ -455,8 +455,8 @@ results; it is not proof that external effects stopped.
 ### Amendment (#229, #230): run-owned jobs and the goal
 
 Status: the design below was reviewed before any code (the record is on #229). Three stacked changes build it: the
-job core and cancellation with the fresh fence of an abandon (#229, built for v0.13.0), and the objective (#230). Parts marked
-"next" are decided here and not built yet. The records are
+job core and cancellation with the fresh fence of an abandon (#229, built for v0.13.0), and the objective (#230, built for
+v0.13.0). The records are
 `contract/schemas/run-job.json` (version 1) with handwritten vectors in `contract/vectors/job/`, and members of the not
 yet released `run-wait.json` (version 1): the reason, pending and attention need `job`. TypeScript is
 `packages/harness/storage/job.ts` with `wait.ts` and `writer.ts`; Go is `go/context/run_job.go` with `run_wait.go` and
@@ -618,19 +618,51 @@ hands its one `cancel` every source's handle, so the host routes each by `tool` 
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
 approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
 
-**Next: the objective (#230).** Host commands only, each with id, actor and expected revision; no model call and no run
-commit. `create` makes one from none or from terminal, under an identity never used in this run; there is no `replace`. `create`
-over a terminal objective refuses while a wait parked before the abandon is unresolved (M10). `bind` takes the head's accepted
-Plan, nonempty unique steps with origins, and refuses a step already `completed` or a plan an earlier objective bound (M11).
-`achieve` needs head revision and digest; the accepted Plan as bound, nothing pending, no `changed` or `removed` departure on a
-required step and no change in their relative order (M17); each required step `completed`, its evidence re-verified from the
-head's book, and a delegated step by the writer's history check, a store without history refusing (M16); a start cited as
-evidence needs its job `completed`, `succeeded`. Unsettled jobs block `achieve` unless the command waives them by id, and the
-waiver is journaled; settled jobs that did not succeed are listed on the achievement. `pause` and `resume` move a disposition,
-never a state: `acquireLease` and `resumeWait` refuse `objective-paused`, and the answer reports the held lease's owner and
-expiry, so paused is not read as stopped. An objective requires a leased run, chosen at `create`. Resume writes no checkpoint,
-wait, budget or approval. A pause longer than an approval's TTL ends that wait and closes the run for good. `inspect` is a read
-with a count and a last row; capacity is reserved so a state-changing command is never refused for size (M12).
+**The objective (#230, built).** The record is `contract/schemas/run-goal.json` (version 1, at no tag) with handwritten vectors
+in `contract/vectors/goal/`; TypeScript is `packages/harness/storage/goal.ts` with `goalCommands.ts`, Go `go/context/run_goal.go`
+with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage.md` (One durable goal).
+
+- Host commands only, each with an id, an actor and the record's expected revision (`null` with no record); no model call and no run
+  commit. The store decides each in one transaction against the run's head, waits, jobs and lease as they are in it, and journals
+  it, accepted or refused. A repeat of an id answers as the first did while its entry is in the journal (the last 64 entries,
+  refused ones dropped first); once that entry has gone, the id is decided afresh. Another command under it is `conflict`, not
+  journaled.
+- `create` makes one from none or from terminal, under an identity never used in this run, at most eight a run; there is no
+  `replace`. Earlier objectives are kept whole. `create` over an abandoned objective refuses `wait-unresolved` while a wait the
+  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1).
+- `bind` takes the head's accepted Plan as the package reads it from the head the command names: nonempty unique steps with
+  origins, in plan order, none `completed` or `not-needed` (`step-settled`), and no Plan an earlier objective of the run bound
+  (`plan-reused`, M11). The run's accepted Plan is fixed for the run's life, so a later objective cannot bind it: new work under a new
+  Plan is a new run.
+- `achieve` needs the head the command names (revision and checkpoint digest, `head-changed`), nothing pending
+  (`decision-pending`), the accepted Plan as bound, and no required step removed, changed or out of the required steps' order
+  (`lineage-changed`); steps the model added, and moves among them, are no departure (M17). A departure a person approved changes
+  nothing: one that changes or removes a required step strands the objective, which is then abandoned. Each required step must be
+  `completed` (`step-incomplete`) with evidence that proves it from the head's book now, every job of the run read afresh, so a cited
+  start needs its job `completed`, `succeeded` (`evidence-refused`). A delegated step goes through the writer's history check, now
+  `verifyTaskEvidence`, which the writer and the objective both call; a store without history refuses `history-unsupported` (M16).
+  The package hands its finding to the store with the revision of the record it read, and the store takes it only at the command's
+  own expected revision (`revision-changed` otherwise), so a finding read before a bind landed is never taken for the bound record
+  (#313 H-1); with no Plan bound in what it read, the finding is `plan-unbound`. The store journals the finding and checks the head
+  is still the one read. Unsettled jobs, `unproven` ones among them, refuse
+  `jobs-unsettled` unless the command waives each by id (a waiver of anything else is `waiver-invalid`); the waiver and the settled
+  jobs that did not succeed, contradictions included, are on the achievement. No wait of the run may be unresolved (`wait-pending`).
+- `pause` and `resume` move a disposition, never a state: `acquireLease` and `resumeWait` refuse `objective-paused`, and the answer
+  reports the run's lease as the store holds it, so paused is not read as stopped (M8). Renewals, releases, fenced commits and the
+  abandon's seizure are unchanged. From `create` on, an unfenced commit of the run refuses `lease-required`: an objective's run is
+  leased, chosen at `create`. Resume writes no checkpoint, wait, budget or approval. A pause longer than an approval's TTL ends that
+  wait and closes the run for good. `achieve` under `paused` is independent of it, and a terminal objective has no disposition (L2).
+- `block` (with a condition id) and `unblock` move `active` and `blocked`; `achieve` refuses `objective-blocked`. This pair is the
+  build's: decision 8 names `blocked`, and nothing else would move to it.
+- `abandon` (`abandonGoal`) abandons the objective in its own transaction, which records the run's waits not resumed or ended and its
+  jobs not settled, then runs `abandonJobs` under the same command id and journals each attempt's deliveries. It closes nothing more
+  than `abandonJobs` does; what it left is recorded, and the next `create` is held to the run's waits (M10). A repeat of the command
+  runs `abandonJobs` again only while the objective it abandoned is still the current one: after another objective is created it
+  refuses `revision-changed`, with nothing sent, no lease taken and nothing journaled (#313 H-2). The objective's pause and block end
+  with it, so the run can be leased again.
+- `inspect` is a counted read: a count and a last row, no revision moved. The journal holds at most 64 entries; past it the oldest
+  refused entry goes first, then the oldest entry, and `discarded` counts them, so no command is ever refused for size (M12). A
+  refusal on a run with no record is not written.
 
 **A held start and #277.** `shownDigest` on the decision is carried through a parked approval (`decisionFor`, and
 `resumeParked`'s answer; Go passes the decision whole), and a start's decision must carry it, text kept or not, at the
@@ -652,16 +684,16 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 | M5 refusals strand a row | Registration is in the claim's own transaction: no window, no `unbound`, no store parse of the head. A key is checked before the claim, and `shownDigest` at the continuation's opening, before the claim |
 | M6 `poll-refused` does not stop polling | Cut: it always answers, says unchanged and says not to poll |
 | M7 a leg's end and a resume | Statuses, the pending-decision refusal, the job on the resume, the fixed continuation block; chat-bound job waits refused |
-| M8 pause goes too far | Next (#230): only `acquireLease` and `resumeWait`, and the answer reports the held lease |
+| M8 pause goes too far | Built (#230): only `acquireLease` and `resumeWait`, and the answer reports the run's lease; the run is leased from `create` |
 | M9 abandon's delivery | A fresh fence and stable cancel identities; the exception is stated |
-| M10, M11, M12 | Next (#230): as stated under the objective; `replace` and one row per `inspect` cut |
+| M10, M11, M12 | Built (#230): `wait-unresolved` on a `create` over the waits an abandon left; `step-settled` and `plan-reused` on `bind`; inspections counted, and a journal that drops refused entries first; `replace` and one row per `inspect` cut |
 | M13 nothing identifies a start row | Start rows are package-composed and record no observation, so a lost job record leaves them no evidence. The upgrade guide says what an archive needs |
 | M14 the gateway mapping | Answers parsed as the first was; `decision` and `cites` are the host's; retention in the gateway's list; a gateway's refusal of the members mapped by the host |
 | M15 the start's answer | Its own row in the paths; the package composes the row's result; `started` after `admit` |
-| M16, M17 | Next (#230): as stated under the objective |
+| M16, M17 | Built (#230): `verifyTaskEvidence` for a delegated step and `history-unsupported` without history; only `changed`, `removed` and the required steps' order count |
 | M18 host obligations | The table above; chat-bound waits refused rather than kept current |
 | L1 two "keys" | "Completion key" and "action key" throughout |
-| L2 | Next: `achieve` under `paused` is independent; `create` resets; a terminal objective has no disposition |
+| L2 | Built (#230): `achieve` under `paused` is independent; `create` starts with no disposition; a terminal objective has none |
 | L3 | In the gateway's list |
 | L4, L8 | Job tools are host-kind only, and a Go-written text fails closed in TypeScript |
 | L5 | `receipt` is a bounded reference |

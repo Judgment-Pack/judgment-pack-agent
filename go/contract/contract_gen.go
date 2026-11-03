@@ -280,6 +280,34 @@ var Registry = map[string]func() any{
 	"run-event.json#/$defs/route_decided":           func() any { return new(RunEventRouteDecided) },
 	"run-event.json#/$defs/route_widened":           func() any { return new(RunEventRouteWidened) },
 	"run-event.json#/$defs/repeat_detected":         func() any { return new(RunEventRepeatDetected) },
+	"run-goal.json":                                 func() any { return new(RunGoal) },
+	"run-goal.json#/$defs/id":                       func() any { return new(string) },
+	"run-goal.json#/$defs/digest":                   func() any { return new(string) },
+	"run-goal.json#/$defs/time":                     func() any { return new(string) },
+	"run-goal.json#/$defs/stepId":                   func() any { return new(string) },
+	"run-goal.json#/$defs/stamp":                    func() any { return new(RunGoalStamp) },
+	"run-goal.json#/$defs/head":                     func() any { return new(RunGoalHead) },
+	"run-goal.json#/$defs/step":                     func() any { return new(RunGoalStep) },
+	"run-goal.json#/$defs/planSteps":                func() any { return new(RunGoalPlanSteps) },
+	"run-goal.json#/$defs/plan":                     func() any { return new(RunGoalPlan) },
+	"run-goal.json#/$defs/job":                      func() any { return new(RunGoalJob) },
+	"run-goal.json#/$defs/leftWait":                 func() any { return new(RunGoalLeftWait) },
+	"run-goal.json#/$defs/block":                    func() any { return new(RunGoalBlock) },
+	"run-goal.json#/$defs/achievement":              func() any { return new(RunGoalAchievement) },
+	"run-goal.json#/$defs/abandonment":              func() any { return new(RunGoalAbandonment) },
+	"run-goal.json#/$defs/objective":                func() any { return new(RunGoalObjective) },
+	"run-goal.json#/$defs/delivery":                 func() any { return new(RunGoalDelivery) },
+	"run-goal.json#/$defs/entry":                    func() any { return new(RunGoalEntry) },
+	"run-goal.json#/$defs/inspections":              func() any { return new(RunGoalInspections) },
+	"run-goal.json#/$defs/command":                  func() any { return new(RunGoalCommand) },
+	"run-goal.json#/$defs/finding":                  func() any { return new(RunGoalFinding) },
+	"run-goal.json#/$defs/transition":               func() any { return new(RunGoalTransition) },
+	"run-goal.json#/$defs/inspect":                  func() any { return new(RunGoalInspect) },
+	"run-goal.json#/$defs/deliveries":               func() any { return new(RunGoalDeliveries) },
+	"run-goal.json#/$defs/refusal":                  func() any { return new(RunGoalRefusal) },
+	"run-goal.json#/$defs/capabilityRefusal":        func() any { return new(RunGoalCapabilityRefusal) },
+	"run-goal.json#/$defs/reportEntry":              func() any { return new(RunGoalReportEntry) },
+	"run-goal.json#/$defs/report":                   func() any { return new(RunGoalReport) },
 	"run-job.json":                                  func() any { return new(RunJob) },
 	"run-job.json#/$defs/id":                        func() any { return new(string) },
 	"run-job.json#/$defs/digest":                    func() any { return new(string) },
@@ -19642,6 +19670,775 @@ func (v *RunEventUserQuestion) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunEventUserQuestion object.
 func (v RunEventUserQuestion) MarshalJSON() ([]byte, error) {
 	type plain RunEventUserQuestion
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json. Version 1 record of one run's objective (ADR-0025 decision 8, #230): kept by
+// the store beside the run, never in its checkpoint or event log, and changed only by host
+// commands, with no model call and no run commit. The objectives are kept whole in order, the
+// current one last; only it may be open. Every command is journaled, accepted or refused, with its
+// actor, the store's time and the record's revision. Past the journal's bound the oldest refused
+// entry goes first, then the oldest entry, and discarded counts them, so no command is refused for
+// size. The readers hold rules the schema cannot state: identities are never reused in a run, no
+// Plan is bound twice, each objective's state holds exactly what proves it, and a step is named
+// only on a refusal about one.
+type RunGoal struct {
+	Version     int64               `json:"version"`
+	Kind        string              `json:"kind"`
+	Resource    string              `json:"resource"`
+	Revision    int64               `json:"revision"`
+	Objectives  []RunGoalObjective  `json:"objectives"`
+	Journal     []RunGoalEntry      `json:"journal"`
+	Discarded   *int64              `json:"discarded,omitzero"`
+	Inspections *RunGoalInspections `json:"inspections,omitzero"`
+}
+
+var runGoalMembers = []string{"version", "kind", "resource", "revision", "objectives", "journal", "discarded", "inspections"}
+
+// UnmarshalJSON decodes a RunGoal object and refuses a member the closed schema does not name.
+func (v *RunGoal) UnmarshalJSON(data []byte) error {
+	type plain RunGoal
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalMembers, true)
+	if err != nil {
+		return errorf("RunGoal: %w", err)
+	}
+	*v = RunGoal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoal object.
+func (v RunGoal) MarshalJSON() ([]byte, error) {
+	type plain RunGoal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/abandonment. What the abandon left: the run's waits not resumed or
+// ended, and its jobs not settled. A later create is held to the waits (M10).
+type RunGoalAbandonment struct {
+	Command string            `json:"command"`
+	Actor   string            `json:"actor"`
+	At      string            `json:"at"`
+	Waits   []RunGoalLeftWait `json:"waits"`
+	Jobs    []RunGoalJob      `json:"jobs"`
+}
+
+var runGoalAbandonmentMembers = []string{"command", "actor", "at", "waits", "jobs"}
+
+// UnmarshalJSON decodes a RunGoalAbandonment object and refuses a member the closed schema does not name.
+func (v *RunGoalAbandonment) UnmarshalJSON(data []byte) error {
+	type plain RunGoalAbandonment
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalAbandonmentMembers, true)
+	if err != nil {
+		return errorf("RunGoalAbandonment: %w", err)
+	}
+	*v = RunGoalAbandonment(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalAbandonment object.
+func (v RunGoalAbandonment) MarshalJSON() ([]byte, error) {
+	type plain RunGoalAbandonment
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/achievement. The unsettled jobs the command waived by id, and the
+// settled jobs that did not succeed, contradictions included.
+type RunGoalAchievement struct {
+	Command      string       `json:"command"`
+	Actor        string       `json:"actor"`
+	At           string       `json:"at"`
+	Head         RunGoalHead  `json:"head"`
+	Waived       []string     `json:"waived,omitzero"`
+	Unsuccessful []RunGoalJob `json:"unsuccessful,omitzero"`
+}
+
+var runGoalAchievementMembers = []string{"command", "actor", "at", "head", "waived", "unsuccessful"}
+
+// UnmarshalJSON decodes a RunGoalAchievement object and refuses a member the closed schema does not name.
+func (v *RunGoalAchievement) UnmarshalJSON(data []byte) error {
+	type plain RunGoalAchievement
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalAchievementMembers, true)
+	if err != nil {
+		return errorf("RunGoalAchievement: %w", err)
+	}
+	*v = RunGoalAchievement(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalAchievement object.
+func (v RunGoalAchievement) MarshalJSON() ([]byte, error) {
+	type plain RunGoalAchievement
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/block. The unresolved condition the host named.
+type RunGoalBlock struct {
+	Command   string `json:"command"`
+	Actor     string `json:"actor"`
+	At        string `json:"at"`
+	Condition string `json:"condition"`
+}
+
+var runGoalBlockMembers = []string{"command", "actor", "at", "condition"}
+
+// UnmarshalJSON decodes a RunGoalBlock object and refuses a member the closed schema does not name.
+func (v *RunGoalBlock) UnmarshalJSON(data []byte) error {
+	type plain RunGoalBlock
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalBlockMembers, true)
+	if err != nil {
+		return errorf("RunGoalBlock: %w", err)
+	}
+	*v = RunGoalBlock(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalBlock object.
+func (v RunGoalBlock) MarshalJSON() ([]byte, error) {
+	type plain RunGoalBlock
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/capabilityRefusal. A store that cannot hold an objective refuses by
+// name before any command.
+type RunGoalCapabilityRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runGoalCapabilityRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunGoalCapabilityRefusal object and refuses a member the closed schema does not name.
+func (v *RunGoalCapabilityRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunGoalCapabilityRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalCapabilityRefusalMembers, true)
+	if err != nil {
+		return errorf("RunGoalCapabilityRefusal: %w", err)
+	}
+	*v = RunGoalCapabilityRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalCapabilityRefusal object.
+func (v RunGoalCapabilityRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunGoalCapabilityRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/command. A host's command. The readers hold which members each kind
+// carries: create an objective, bind steps and a head, achieve a head and an optional waiver,
+// block a condition, the others none.
+type RunGoalCommand struct {
+	Version          int64           `json:"version"`
+	Resource         string          `json:"resource"`
+	Command          string          `json:"command"`
+	Actor            string          `json:"actor"`
+	ExpectedRevision Nullable[int64] `json:"expectedRevision"`
+	Kind             string          `json:"kind"`
+	Objective        *string         `json:"objective,omitzero"`
+	Steps            []string        `json:"steps,omitzero"`
+	Head             *RunGoalHead    `json:"head,omitzero"`
+	Waive            []string        `json:"waive,omitzero"`
+	Condition        *string         `json:"condition,omitzero"`
+}
+
+var runGoalCommandMembers = []string{"version", "resource", "command", "actor", "expectedRevision", "kind", "objective", "steps", "head", "waive", "condition"}
+
+// UnmarshalJSON decodes a RunGoalCommand object and refuses a member the closed schema does not name.
+func (v *RunGoalCommand) UnmarshalJSON(data []byte) error {
+	type plain RunGoalCommand
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalCommandMembers, true)
+	if err != nil {
+		return errorf("RunGoalCommand: %w", err)
+	}
+	*v = RunGoalCommand(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalCommand object.
+func (v RunGoalCommand) MarshalJSON() ([]byte, error) {
+	type plain RunGoalCommand
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/deliveries. An abandon's deliveries, journaled on the objective that
+// command abandoned.
+type RunGoalDeliveries struct {
+	Version    int64             `json:"version"`
+	Resource   string            `json:"resource"`
+	Command    string            `json:"command"`
+	Deliveries []RunGoalDelivery `json:"deliveries"`
+}
+
+var runGoalDeliveriesMembers = []string{"version", "resource", "command", "deliveries"}
+
+// UnmarshalJSON decodes a RunGoalDeliveries object and refuses a member the closed schema does not name.
+func (v *RunGoalDeliveries) UnmarshalJSON(data []byte) error {
+	type plain RunGoalDeliveries
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalDeliveriesMembers, true)
+	if err != nil {
+		return errorf("RunGoalDeliveries: %w", err)
+	}
+	*v = RunGoalDeliveries(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalDeliveries object.
+func (v RunGoalDeliveries) MarshalJSON() ([]byte, error) {
+	type plain RunGoalDeliveries
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/delivery.
+type RunGoalDelivery struct {
+	Job      string `json:"job"`
+	Delivery string `json:"delivery"`
+}
+
+var runGoalDeliveryMembers = []string{"job", "delivery"}
+
+// UnmarshalJSON decodes a RunGoalDelivery object and refuses a member the closed schema does not name.
+func (v *RunGoalDelivery) UnmarshalJSON(data []byte) error {
+	type plain RunGoalDelivery
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalDeliveryMembers, true)
+	if err != nil {
+		return errorf("RunGoalDelivery: %w", err)
+	}
+	*v = RunGoalDelivery(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalDelivery object.
+func (v RunGoalDelivery) MarshalJSON() ([]byte, error) {
+	type plain RunGoalDelivery
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/entry. One journaled command, accepted or refused, or one attempt's
+// deliveries after an abandon. The digest is the SHA-256 of the canonical JSON of the command (of
+// {command, deliveries} for a delivered entry): a repeat of the id must carry the same.
+type RunGoalEntry struct {
+	Command    string            `json:"command"`
+	Kind       string            `json:"kind"`
+	Actor      string            `json:"actor"`
+	At         string            `json:"at"`
+	Objective  string            `json:"objective"`
+	Outcome    string            `json:"outcome"`
+	Revision   int64             `json:"revision"`
+	Digest     string            `json:"digest"`
+	Step       *string           `json:"step,omitzero"`
+	Deliveries []RunGoalDelivery `json:"deliveries,omitzero"`
+}
+
+var runGoalEntryMembers = []string{"command", "kind", "actor", "at", "objective", "outcome", "revision", "digest", "step", "deliveries"}
+
+// UnmarshalJSON decodes a RunGoalEntry object and refuses a member the closed schema does not name.
+func (v *RunGoalEntry) UnmarshalJSON(data []byte) error {
+	type plain RunGoalEntry
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalEntryMembers, true)
+	if err != nil {
+		return errorf("RunGoalEntry: %w", err)
+	}
+	*v = RunGoalEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalEntry object.
+func (v RunGoalEntry) MarshalJSON() ([]byte, error) {
+	type plain RunGoalEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/finding. What only the package can find from the head it read; the
+// store journals it as the command's refusal.
+type RunGoalFinding struct {
+	Reason string  `json:"reason"`
+	Step   *string `json:"step,omitzero"`
+}
+
+var runGoalFindingMembers = []string{"reason", "step"}
+
+// UnmarshalJSON decodes a RunGoalFinding object and refuses a member the closed schema does not name.
+func (v *RunGoalFinding) UnmarshalJSON(data []byte) error {
+	type plain RunGoalFinding
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalFindingMembers, true)
+	if err != nil {
+		return errorf("RunGoalFinding: %w", err)
+	}
+	*v = RunGoalFinding(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalFinding object.
+func (v RunGoalFinding) MarshalJSON() ([]byte, error) {
+	type plain RunGoalFinding
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/head. The run head a bind or an achievement was decided against: its
+// revision and the SHA-256 of its checkpoint bytes.
+type RunGoalHead struct {
+	Revision string `json:"revision"`
+	Digest   string `json:"digest"`
+}
+
+var runGoalHeadMembers = []string{"revision", "digest"}
+
+// UnmarshalJSON decodes a RunGoalHead object and refuses a member the closed schema does not name.
+func (v *RunGoalHead) UnmarshalJSON(data []byte) error {
+	type plain RunGoalHead
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalHeadMembers, true)
+	if err != nil {
+		return errorf("RunGoalHead: %w", err)
+	}
+	*v = RunGoalHead(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalHead object.
+func (v RunGoalHead) MarshalJSON() ([]byte, error) {
+	type plain RunGoalHead
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/inspect.
+type RunGoalInspect struct {
+	Version  int64  `json:"version"`
+	Resource string `json:"resource"`
+	Command  string `json:"command"`
+	Actor    string `json:"actor"`
+}
+
+var runGoalInspectMembers = []string{"version", "resource", "command", "actor"}
+
+// UnmarshalJSON decodes a RunGoalInspect object and refuses a member the closed schema does not name.
+func (v *RunGoalInspect) UnmarshalJSON(data []byte) error {
+	type plain RunGoalInspect
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalInspectMembers, true)
+	if err != nil {
+		return errorf("RunGoalInspect: %w", err)
+	}
+	*v = RunGoalInspect(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalInspect object.
+func (v RunGoalInspect) MarshalJSON() ([]byte, error) {
+	type plain RunGoalInspect
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/inspections. Inspections, coalesced into a count and the last one
+// (M12).
+type RunGoalInspections struct {
+	Count int64                  `json:"count"`
+	Last  RunGoalInspectionsLast `json:"last"`
+}
+
+var runGoalInspectionsMembers = []string{"count", "last"}
+
+// UnmarshalJSON decodes a RunGoalInspections object and refuses a member the closed schema does not name.
+func (v *RunGoalInspections) UnmarshalJSON(data []byte) error {
+	type plain RunGoalInspections
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalInspectionsMembers, true)
+	if err != nil {
+		return errorf("RunGoalInspections: %w", err)
+	}
+	*v = RunGoalInspections(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalInspections object.
+func (v RunGoalInspections) MarshalJSON() ([]byte, error) {
+	type plain RunGoalInspections
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/inspections/properties/last.
+type RunGoalInspectionsLast struct {
+	Command string `json:"command"`
+	Actor   string `json:"actor"`
+	At      string `json:"at"`
+}
+
+var runGoalInspectionsLastMembers = []string{"command", "actor", "at"}
+
+// UnmarshalJSON decodes a RunGoalInspectionsLast object and refuses a member the closed schema does not name.
+func (v *RunGoalInspectionsLast) UnmarshalJSON(data []byte) error {
+	type plain RunGoalInspectionsLast
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalInspectionsLastMembers, true)
+	if err != nil {
+		return errorf("RunGoalInspectionsLast: %w", err)
+	}
+	*v = RunGoalInspectionsLast(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalInspectionsLast object.
+func (v RunGoalInspectionsLast) MarshalJSON() ([]byte, error) {
+	type plain RunGoalInspectionsLast
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/job. A job as a goal transaction read it: its outcome exactly when
+// completed, and contradicted only when closed as not started.
+type RunGoalJob struct {
+	Job          string  `json:"job"`
+	State        string  `json:"state"`
+	Outcome      *string `json:"outcome,omitzero"`
+	Contradicted *bool   `json:"contradicted,omitzero"`
+}
+
+var runGoalJobMembers = []string{"job", "state", "outcome", "contradicted"}
+
+// UnmarshalJSON decodes a RunGoalJob object and refuses a member the closed schema does not name.
+func (v *RunGoalJob) UnmarshalJSON(data []byte) error {
+	type plain RunGoalJob
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalJobMembers, true)
+	if err != nil {
+		return errorf("RunGoalJob: %w", err)
+	}
+	*v = RunGoalJob(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalJob object.
+func (v RunGoalJob) MarshalJSON() ([]byte, error) {
+	type plain RunGoalJob
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/leftWait. A wait of the run neither resumed nor ended, as the
+// abandon's transaction found it.
+type RunGoalLeftWait struct {
+	Wait   string `json:"wait"`
+	Reason string `json:"reason"`
+	State  string `json:"state"`
+}
+
+var runGoalLeftWaitMembers = []string{"wait", "reason", "state"}
+
+// UnmarshalJSON decodes a RunGoalLeftWait object and refuses a member the closed schema does not name.
+func (v *RunGoalLeftWait) UnmarshalJSON(data []byte) error {
+	type plain RunGoalLeftWait
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalLeftWaitMembers, true)
+	if err != nil {
+		return errorf("RunGoalLeftWait: %w", err)
+	}
+	*v = RunGoalLeftWait(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalLeftWait object.
+func (v RunGoalLeftWait) MarshalJSON() ([]byte, error) {
+	type plain RunGoalLeftWait
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/objective. One objective. Paused is a disposition of an open one
+// (active or blocked); a terminal one has none. Each state holds exactly what proves it.
+type RunGoalObjective struct {
+	ID        string              `json:"id"`
+	State     string              `json:"state"`
+	Created   RunGoalStamp        `json:"created"`
+	Plan      *RunGoalPlan        `json:"plan,omitzero"`
+	Paused    *RunGoalStamp       `json:"paused,omitzero"`
+	Blocked   *RunGoalBlock       `json:"blocked,omitzero"`
+	Achieved  *RunGoalAchievement `json:"achieved,omitzero"`
+	Abandoned *RunGoalAbandonment `json:"abandoned,omitzero"`
+}
+
+var runGoalObjectiveMembers = []string{"id", "state", "created", "plan", "paused", "blocked", "achieved", "abandoned"}
+
+// UnmarshalJSON decodes a RunGoalObjective object and refuses a member the closed schema does not name.
+func (v *RunGoalObjective) UnmarshalJSON(data []byte) error {
+	type plain RunGoalObjective
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalObjectiveMembers, true)
+	if err != nil {
+		return errorf("RunGoalObjective: %w", err)
+	}
+	*v = RunGoalObjective(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalObjective object.
+func (v RunGoalObjective) MarshalJSON() ([]byte, error) {
+	type plain RunGoalObjective
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/plan. The Plan an objective bound. No Plan is bound by two objectives
+// of one run (M11).
+type RunGoalPlan struct {
+	ID       string        `json:"id"`
+	Revision string        `json:"revision"`
+	Steps    []RunGoalStep `json:"steps"`
+	Bound    RunGoalStamp  `json:"bound"`
+}
+
+var runGoalPlanMembers = []string{"id", "revision", "steps", "bound"}
+
+// UnmarshalJSON decodes a RunGoalPlan object and refuses a member the closed schema does not name.
+func (v *RunGoalPlan) UnmarshalJSON(data []byte) error {
+	type plain RunGoalPlan
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalPlanMembers, true)
+	if err != nil {
+		return errorf("RunGoalPlan: %w", err)
+	}
+	*v = RunGoalPlan(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalPlan object.
+func (v RunGoalPlan) MarshalJSON() ([]byte, error) {
+	type plain RunGoalPlan
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/planSteps. The accepted Plan a bind takes, as the package read it from
+// the head: its id, its revision and the required steps in plan order.
+type RunGoalPlanSteps struct {
+	ID       string        `json:"id"`
+	Revision string        `json:"revision"`
+	Steps    []RunGoalStep `json:"steps"`
+}
+
+var runGoalPlanStepsMembers = []string{"id", "revision", "steps"}
+
+// UnmarshalJSON decodes a RunGoalPlanSteps object and refuses a member the closed schema does not name.
+func (v *RunGoalPlanSteps) UnmarshalJSON(data []byte) error {
+	type plain RunGoalPlanSteps
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalPlanStepsMembers, true)
+	if err != nil {
+		return errorf("RunGoalPlanSteps: %w", err)
+	}
+	*v = RunGoalPlanSteps(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalPlanSteps object.
+func (v RunGoalPlanSteps) MarshalJSON() ([]byte, error) {
+	type plain RunGoalPlanSteps
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/refusal. A named goal refusal. Where the run has a goal record it was
+// journaled, and nothing else changed.
+type RunGoalRefusal struct {
+	Version int64  `json:"version"`
+	Reason  string `json:"reason"`
+}
+
+var runGoalRefusalMembers = []string{"version", "reason"}
+
+// UnmarshalJSON decodes a RunGoalRefusal object and refuses a member the closed schema does not name.
+func (v *RunGoalRefusal) UnmarshalJSON(data []byte) error {
+	type plain RunGoalRefusal
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalRefusalMembers, true)
+	if err != nil {
+		return errorf("RunGoalRefusal: %w", err)
+	}
+	*v = RunGoalRefusal(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalRefusal object.
+func (v RunGoalRefusal) MarshalJSON() ([]byte, error) {
+	type plain RunGoalRefusal
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/report. One run's goal report, read from its record, never from a
+// prompt.
+type RunGoalReport struct {
+	Version     int64                `json:"version"`
+	Resource    string               `json:"resource"`
+	Revision    int64                `json:"revision"`
+	Objectives  []RunGoalObjective   `json:"objectives"`
+	Entries     []RunGoalReportEntry `json:"entries"`
+	Discarded   int64                `json:"discarded"`
+	Inspections *RunGoalInspections  `json:"inspections,omitzero"`
+}
+
+var runGoalReportMembers = []string{"version", "resource", "revision", "objectives", "entries", "discarded", "inspections"}
+
+// UnmarshalJSON decodes a RunGoalReport object and refuses a member the closed schema does not name.
+func (v *RunGoalReport) UnmarshalJSON(data []byte) error {
+	type plain RunGoalReport
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalReportMembers, true)
+	if err != nil {
+		return errorf("RunGoalReport: %w", err)
+	}
+	*v = RunGoalReport(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalReport object.
+func (v RunGoalReport) MarshalJSON() ([]byte, error) {
+	type plain RunGoalReport
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/reportEntry.
+type RunGoalReportEntry struct {
+	Command    string            `json:"command"`
+	Kind       string            `json:"kind"`
+	Actor      string            `json:"actor"`
+	At         string            `json:"at"`
+	Objective  string            `json:"objective"`
+	Outcome    string            `json:"outcome"`
+	Revision   int64             `json:"revision"`
+	Step       *string           `json:"step,omitzero"`
+	Deliveries []RunGoalDelivery `json:"deliveries,omitzero"`
+}
+
+var runGoalReportEntryMembers = []string{"command", "kind", "actor", "at", "objective", "outcome", "revision", "step", "deliveries"}
+
+// UnmarshalJSON decodes a RunGoalReportEntry object and refuses a member the closed schema does not name.
+func (v *RunGoalReportEntry) UnmarshalJSON(data []byte) error {
+	type plain RunGoalReportEntry
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalReportEntryMembers, true)
+	if err != nil {
+		return errorf("RunGoalReportEntry: %w", err)
+	}
+	*v = RunGoalReportEntry(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalReportEntry object.
+func (v RunGoalReportEntry) MarshalJSON() ([]byte, error) {
+	type plain RunGoalReportEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/stamp. Who issued an accepted command, and when by the store's clock.
+type RunGoalStamp struct {
+	Command string `json:"command"`
+	Actor   string `json:"actor"`
+	At      string `json:"at"`
+}
+
+var runGoalStampMembers = []string{"command", "actor", "at"}
+
+// UnmarshalJSON decodes a RunGoalStamp object and refuses a member the closed schema does not name.
+func (v *RunGoalStamp) UnmarshalJSON(data []byte) error {
+	type plain RunGoalStamp
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalStampMembers, true)
+	if err != nil {
+		return errorf("RunGoalStamp: %w", err)
+	}
+	*v = RunGoalStamp(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalStamp object.
+func (v RunGoalStamp) MarshalJSON() ([]byte, error) {
+	type plain RunGoalStamp
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/step. A required step: its plan step id, and its origin's index in the
+// accepted Plan, which survives a reorder.
+type RunGoalStep struct {
+	Step  string `json:"step"`
+	Index int64  `json:"index"`
+}
+
+var runGoalStepMembers = []string{"step", "index"}
+
+// UnmarshalJSON decodes a RunGoalStep object and refuses a member the closed schema does not name.
+func (v *RunGoalStep) UnmarshalJSON(data []byte) error {
+	type plain RunGoalStep
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalStepMembers, true)
+	if err != nil {
+		return errorf("RunGoalStep: %w", err)
+	}
+	*v = RunGoalStep(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalStep object.
+func (v RunGoalStep) MarshalJSON() ([]byte, error) {
+	type plain RunGoalStep
+	return encodeObject(plain(v), nil)
+}
+
+// From run-goal.json#/$defs/transition. What the store is handed: a bind carries its steps or what
+// refused them, an achievement carries the revision it read and may carry a finding, and nothing
+// else carries any of them.
+type RunGoalTransition struct {
+	Version int64             `json:"version"`
+	Command RunGoalCommand    `json:"command"`
+	Plan    *RunGoalPlanSteps `json:"plan,omitzero"`
+	Refused *RunGoalFinding   `json:"refused,omitzero"`
+	Read    *int64            `json:"read,omitzero"`
+}
+
+var runGoalTransitionMembers = []string{"version", "command", "plan", "refused", "read"}
+
+// UnmarshalJSON decodes a RunGoalTransition object and refuses a member the closed schema does not name.
+func (v *RunGoalTransition) UnmarshalJSON(data []byte) error {
+	type plain RunGoalTransition
+	var p plain
+	extra, err := decodeObject(data, &p, runGoalTransitionMembers, true)
+	if err != nil {
+		return errorf("RunGoalTransition: %w", err)
+	}
+	*v = RunGoalTransition(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunGoalTransition object.
+func (v RunGoalTransition) MarshalJSON() ([]byte, error) {
+	type plain RunGoalTransition
 	return encodeObject(plain(v), nil)
 }
 

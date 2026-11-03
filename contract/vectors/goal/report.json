@@ -1,0 +1,1028 @@
+{
+ "description": "Goal reports, each read from the record at the same index of goal.json: the record's objectives and journal without digests, its discarded count (0 when none) and its inspections.",
+ "schema": "run-goal.json#/$defs/report",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/goal.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 2,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 3,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "blocked",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     },
+     "blocked": {
+      "command": "cmd-5",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "condition": "waiting-on-data"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 5,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     },
+     "plan": {
+      "id": "accepted-plan",
+      "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "steps": [
+       {
+        "step": "step-1",
+        "index": 0
+       },
+       {
+        "step": "step-2",
+        "index": 1
+       }
+      ],
+      "bound": {
+       "command": "cmd-7",
+       "actor": "person-1",
+       "at": "2026-01-01T00:06:00.000Z"
+      }
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3
+    },
+    {
+     "command": "cmd-6",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:05:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 4
+    },
+    {
+     "command": "cmd-7",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:06:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 5
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 6,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "achieved",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "plan": {
+      "id": "accepted-plan",
+      "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "steps": [
+       {
+        "step": "step-1",
+        "index": 0
+       },
+       {
+        "step": "step-2",
+        "index": 1
+       }
+      ],
+      "bound": {
+       "command": "cmd-7",
+       "actor": "person-1",
+       "at": "2026-01-01T00:06:00.000Z"
+      }
+     },
+     "achieved": {
+      "command": "cmd-8",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "head": {
+       "revision": "rev-7",
+       "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "waived": [
+       "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "unsuccessful": [
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "outcome": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "completed",
+        "outcome": "cancelled"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "state": "completed",
+        "outcome": "unknown"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "state": "not-started"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "state": "not-started",
+        "contradicted": true
+       }
+      ]
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3
+    },
+    {
+     "command": "cmd-6",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:05:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 4
+    },
+    {
+     "command": "cmd-7",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:06:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 5
+    },
+    {
+     "command": "cmd-10",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:07:00.000Z",
+     "objective": "objective-1",
+     "outcome": "evidence-refused",
+     "revision": 5,
+     "step": "step-2"
+    },
+    {
+     "command": "cmd-8",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:08:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 6
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 2,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "abandoned",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "abandoned": {
+      "command": "cmd-11",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "waits": [
+       {
+        "wait": "wait-a",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-b",
+        "reason": "budget",
+        "state": "woken"
+       },
+       {
+        "wait": "wait-c",
+        "reason": "question",
+        "state": "timed-out"
+       },
+       {
+        "wait": "wait-d",
+        "reason": "reauthorization",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-e",
+        "reason": "job",
+        "state": "parked"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       }
+      ]
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:05.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "no-handle"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "sent"
+      }
+     ]
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:11:00.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "already-sent"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "failed"
+      },
+      {
+       "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+       "delivery": "undelivered"
+      },
+      {
+       "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+       "delivery": "settled"
+      },
+      {
+       "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+       "delivery": "contradicted"
+      },
+      {
+       "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+       "delivery": "acknowledged"
+      }
+     ]
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 3,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "abandoned",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "abandoned": {
+      "command": "cmd-11",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "waits": [
+       {
+        "wait": "wait-a",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-b",
+        "reason": "budget",
+        "state": "woken"
+       },
+       {
+        "wait": "wait-c",
+        "reason": "question",
+        "state": "timed-out"
+       },
+       {
+        "wait": "wait-d",
+        "reason": "reauthorization",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-e",
+        "reason": "job",
+        "state": "parked"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       }
+      ]
+     }
+    },
+    {
+     "id": "objective-2",
+     "state": "active",
+     "created": {
+      "command": "cmd-12",
+      "actor": "person-1",
+      "at": "2026-01-01T00:12:00.000Z"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:05.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "no-handle"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "sent"
+      }
+     ]
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:11:00.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "already-sent"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "failed"
+      },
+      {
+       "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+       "delivery": "undelivered"
+      },
+      {
+       "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+       "delivery": "settled"
+      },
+      {
+       "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+       "delivery": "contradicted"
+      },
+      {
+       "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+       "delivery": "acknowledged"
+      }
+     ]
+    },
+    {
+     "command": "cmd-12",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:12:00.000Z",
+     "objective": "objective-2",
+     "outcome": "accepted",
+     "revision": 3
+    }
+   ],
+   "discarded": 0
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    }
+   ],
+   "discarded": 3,
+   "inspections": {
+    "count": 4,
+    "last": {
+     "command": "look-4",
+     "actor": "dashboard",
+     "at": "2026-01-01T00:20:00.000Z"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "entries": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-100",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:00.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 1
+    },
+    {
+     "command": "cmd-101",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:01.000Z",
+     "objective": "objective-1",
+     "outcome": "no-objective",
+     "revision": 1
+    },
+    {
+     "command": "cmd-102",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:02.000Z",
+     "objective": "objective-x",
+     "outcome": "objective-exists",
+     "revision": 1
+    },
+    {
+     "command": "cmd-103",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:03.000Z",
+     "objective": "objective-x",
+     "outcome": "objective-reused",
+     "revision": 1
+    },
+    {
+     "command": "cmd-104",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:04.000Z",
+     "objective": "objective-x",
+     "outcome": "goals-exhausted",
+     "revision": 1
+    },
+    {
+     "command": "cmd-105",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:05.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-terminal",
+     "revision": 1
+    },
+    {
+     "command": "cmd-106",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:06.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 1
+    },
+    {
+     "command": "cmd-107",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:07.000Z",
+     "objective": "objective-1",
+     "outcome": "not-paused",
+     "revision": 1
+    },
+    {
+     "command": "cmd-108",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:08.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-blocked",
+     "revision": 1
+    },
+    {
+     "command": "cmd-109",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:09.000Z",
+     "objective": "objective-1",
+     "outcome": "not-blocked",
+     "revision": 1
+    },
+    {
+     "command": "cmd-110",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:10.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-bound",
+     "revision": 1
+    },
+    {
+     "command": "cmd-111",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:11.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-unbound",
+     "revision": 1
+    },
+    {
+     "command": "cmd-112",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:12.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-invalid",
+     "revision": 1
+    },
+    {
+     "command": "cmd-113",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:13.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-reused",
+     "revision": 1
+    },
+    {
+     "command": "cmd-114",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:14.000Z",
+     "objective": "objective-1",
+     "outcome": "step-settled",
+     "revision": 1,
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-115",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:15.000Z",
+     "objective": "objective-1",
+     "outcome": "head-changed",
+     "revision": 1
+    },
+    {
+     "command": "cmd-116",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:16.000Z",
+     "objective": "objective-1",
+     "outcome": "lineage-changed",
+     "revision": 1
+    },
+    {
+     "command": "cmd-117",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:17.000Z",
+     "objective": "objective-1",
+     "outcome": "decision-pending",
+     "revision": 1
+    },
+    {
+     "command": "cmd-118",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:18.000Z",
+     "objective": "objective-1",
+     "outcome": "wait-pending",
+     "revision": 1
+    },
+    {
+     "command": "cmd-119",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:19.000Z",
+     "objective": "objective-1",
+     "outcome": "step-incomplete",
+     "revision": 1,
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-120",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:20.000Z",
+     "objective": "objective-1",
+     "outcome": "evidence-refused",
+     "revision": 1,
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-121",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:21.000Z",
+     "objective": "objective-1",
+     "outcome": "history-unsupported",
+     "revision": 1,
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-122",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:22.000Z",
+     "objective": "objective-1",
+     "outcome": "jobs-unsettled",
+     "revision": 1
+    },
+    {
+     "command": "cmd-123",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:23.000Z",
+     "objective": "objective-1",
+     "outcome": "waiver-invalid",
+     "revision": 1
+    },
+    {
+     "command": "cmd-124",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:24.000Z",
+     "objective": "objective-x",
+     "outcome": "wait-unresolved",
+     "revision": 1
+    },
+    {
+     "command": "cmd-125",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:25.000Z",
+     "objective": "objective-1",
+     "outcome": "lease-required",
+     "revision": 1
+    }
+   ],
+   "discarded": 0
+  }
+ ]
+}
