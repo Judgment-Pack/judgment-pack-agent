@@ -30,8 +30,11 @@ const (
 	goalKitV2Key    = "kit.goal-v2.Lq5Ty8Ab3Ze6Wn1Gs4Pc9Uk"
 	goalKitVWake    = "kit.goal-wake-v.Hc7Rn2Xp9Kd4Tm1Sb6Wq3"
 	goalKitV2Wake   = "kit.goal-wake-v2.Gd8Pt3Zm6Bx1Wk4Ns9Rq2"
-	goalKitHour     = int64(3600000)
-	goalKitMinute   = time.Minute
+	// #318: a run whose objective is achieved and then parks a wait.
+	goalKitCKey   = "kit.goal-cc.Rb4Wk9Nd2Hs7Tq1Gm6Xp3"
+	goalKitCWake  = "kit.goal-wake-c.Pz5Ld8Qx3Vm1Ks6Gh9Tb2"
+	goalKitHour   = int64(3600000)
+	goalKitMinute = time.Minute
 )
 
 type goalKit struct {
@@ -414,8 +417,9 @@ func (k *goalKit) properties() {
 	k.answers("goal.abandon.left", err)
 	abandonStamp := stamp(abandon)
 	k.check("goal.abandon.left", abandoned.Goal.Objectives[0].State == "abandoned" && abandoned.Goal.Objectives[0].Abandoned != nil && goalKitSame(*abandoned.Goal.Objectives[0].Abandoned, GoalAbandonment{Command: abandonStamp.Command, Actor: abandonStamp.Actor, At: abandonStamp.At, Waits: []GoalLeftWait{{Wait: "wait-1", Reason: "job", State: "parked"}}, Jobs: []GoalJob{{Job: waitJob, State: "started"}}}))
-	unresolved := goalKitWith(k.command("run-w", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-w2") })
-	k.journaled("goal.create.unresolved", unresolved, func() error { _, err := k.send(unresolved, nil, nil); return err }, "wait-unresolved", "")
+	// #318 M-4: until the abandon's deliveries are journaled it is unfinished, and no other objective is created over it.
+	unfinished := goalKitWith(k.command("run-w", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-w2") })
+	k.journaled("goal.create.unfinished", unfinished, func() error { _, err := k.send(unfinished, nil, nil); return err }, "abandon-unfinished", "")
 	// The abandon's deliveries are journaled on the objective that command abandoned, and only there.
 	deliveries := []GoalDelivery{{Job: waitJob, Delivery: "sent"}}
 	delivered, err := k.store.RecordGoalDeliveries(k.ctx, GoalDeliveries{Version: 1, Resource: "run-w", Command: abandon.Command, Deliveries: deliveries})
@@ -427,6 +431,8 @@ func (k *goalKit) properties() {
 		_, err := k.store.RecordGoalDeliveries(k.ctx, GoalDeliveries{Version: 1, Resource: "run-w", Command: "run-w-other", Deliveries: deliveries})
 		return err
 	}, "invalid")
+	unresolved := goalKitWith(k.command("run-w", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-w2") })
+	k.journaled("goal.create.unresolved", unresolved, func() error { _, err := k.send(unresolved, nil, nil); return err }, "wait-unresolved", "")
 	// The wait resolved, the create goes through.
 	if _, err := k.store.CompleteJob(k.ctx, jobKitComplete("run-w", waitJob, goalKitKeys[3], "done-1", "succeeded")); err != nil {
 		panic(err)
@@ -460,6 +466,8 @@ func (k *goalKit) properties() {
 	k.journaled("goal.achieve.woken", wokenAchieve, func() error { _, err := k.send(wokenAchieve, nil, nil); return err }, "wait-pending", "")
 	vAbandoned, err := k.send(k.command("run-v", "abandon", 2), nil, nil)
 	k.answers("goal.abandon.woken", err)
+	_, err = k.store.RecordGoalDeliveries(k.ctx, GoalDeliveries{Version: 1, Resource: "run-v", Command: vAbandoned.Entry.Command, Deliveries: []GoalDelivery{}})
+	k.answers("goal.create.woken", err)
 	k.check("goal.abandon.woken", vAbandoned.Goal.Objectives[0].Abandoned != nil && goalKitSame(vAbandoned.Goal.Objectives[0].Abandoned.Waits, []GoalLeftWait{{Wait: "wait-1", Reason: "job", State: "woken"}}))
 	wokenCreate := goalKitWith(k.command("run-v", "create", 3), func(c *GoalCommand) { c.Objective = goalKitString("objective-v2") })
 	k.journaled("goal.create.woken", wokenCreate, func() error { _, err := k.send(wokenCreate, nil, nil); return err }, "wait-unresolved", "")
@@ -487,6 +495,25 @@ func (k *goalKit) properties() {
 	zHead, _ := k.store.Load(k.ctx, "run-z")
 	_, err = k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-z", Owner: "worker-b", ExpectedRevision: zHead.Revision, DurationMs: goalKitHour})
 	k.answers("goal.terminal.pause", err)
+
+	// #318 L-8: a create over an achieved objective is held to the run's waits too, not only one over an abandoned
+	// objective.
+	c := k.open("run-c")
+	_, err = k.send(goalKitWith(k.command("run-c", "create", 0), func(cm *GoalCommand) { cm.Objective = goalKitString("objective-c") }), nil, nil)
+	k.answers("goal.create.achieved", err)
+	cHead := k.head("run-c")
+	cPlan := goalKitPlan
+	cPlan.ID = "kit-plan-c"
+	_, err = k.send(goalKitWith(k.command("run-c", "bind", 1), func(cm *GoalCommand) { cm.Steps = []string{"step-1"}; cm.Head = &cHead }), goalKitFirstStep(cPlan), nil)
+	k.answers("goal.create.achieved", err)
+	_, err = k.send(goalKitWith(k.command("run-c", "achieve", 2), func(cm *GoalCommand) { cm.Head = &cHead }), nil, nil)
+	k.answers("goal.create.achieved", err)
+	cRevision := k.head("run-c").Revision
+	cJob := k.register("run-c", &cRevision, c.fence, "op-1", goalKitCKey)
+	k.started("run-c", cJob, c.fence)
+	k.parkAt("run-c", "wait-1", cJob, "op-1", goalKitCWake, cRevision, c.fence)
+	achievedCreate := goalKitWith(k.command("run-c", "create", 3), func(cm *GoalCommand) { cm.Objective = goalKitString("objective-c2") })
+	k.journaled("goal.create.achieved", achievedCreate, func() error { _, err := k.send(achievedCreate, nil, nil); return err }, "wait-unresolved", "")
 
 	// A paused run is resumed by no claim either.
 	q := k.open("run-q")
@@ -546,6 +573,8 @@ func (k *goalKit) properties() {
 		made, err := k.send(goalKitWith(k.command("run-x", "create", xRevision), func(c *GoalCommand) { c.Objective = goalKitString(fmt.Sprintf("objective-x%d", i)) }), nil, nil)
 		k.answers("goal.exhausted", err)
 		gone, err := k.send(k.command("run-x", "abandon", made.Goal.Revision), nil, nil)
+		k.answers("goal.exhausted", err)
+		_, err = k.store.RecordGoalDeliveries(k.ctx, GoalDeliveries{Version: 1, Resource: "run-x", Command: gone.Entry.Command, Deliveries: []GoalDelivery{}})
 		k.answers("goal.exhausted", err)
 		xRevision = gone.Goal.Revision
 	}

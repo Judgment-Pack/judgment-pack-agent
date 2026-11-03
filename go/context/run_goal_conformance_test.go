@@ -534,8 +534,34 @@ var goalFaults = map[string]func(*goalFault){
 	},
 	"goal.abandon.left": after([]string{"abandon"}, func(answer *GoalAnswer) { goalCurrent(answer).Abandoned.Waits = []GoalLeftWait{} }),
 	"goal.create.unresolved": ahead([]string{"create"}, func(s *goalFault, input *GoalTransition) {
-		if current := s.currentOf(input.Command.Resource); current != nil && current.Abandoned != nil {
+		if current := s.currentOf(input.Command.Resource); current != nil && current.Abandoned != nil && goalDelivered(s.rowOf(input.Command.Resource), current.Abandoned.Command) {
 			current.Abandoned.Waits = []GoalLeftWait{}
+		}
+	}),
+	// #318: M-4, a create over an abandon whose deliveries were never journaled; L-8, a create over an achieved
+	// objective.
+	"goal.create.unfinished": ahead([]string{"create"}, func(s *goalFault, input *GoalTransition) {
+		row, current := s.rowOf(input.Command.Resource), s.currentOf(input.Command.Resource)
+		if current != nil && current.State == "abandoned" && current.Abandoned != nil && !goalDelivered(row, current.Abandoned.Command) {
+			row.Journal = append(row.Journal, GoalEntry{Command: current.Abandoned.Command, Kind: "abandon", Actor: "fault", At: goalFaultStamp.At, Objective: current.ID, Outcome: "delivered", Revision: row.Revision, Digest: "sha256:" + strings.Repeat("f", 64), Deliveries: []GoalDelivery{}})
+		}
+	}),
+	"goal.create.achieved": reading([]string{"create"}, func(s *goalFault, input GoalTransition) func() {
+		current := s.currentOf(input.Command.Resource)
+		if current == nil || current.State != "achieved" {
+			return func() {}
+		}
+		changed := []*RunWait{}
+		for _, wait := range s.MemoryRunStore.waits.rows[input.Command.Resource] {
+			if wait.State == "parked" {
+				wait.State = "resumed"
+				changed = append(changed, wait)
+			}
+		}
+		return func() {
+			for _, wait := range changed {
+				wait.State = "parked"
+			}
 		}
 	}),
 	"goal.deliveries": func(f *goalFault) {
@@ -814,4 +840,9 @@ func TestGoalConformanceNamesEveryPropertyWithABrokenStore(t *testing.T) {
 			t.Fatal("no broken store for", match[1])
 		}
 	}
+}
+
+// goalDelivered: the record journals deliveries of that abandon command.
+func goalDelivered(row *RunGoal, command string) bool {
+	return row != nil && slices.ContainsFunc(row.Journal, func(entry GoalEntry) bool { return entry.Command == command && entry.Outcome == "delivered" })
 }

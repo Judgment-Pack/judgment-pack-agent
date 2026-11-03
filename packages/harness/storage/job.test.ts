@@ -807,7 +807,7 @@ describe('an abandon takes a fresh fence, and its cancels are stable (#229, M9)'
   const tools=await pair(),held=await started2(tools),sent=vi.fn(async(_:JobCancelInput)=>undefined)
   await abandon(held,sent)
   const again=await abandon(held,sent)
-  expect(sent).toHaveBeenCalledTimes(1);expect(again.jobs).toEqual([{job:held.job.job,delivery:'already-sent'}])
+  expect(sent).toHaveBeenCalledTimes(1);expect(again.jobs).toEqual([{job:held.job.job,delivery:'already-admitted'}])
  })
  it('past a deadline no lease can be granted: nothing is sent, and the record and the answer say undelivered',async()=>{
   const tools=await pair(),held=await started2(tools),sent=vi.fn(async(_:JobCancelInput)=>undefined)

@@ -611,13 +611,13 @@ exception to decision 7's approval boundary:** a source's policy on the cancel t
 the lease. An `unproven` job has no handle and is reported `no-handle`. A job the host accepted a cancel for is not sent again. Past a deadline,
 or on a closed run, no lease can be granted: `requested` is recorded `undelivered` unless a tool asked first (that request stands), nothing
 is sent, and the answer says so. A parked run's wait
-stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-sent`, `failed`, `undelivered`,
+stands; what becomes of it is the objective's (M10). The answer holds what became of each job (`sent`, `already-admitted`, `failed`, `undelivered`,
 `no-handle`, `settled`, `contradicted`, `acknowledged`), and none of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
-must be idempotent by `operation`. `already-sent` means the effect host has seen that operation, not that anything was delivered: after
-`failed` it means nothing more was sent, and a failed delivery needs a new command (the value's name is to change after the objective). An abandon
+must be idempotent by `operation`. `already-admitted` means the effect host has admitted that operation before, not that anything was
+delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
 approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
@@ -633,7 +633,10 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
   journaled.
 - `create` makes one from none or from terminal, under an identity never used in this run, at most eight a run; there is no
   `replace`. Earlier objectives are kept whole. `create` over an abandoned objective refuses `wait-unresolved` while a wait the
-  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1).
+  abandon left, or any wait of the run parked since (an abandon closes nothing), is neither resumed nor ended (M10, #313 M-1). A create
+  over an achieved objective is held to the run's waits the same way. Over an abandoned objective whose abandon has no `delivered`
+  entry it refuses `abandon-unfinished`: the abandon's jobs may never have been asked to stop, and once another objective exists the
+  abandon's retry could not finish it (#318 M-4).
 - `bind` takes the head's accepted Plan as the package reads it from the head the command names: nonempty unique steps with
   origins, in plan order, none `completed` or `not-needed` (`step-settled`), and no Plan an earlier objective of the run bound
   (`plan-reused`, M11). The run's accepted Plan is fixed for the run's life, so a later objective cannot bind it: new work under a new
@@ -723,7 +726,7 @@ continuation's opening, before the claim. With #277's one canonical form the dig
 
 **The re-read's findings, as far as they are built.** R-1: every repeat of a start answers from its job, which also cures L-3. R-2: a run under a stored chat refuses `chat-store-unsupported` before any offer, whether the session passes the chat or the head holds it. R-3: each refusal in the kit compares the job with before; a last restart comes after waits woke, resumed and timed out; a completion wakes only the wait on its own job; reads stay fresh after a settlement; an answer needs the first fence's epoch as well as its owner; and keys, commit ids and authentication hold across a restart. R-6: `handleDigested` marks a handle kept as its digest, and a real handle reading the same is another handle. R-4: where an effect host's `dispatch` refuses after `perform` returned, a start takes the path of a thrown `start` (its answer goes to its job, the row holds `JobStartUnrecorded`, the model is answered from the job), and a cancel's row holds `JobCancelUnrecorded`. R-5: Go's `Mint`, `Authorize` and effect host get a context with no start's or cancel's dispatch, and only a host row reads one. R-7: an empty receipt is no receipt in both languages, and Go's `GatewayActionMembers` refuses a job its reader refuses. R-8: the gateway's exact refusal is named above, and a reconciliation passes the raw bytes: the package keeps a long handle as its digest and marks it.
 
-**The cancel review's remaining findings (#310), built.** F-2b: the writer compares the store's answer with the record read before asking (handle, `handleDigested`, source, tool), and `job.cancel.which` does too. F-3: `cancel` gets `operation`. F-5: a reconciliation's long handle is marked. F-6: the kit fails the fourteen stores it passed, and presents a forgotten commit id at the current revision. F-9, F-10: a refused abandon moves nothing, and one on an unknown run takes no lease. F-11: `store-inconsistent` covers a tool cancel's row. F-12, F-18: the statements above. F-13: `job-contradicted`. F-14: the abandon's admission names `job-abandon`, and the card's member is `job`. F-15: Go's `JobCancelInput.Handle` is absent, not empty, where the handle is a digest. F-16: a cancel not sent on a settled job says so. F-17, F-20: an effect host's `LeaseRefused` before the hand-over reads as not sent, and after it as maybe sent. F-21: the kit's other-job check has its own negative. F-4, the rename of `already-sent`, waits for the objective.
+**The cancel review's remaining findings (#310), built.** F-2b: the writer compares the store's answer with the record read before asking (handle, `handleDigested`, source, tool), and `job.cancel.which` does too. F-3: `cancel` gets `operation`. F-5: a reconciliation's long handle is marked. F-6: the kit fails the fourteen stores it passed, and presents a forgotten commit id at the current revision. F-9, F-10: a refused abandon moves nothing, and one on an unknown run takes no lease. F-11: `store-inconsistent` covers a tool cancel's row. F-12, F-18: the statements above. F-13: `job-contradicted`. F-14: the abandon's admission names `job-abandon`, and the card's member is `job`. F-15: Go's `JobCancelInput.Handle` is absent, not empty, where the handle is a digest. F-16: a cancel not sent on a settled job says so. F-17, F-20: an effect host's `LeaseRefused` before the hand-over reads as not sent, and after it as maybe sent. F-21: the kit's other-job check has its own negative. F-4: `already-sent` is `already-admitted`, renamed with the objective's last batch (#321).
 
 ## Implementation split and acceptance
 

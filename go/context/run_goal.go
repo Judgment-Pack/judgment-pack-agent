@@ -67,7 +67,7 @@ type (
 var (
 	GoalStates            = []string{"active", "achieved", "abandoned", "blocked"}
 	GoalCommandKinds      = []string{"create", "bind", "achieve", "pause", "resume", "block", "unblock", "abandon"}
-	GoalRefusalReasons    = []string{"invalid", "conflict", "revision-changed", "no-objective", "objective-exists", "objective-reused", "goals-exhausted", "objective-terminal", "objective-paused", "not-paused", "objective-blocked", "not-blocked", "plan-bound", "plan-unbound", "plan-invalid", "plan-reused", "step-settled", "head-changed", "lineage-changed", "decision-pending", "wait-pending", "step-incomplete", "evidence-refused", "history-unsupported", "jobs-unsettled", "waiver-invalid", "wait-unresolved", "lease-required"}
+	GoalRefusalReasons    = []string{"invalid", "conflict", "revision-changed", "no-objective", "objective-exists", "objective-reused", "goals-exhausted", "objective-terminal", "objective-paused", "not-paused", "objective-blocked", "not-blocked", "plan-bound", "plan-unbound", "plan-invalid", "plan-reused", "step-settled", "head-changed", "lineage-changed", "decision-pending", "wait-pending", "step-incomplete", "evidence-refused", "history-unsupported", "jobs-unsettled", "waiver-invalid", "wait-unresolved", "lease-required", "abandon-unfinished"}
 	GoalCapabilityReasons = []string{"store-unsupported", "store-lifetime"}
 	GoalFindings          = []string{"head-changed", "plan-invalid", "step-settled", "decision-pending", "lineage-changed", "step-incomplete", "evidence-refused", "history-unsupported", "plan-unbound"}
 	goalStepFindings      = []string{"step-settled", "step-incomplete", "evidence-refused", "history-unsupported"}
@@ -75,7 +75,7 @@ var (
 	// A job a goal lists is one that did not succeed: its outcome is never succeeded.
 	goalJobOutcomes = []string{"failed", "cancelled", "unknown"}
 	goalJobStates   = []string{"unproven", "started", "not-started", "completed"}
-	goalDeliveries  = []string{"sent", "already-sent", "failed", "undelivered", "no-handle", "settled", "contradicted", "acknowledged"}
+	goalDeliveries  = []string{"sent", "already-admitted", "failed", "undelivered", "no-handle", "settled", "contradicted", "acknowledged"}
 )
 
 // GoalRefused is a named goal refusal. Where the run has a goal record the store journaled it, and nothing else
@@ -1128,6 +1128,13 @@ func (t *GoalTable) Command(input GoalTransition, context func(resource string) 
 		if row != nil && len(row.Objectives) >= GoalObjectiveLimit {
 			return refuse("goals-exhausted", nil)
 		}
+		// #318 M-4: an abandon with no deliveries journaled is unfinished: its jobs may never have been asked to stop,
+		// and once another objective exists its retry cannot finish it. The host retries the abandon first.
+		if current != nil && current.State == "abandoned" && current.Abandoned != nil && !slices.ContainsFunc(row.Journal, func(entry GoalEntry) bool {
+			return entry.Command == current.Abandoned.Command && entry.Outcome == "delivered"
+		}) {
+			return refuse("abandon-unfinished", nil)
+		}
 		// M10: a wait parked before the abandon, or after it (an abandon closes nothing), is resumed or ended before
 		// another objective is created over a terminal one.
 		if current != nil && current.Abandoned != nil && slices.ContainsFunc(current.Abandoned.Waits, func(left GoalLeftWait) bool { return goalUnresolvedWait(waitOf(left.Wait)) }) {
@@ -1319,8 +1326,9 @@ func (t *GoalTable) Deliver(input GoalDeliveries) (RunGoal, error) {
 // restarts. CommandGoal decides one command in one transaction against the record's revision, the run's head,
 // waits, jobs and lease as they are in it, and journals it, accepted or refused; a repeat of a command id answers
 // as the first did, with the record as it is now, while its entry is in the journal, and another command under it
-// is conflict. An achievement's finding is taken only from the record at the command's revision (Read). While the
-// current objective is paused,
+// is conflict. An achievement's finding is taken only from the record at the command's revision (Read). The store
+// trusts the transition it is handed: a direct caller of CommandGoal can claim any Read and any finding, so only the
+// package's RunGoalCommand composes them from what it read (#318 L-11). While the current objective is paused,
 // AcquireLease and ResumeWait refuse objective-paused; once the run has a goal record an unfenced commit refuses
 // lease-required. The package checks none of this in a host store; CheckRunStoreGoalConformance
 // (run_goal_conformance.go) does.

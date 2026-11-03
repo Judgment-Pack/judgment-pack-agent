@@ -4,7 +4,7 @@ import {readExecution} from '../execution/state'
 import {checkRecord,readRunEvent} from '../recordReader'
 import {readRunReport} from '../runReportReader'
 import {GOAL_CAPABILITY_REASONS,GOAL_REFUSAL_REASONS,GoalCapabilityRefused,GoalRefused,GoalTable,goalCommandDigest,goalDeliveryDigest,goalReportFromRecord,readGoalCapabilityRefusal,readGoalCommand,readGoalDeliveries,readGoalInspect,readGoalRefusal,readGoalReport,readGoalTransition,readRunGoal,type GoalContext,type GoalTransition} from './goal'
-import {readRunJob} from './job'
+import {readRunJob,type JobDelivery} from './job'
 import {readEffectAdmission,readLeaseFence,readRunLease,type RunLease} from './lease'
 import {readRunWait,readWaitExport,type RunWait} from './wait'
 import goalVector from '../../../contract/vectors/goal/goal.json'
@@ -13,6 +13,7 @@ import refusalVector from '../../../contract/vectors/goal/refusal.json'
 import reportVector from '../../../contract/vectors/goal/report.json'
 import transitionVector from '../../../contract/vectors/goal/transitions.json'
 import jobVector from '../../../contract/vectors/job/job.json'
+import goalSchema from '../../../contract/schemas/run-goal.json'
 
 /* #230: the shared goal vectors, read by this file, by go/context/run_goal_test.go and by tests/test_contract.py. */
 describe('goal records: shared vectors (#230)',()=>{
@@ -62,5 +63,19 @@ describe('goal records: shared vectors (#230)',()=>{
    expect(canonicalJSON(record),scenario.name).toBe(canonicalJSON(scenario.final))
    expect(readRunGoal(record)).toEqual(record)
   }
+ })
+})
+
+/* #321's review: the goal record keeps its own copy of the deliveries an abandon answers (goal.ts JOB_DELIVERIES). A value the job
+ * adds that the copy lacks could never be journaled, and every later create would refuse abandon-unfinished. The record below is
+ * typed by the job's own JobDelivery, so it names each value exactly once (the type check fails one missing or one extra), and the
+ * goal's reader and its schema must take exactly those. */
+const EVERY_DELIVERY:Record<JobDelivery,true>={sent:true,'already-admitted':true,failed:true,undelivered:true,'no-handle':true,settled:true,contradicted:true,acknowledged:true}
+describe('goal records: the deliveries are the job\'s (#321)',()=>{
+ it('journals every delivery an abandon can answer, refuses any other, and its schema names the same list',()=>{
+  const job=`sha256:${'a'.repeat(64)}`,journal=(delivery:string)=>readGoalDeliveries({version:1,resource:'run-1',command:'cmd-1',deliveries:[{job,delivery}]})
+  for(const delivery of Object.keys(EVERY_DELIVERY))expect(journal(delivery).deliveries,delivery).toEqual([{job,delivery}])
+  for(const other of ['already-sent','cancelled',''])expect(()=>journal(other),other).toThrow(GoalRefused)
+  expect([...goalSchema.$defs.delivery.properties.delivery.enum].sort()).toEqual(Object.keys(EVERY_DELIVERY).sort())
  })
 })

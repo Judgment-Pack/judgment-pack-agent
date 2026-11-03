@@ -16049,6 +16049,91 @@
    "status": "caught",
    "origin": "agent#305-311",
    "note": "#312's LOW-4. Go twin (by hand): break after the first document; caught at ^TestEveryHostDocumentIsHeldToTheRefusal in ./context."
+  },
+  {
+   "name": "goal J1 #318 M-4 a create goes over an abandon whose deliveries were never journaled",
+   "file": "storage/goal.ts",
+   "find": "   if(current?.state==='abandoned'&&!row!.journal.some(entry=>entry.command===current.abandoned!.command&&entry.outcome==='delivered'))return refuse('abandon-unfinished')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "goal J2 #318 L-10 a create over a terminal objective reads a woken wait as resolved",
+   "file": "storage/goal.ts",
+   "find": "   if(current&&run.waits.some(wait=>unresolvedWait(wait)))return refuse('wait-unresolved')\n",
+   "replace": "   if(current&&run.waits.some(wait=>wait.state==='parked'))return refuse('wait-unresolved')\n",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_goal.go): caught at TestGoalTransitionVectors."
+  },
+  {
+   "name": "goal J3 #310 F-4 an abandon answers the old word for a cancel the effect host admitted before",
+   "file": "storage/job.ts",
+   "find": "error.reason==='already-admitted'?'already-admitted':'failed'",
+   "replace": "error.reason==='already-admitted'?'already-sent':'failed'",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_job.go): caught at TestJobsAnAbandonTakesAFreshFenceAndSendsThroughTheEffectHost."
+  },
+  {
+   "name": "goal J4 #310 F-4 the goal record reads the old word",
+   "file": "storage/goal.ts",
+   "find": "const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-admitted',",
+   "replace": "const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-sent' as JobDelivery,",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_goal.go): caught at TestGoalRecordVectors."
+  },
+  {
+   "name": "goal J5 #321's review: the goal record drifts one delivery from the job's",
+   "file": "storage/goal.ts",
+   "find": "'settled','contradicted','acknowledged']",
+   "replace": "'settled','contradiction' as JobDelivery,'acknowledged']",
+   "tests": [
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "Merging main into #316 (#321's review): the goal's copy of the deliveries is tied to the job's JobDelivery and to the schema. Go twin (by hand, in run_goal.go): caught at TestGoalDeliveriesAreTheAbandonsOwn, which reads AbandonJobs' own deliveries."
+  },
+  {
+   "name": "goal JK1 #318 M-4 the kit takes a create over an unfinished abandon",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.create.unfinished',unfinished,()=>send(unfinished),'abandon-unfinished')\n",
+   "replace": " void unfinished\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "goal JK2 #318 L-8 the kit takes a create over an achieved objective beside a wait",
+   "file": "storage/goalConformance.ts",
+   "find": " await journaled('goal.create.achieved',achievedCreate,()=>send(achievedCreate),'wait-unresolved')\n",
+   "replace": " void achievedCreate\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#318",
+   "note": "#310/#318 batch. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
   }
  ]
 }

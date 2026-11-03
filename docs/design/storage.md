@@ -816,13 +816,13 @@ store has never seen (no commit, lease, wait or job) it takes no lease and answe
 run seen. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
 admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
 `cancel` is handed that operation. Past a deadline or on a closed run there is no lease: `requested` is `undelivered`,
-nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-sent`, `failed`, `undelivered`, `no-handle`, `settled`,
+nothing is sent, and the answer says so. It answers each job's delivery: `sent`, `already-admitted`, `failed`, `undelivered`, `no-handle`, `settled`,
 `contradicted` (closed, with evidence since that it ran), `acknowledged`. None of it proves anything stopped.
 
 **What a retry holds, and what an abandon leaves.** The stable operation keeps a retry of the command to one admission only as long as
 the effect host remembers it: the reference host's memory is its process, so after a restart a retry can send again, and a host's `cancel`
-must be idempotent by `operation`. `already-sent` means the effect host has seen that operation, not that anything was delivered: after
-`failed` it means nothing more was sent, and a failed delivery needs a new command (the value's name is to change after the objective lands). An abandon
+must be idempotent by `operation`. `already-admitted` means the effect host has admitted that operation before, not that anything was
+delivered: after `failed` it means nothing more was sent, and a failed delivery needs a new command. An abandon
 hands its one `cancel` every source's handle, so the host routes each by `tool` and `source`. And an abandon closes nothing: when its lease
 ends or is released, a parked wait can be claimed and the run can go on, a new start included; a parked held start can still run once it is
 approved; and a start in flight can become `started` afterwards with no cancel asked, which only a retry of the abandon sends.
@@ -865,7 +865,7 @@ refuses `revision-changed` with nothing sent once another objective exists.
 
 | Command | Accepted when | Refused |
 | --- | --- | --- |
-| `create` | No objective, or a terminal one; an identity never used in the run; fewer than eight; over a terminal one, every wait of the run resumed or ended, those the last abandon left and any parked since | `objective-exists`, `objective-reused`, `goals-exhausted`, `wait-unresolved` (M10) |
+| `create` | No objective, or a terminal one; an identity never used in the run; fewer than eight; over an abandoned one, its abandon's deliveries journaled; over a terminal one, every wait of the run resumed or ended, those the last abandon left and any parked since | `objective-exists`, `objective-reused`, `goals-exhausted`, `abandon-unfinished` (#318 M-4), `wait-unresolved` (M10) |
 | `bind` | The head is the command's; the package read the head's accepted Plan, the steps named in it with origins, none closed; no earlier objective of the run bound that Plan | `plan-bound`, `head-changed`, `plan-invalid`, `step-settled`, `plan-reused` (M11) |
 | `achieve` | The package's finding read from the record at the command's revision; not blocked; a Plan bound; the head is the command's; the package found nothing (below); no wait of the run unresolved, a woken one included; every unsettled job, `unproven` or `started`, waived, and only unsettled ones | `revision-changed`, `objective-blocked`, `plan-unbound`, `head-changed`, a finding, `wait-pending`, `waiver-invalid`, `jobs-unsettled` |
 | `pause`, `resume` | Not paused; paused | `objective-paused`, `not-paused` |
@@ -892,7 +892,9 @@ under the same serialization as its commits, with the record surviving the store
   in that transaction, and journals it. `transition` is `{version, command, plan?, refused?, read?}`: a bind carries the steps the
   package read or what refused them; an achievement carries `read`, the revision of the record its finding was computed from, which
   must be the command's expected revision (`revision-changed` otherwise), and may carry a finding; the store journals a finding as the
-  refusal. It answers a pause and a resume with the run's lease as it holds it, and a repeat with the record as it is now.
+  refusal. It answers a pause and a resume with the run's lease as it holds it, and a repeat with the record as it is now. The store
+  trusts the transition it is handed: a direct caller of `commandGoal` can claim any `read` and any finding, so only the package's
+  `goalCommand` composes them from what it read (#318 L-11).
 - While the current objective is paused, `acquireLease` and `resumeWait` refuse `objective-paused` (M8). `renewLease`, `releaseLease`,
   fenced commits and the abandon's seizure are unchanged: a held lease runs on to its expiry, and paused is not stopped.
 - From `create` on, an unfenced commit of the run refuses `lease-required`, through `commit` and `commitHistory` alike, and after the
