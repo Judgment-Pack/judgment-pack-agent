@@ -47,8 +47,10 @@ MANIFEST_SHA = '333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da
 CONFIG_PATH = ROOT / '.github/ci-evidence.json'
 CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
 # The full mutation table's shards (#281): the workflow's matrix and the configuration's jobs. The gate
-# reads the jobs from the configuration, so the number is this repository's, not the kit's.
-SHARDS = 10
+# reads the jobs from the configuration, so the number is this repository's, not the kit's. 28 since #322,
+# at most 14 at a time.
+SHARDS = 28
+MAX_PARALLEL = 14
 # The race steps and their jobs: the two legs of one matrix job (#292), each its own key, name, check
 # and evidence in the configuration, the same way the mutation shards are.
 RACE_JOBS = ['go-race-a', 'go-race-b', 'go-race-c']
@@ -428,7 +430,10 @@ class Workflows(unittest.TestCase):
         configuration, under the job limit the table has to fit."""
         full = job_block(read('.github/workflows/mutation.yml'), 'full')
         shards = ', '.join(str(shard) for shard in range(1, SHARDS + 1))
-        self.assertIn('    strategy:\n      fail-fast: false\n      matrix:\n        shard: [%s]\n' % shards, full)
+        self.assertIn('    strategy:\n      fail-fast: false\n', full)
+        self.assertIn('      max-parallel: %d\n      matrix:\n        shard: [%s]\n' % (MAX_PARALLEL, shards), full)
+        # The plan's 20 jobs at a time are the organization's: the table leaves some for everything else.
+        self.assertLess(MAX_PARALLEL, 20)
         self.assertIn('    name: every row (shard ${{ matrix.shard }} of %d)\n' % SHARDS, full)
         self.assertIn('          SHARD: ${{ matrix.shard }}\n', full)
         self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/%d"' % SHARDS])
@@ -1085,15 +1090,34 @@ class AgentGate(AgentWorld):
         self.assertEqual(self.decide(), 'check-result')
 
     def test_a_shard_missing_or_the_pull_request_sample_run_on_main_refuses(self):
-        listing = self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']
-        listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'every row (shard 3 of %d)' % SHARDS]
-        listing['total_count'] = len(listing['jobs'])
-        self.assertEqual(self.decide(), 'job-coverage')
+        for shard in (3, SHARDS):
+            with self.subTest(shard=shard):
+                self.data = self.world()
+                listing = self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']
+                listing['jobs'] = [job for job in listing['jobs'] if job['name'] != 'every row (shard %d of %d)' % (shard, SHARDS)]
+                listing['total_count'] = len(listing['jobs'])
+                self.assertEqual(self.decide(), 'job-coverage')
         self.data = self.world()
         for job in self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']['jobs']:
             if job['conclusion'] == 'skipped':
                 job['conclusion'] = 'success'
         self.assertEqual(self.decide(), 'job-not-skipped')
+
+    def test_a_shard_cancelled_at_its_limit_refuses(self):
+        """A shard the job limit stopped says `cancelled`, and so does its run: whichever one says it, and
+        whichever shard it is, the release refuses. Every shard has to be green."""
+        for shard in (1, 6, SHARDS):
+            for run_says in ('cancelled', 'success'):
+                with self.subTest(shard=shard, run=run_says):
+                    self.data = self.world()
+                    listing = self.data['actions/runs/110/attempts/1/jobs?per_page=100&page=1']
+                    job = next(job for job in listing['jobs'] if job['name'] == 'every row (shard %d of %d)' % (shard, SHARDS))
+                    job.update(conclusion='cancelled', started_at='2026-10-30T09:00:05Z', completed_at='2026-10-30T11:00:20Z')
+                    self.data['actions/workflows/10/runs?head_sha=%s&per_page=100&page=1' % self.sha]['workflow_runs'][0]['conclusion'] = run_says
+                    self.data['actions/runs/110']['conclusion'] = run_says
+                    self.assertEqual(self.decide(), 'run-result' if run_says == 'cancelled' else 'job-result')
+                    if run_says == 'success':
+                        self.assertIn('every row (shard %d of %d): cancelled' % (shard, SHARDS), self.record['refusal']['detail'])
 
     def test_a_newer_failed_scheduled_mutation_run_refuses_and_a_green_one_is_not_evidence(self):
         runs = self.data['actions/workflows/10/runs?head_sha=%s&per_page=100&page=1' % self.sha]
@@ -1313,7 +1337,7 @@ class NightlyReport(unittest.TestCase):
     TITLE = 'The nightly mutation table did not pass'
 
     def job(self, shard, conclusion, started='2026-11-02T13:19:47Z', completed='2026-11-02T13:46:51Z'):
-        return {'name': 'every row (shard %d of 10)' % shard, 'conclusion': conclusion, 'started_at': started,
+        return {'name': 'every row (shard %d of %d)' % (shard, SHARDS), 'conclusion': conclusion, 'started_at': started,
                 'completed_at': completed}
 
     def run_step(self, jobs, open_issue=''):
@@ -1368,7 +1392,7 @@ class NightlyReport(unittest.TestCase):
         body = self.body_of(create)
         self.assertIn('c' * 40, body)
         self.assertIn('https://github.example/%s/actions/runs/555' % REPO, body)
-        self.assertIn('- every row (shard 4 of 10): failure\n- every row (shard 7 of 10): failure\n', body)
+        self.assertIn('- every row (shard 4 of %d): failure\n- every row (shard 7 of %d): failure\n' % (SHARDS, SHARDS), body)
         self.assertNotIn('shard 1 of', body)
         self.assertNotIn(self.REPORT, body)
 
@@ -1376,7 +1400,7 @@ class NightlyReport(unittest.TestCase):
         calls = self.run_step([self.job(4, 'failure')], open_issue='77')
         self.assertEqual(calls[-1][:3], ['issue', 'comment', '77'])
         self.assertEqual([call for call in calls if call[:2] == ['issue', 'create']], [])
-        self.assertIn('- every row (shard 4 of 10): failure', self.body_of(calls[-1]))
+        self.assertIn('- every row (shard 4 of %d): failure' % SHARDS, self.body_of(calls[-1]))
 
     def test_the_open_issue_is_found_by_its_exact_title(self):
         step = step_block(job_block(read('.github/workflows/mutation.yml'), 'report'), 'Open the issue, or comment on the open one')
@@ -1386,15 +1410,15 @@ class NightlyReport(unittest.TestCase):
         """The times of shard 4 of 4 on run 41371912091, which the job limit stopped."""
         calls = self.run_step([self.job(4, 'cancelled', '2026-11-02T01:19:45Z', '2026-11-02T03:20:03Z')])
         self.assertEqual(calls[-1][:2], ['issue', 'create'])
-        self.assertIn('- every row (shard 4 of 10): stopped at its 120-minute limit', self.body_of(calls[-1]))
+        self.assertIn('- every row (shard 4 of %d): stopped at its 120-minute limit' % SHARDS, self.body_of(calls[-1]))
 
     def test_any_other_conclusion_is_reported(self):
         calls = self.run_step([self.job(4, 'timed_out')])
-        self.assertIn('- every row (shard 4 of 10): timed_out', self.body_of(calls[-1]))
+        self.assertIn('- every row (shard 4 of %d): timed_out' % SHARDS, self.body_of(calls[-1]))
 
     def test_a_run_cancelled_by_hand_reports_nothing(self):
         """The times of run 41452025111, cancelled by hand. An unneeded run stays quietly cancelled."""
-        calls = self.run_step([self.job(shard, 'cancelled') for shard in range(1, 11)])
+        calls = self.run_step([self.job(shard, 'cancelled') for shard in range(1, SHARDS + 1)])
         self.assertEqual([call[0] for call in calls], ['api'])
         # A job cancelled before it started has no times; that is not a limit either.
         calls = self.run_step([self.job(1, 'cancelled', None, None), self.job(2, 'success')])

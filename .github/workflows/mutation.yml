@@ -8,7 +8,9 @@ name: Mutation check
 # release.yml takes the evidence of every full shard of a dispatch run on main at the tagged commit
 # (docs/releasing.md, docs/ci-evidence.md): a nightly run is not evidence. .github/ci-evidence.json lists
 # the shards too, and a change to their number changes both. Their number is measured against the slowest
-# runner (#281). That every row still applies (each row's text occurs once in
+# runner (#281, #322): 28, at most 14 at a time, so that with 150 rows more a shard takes about 45 minutes
+# on an average runner and its heaviest under 90 on the slowest, and the table leaves the plan's other
+# runners some room (docs/ci-evidence.md). That every row still applies (each row's text occurs once in
 # its file, each test it names exists) is the `mutation-rows` step of dev.json, which the CI `check`
 # job runs (on a push to main it may instead reuse the merged pull request's passed result, which
 # the release admits again): this workflow does not run it a second time.
@@ -64,14 +66,16 @@ jobs:
         run: node packages/harness/scripts/mutation-check.mjs --sample 5 --seed "$SEED"
 
   full:
-    name: every row (shard ${{ matrix.shard }} of 10)
+    name: every row (shard ${{ matrix.shard }} of 28)
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      # The plan runs 20 jobs at a time for the whole organization: 14 shards leave the rest for CI.
+      max-parallel: 14
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,9 +91,9 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
-          node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/10"
+          node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/28"
           # Past three quarters of the job's limit it is time to add shards (docs/ci-evidence.md).
-          if [ "$SECONDS" -gt 5400 ]; then echo "::warning::shard $SHARD of 10 took ${SECONDS}s, past three quarters of its 120-minute limit"; fi
+          if [ "$SECONDS" -gt 5400 ]; then echo "::warning::shard $SHARD of 28 took ${SECONDS}s, past three quarters of its 120-minute limit"; fi
 
       # Evidence is recorded for a dispatch on main: the nightly run is not evidence (the gate still
       # requires every run at the commit to have finished, and a newer one that did not pass refuses).
