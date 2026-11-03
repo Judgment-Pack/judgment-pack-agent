@@ -29,6 +29,7 @@ package runcontext
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"regexp"
 	"strings"
 )
 
@@ -90,6 +91,35 @@ func UnframeData(text, marker string) (string, bool) {
 		return "", false
 	}
 	return text[start+1 : len(text)-len(closing)], true
+}
+
+// resultMembers are the paths of a retained tool result that name the result's own members, not a tool's.
+var resultMembers = regexp.MustCompile(`^/(content|structuredContent|isError)$|^/content/[0-9]+(/(type|text|data|mimeType))?$`)
+
+// ListingNamesToolKeys reports whether this answer is a page of list_context that names a key a tool wrote (#302). A key
+// is a tool's text however it reads, so the test is where the key sits and not what it says. It reads the answer itself, so a
+// durable replay of the same answer decides the same way.
+func ListingNamesToolKeys(name string, result ToolResult) bool {
+	if name != "list_context" || result.StructuredContent == nil {
+		return false
+	}
+	for _, item := range result.StructuredContent.Get("items").Items() {
+		if item.Get("kind").Str() != "tool" || !strings.Contains(item.Get("contextId").Str(), ":result-") {
+			continue
+		}
+		for _, section := range item.Get("sections").Items() {
+			if !resultMembers.MatchString(section.Get("path").Str()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// AnswerIsData reports whether a tool's answer goes to the model as one data block: a reading tool's always, and
+// list_context's where it names a key a tool wrote. The durable record's class of the tool is not this, and does not move.
+func AnswerIsData(host *HostTool, name string, result ToolResult) bool {
+	return ReadingTool(host) || ListingNamesToolKeys(name, result)
 }
 
 // ReadingTool reports whether a tool's answer is retrieved text: every runtime tool (host nil), a

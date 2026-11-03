@@ -13794,6 +13794,102 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsARestart."
+  },
+  {
+   "name": "list_context L1 a page that names a tool's key is not data",
+   "file": "framing.ts",
+   "find": "  return readingTool(host) || listingNamesToolKeys(name, result)\n",
+   "replace": "  void listingNamesToolKeys\n  return readingTool(host)\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): AnswerIsData returns ReadingTool only; caught at ^TestListContextIsData in ./context and ^TestAToolsKey in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L2 every page is data",
+   "file": "framing.ts",
+   "find": "  if (name !== 'list_context') return false\n",
+   "replace": "  if (name === 'list_context') return true\n  if (name !== 'list_context') return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Bytes where no key is involved. Go twin (by hand): the same; caught at ^TestListContextIsData in ./context and ^TestAListingThatNames in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L3 any tool's answer is read as a listing",
+   "file": "framing.ts",
+   "find": "  if (name !== 'list_context') return false\n  const items",
+   "replace": "  const items",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same; caught at ^TestOnlyListContext in ./context."
+  },
+  {
+   "name": "list_context L4 a content part's other members are the result's own",
+   "file": "framing.ts",
+   "find": "^\\/content\\/[0-9]+(\\/(type|text|data|mimeType))?$/",
+   "replace": "^\\/content(\\/.*)?$/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L5 keys under structuredContent are the result's own",
+   "file": "framing.ts",
+   "find": "const RESULT_MEMBERS = /^\\/(content|structuredContent|isError)$|",
+   "replace": "const RESULT_MEMBERS = /^\\/(content|structuredContent|isError)$|^\\/structuredContent\\/|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "list_context L6 the vercel engine does not read the listing",
+   "file": "engines/vercel/loop.ts",
+   "find": "return answerIsData(tool, tool.name, projected) && tool.name !== PROPOSE_PACK_TOOL",
+   "replace": "return answerIsData(tool, '', projected) && tool.name !== PROPOSE_PACK_TOOL",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): eino's calls.go passes no name to AnswerIsData; caught at ^TestAToolsKey/api in ./adapter/durableapprovaltests."
+  },
+  {
+   "name": "list_context L7 the deepagents engine does not read the listing",
+   "file": "engines/deepagents/loop.ts",
+   "find": "return answerIsData(tool, tool.name, bounded) && tool.name !== PROPOSE_PACK_TOOL",
+   "replace": "return answerIsData(tool, '', bounded) && tool.name !== PROPOSE_PACK_TOOL",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go has no deepagents engine; its twin is L6's."
+  },
+  {
+   "name": "list_context L8 the agent wire does not read the listing",
+   "file": "engines/codex/index.ts",
+   "find": "answerIsData(route.host,route.name,projected)",
+   "replace": "answerIsData(route.host,'',projected)",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#302",
+   "note": "Go twin (by hand): the agent's invoke.go passes no name to AnswerIsData; caught at ^TestAToolsKey/native in ./adapter/durableapprovaltests."
   }
  ]
 }

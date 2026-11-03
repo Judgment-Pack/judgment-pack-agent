@@ -98,3 +98,28 @@ export function readingTool(host?: Pick<HostTool, 'effect' | 'delegation' | 'int
   if (host.effect !== undefined) return host.effect === 'read'
   return host.delegation === 'read' || host.delegation === 'research' || host.interaction === 'delegation'
 }
+
+/** The paths of a retained tool result that name the result's own members, not a tool's. */
+const RESULT_MEMBERS = /^\/(content|structuredContent|isError)$|^\/content\/[0-9]+(\/(type|text|data|mimeType))?$/
+
+/**
+ * Whether this answer is a page of `list_context` that names a key a tool wrote (#302). A key is a tool's text
+ * however it reads, so the test is where the key sits and not what it says. It reads the answer itself, so a
+ * durable replay of the same answer decides the same way.
+ */
+export function listingNamesToolKeys(name: string, result: { structuredContent?: unknown }): boolean {
+  if (name !== 'list_context') return false
+  const items = (result.structuredContent as { items?: unknown } | undefined)?.items
+  if (!Array.isArray(items)) return false
+  return items.some((item: { kind?: unknown; contextId?: unknown; sections?: { path?: unknown }[] }) =>
+    item?.kind === 'tool' && typeof item.contextId === 'string' && item.contextId.includes(':result-') &&
+    Array.isArray(item.sections) && item.sections.some(section => !(typeof section?.path === 'string' && RESULT_MEMBERS.test(section.path))))
+}
+
+/**
+ * Whether a tool's answer goes to the model as one data block: a reading tool's always, and `list_context`'s where
+ * it names a key a tool wrote. The durable record's class of the tool is not this, and does not move.
+ */
+export function answerIsData(host: Parameters<typeof readingTool>[0], name: string, result: { structuredContent?: unknown }): boolean {
+  return readingTool(host) || listingNamesToolKeys(name, result)
+}

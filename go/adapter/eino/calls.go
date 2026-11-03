@@ -282,7 +282,7 @@ func (t *turnState) runHost(ctx context.Context, tool runcontext.HostTool, args 
 	if err != nil {
 		return ran{}, err
 	}
-	if runcontext.ReadingTool(&tool) && tool.Name != turn.ProposePackTool {
+	if runcontext.AnswerIsData(&tool, tool.Name, bounded) && tool.Name != turn.ProposePackTool {
 		return t.asData(tool.Name, bounded, images), nil
 	}
 	return ran{result: bounded, images: images}, nil

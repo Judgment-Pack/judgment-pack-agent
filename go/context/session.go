@@ -1175,7 +1175,22 @@ func (c *SessionContext) TakeNotices() []contract.RunEvent {
 
 // Frame is frame: a reading tool's answer as the model is shown it, one data block closed by this
 // run's marker (framing.go).
-func (c *SessionContext) Frame(tool, text string) string { return FrameData(tool, text, c.Marker) }
+func (c *SessionContext) Frame(tool, text string) string {
+	// The offers' marker is live in the same request, so it does not stay in a result either (#298's L26). With no
+	// enrollment it is this one, and no byte moves.
+	if c.offerMarker != "" && c.offerMarker != c.Marker {
+		text = strings.Join(strings.Split(text, c.offerMarker), MarkerRemoved)
+	}
+	return FrameData(tool, text, c.Marker)
+}
+
+// approvalMarker is the marker an approval carries (ADR-0008): what the tool list was framed with.
+func (c *SessionContext) approvalMarker() string {
+	if c.offerMarker != "" {
+		return c.offerMarker
+	}
+	return c.Marker
+}
 
 // answered is what a tool result's output held: a framed answer read back to the value it framed
 // (agent#12).
@@ -1298,11 +1313,7 @@ func (b approvalBook) Ask(record contract.CheckpointApproval) bool {
 	if b.c.PauseClaim != nil && !b.c.PauseClaim() {
 		return false
 	}
-	// ADR-0008: what is carried is what the tool list was framed with.
-	marker := b.c.Marker
-	if b.c.offerMarker != "" {
-		marker = b.c.offerMarker
-	}
+	marker := b.c.approvalMarker()
 	record.Marker = &marker
 	// What the record holds selects the checkpoint's format (#275, MutateCheckpoint).
 	return b.c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": &record}) == nil

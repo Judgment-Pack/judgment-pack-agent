@@ -8,7 +8,7 @@ import { readModelQuestion } from '../../questions'
 import { questionFailureResult } from '../../questionFailure'
 import { assistantLanguageInstructions } from '../../host'
 import { separateImages } from '../../images'
-import { DATA_RULE, readingTool } from '../../framing'
+import { DATA_RULE, answerIsData } from '../../framing'
 import { GateViolation } from '../../toolGate'
 import type { AssistantEvent, AgentAssistantSession, RequestAgentAssistantSession, EngineSession, Engine, McpToolResult, ProposalNote } from '../../engine'
 import type { AgentTool, AgentEvent } from '../../agent'
@@ -225,7 +225,7 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           const answer = projected.structuredContent===undefined?textOf(projected):JSON.stringify(projected)
           // A reading tool's own answer travels as one data block closed by
           // this run's marker, as the vercel engine shows it (agent#12).
-          return {isError:result.isError===true,text:toolAnswered&&readingTool(route.host)?context.frame(route.name,answer):answer}
+          return {isError:result.isError===true,text:toolAnswered&&answerIsData(route.host,route.name,projected)?context.frame(route.name,answer):answer}
         }
       }), executionSignal)
       if ((!messages || partial.size || !final.trim()) && !(phase === 'author' && toolProposal !== null)) throw failureError('invalid-response','agent')
