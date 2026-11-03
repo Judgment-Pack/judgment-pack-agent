@@ -320,6 +320,8 @@ func (c *coordinator) parentSources() *runcontext.SourceGate {
 
 // coordinator is one response's delegation.
 type coordinator struct {
+	// opened says a parent open of this response was made with the host's decision, which takes it (#305).
+	opened      bool
 	inner       adapter.Adapter
 	run         *adapter.Run
 	profiles    []turn.TaskProfile

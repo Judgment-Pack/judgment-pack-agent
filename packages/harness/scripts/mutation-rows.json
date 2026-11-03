@@ -15080,6 +15080,162 @@
    "status": "caught",
    "origin": "agent#229",
    "note": "#229. Go twin (by hand, in run_job_conformance.go): caught at TestJobConformanceKitHoldsACancelAndAnAbandon."
+  },
+  {
+   "name": "approval A3 the next parent invocation takes the decision again",
+   "file": "delegation.ts",
+   "find": "        opened=true\n        const parent=bind(",
+   "replace": "        const parent=bind(",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#305: the response's first open takes the decision, and a later parent open is not given it again. Go twin (by hand): drop c.opened = true in parentInvocation; caught at ^TestAnApprovedContinuationThatDelegatesGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "host ids H1 a host document under a package id is retained",
+   "file": "context/session.ts",
+   "find": " if(session.context?.documents?.some(document=>packageDocumentId(document.id)))throw authoredFailure(",
+   "replace": " if(false&&session.context?.documents?.some(document=>packageDocumentId(document.id)))throw authoredFailure(",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311. Go twin (by hand): drop the refusal before Initialize; caught at ^TestAHostDocumentUnderAPackageIDIsRefused in ./context."
+  },
+  {
+   "name": "host ids H2 a package id only at the start",
+   "file": "framing.ts",
+   "find": "const PACKAGE_DOCUMENT_ID = /(^|:)(request|",
+   "replace": "const PACKAGE_DOCUMENT_ID = /^(request|",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: notes:request. Go twin (by hand): the same regular expression; caught at ^TestAHostDocumentUnderAPackageIDIsRefused in ./context."
+  },
+  {
+   "name": "host ids H3 a draft's row is the package's own",
+   "file": "framing.ts",
+   "find": "const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|task-result-",
+   "replace": "const OWN_DOCUMENT = /:(request|current-request|completed-steps|execution-operations-index|operation-[^:]+|proposal-state:[0-9a-f]{64}|task-result-",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: a draft's label holds the host's document id. Go twin (by hand): the same regular expression; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H4 the current-request row keeps a host's members",
+   "file": "context/session.ts",
+   "find": "value:{message:currentRequest.message,input:currentRequest.input}})",
+   "replace": "value:currentRequest})",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311: TypeScript only; Go's row is a struct of the two members."
+  },
+  {
+   "name": "host ids H5 an operation id may hold a colon",
+   "file": "framing.ts",
+   "find": "|operation-[^:]+|task-result-[^:]+|task-proposal-[^:]+)$/\nconst RESULT_DOCUMENT",
+   "replace": "|operation-.+|task-result-[^:]+|task-proposal-[^:]+)$/\nconst RESULT_DOCUMENT",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O10). Go twin (by hand): the same in ownDocument; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H6 a result id need not end",
+   "file": "framing.ts",
+   "find": "const RESULT_DOCUMENT = /:result-[^:]+$/",
+   "replace": "const RESULT_DOCUMENT = /:result-[^:]+/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O11). Go twin (by hand): the same in resultDocument; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H7 a result row with no sections is the package's",
+   "file": "framing.ts",
+   "find": "    if (!Array.isArray(item.sections)) return true\n",
+   "replace": "    if (!Array.isArray(item.sections)) return false\n",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O13). Go twin (by hand): the same; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "host ids H8 a digest suffix need not end the id",
+   "file": "framing.ts",
+   "find": "const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}$/",
+   "replace": "const CONTEXT_DIGEST_SUFFIX = /:[0-9a-f]{16}/",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-309-311",
+   "note": "#311's L42 (O15). Go twin (by hand): the same in contextDigestSuffix; caught at ^TestListContextIsData in ./context."
+  },
+  {
+   "name": "approval A4 a later open withholds any decided approval's decision",
+   "file": "execution/state.ts",
+   "find": " return execution.approval.callId===given.callId&&execution.approval.state!=='asked'?undefined:given\n",
+   "replace": " return execution.approval.state!=='asked'?undefined:given\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-311",
+   "note": "#312's MEDIUM-1: a Plan decision travels in the same member. Go twin (by hand): drop the call id test in DecisionForParentOpen; caught at ^TestDecisionForParentOpen in ./context."
+  },
+  {
+   "name": "approval A5 the first open is not given a decision already taken",
+   "file": "execution/state.ts",
+   "find": " if(given===undefined||!opened||execution?.approval===undefined)return given\n",
+   "replace": " if(given===undefined||execution?.approval===undefined)return given\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-311",
+   "note": "#312's LOW-3: a decision given again is refused, as before #305's reset. Go twin (by hand): drop the opened test; caught at ^TestADecisionGivenAgainIsRefused in ./adapter/continuationtests and ^TestDecisionForParentOpen in ./context."
+  },
+  {
+   "name": "approval A6 a parent open is always given the decision",
+   "file": "delegation.ts",
+   "find": "        const approval=decisionForParentOpen(session.context?.approval,execution,opened)\n",
+   "replace": "        const approval=session.context?.approval\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-311",
+   "note": "#305. Go twin (by hand): pass input.Approval through; caught at ^TestAnApprovedContinuationThatDelegatesGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "host ids H9 only the first document is held to the refusal",
+   "file": "context/session.ts",
+   "find": " if(session.context?.documents?.some(document=>packageDocumentId(document.id)))",
+   "replace": " if(session.context?.documents?.slice(0,1).some(document=>packageDocumentId(document.id)))",
+   "tests": [
+    "framing.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#305-311",
+   "note": "#312's LOW-4. Go twin (by hand): break after the first document; caught at ^TestEveryHostDocumentIsHeldToTheRefusal in ./context."
   }
  ]
 }

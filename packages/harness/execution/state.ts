@@ -295,3 +295,14 @@ export function extendExecution(checkpoint:ExecutionCheckpoint,interrupted=false
 }
 export class RequestCapRefusal extends AIFailureError {constructor(code:'configuration'|'stale-state'='configuration'){super({...failure(code,'context','not-started'),detail:'The fixed request cap must match the admitted API execution and cannot change after initialization.'})}}
 export class ExecutionPaused extends Error {readonly failureCode='request-limit';constructor(){super('Work paused at the approved request limit. Continue with an additional allowance, or keep the completed work.')}}
+
+/**
+ * The decision a coordinator's parent open is given (#305). The response's first open takes the host's decision and
+ * refuses it where it is stale, as any open does. A later open of the same response is given it only where it is not
+ * the act call's decision that the checkpoint shows taken: a Plan decision, or one for another call, is still given,
+ * and refused there if it is stale.
+ */
+export function decisionForParentOpen<T extends {callId?:unknown}>(given:T|undefined,execution:{approval?:{callId:string;state:string}}|undefined,opened:boolean):T|undefined{
+ if(given===undefined||!opened||execution?.approval===undefined)return given
+ return execution.approval.callId===given.callId&&execution.approval.state!=='asked'?undefined:given
+}
