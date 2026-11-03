@@ -320,12 +320,7 @@ export class RunWriter {
  })}
  get hasTaskSteps(){return this.taskRoot!==undefined}
  private taskState(){const root=this.taskRoot?this.taskScopes.get(this.taskRoot)?.snapshot():undefined;if(!root)throw new ContinuationIdentityChanged();return this.decorate(root)}
- private successfulTaskChild(state:ExecutionCheckpoint,child:import('../taskSteps').TaskChildBinding,task:DelegatedTask):boolean{
-  if(task.id!==child.task||task.state!=='complete'||task.failure||task.problem||task.partial||task.reused||!task.report||canonicalJSON(task.subagent)!==canonicalJSON(child.profile))return false
-  const checkpoints=state.durable?.children.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task)??[]
-  const physical=state.durable?.dispatches.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task&&(row.kind==='model'||row.kind==='agent'))??[]
-  return checkpoints.length===1&&checkpoints[0]!.checkpoint.status==='complete'&&physical.some(row=>row.state==='result'&&!row.failure)&&physical.every(row=>row.state==='result'&&(!row.failure||row.failure.outcome==='refused'))
- }
+ private successfulTaskChild(state:ExecutionCheckpoint,child:import('../taskSteps').TaskChildBinding,task:DelegatedTask):boolean{return succeededTaskChild(state,child,task)}
  /** Only the coordinator's terminal task publisher invokes this path, after physical results. */
  commitTaskResult(binding:DurableBinding,event:Extract<AssistantEvent,{type:'delegated_task'}>,signal?:AbortSignal):Promise<AssistantEvent>{return this.enqueue(async()=>{
   const row=this.taskSchedule?.rows.find(row=>row.child?.task===event.task.id)
@@ -340,34 +335,8 @@ export class RunWriter {
   const saved=this.taskSchedule?.rows.filter(row=>row.child?.result)??[]
   if(!saved.length)return
   const store=this.store as Partial<HistoryRunStore>;if(store.historyVersion!==1)return
-  const invalid=():never=>{throw new ContinuationIdentityChanged()},port=store as HistoryRunStore,head=readHistoryHead(await port.readHistoryHead(this.id,signal))
-  if(head.runId!==this.id||head.executionRevision!==this.revision||!this.acknowledgedCheckpoint||canonicalJSON(head.checkpoint)!==canonicalJSON({digest:historyBytesDigest(this.acknowledgedCheckpoint),bytes:this.acknowledgedCheckpoint.length}))return invalid()
-  let bytes=0,sequence=0,eventCount=0,previous:string|null=null
-  const verified=new Map<string,TaskCompletionEvidence>()
-  const object=async(ref:HistoryObjectRef)=>{if(!validHistoryRef(ref)||(bytes+=ref.bytes)>HISTORY_TOTAL_BYTES)return invalid();const page=await port.readHistoryObject({kind:'run',id:this.id},head.revision,ref.digest,0,ref.bytes,signal);if(page.digest!==ref.digest||page.offset!==0||page.total!==ref.bytes||page.value.length!==ref.bytes||page.nextOffset!==ref.bytes||page.hasMore||historyBytesDigest(page.value)!==ref.digest)return invalid();return page.value}
-  while(sequence<head.commitCount){
-   if(sequence>=HISTORY_MAX_ROWS)return invalid()
-   const page=await port.readHistoryPage(this.id,head.revision,sequence,100,signal)
-   if(Object.keys(page).sort().join(',')!=='afterSequence,hasMore,items,nextSequence,revision,total'||page.revision!==head.revision||page.afterSequence!==sequence||!Array.isArray(page.items)||!page.items.length||page.items.length>100||page.total!==head.commitCount||page.nextSequence!==sequence+page.items.length||page.hasMore!==(page.nextSequence<head.commitCount))return invalid()
-   for(const input of page.items){
-    const transaction=readHistoryEntry(input);if(transaction.sequence!==++sequence||transaction.previousDigest!==previous||transaction.eventStart!==eventCount+1||(eventCount+=transaction.eventCount)>HISTORY_MAX_EVENTS)return invalid();previous=transaction.digest
-    for(const row of saved){const child=row.child!,result=child.result!;if(transaction.commitId!==result.commitId)continue
-     if(verified.has(row.id)||!transaction.checkpoint)return invalid()
-     const state=readExecution(JSON.parse(historyText(await object(transaction.checkpoint))))
-     if(!state||state.id!==this.id||canonicalJSON(state.planState?.taskSchedule?.rows.find(item=>item.id===row.id)?.child)!==canonicalJSON(child))return invalid()
-     let matched=false
-     for(const ref of transaction.events){const raw=await object(ref);if(historyBytesDigest(raw)!==result.eventDigest)continue;const envelope=readStoredRunEvent(raw),event=envelope.event
-      if(matched||scopeKey(envelope.scope)!==scopeKey(binding.scope)||event.type!=='delegated_task'||digest(canonicalJSON(event.task))!==result.resultDigest||!this.successfulTaskChild(state,child,event.task)||state.durable!.children.find(item=>item.scope.execution===child.execution&&item.scope.task===child.task)?.checkpoint.digest!==result.checkpointDigest)return invalid()
-      matched=true
-     }
-     if(!matched)return invalid()
-     verified.set(row.id,{step:row.id,task:child.task,planRevision:child.planRevision,...result})
-    }
-   }
-  }
-  const again=readHistoryHead(await port.readHistoryHead(this.id,signal)),identity=(value:typeof head)=>canonicalJSON([value.runId,value.executionRevision,value.commitCount,value.eventCount,value.root,value.checkpoint])
-  if(verified.size!==saved.length||previous!==head.root||eventCount!==head.eventCount||identity(again)!==identity(head))return invalid()
-  for(const [step,result]of verified)this.taskResults.set(step,result)
+  if(!this.acknowledgedCheckpoint)throw new ContinuationIdentityChanged()
+  for(const [step,result]of await verifyTaskEvidence(store as HistoryRunStore,{run:this.id,revision:this.revision,checkpoint:this.acknowledgedCheckpoint,saved,scope:binding.scope},signal))this.taskResults.set(step,result)
  })}
  /** @internal The existing native coordinator supplies its own policy and per-execution counters. */
  attachNativeTaskEnvelope(binding:DurableBinding,source:NativeTaskEnvelopeSource){
@@ -1023,6 +992,46 @@ export function childDurability<T extends EngineSession>(session:T,parent:Engine
  const binding=parent.context?.[durableOwner];if(!binding)return session
  const child:DurableBinding={writer:binding.writer,scope:{execution:task,role:'author',task},root:false}
  return {...session,context:{...session.context,runStore:undefined,usageBudget:parent.context?.usageBudget,[durableOwner]:child,execution:binding.writer.checkpoint?.durable?.children.find(row=>row.scope.task===task)?.checkpoint,checkpoint:state=>binding.writer.save(child,state,session.signal)}}
+}
+/** The writer's history check of delegated evidence (#183), for a reader that holds no writer: #230 (M16) re-verifies an
+ * objective's delegated step by the same reading. Every saved child result must be proven by the exact original history
+ * transaction that recorded it, and the history must be the run's whole, unchanged, at the head given. Anything else is
+ * ContinuationIdentityChanged. */
+export async function verifyTaskEvidence(store:HistoryRunStore,held:{run:string;revision:string|null;checkpoint:Uint8Array;saved:readonly import('../taskSteps').TaskStepRow[];scope:DurableScope},signal?:AbortSignal):Promise<Map<string,TaskCompletionEvidence>>{
+  const invalid=():never=>{throw new ContinuationIdentityChanged()},port=store,head=readHistoryHead(await port.readHistoryHead(held.run,signal))
+  if(head.runId!==held.run||head.executionRevision!==held.revision||canonicalJSON(head.checkpoint)!==canonicalJSON({digest:historyBytesDigest(held.checkpoint),bytes:held.checkpoint.length}))return invalid()
+  let bytes=0,sequence=0,eventCount=0,previous:string|null=null
+  const verified=new Map<string,TaskCompletionEvidence>()
+  const object=async(ref:HistoryObjectRef)=>{if(!validHistoryRef(ref)||(bytes+=ref.bytes)>HISTORY_TOTAL_BYTES)return invalid();const page=await port.readHistoryObject({kind:'run',id:held.run},head.revision,ref.digest,0,ref.bytes,signal);if(page.digest!==ref.digest||page.offset!==0||page.total!==ref.bytes||page.value.length!==ref.bytes||page.nextOffset!==ref.bytes||page.hasMore||historyBytesDigest(page.value)!==ref.digest)return invalid();return page.value}
+  while(sequence<head.commitCount){
+   if(sequence>=HISTORY_MAX_ROWS)return invalid()
+   const page=await port.readHistoryPage(held.run,head.revision,sequence,100,signal)
+   if(Object.keys(page).sort().join(',')!=='afterSequence,hasMore,items,nextSequence,revision,total'||page.revision!==head.revision||page.afterSequence!==sequence||!Array.isArray(page.items)||!page.items.length||page.items.length>100||page.total!==head.commitCount||page.nextSequence!==sequence+page.items.length||page.hasMore!==(page.nextSequence<head.commitCount))return invalid()
+   for(const input of page.items){
+    const transaction=readHistoryEntry(input);if(transaction.sequence!==++sequence||transaction.previousDigest!==previous||transaction.eventStart!==eventCount+1||(eventCount+=transaction.eventCount)>HISTORY_MAX_EVENTS)return invalid();previous=transaction.digest
+    for(const row of held.saved){const child=row.child!,result=child.result!;if(transaction.commitId!==result.commitId)continue
+     if(verified.has(row.id)||!transaction.checkpoint)return invalid()
+     const state=readExecution(JSON.parse(historyText(await object(transaction.checkpoint))))
+     if(!state||state.id!==held.run||canonicalJSON(state.planState?.taskSchedule?.rows.find(item=>item.id===row.id)?.child)!==canonicalJSON(child))return invalid()
+     let matched=false
+     for(const ref of transaction.events){const raw=await object(ref);if(historyBytesDigest(raw)!==result.eventDigest)continue;const envelope=readStoredRunEvent(raw),event=envelope.event
+      if(matched||scopeKey(envelope.scope)!==scopeKey(held.scope)||event.type!=='delegated_task'||digest(canonicalJSON(event.task))!==result.resultDigest||!succeededTaskChild(state,child,event.task)||state.durable!.children.find(item=>item.scope.execution===child.execution&&item.scope.task===child.task)?.checkpoint.digest!==result.checkpointDigest)return invalid()
+      matched=true
+     }
+     if(!matched)return invalid()
+     verified.set(row.id,{step:row.id,task:child.task,planRevision:child.planRevision,...result})
+    }
+   }
+  }
+  const again=readHistoryHead(await port.readHistoryHead(held.run,signal)),identity=(value:typeof head)=>canonicalJSON([value.runId,value.executionRevision,value.commitCount,value.eventCount,value.root,value.checkpoint])
+  if(verified.size!==held.saved.length||previous!==head.root||eventCount!==head.eventCount||identity(again)!==identity(head))return invalid()
+ return verified
+}
+function succeededTaskChild(state:ExecutionCheckpoint,child:import('../taskSteps').TaskChildBinding,task:DelegatedTask):boolean{
+  if(task.id!==child.task||task.state!=='complete'||task.failure||task.problem||task.partial||task.reused||!task.report||canonicalJSON(task.subagent)!==canonicalJSON(child.profile))return false
+  const checkpoints=state.durable?.children.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task)??[]
+  const physical=state.durable?.dispatches.filter(row=>row.scope.execution===child.execution&&row.scope.task===child.task&&(row.kind==='model'||row.kind==='agent'))??[]
+  return checkpoints.length===1&&checkpoints[0]!.checkpoint.status==='complete'&&physical.some(row=>row.state==='result'&&!row.failure)&&physical.every(row=>row.state==='result'&&(!row.failure||row.failure.outcome==='refused'))
 }
 export function scopeFor(binding:DurableBinding,role:string):DurableBinding{return {...binding,scope:{...binding.scope,role}}}
 export const hostSucceeded=(result:McpToolResult)=>result.isError!==true

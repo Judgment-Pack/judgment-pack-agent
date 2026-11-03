@@ -603,6 +603,12 @@ func (m *MemoryRunStore) AcquireLease(ctx context.Context, request LeaseAcquire)
 				return err
 			}
 		}
+		// #230 (M8): a paused objective's run is leased by no acquisition.
+		if validStorageID(request.Resource) {
+			if err := m.goals.AdmitLease(request.Resource); err != nil {
+				return err
+			}
+		}
 		lease, err = m.leases.acquireWithin(request, m.runs[request.Resource].head.Revision, m.waits.Ceiling(request.Resource))
 		return err
 	})

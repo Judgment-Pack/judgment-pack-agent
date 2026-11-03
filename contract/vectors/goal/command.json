@@ -1,0 +1,782 @@
+{
+ "description": "Handwritten goal commands of every kind with the digests a repeat must match, the store's transitions with every finding, inspections and deliveries; commands and transitions both readers refuse. refused fails the schema, and readerRefused passes it and only the readers hold it.",
+ "schema": "run-goal.json#/$defs/command",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/goal.ts"
+  ]
+ },
+ "items": [
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-1",
+   "actor": "person-1",
+   "expectedRevision": null,
+   "kind": "create",
+   "objective": "objective-1"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-2",
+   "actor": "person-1",
+   "expectedRevision": 1,
+   "kind": "pause"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-5",
+   "actor": "person-1",
+   "expectedRevision": 2,
+   "kind": "block",
+   "condition": "waiting-on-data"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-6",
+   "actor": "person-1",
+   "expectedRevision": 3,
+   "kind": "unblock"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-7",
+   "actor": "person-1",
+   "expectedRevision": 4,
+   "kind": "bind",
+   "steps": [
+    "step-2",
+    "step-1"
+   ],
+   "head": {
+    "revision": "rev-7",
+    "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+   }
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-8",
+   "actor": "person-1",
+   "expectedRevision": 5,
+   "kind": "achieve",
+   "head": {
+    "revision": "rev-7",
+    "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+   },
+   "waive": [
+    "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+   ]
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-3",
+   "actor": "person-1",
+   "expectedRevision": 1,
+   "kind": "resume"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-11",
+   "actor": "person-1",
+   "expectedRevision": 1,
+   "kind": "abandon"
+  },
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-13",
+   "actor": "person-1",
+   "expectedRevision": 5,
+   "kind": "achieve",
+   "head": {
+    "revision": "rev-7",
+    "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+   }
+  }
+ ],
+ "digests": [
+  "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b",
+  "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d",
+  "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a",
+  "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812",
+  "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc",
+  "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb",
+  "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c",
+  "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c",
+  "sha256:6bc5ead5929b9f0285e0f34dd9fb8be4acce5afe5e6dc6f054895ea87217ed0a"
+ ],
+ "refused": [
+  {
+   "problem": "version 2",
+   "record": {
+    "version": 2,
+    "resource": "run-g",
+    "command": "cmd-1",
+    "actor": "person-1",
+    "expectedRevision": null,
+    "kind": "create",
+    "objective": "objective-1"
+   }
+  },
+  {
+   "problem": "an unknown kind",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 1,
+    "kind": "replace"
+   }
+  },
+  {
+   "problem": "revision 0",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 0,
+    "kind": "pause"
+   }
+  },
+  {
+   "problem": "no steps",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   }
+  },
+  {
+   "problem": "a step twice",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-1",
+     "step-1"
+    ],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   }
+  },
+  {
+   "problem": "a job waived twice",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   }
+  },
+  {
+   "problem": "an unknown member",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 1,
+    "kind": "pause",
+    "why": "x"
+   }
+  },
+  {
+   "problem": "a revision that is not whole",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 1.5,
+    "kind": "pause"
+   }
+  }
+ ],
+ "readerRefused": [
+  {
+   "problem": "a create without its objective",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-1",
+    "actor": "person-1",
+    "expectedRevision": null,
+    "kind": "create"
+   }
+  },
+  {
+   "problem": "a bind without its head",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-2",
+     "step-1"
+    ]
+   }
+  },
+  {
+   "problem": "a pause carrying steps",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 1,
+    "kind": "pause",
+    "steps": [
+     "step-1"
+    ]
+   }
+  },
+  {
+   "problem": "an achievement carrying a condition",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ],
+    "condition": "x"
+   }
+  },
+  {
+   "problem": "a block without its condition",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-5",
+    "actor": "person-1",
+    "expectedRevision": 2,
+    "kind": "block"
+   }
+  },
+  {
+   "problem": "a resume carrying an objective",
+   "record": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-3",
+    "actor": "person-1",
+    "expectedRevision": 1,
+    "kind": "resume",
+    "objective": "objective-9"
+   }
+  }
+ ],
+ "transitions": [
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-2",
+     "step-1"
+    ],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   },
+   "plan": {
+    "id": "accepted-plan",
+    "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "steps": [
+     {
+      "step": "step-1",
+      "index": 0
+     },
+     {
+      "step": "step-2",
+      "index": 1
+     }
+    ]
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-2",
+     "step-1"
+    ],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   },
+   "refused": {
+    "reason": "head-changed"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-2",
+     "step-1"
+    ],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   },
+   "refused": {
+    "reason": "plan-invalid"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-7",
+    "actor": "person-1",
+    "expectedRevision": 4,
+    "kind": "bind",
+    "steps": [
+     "step-2",
+     "step-1"
+    ],
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+   },
+   "refused": {
+    "reason": "step-settled",
+    "step": "step-1"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "refused": {
+    "reason": "decision-pending"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "refused": {
+    "reason": "lineage-changed"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "refused": {
+    "reason": "step-incomplete",
+    "step": "step-1"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "refused": {
+    "reason": "evidence-refused",
+    "step": "step-1"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-8",
+    "actor": "person-1",
+    "expectedRevision": 5,
+    "kind": "achieve",
+    "head": {
+     "revision": "rev-7",
+     "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "waive": [
+     "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+   },
+   "refused": {
+    "reason": "history-unsupported",
+    "step": "step-1"
+   }
+  }
+ ],
+ "transitionsRefused": [
+  {
+   "problem": "a finding the package cannot make",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-8",
+     "actor": "person-1",
+     "expectedRevision": 5,
+     "kind": "achieve",
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     "waive": [
+      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+     ]
+    },
+    "refused": {
+     "reason": "jobs-unsettled"
+    }
+   }
+  }
+ ],
+ "transitionsReaderRefused": [
+  {
+   "problem": "a bind with its steps and a refusal",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-7",
+     "actor": "person-1",
+     "expectedRevision": 4,
+     "kind": "bind",
+     "steps": [
+      "step-2",
+      "step-1"
+     ],
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    },
+    "plan": {
+     "id": "accepted-plan",
+     "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "steps": [
+      {
+       "step": "step-1",
+       "index": 0
+      },
+      {
+       "step": "step-2",
+       "index": 1
+      }
+     ]
+    },
+    "refused": {
+     "reason": "head-changed"
+    }
+   }
+  },
+  {
+   "problem": "a bind with neither",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-7",
+     "actor": "person-1",
+     "expectedRevision": 4,
+     "kind": "bind",
+     "steps": [
+      "step-2",
+      "step-1"
+     ],
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a pause with steps",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "plan": {
+     "id": "accepted-plan",
+     "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "steps": [
+      {
+       "step": "step-1",
+       "index": 0
+      },
+      {
+       "step": "step-2",
+       "index": 1
+      }
+     ]
+    }
+   }
+  },
+  {
+   "problem": "a pause with a refusal",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "refused": {
+     "reason": "head-changed"
+    }
+   }
+  },
+  {
+   "problem": "an achievement with steps",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-8",
+     "actor": "person-1",
+     "expectedRevision": 5,
+     "kind": "achieve",
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     "waive": [
+      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+     ]
+    },
+    "plan": {
+     "id": "accepted-plan",
+     "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "steps": [
+      {
+       "step": "step-1",
+       "index": 0
+      },
+      {
+       "step": "step-2",
+       "index": 1
+      }
+     ]
+    }
+   }
+  },
+  {
+   "problem": "a step on a refusal about the head",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-8",
+     "actor": "person-1",
+     "expectedRevision": 5,
+     "kind": "achieve",
+     "head": {
+      "revision": "rev-7",
+      "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+     },
+     "waive": [
+      "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+     ]
+    },
+    "refused": {
+     "reason": "head-changed",
+     "step": "step-1"
+    }
+   }
+  }
+ ],
+ "inspects": [
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "look-1",
+   "actor": "dashboard"
+  }
+ ],
+ "deliveries": [
+  {
+   "version": 1,
+   "resource": "run-g",
+   "command": "cmd-11",
+   "deliveries": [
+    {
+     "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+     "delivery": "no-handle"
+    },
+    {
+     "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+     "delivery": "sent"
+    },
+    {
+     "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+     "delivery": "undelivered"
+    },
+    {
+     "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+     "delivery": "settled"
+    },
+    {
+     "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+     "delivery": "contradicted"
+    },
+    {
+     "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+     "delivery": "acknowledged"
+    }
+   ]
+  }
+ ],
+ "deliveryDigests": [
+  "sha256:c3edc2ac1ce098734df4fa56e675582eecc63a1bf39c2982a1ad7afd133fd747"
+ ]
+}

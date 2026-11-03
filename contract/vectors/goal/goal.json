@@ -1,0 +1,5096 @@
+{
+ "description": "Handwritten goal records: every state, every member and every journaled outcome, and records both readers refuse. Digests are the SHA-256 of canonical JSON, computed apart from the package. The names of the items, in order, are in names; refused fails the schema, and readerRefused passes it and only the readers hold it.",
+ "schema": "run-goal.json",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/storage/goal.ts"
+  ]
+ },
+ "names": [
+  "created",
+  "paused, with two refusals",
+  "blocked under a pause",
+  "bound to the accepted Plan",
+  "achieved with a waiver and every kind of failure",
+  "abandoned: what it left, and two attempts' deliveries",
+  "a second objective over an abandoned one",
+  "inspected, with entries discarded",
+  "a journal of every refusal it can hold"
+ ],
+ "items": [
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 2,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2,
+     "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2,
+     "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 3,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "blocked",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     },
+     "blocked": {
+      "command": "cmd-5",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "condition": "waiting-on-data"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2,
+     "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2,
+     "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 5,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "paused": {
+      "command": "cmd-2",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z"
+     },
+     "plan": {
+      "id": "accepted-plan",
+      "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "steps": [
+       {
+        "step": "step-1",
+        "index": 0
+       },
+       {
+        "step": "step-2",
+        "index": 1
+       }
+      ],
+      "bound": {
+       "command": "cmd-7",
+       "actor": "person-1",
+       "at": "2026-01-01T00:06:00.000Z"
+      }
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2,
+     "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2,
+     "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+    },
+    {
+     "command": "cmd-6",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:05:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 4,
+     "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+    },
+    {
+     "command": "cmd-7",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:06:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 5,
+     "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 6,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "achieved",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "plan": {
+      "id": "accepted-plan",
+      "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "steps": [
+       {
+        "step": "step-1",
+        "index": 0
+       },
+       {
+        "step": "step-2",
+        "index": 1
+       }
+      ],
+      "bound": {
+       "command": "cmd-7",
+       "actor": "person-1",
+       "at": "2026-01-01T00:06:00.000Z"
+      }
+     },
+     "achieved": {
+      "command": "cmd-8",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "head": {
+       "revision": "rev-7",
+       "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "waived": [
+       "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      ],
+      "unsuccessful": [
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "completed",
+        "outcome": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "state": "completed",
+        "outcome": "cancelled"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "state": "completed",
+        "outcome": "unknown"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "state": "not-started"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "state": "not-started",
+        "contradicted": true
+       }
+      ]
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-2",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+    },
+    {
+     "command": "cmd-3",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:02:30.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 2,
+     "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+    },
+    {
+     "command": "cmd-4",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:03:00.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 2,
+     "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+    },
+    {
+     "command": "cmd-5",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:04:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+    },
+    {
+     "command": "cmd-6",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:05:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 4,
+     "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+    },
+    {
+     "command": "cmd-7",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:06:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 5,
+     "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+    },
+    {
+     "command": "cmd-10",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:07:00.000Z",
+     "objective": "objective-1",
+     "outcome": "evidence-refused",
+     "revision": 5,
+     "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+     "step": "step-2"
+    },
+    {
+     "command": "cmd-8",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:08:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 6,
+     "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 2,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "abandoned",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "abandoned": {
+      "command": "cmd-11",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "waits": [
+       {
+        "wait": "wait-a",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-b",
+        "reason": "budget",
+        "state": "woken"
+       },
+       {
+        "wait": "wait-c",
+        "reason": "question",
+        "state": "timed-out"
+       },
+       {
+        "wait": "wait-d",
+        "reason": "reauthorization",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-e",
+        "reason": "job",
+        "state": "parked"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       }
+      ]
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:05.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "no-handle"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "sent"
+      }
+     ]
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:11:00.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "already-sent"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "failed"
+      },
+      {
+       "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+       "delivery": "undelivered"
+      },
+      {
+       "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+       "delivery": "settled"
+      },
+      {
+       "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+       "delivery": "contradicted"
+      },
+      {
+       "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+       "delivery": "acknowledged"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 3,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "abandoned",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     },
+     "abandoned": {
+      "command": "cmd-11",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "waits": [
+       {
+        "wait": "wait-a",
+        "reason": "approval",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-b",
+        "reason": "budget",
+        "state": "woken"
+       },
+       {
+        "wait": "wait-c",
+        "reason": "question",
+        "state": "timed-out"
+       },
+       {
+        "wait": "wait-d",
+        "reason": "reauthorization",
+        "state": "parked"
+       },
+       {
+        "wait": "wait-e",
+        "reason": "job",
+        "state": "parked"
+       }
+      ],
+      "jobs": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "unproven"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "state": "started"
+       }
+      ]
+     }
+    },
+    {
+     "id": "objective-2",
+     "state": "active",
+     "created": {
+      "command": "cmd-12",
+      "actor": "person-1",
+      "at": "2026-01-01T00:12:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 2,
+     "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:10:05.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "no-handle"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "sent"
+      }
+     ]
+    },
+    {
+     "command": "cmd-11",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:11:00.000Z",
+     "objective": "objective-1",
+     "outcome": "delivered",
+     "revision": 2,
+     "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+     "deliveries": [
+      {
+       "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+       "delivery": "already-sent"
+      },
+      {
+       "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+       "delivery": "failed"
+      },
+      {
+       "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+       "delivery": "undelivered"
+      },
+      {
+       "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+       "delivery": "settled"
+      },
+      {
+       "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+       "delivery": "contradicted"
+      },
+      {
+       "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+       "delivery": "acknowledged"
+      }
+     ]
+    },
+    {
+     "command": "cmd-12",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:12:00.000Z",
+     "objective": "objective-2",
+     "outcome": "accepted",
+     "revision": 3,
+     "digest": "sha256:d47bff5b7dafc798dd4554be70aaee663c2be8b5a87434ea10d6e759870b5937"
+    }
+   ]
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    }
+   ],
+   "discarded": 3,
+   "inspections": {
+    "count": 4,
+    "last": {
+     "command": "look-4",
+     "actor": "dashboard",
+     "at": "2026-01-01T00:20:00.000Z"
+    }
+   }
+  },
+  {
+   "version": 1,
+   "kind": "goal",
+   "resource": "run-g",
+   "revision": 1,
+   "objectives": [
+    {
+     "id": "objective-1",
+     "state": "active",
+     "created": {
+      "command": "cmd-1",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z"
+     }
+    }
+   ],
+   "journal": [
+    {
+     "command": "cmd-1",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:01:00.000Z",
+     "objective": "objective-1",
+     "outcome": "accepted",
+     "revision": 1,
+     "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+    },
+    {
+     "command": "cmd-100",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:00.000Z",
+     "objective": "objective-1",
+     "outcome": "revision-changed",
+     "revision": 1,
+     "digest": "sha256:d86228c55f178d9f60b2712edb1677702756dd21dc8f026bd2c4698695753da4"
+    },
+    {
+     "command": "cmd-101",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:01.000Z",
+     "objective": "objective-1",
+     "outcome": "no-objective",
+     "revision": 1,
+     "digest": "sha256:f11980e0d8e124d72d0a5e58981759d3e77d9d17ca381ff306e0b67f2d6f4185"
+    },
+    {
+     "command": "cmd-102",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:02.000Z",
+     "objective": "objective-x",
+     "outcome": "objective-exists",
+     "revision": 1,
+     "digest": "sha256:d22a856422ded859238c470f9a82336130ef9a9f2989667c1f22f978f8bc9ec6"
+    },
+    {
+     "command": "cmd-103",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:03.000Z",
+     "objective": "objective-x",
+     "outcome": "objective-reused",
+     "revision": 1,
+     "digest": "sha256:0cb8b05e1a1629ca1255c2d00fae9692590d935d3c89170a727dcd2dad4d3726"
+    },
+    {
+     "command": "cmd-104",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:04.000Z",
+     "objective": "objective-x",
+     "outcome": "goals-exhausted",
+     "revision": 1,
+     "digest": "sha256:01a3f133215dd4acf03715f3edc735cba7cd30f4310c153f73aff560757841a0"
+    },
+    {
+     "command": "cmd-105",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:05.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-terminal",
+     "revision": 1,
+     "digest": "sha256:2b042c0bb7ac2bd8f6da451d83cf107b2892d703fb7e273e18b7ec390cbf0644"
+    },
+    {
+     "command": "cmd-106",
+     "kind": "pause",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:06.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-paused",
+     "revision": 1,
+     "digest": "sha256:bb7adda7c2f5df7710b2a6833757613a8fcf56743fa60a6b01dbdfae8e3f46e7"
+    },
+    {
+     "command": "cmd-107",
+     "kind": "resume",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:07.000Z",
+     "objective": "objective-1",
+     "outcome": "not-paused",
+     "revision": 1,
+     "digest": "sha256:9b7c56663e60cfac7361c62a8c40a7c27ce3f649ea44be78018f93ef2996206c"
+    },
+    {
+     "command": "cmd-108",
+     "kind": "block",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:08.000Z",
+     "objective": "objective-1",
+     "outcome": "objective-blocked",
+     "revision": 1,
+     "digest": "sha256:ab137faface97c634d7115da405514f3d18768b0fec760dbe16a4be522c6df09"
+    },
+    {
+     "command": "cmd-109",
+     "kind": "unblock",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:09.000Z",
+     "objective": "objective-1",
+     "outcome": "not-blocked",
+     "revision": 1,
+     "digest": "sha256:f353e09dfaf4788612b2ee188691eb663a3eba4364f0f9b9055096d6343a44ea"
+    },
+    {
+     "command": "cmd-110",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:10.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-bound",
+     "revision": 1,
+     "digest": "sha256:e6ad8d7c19ad3a43c0ce9b88e1c1f56130e204d0ca0e1128377d4dc304dca145"
+    },
+    {
+     "command": "cmd-111",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:11.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-unbound",
+     "revision": 1,
+     "digest": "sha256:65b6fd842ece21ea816055c9aef347764669592ef1372ceb0f991037d061499a"
+    },
+    {
+     "command": "cmd-112",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:12.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-invalid",
+     "revision": 1,
+     "digest": "sha256:c1fc66bc398dba6870d9ef1e7152a8f9159947ce55d618ba4745b0bd760fb227"
+    },
+    {
+     "command": "cmd-113",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:13.000Z",
+     "objective": "objective-1",
+     "outcome": "plan-reused",
+     "revision": 1,
+     "digest": "sha256:51cfab40f1cce625fe823c2bb4baaf70c9cdc6fe6770d7be11a0c517432185e8"
+    },
+    {
+     "command": "cmd-114",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:14.000Z",
+     "objective": "objective-1",
+     "outcome": "step-settled",
+     "revision": 1,
+     "digest": "sha256:033fbf2d174d6bf423a0f1c75213868f533d6ddff4444d54550cf157c7575f29",
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-115",
+     "kind": "bind",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:15.000Z",
+     "objective": "objective-1",
+     "outcome": "head-changed",
+     "revision": 1,
+     "digest": "sha256:7fc6ce8c5d6958a423e4077f453327ba2b0ca979fae7920f51fc0662a492d5e7"
+    },
+    {
+     "command": "cmd-116",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:16.000Z",
+     "objective": "objective-1",
+     "outcome": "lineage-changed",
+     "revision": 1,
+     "digest": "sha256:9df72d02d160a7dc15e4f9ed7d7d7439d7c14a1f6c41e0ff778d297028e25a77"
+    },
+    {
+     "command": "cmd-117",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:17.000Z",
+     "objective": "objective-1",
+     "outcome": "decision-pending",
+     "revision": 1,
+     "digest": "sha256:cde8a134a62e9f0a737f381cc9ac85b53491e955b982024bcbdbc3b11bc12cfc"
+    },
+    {
+     "command": "cmd-118",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:18.000Z",
+     "objective": "objective-1",
+     "outcome": "wait-pending",
+     "revision": 1,
+     "digest": "sha256:ec2771bb107b087a189b15fd202ae913bfa447e51f504686a58c3cc82b205f88"
+    },
+    {
+     "command": "cmd-119",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:19.000Z",
+     "objective": "objective-1",
+     "outcome": "step-incomplete",
+     "revision": 1,
+     "digest": "sha256:ae04ddb3efcd4707780dfc8a2a05a766b4526e528f0daaa60f4e551f2ac88213",
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-120",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:20.000Z",
+     "objective": "objective-1",
+     "outcome": "evidence-refused",
+     "revision": 1,
+     "digest": "sha256:baa105c6817b84c8b8cf14d012ece1a97a37947252562e0b393b4737e75c8e2c",
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-121",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:21.000Z",
+     "objective": "objective-1",
+     "outcome": "history-unsupported",
+     "revision": 1,
+     "digest": "sha256:2a5afe50cc353195d6d5cd040c12a0f5838d6bc129819b57b4c8ea5c43312bf8",
+     "step": "step-1"
+    },
+    {
+     "command": "cmd-122",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:22.000Z",
+     "objective": "objective-1",
+     "outcome": "jobs-unsettled",
+     "revision": 1,
+     "digest": "sha256:9625748be80c89b42e05ae119bfc3f57c3ae7eefd19fe4ec8dc065a2b939105d"
+    },
+    {
+     "command": "cmd-123",
+     "kind": "achieve",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:23.000Z",
+     "objective": "objective-1",
+     "outcome": "waiver-invalid",
+     "revision": 1,
+     "digest": "sha256:bf3e82128ecbc2a37382dcd540319c56683b801828bed5454292b9d07914d918"
+    },
+    {
+     "command": "cmd-124",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:24.000Z",
+     "objective": "objective-x",
+     "outcome": "wait-unresolved",
+     "revision": 1,
+     "digest": "sha256:590c38fe49ef76a49cc1a495584bab4387ea7602f5a5168a1213260c2b9b93fb"
+    },
+    {
+     "command": "cmd-125",
+     "kind": "abandon",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:25.000Z",
+     "objective": "objective-1",
+     "outcome": "lease-required",
+     "revision": 1,
+     "digest": "sha256:731f43fca1fd5ab6986adaa56d4f7e91c3aea536df1f70d1889fb38e732f1ca8"
+    }
+   ]
+  }
+ ],
+ "refused": [
+  {
+   "problem": "version 2",
+   "record": {
+    "version": 2,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "another kind",
+   "record": {
+    "version": 1,
+    "kind": "job",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an unknown member",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ],
+    "extra": 1
+   }
+  },
+  {
+   "problem": "revision 0",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 0,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "no objective",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an unknown state",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "paused",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an invalid outcome is never journaled",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "invalid",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a conflict is never journaled",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "conflict",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a step id of another form",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 5,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "first",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a succeeded job listed as unsuccessful",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "succeeded"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a left wait already resumed",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "resumed"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "discarded 0",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ],
+    "discarded": 0,
+    "inspections": {
+     "count": 4,
+     "last": {
+      "command": "look-4",
+      "actor": "dashboard",
+      "at": "2026-01-01T00:20:00.000Z"
+     }
+    }
+   }
+  },
+  {
+   "problem": "an inspection count of 0",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ],
+    "discarded": 3,
+    "inspections": {
+     "count": 0,
+     "last": {
+      "command": "look-4",
+      "actor": "dashboard",
+      "at": "2026-01-01T00:20:00.000Z"
+     }
+    }
+   }
+  },
+  {
+   "problem": "a step index past the Plan's",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 5,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 20
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an entry's revision that is not whole",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1.5,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  }
+ ],
+ "readerRefused": [
+  {
+   "problem": "two open objectives",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 3,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     },
+     {
+      "id": "objective-2",
+      "state": "active",
+      "created": {
+       "command": "cmd-12",
+       "actor": "person-1",
+       "at": "2026-01-01T00:12:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     },
+     {
+      "command": "cmd-12",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:12:00.000Z",
+      "objective": "objective-2",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:d47bff5b7dafc798dd4554be70aaee663c2be8b5a87434ea10d6e759870b5937"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an identity used twice",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 3,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     },
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-12",
+       "actor": "person-1",
+       "at": "2026-01-01T00:12:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     },
+     {
+      "command": "cmd-12",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:12:00.000Z",
+      "objective": "objective-2",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:d47bff5b7dafc798dd4554be70aaee663c2be8b5a87434ea10d6e759870b5937"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "one Plan bound by two objectives",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 3,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     },
+     {
+      "id": "objective-2",
+      "state": "active",
+      "created": {
+       "command": "cmd-12",
+       "actor": "person-1",
+       "at": "2026-01-01T00:12:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     },
+     {
+      "command": "cmd-12",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:12:00.000Z",
+      "objective": "objective-2",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:d47bff5b7dafc798dd4554be70aaee663c2be8b5a87434ea10d6e759870b5937"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "achieved with no Plan",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a terminal objective paused",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "blocked with nothing that blocks it",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 3,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "blocked",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "active with a block",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 3,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      },
+      "blocked": {
+       "command": "cmd-5",
+       "actor": "person-1",
+       "at": "2026-01-01T00:04:00.000Z",
+       "condition": "waiting-on-data"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "abandoned with an achievement",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a step on an accepted entry",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b",
+      "step": "step-1"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a step on a refusal about no step",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c",
+      "step": "step-1"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "deliveries on an accepted entry",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a delivered entry of another kind",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a delivered entry with no deliveries",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an outcome on a job not completed",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a completed job with no outcome",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a contradiction on a completed job",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed",
+         "contradicted": true
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a started job listed as unsuccessful",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a settled job left by an abandon",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-b",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a wait left twice",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 2,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "abandoned",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "abandoned": {
+       "command": "cmd-11",
+       "actor": "person-1",
+       "at": "2026-01-01T00:10:00.000Z",
+       "waits": [
+        {
+         "wait": "wait-a",
+         "reason": "approval",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-a",
+         "reason": "budget",
+         "state": "woken"
+        },
+        {
+         "wait": "wait-c",
+         "reason": "question",
+         "state": "timed-out"
+        },
+        {
+         "wait": "wait-d",
+         "reason": "reauthorization",
+         "state": "parked"
+        },
+        {
+         "wait": "wait-e",
+         "reason": "job",
+         "state": "parked"
+        }
+       ],
+       "jobs": [
+        {
+         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+         "state": "unproven"
+        },
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "started"
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:395a3411dbf9527b68a81b053acd640a5060c65819591dcf60525a1e3d790e9c"
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:10:05.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:8f6beb0680777be864ebaf55d18253c13ebc1c7514e1345caa3f78c4a11682ad",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "no-handle"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "sent"
+       }
+      ]
+     },
+     {
+      "command": "cmd-11",
+      "kind": "abandon",
+      "actor": "person-1",
+      "at": "2026-01-01T00:11:00.000Z",
+      "objective": "objective-1",
+      "outcome": "delivered",
+      "revision": 2,
+      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "deliveries": [
+       {
+        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "delivery": "already-sent"
+       },
+       {
+        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "delivery": "failed"
+       },
+       {
+        "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "delivery": "undelivered"
+       },
+       {
+        "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "delivery": "settled"
+       },
+       {
+        "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+        "delivery": "contradicted"
+       },
+       {
+        "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+        "delivery": "acknowledged"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a job waived twice",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 6,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "achieved",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      },
+      "achieved": {
+       "command": "cmd-8",
+       "actor": "person-1",
+       "at": "2026-01-01T00:08:00.000Z",
+       "head": {
+        "revision": "rev-7",
+        "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+       },
+       "waived": [
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+       ],
+       "unsuccessful": [
+        {
+         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+         "state": "completed",
+         "outcome": "failed"
+        },
+        {
+         "job": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+         "state": "completed",
+         "outcome": "cancelled"
+        },
+        {
+         "job": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+         "state": "completed",
+         "outcome": "unknown"
+        },
+        {
+         "job": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+         "state": "not-started"
+        },
+        {
+         "job": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+         "state": "not-started",
+         "contradicted": true
+        }
+       ]
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     },
+     {
+      "command": "cmd-10",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:07:00.000Z",
+      "objective": "objective-1",
+      "outcome": "evidence-refused",
+      "revision": 5,
+      "digest": "sha256:eb28f331ee69f7f3aca26e7c8ca14c4178454d20a63cb5e2cfba8f812e2e9347",
+      "step": "step-2"
+     },
+     {
+      "command": "cmd-8",
+      "kind": "achieve",
+      "actor": "person-1",
+      "at": "2026-01-01T00:08:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 6,
+      "digest": "sha256:4279bdece4489c502b68ff2b304947482e3bd9e70fa8eea5131fe21f7149dddb"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "two steps of one origin",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 5,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-2",
+         "index": 0
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a step bound twice",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 5,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      },
+      "paused": {
+       "command": "cmd-2",
+       "actor": "person-1",
+       "at": "2026-01-01T00:02:00.000Z"
+      },
+      "plan": {
+       "id": "accepted-plan",
+       "revision": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+       "steps": [
+        {
+         "step": "step-1",
+         "index": 0
+        },
+        {
+         "step": "step-1",
+         "index": 1
+        }
+       ],
+       "bound": {
+        "command": "cmd-7",
+        "actor": "person-1",
+        "at": "2026-01-01T00:06:00.000Z"
+       }
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     },
+     {
+      "command": "cmd-2",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 2,
+      "digest": "sha256:efcff6461097d438eeb5d162c2ecf4c90df764d037f321c1ace0e7bb0fb9418d"
+     },
+     {
+      "command": "cmd-3",
+      "kind": "resume",
+      "actor": "person-1",
+      "at": "2026-01-01T00:02:30.000Z",
+      "objective": "objective-1",
+      "outcome": "revision-changed",
+      "revision": 2,
+      "digest": "sha256:badc083174ca691f723c9bcac6835cebef306c0038c42c610cffd8ebc256fc7c"
+     },
+     {
+      "command": "cmd-4",
+      "kind": "pause",
+      "actor": "person-1",
+      "at": "2026-01-01T00:03:00.000Z",
+      "objective": "objective-1",
+      "outcome": "objective-paused",
+      "revision": 2,
+      "digest": "sha256:2535d96a293c099b825f6cb0796035de5fba02b5d7213533b664798dff99dc57"
+     },
+     {
+      "command": "cmd-5",
+      "kind": "block",
+      "actor": "person-1",
+      "at": "2026-01-01T00:04:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 3,
+      "digest": "sha256:01006a1470c6b8f07450257cfc268b1651d20d4f11e16d3140c521d102a8128a"
+     },
+     {
+      "command": "cmd-6",
+      "kind": "unblock",
+      "actor": "person-1",
+      "at": "2026-01-01T00:05:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 4,
+      "digest": "sha256:8487327c36170492a4ed45af46ba3baa9ab45ada19420969f64e489b4f367812"
+     },
+     {
+      "command": "cmd-7",
+      "kind": "bind",
+      "actor": "person-1",
+      "at": "2026-01-01T00:06:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 5,
+      "digest": "sha256:38622e72caa3c3da5866c0817046514791b30cc58489e7d223d623c1a53beafc"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "a time that is no date",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run-g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-02-30T00:00:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  },
+  {
+   "problem": "an id with a control character",
+   "record": {
+    "version": 1,
+    "kind": "goal",
+    "resource": "run\u0007g",
+    "revision": 1,
+    "objectives": [
+     {
+      "id": "objective-1",
+      "state": "active",
+      "created": {
+       "command": "cmd-1",
+       "actor": "person-1",
+       "at": "2026-01-01T00:01:00.000Z"
+      }
+     }
+    ],
+    "journal": [
+     {
+      "command": "cmd-1",
+      "kind": "create",
+      "actor": "person-1",
+      "at": "2026-01-01T00:01:00.000Z",
+      "objective": "objective-1",
+      "outcome": "accepted",
+      "revision": 1,
+      "digest": "sha256:d3aee33bba80285f96279ea10a583db530e5e2f6b1250e84f996779b6878c08b"
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,914 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/run-goal.json",
+  "title": "Run objective",
+  "description": "Version 1 record of one run's objective (ADR-0025 decision 8, #230): kept by the store beside the run, never in its checkpoint or event log, and changed only by host commands, with no model call and no run commit. The objectives are kept whole in order, the current one last; only it may be open. Every command is journaled, accepted or refused, with its actor, the store's time and the record's revision. Past the journal's bound the oldest refused entry goes first, then the oldest entry, and discarded counts them, so no command is refused for size. The readers hold rules the schema cannot state: identities are never reused in a run, no Plan is bound twice, each objective's state holds exactly what proves it, and a step is named only on a refusal about one.",
+  "type": "object",
+  "required": [
+    "version",
+    "kind",
+    "resource",
+    "revision",
+    "objectives",
+    "journal"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "goal"
+    },
+    "resource": {
+      "$ref": "#/$defs/id"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "objectives": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/objective"
+      }
+    },
+    "journal": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "discarded": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "inspections": {
+      "$ref": "#/$defs/inspections"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "stepId": {
+      "type": "string",
+      "pattern": "^step-[1-9][0-9]{0,15}$"
+    },
+    "stamp": {
+      "description": "Who issued an accepted command, and when by the store's clock.",
+      "type": "object",
+      "required": [
+        "command",
+        "actor",
+        "at"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "head": {
+      "description": "The run head a bind or an achievement was decided against: its revision and the SHA-256 of its checkpoint bytes.",
+      "type": "object",
+      "required": [
+        "revision",
+        "digest"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/id"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "description": "A required step: its plan step id, and its origin's index in the accepted Plan, which survives a reorder.",
+      "type": "object",
+      "required": [
+        "step",
+        "index"
+      ],
+      "properties": {
+        "step": {
+          "$ref": "#/$defs/stepId"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 19
+        }
+      },
+      "additionalProperties": false
+    },
+    "planSteps": {
+      "description": "The accepted Plan a bind takes, as the package read it from the head: its id, its revision and the required steps in plan order.",
+      "type": "object",
+      "required": [
+        "id",
+        "revision",
+        "steps"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/digest"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "description": "The Plan an objective bound. No Plan is bound by two objectives of one run (M11).",
+      "type": "object",
+      "required": [
+        "id",
+        "revision",
+        "steps",
+        "bound"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "$ref": "#/$defs/digest"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "bound": {
+          "$ref": "#/$defs/stamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "job": {
+      "description": "A job as a goal transaction read it: its outcome exactly when completed, and contradicted only when closed as not started.",
+      "type": "object",
+      "required": [
+        "job",
+        "state"
+      ],
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/digest"
+        },
+        "state": {
+          "enum": [
+            "unproven",
+            "started",
+            "not-started",
+            "completed"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "contradicted": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "leftWait": {
+      "description": "A wait of the run neither resumed nor ended, as the abandon's transaction found it.",
+      "type": "object",
+      "required": [
+        "wait",
+        "reason",
+        "state"
+      ],
+      "properties": {
+        "wait": {
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "enum": [
+            "approval",
+            "budget",
+            "question",
+            "reauthorization",
+            "job"
+          ]
+        },
+        "state": {
+          "enum": [
+            "parked",
+            "woken",
+            "timed-out"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "block": {
+      "description": "The unresolved condition the host named.",
+      "type": "object",
+      "required": [
+        "command",
+        "actor",
+        "at",
+        "condition"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "condition": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "additionalProperties": false
+    },
+    "achievement": {
+      "description": "The unsettled jobs the command waived by id, and the settled jobs that did not succeed, contradictions included.",
+      "type": "object",
+      "required": [
+        "command",
+        "actor",
+        "at",
+        "head"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "head": {
+          "$ref": "#/$defs/head"
+        },
+        "waived": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "unsuccessful": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/job"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "abandonment": {
+      "description": "What the abandon left: the run's waits not resumed or ended, and its jobs not settled. A later create is held to the waits (M10).",
+      "type": "object",
+      "required": [
+        "command",
+        "actor",
+        "at",
+        "waits",
+        "jobs"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "waits": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/leftWait"
+          }
+        },
+        "jobs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/job"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "objective": {
+      "description": "One objective. Paused is a disposition of an open one (active or blocked); a terminal one has none. Each state holds exactly what proves it.",
+      "type": "object",
+      "required": [
+        "id",
+        "state",
+        "created"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "achieved",
+            "abandoned",
+            "blocked"
+          ]
+        },
+        "created": {
+          "$ref": "#/$defs/stamp"
+        },
+        "plan": {
+          "$ref": "#/$defs/plan"
+        },
+        "paused": {
+          "$ref": "#/$defs/stamp"
+        },
+        "blocked": {
+          "$ref": "#/$defs/block"
+        },
+        "achieved": {
+          "$ref": "#/$defs/achievement"
+        },
+        "abandoned": {
+          "$ref": "#/$defs/abandonment"
+        }
+      },
+      "additionalProperties": false
+    },
+    "delivery": {
+      "type": "object",
+      "required": [
+        "job",
+        "delivery"
+      ],
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/digest"
+        },
+        "delivery": {
+          "enum": [
+            "sent",
+            "already-sent",
+            "failed",
+            "undelivered",
+            "no-handle",
+            "settled",
+            "contradicted",
+            "acknowledged"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "description": "One journaled command, accepted or refused, or one attempt's deliveries after an abandon. The digest is the SHA-256 of the canonical JSON of the command (of {command, deliveries} for a delivered entry): a repeat of the id must carry the same.",
+      "type": "object",
+      "required": [
+        "command",
+        "kind",
+        "actor",
+        "at",
+        "objective",
+        "outcome",
+        "revision",
+        "digest"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "bind",
+            "achieve",
+            "pause",
+            "resume",
+            "block",
+            "unblock",
+            "abandon"
+          ]
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "objective": {
+          "$ref": "#/$defs/id"
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "delivered",
+            "revision-changed",
+            "no-objective",
+            "objective-exists",
+            "objective-reused",
+            "goals-exhausted",
+            "objective-terminal",
+            "objective-paused",
+            "not-paused",
+            "objective-blocked",
+            "not-blocked",
+            "plan-bound",
+            "plan-unbound",
+            "plan-invalid",
+            "plan-reused",
+            "step-settled",
+            "head-changed",
+            "lineage-changed",
+            "decision-pending",
+            "wait-pending",
+            "step-incomplete",
+            "evidence-refused",
+            "history-unsupported",
+            "jobs-unsettled",
+            "waiver-invalid",
+            "wait-unresolved",
+            "lease-required"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "step": {
+          "$ref": "#/$defs/stepId"
+        },
+        "deliveries": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/delivery"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "inspections": {
+      "description": "Inspections, coalesced into a count and the last one (M12).",
+      "type": "object",
+      "required": [
+        "count",
+        "last"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "last": {
+          "type": "object",
+          "required": [
+            "command",
+            "actor",
+            "at"
+          ],
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/id"
+            },
+            "actor": {
+              "$ref": "#/$defs/id"
+            },
+            "at": {
+              "$ref": "#/$defs/time"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "command": {
+      "description": "A host's command. The readers hold which members each kind carries: create an objective, bind steps and a head, achieve a head and an optional waiver, block a condition, the others none.",
+      "type": "object",
+      "required": [
+        "version",
+        "resource",
+        "command",
+        "actor",
+        "expectedRevision",
+        "kind"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/id"
+        },
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "expectedRevision": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "bind",
+            "achieve",
+            "pause",
+            "resume",
+            "block",
+            "unblock",
+            "abandon"
+          ]
+        },
+        "objective": {
+          "$ref": "#/$defs/id"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/stepId"
+          }
+        },
+        "head": {
+          "$ref": "#/$defs/head"
+        },
+        "waive": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/digest"
+          }
+        },
+        "condition": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "description": "What only the package can find from the head it read; the store journals it as the command's refusal.",
+      "type": "object",
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "enum": [
+            "head-changed",
+            "plan-invalid",
+            "step-settled",
+            "decision-pending",
+            "lineage-changed",
+            "step-incomplete",
+            "evidence-refused",
+            "history-unsupported"
+          ]
+        },
+        "step": {
+          "$ref": "#/$defs/stepId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "description": "What the store is handed: a bind carries its steps or what refused them, an achievement may carry a finding, and nothing else carries either.",
+      "type": "object",
+      "required": [
+        "version",
+        "command"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "command": {
+          "$ref": "#/$defs/command"
+        },
+        "plan": {
+          "$ref": "#/$defs/planSteps"
+        },
+        "refused": {
+          "$ref": "#/$defs/finding"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inspect": {
+      "type": "object",
+      "required": [
+        "version",
+        "resource",
+        "command",
+        "actor"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/id"
+        },
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deliveries": {
+      "description": "An abandon's deliveries, journaled on the objective that command abandoned.",
+      "type": "object",
+      "required": [
+        "version",
+        "resource",
+        "command",
+        "deliveries"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/id"
+        },
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "deliveries": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/delivery"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "description": "A named goal refusal. Where the run has a goal record it was journaled, and nothing else changed.",
+      "type": "object",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "invalid",
+            "conflict",
+            "revision-changed",
+            "no-objective",
+            "objective-exists",
+            "objective-reused",
+            "goals-exhausted",
+            "objective-terminal",
+            "objective-paused",
+            "not-paused",
+            "objective-blocked",
+            "not-blocked",
+            "plan-bound",
+            "plan-unbound",
+            "plan-invalid",
+            "plan-reused",
+            "step-settled",
+            "head-changed",
+            "lineage-changed",
+            "decision-pending",
+            "wait-pending",
+            "step-incomplete",
+            "evidence-refused",
+            "history-unsupported",
+            "jobs-unsettled",
+            "waiver-invalid",
+            "wait-unresolved",
+            "lease-required"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityRefusal": {
+      "description": "A store that cannot hold an objective refuses by name before any command.",
+      "type": "object",
+      "required": [
+        "version",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "reason": {
+          "enum": [
+            "store-unsupported",
+            "store-lifetime"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "reportEntry": {
+      "type": "object",
+      "required": [
+        "command",
+        "kind",
+        "actor",
+        "at",
+        "objective",
+        "outcome",
+        "revision"
+      ],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "bind",
+            "achieve",
+            "pause",
+            "resume",
+            "block",
+            "unblock",
+            "abandon"
+          ]
+        },
+        "actor": {
+          "$ref": "#/$defs/id"
+        },
+        "at": {
+          "$ref": "#/$defs/time"
+        },
+        "objective": {
+          "$ref": "#/$defs/id"
+        },
+        "outcome": {
+          "enum": [
+            "accepted",
+            "delivered",
+            "revision-changed",
+            "no-objective",
+            "objective-exists",
+            "objective-reused",
+            "goals-exhausted",
+            "objective-terminal",
+            "objective-paused",
+            "not-paused",
+            "objective-blocked",
+            "not-blocked",
+            "plan-bound",
+            "plan-unbound",
+            "plan-invalid",
+            "plan-reused",
+            "step-settled",
+            "head-changed",
+            "lineage-changed",
+            "decision-pending",
+            "wait-pending",
+            "step-incomplete",
+            "evidence-refused",
+            "history-unsupported",
+            "jobs-unsettled",
+            "waiver-invalid",
+            "wait-unresolved",
+            "lease-required"
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "step": {
+          "$ref": "#/$defs/stepId"
+        },
+        "deliveries": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/delivery"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "report": {
+      "description": "One run's goal report, read from its record, never from a prompt.",
+      "type": "object",
+      "required": [
+        "version",
+        "resource",
+        "revision",
+        "objectives",
+        "entries",
+        "discarded"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "resource": {
+          "$ref": "#/$defs/id"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/objective"
+          }
+        },
+        "entries": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/reportEntry"
+          }
+        },
+        "discarded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inspections": {
+          "$ref": "#/$defs/inspections"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
