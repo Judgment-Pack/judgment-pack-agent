@@ -48,8 +48,8 @@ rule.
 1. Open a pull request that:
    - sets `version` to the release's in `packages/harness/package.json` and in the
      `packages/harness` entry of `package-lock.json` (`npm install --package-lock-only` writes it);
-     the repository carries `<next>-dev` between releases, and the workflow refuses a tag whose
-     version the package does not hold;
+     between releases the repository carries the version of the last release, so this pull request
+     is the one that moves it, and the workflow refuses a tag whose version the package does not hold;
    - finalises `docs/releases/<tag>.md`: what the package is, what the release holds and what it
      does not, and what a host must review before it pins the new version. It is the text the
      release page will carry. It names the Go module, `github.com/Judgment-Pack/judgment-pack-agent/go`,
