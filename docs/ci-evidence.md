@@ -98,7 +98,7 @@ No timing after it has been measured.
 | the offline `dependency-audit` test | in `check` and again in the audit workflow | in `check` only; the audit workflow runs the live query alone, fresh |
 
 The status names `contract`, `check` and `dependency-audit` are unchanged. The shards' are
-`every row (shard N of 10)` since #281. Branch protection requires `DCO` and `contract`. Since #292
+`every row (shard N of 28)` since #322 (`of 10` since #281). Branch protection requires `DCO` and `contract`. Since #292
 `go-race-a`, `go-race-b` and `go-race-c` are statuses as well, in place of the one `go-race` of #254.
 
 **Pull-request-to-branch reuse.** The `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs (one job of 45 minutes
@@ -170,10 +170,12 @@ every hosted run (also a test).
 **Main-to-release reuse** (#213) is unchanged in kind: the release takes the exact commit's main
 evidence, now under the gate's contract.
 
-## The mutation table's shards (#281)
+## The mutation table's shards (#281, #322)
 
-The full table runs in ten shards. When it ran on every push to `main`, two pushes in a row lost shard 4 of four
-to its 120-minute limit, so no commit had the evidence the release requires. A shard's job limit stays
+The full table runs in 28 shards, at most 14 at a time. When it ran in four on every push to `main`, two pushes in a
+row lost shard 4 of four to its 120-minute limit, so no commit had the evidence the release requires (#281), and
+ten became the number. On 2026-11-03 the scheduled run at `f4bbece` lost shard 6 of ten to the same limit, and the
+other shards took 51 to 103 minutes; the dispatch run at `07e84c4` took up to 106 (#322). A shard's job limit stays
 120 minutes and every row still runs.
 
 What decides a shard's time, over the rows of `2107a63` (209 rows measured, and most others estimated
@@ -188,11 +190,50 @@ from a measured row with the same test files):
 - **The total crossed the limit.** The 48 rows of #272 added about 20 minutes to a shard already at
   about 100 on a slow runner. The number of shards is the remedy.
 
+How 28 was chosen (#322), from the seconds each row printed in those two runs, 1,068 rows measured in both:
+
+- **Runner speed still decides more than the rows do.** The same rows took 101 minutes on one runner and
+  52 on another (shard 7), and 68 and 102 (shard 6, without the row below). Against the mean of the two
+  runs, the twenty runners ran from 0.67 to 1.33 times as long: a factor of two between the fastest and
+  the slowest.
+- **The rows grow heavier.** A row costs 47 seconds on average, but the last 400 rows 75. The 1,145 rows
+  to run at `7875956` cost about 940 minutes on an average runner (the 62 not yet measured counted as the
+  last 400). With 150 more like the last 400
+  (#316 and #321 add about 100), about 1,130.
+- **At 28, with 150 more rows,** a shard averages 45 minutes on an average runner and 61 on the slowest
+  seen. The heaviest of the 28 takes about 60 minutes on an average runner, and 80 to 90 if it draws the slowest
+  one: under the warning at three quarters of the limit. At 24 that shard takes 90 to 100 minutes on the slowest
+  runner. Beyond 28 it hardly shrinks: a few rows take 5 to 10 minutes each, and every-n-th puts a few of
+  them in every shard.
+- **More shards cost more runner time.** Each shard runs, once, with no mutant, each test file that fails
+  under a mutant there (agent#285), so a file asked in ten shards is now asked in more. That is about 150
+  run-minutes more at 28 than at 10, and 28 setups of about 20 seconds: about 15 percent more runner time
+  for the same rows. The ten shards took 872 and 873 job-minutes on the two runs; 28 take about 1,000 to
+  1,100 at today's rows. The repository is public, so hosted minutes are not billed; what the table spends is the
+  plan's 20 jobs at a time, for the whole organization. `max-parallel: 14` holds 14 and leaves 6 for
+  everything else, so the table runs in two waves, in about the time ten shards took (107 and 122
+  minutes from start to end).
+
+**A row's time is bounded by its runs, not capped.** `--timeout` (900 seconds) bounds one vitest run. A row
+its selection catches is one run of its test files and, the first time a file fails in that shard, one run
+of that file with no mutant: seconds to 10 minutes. Only a row its selection does not catch goes on to the
+whole suite, which takes about 10 minutes on a hosted runner and more than 15 on a slow one, and a failure only the whole suite found is run
+twice more. So a row makes at most five runs. Before #319, row P51 took 619 seconds on one runner and came out
+`NOT CAUGHT`, and 964 seconds on another, `UNDECIDED`, because the whole suite ran past 900 seconds there.
+That row is what stopped shard 6 of ten: 16 of its 118 minutes, on a runner 1.5 times as slow as the one the
+same rows had in the dispatch run. In both runs no row was caught by the whole suite: the four rows that
+reached it (P51 and `a host write JSON.parse rounded is run`, in each run) all failed. So a row that eats a
+shard's time is a row that fails the shard anyway, and the release with it. A cap on the row would only end
+that failure sooner, and a cap under one whole-suite run would never let the suite decide, which is what the
+fallback is for. The runner has no row cap. The shards leave room for a failing row's whole-suite run
+instead, and its `mutation-row` line names it.
+
 The number is this repository's, not the kit's: the gate reads the jobs from `.github/ci-evidence.json`
 and `release.yml` does not name them. To change it, change the matrix, the job's name and `--shard` in
 `.github/workflows/mutation.yml`, the `full-N` jobs in the configuration and `SHARDS` in
 `tests/test_release_evidence.py`, together: a run and its evidence are of one commit, so an older run
-at another number is never read for a newer commit. A shard warns past three quarters of its limit, and
+at another number is never read for a newer commit. `max-parallel` is in the same job, and the test holds it
+under the plan's 20. A shard warns past three quarters of its limit, and
 a run prints each row's seconds as it ends (`mutation-row`), so a shard stopped at its limit still says
 what it ran.
 
@@ -334,7 +375,7 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   `go-race-b`'s exclusion; a name in only one of the two fails the test. The job's warning below says when
   that is due.
 - **The jobs.** `go-race` in `ci.yml` is one matrix job with three legs, `go-race-a`, `go-race-b` and `go-race-c`, as the
-  mutation table is one job with ten shards. In `.github/ci-evidence.json` each leg is a job of its own,
+  mutation table is one job with 28 shards. In `.github/ci-evidence.json` each leg is a job of its own,
   with one check; each has its own status, its own artifact (`ci-evidence-ci-go-race-a-<attempt>`,
   `ci-evidence-ci-go-race-b-<attempt>`, `ci-evidence-ci-go-race-c-<attempt>`), its own plan, capture and readmission, under the same rules as
   #254's one job. Neither cancels the other on a failure. A leg skips every other step of the manifest, the
