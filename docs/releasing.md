@@ -100,7 +100,8 @@ rule.
      --event workflow_dispatch --commit "$(git rev-parse origin/main)"
    ```
 
-   The last command must show the run; it can take a few seconds to appear. Once it has started, `main`
+   The last command must show the run; it can take a few seconds to appear. Its 28 shards run 14 at a
+   time, about two hours in all, and every one of them must pass. Once it has started, `main`
    may move. Wait until the table and main CI at the commit have both passed, and tag within 48 hours of
    when each started. A release without this step refuses (`run-missing`), and the release run says this
    command.
@@ -181,7 +182,7 @@ fails: release a new version.
 ### The mutation table and exact-source CI evidence
 
 The full mutation table runs nightly and by dispatch, not on a push to `main`; pull requests run a
-sample. The release takes every full shard of a dispatch run on main at the commit
+sample. The release takes every full shard, all 28, of a dispatch run on main at the commit
 ([step 5](#prepare-the-release)),
 with `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c`, through the [release evidence gate](ci-evidence.md). It selects the
 newest dispatch attempt on main whatever its result; a newer failed, cancelled or running attempt

@@ -670,7 +670,7 @@ npm run mutation --workspace @judgment-pack/harness -- --list
 npm run mutation --workspace @judgment-pack/harness -- --check            # every row still applies; no test run
 npm run mutation --workspace @judgment-pack/harness -- --row "any relay 401"
 npm run mutation --workspace @judgment-pack/harness -- --changed origin/main --sample 15
-npm run mutation --workspace @judgment-pack/harness -- --shard 1/10        # the full table, in ten parts
+npm run mutation --workspace @judgment-pack/harness -- --shard 1/28        # the full table, in 28 parts
 ```
 
 The first 111 rows are the ones the Desk's `mutation-check.sh` held over the files that moved here,
@@ -692,7 +692,7 @@ run of its own file under the mutant. A row whose mutant changes nothing a test 
 `NOT CAUGHT`, which fails the run. `--no-mutant` runs the whole suite in the scratch copy and names
 what fails. `.github/workflows/mutation.yml`
 runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
-request's number, and the whole table nightly and by dispatch on `main`, in ten shards.
+request's number, and the whole table nightly and by dispatch on `main`, in 28 shards, 14 at a time.
 A run prints a `mutation-row` line with each row's seconds on the standard error stream as it ends.
 
 ### The certified scenarios (agent#13)
