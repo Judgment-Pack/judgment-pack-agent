@@ -23,11 +23,11 @@ export const GOAL_WAIT_LIMIT=16
 export type GoalState='active'|'achieved'|'abandoned'|'blocked'
 export type GoalCommandKind='create'|'bind'|'achieve'|'pause'|'resume'|'block'|'unblock'|'abandon'
 export type GoalLifetime='durable'|'process'
-export type GoalRefusalReason='invalid'|'conflict'|'revision-changed'|'no-objective'|'objective-exists'|'objective-reused'|'goals-exhausted'|'objective-terminal'|'objective-paused'|'not-paused'|'objective-blocked'|'not-blocked'|'plan-bound'|'plan-unbound'|'plan-invalid'|'plan-reused'|'step-settled'|'head-changed'|'lineage-changed'|'decision-pending'|'wait-pending'|'step-incomplete'|'evidence-refused'|'history-unsupported'|'jobs-unsettled'|'waiver-invalid'|'wait-unresolved'|'lease-required'
+export type GoalRefusalReason='invalid'|'conflict'|'revision-changed'|'no-objective'|'objective-exists'|'objective-reused'|'goals-exhausted'|'objective-terminal'|'objective-paused'|'not-paused'|'objective-blocked'|'not-blocked'|'plan-bound'|'plan-unbound'|'plan-invalid'|'plan-reused'|'step-settled'|'head-changed'|'lineage-changed'|'decision-pending'|'wait-pending'|'step-incomplete'|'evidence-refused'|'history-unsupported'|'jobs-unsettled'|'waiver-invalid'|'wait-unresolved'|'lease-required'|'abandon-unfinished'
 export type GoalCapabilityReason='store-unsupported'|'store-lifetime'
 export const GOAL_STATES:readonly GoalState[]=['active','achieved','abandoned','blocked']
 export const GOAL_COMMAND_KINDS:readonly GoalCommandKind[]=['create','bind','achieve','pause','resume','block','unblock','abandon']
-export const GOAL_REFUSAL_REASONS:readonly GoalRefusalReason[]=['invalid','conflict','revision-changed','no-objective','objective-exists','objective-reused','goals-exhausted','objective-terminal','objective-paused','not-paused','objective-blocked','not-blocked','plan-bound','plan-unbound','plan-invalid','plan-reused','step-settled','head-changed','lineage-changed','decision-pending','wait-pending','step-incomplete','evidence-refused','history-unsupported','jobs-unsettled','waiver-invalid','wait-unresolved','lease-required']
+export const GOAL_REFUSAL_REASONS:readonly GoalRefusalReason[]=['invalid','conflict','revision-changed','no-objective','objective-exists','objective-reused','goals-exhausted','objective-terminal','objective-paused','not-paused','objective-blocked','not-blocked','plan-bound','plan-unbound','plan-invalid','plan-reused','step-settled','head-changed','lineage-changed','decision-pending','wait-pending','step-incomplete','evidence-refused','history-unsupported','jobs-unsettled','waiver-invalid','wait-unresolved','lease-required','abandon-unfinished']
 export const GOAL_CAPABILITY_REASONS:readonly GoalCapabilityReason[]=['store-unsupported','store-lifetime']
 /** What only the package can find, from the head it read: the store records it as the command's refusal. */
 export const GOAL_FINDINGS:readonly GoalRefusalReason[]=['head-changed','plan-invalid','step-settled','decision-pending','lineage-changed','step-incomplete','evidence-refused','history-unsupported','plan-unbound']
@@ -40,7 +40,7 @@ const LEFT_WAIT_STATES:readonly WaitState[]=['parked','woken','timed-out']
 const JOB_STATES:readonly JobState[]=['unproven','started','not-started','completed']
 /** A job a goal lists is one that did not succeed: its outcome is never succeeded. */
 const JOB_OUTCOMES:readonly JobOutcome[]=['failed','cancelled','unknown']
-const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-sent','failed','undelivered','no-handle','settled','contradicted','acknowledged']
+const JOB_DELIVERIES:readonly JobDelivery[]=['sent','already-admitted','failed','undelivered','no-handle','settled','contradicted','acknowledged']
 export interface GoalStamp {command:string;actor:string;at:string}
 /** A required step: its plan step id and its origin's index in the accepted Plan, which survives a reorder. */
 export interface GoalStep {step:string;index:number}
@@ -254,6 +254,9 @@ export class GoalTable {
    if(current&&!terminal(current.state))return refuse('objective-exists')
    if(row?.objectives.some(objective=>objective.id===c.objective))return refuse('objective-reused')
    if((row?.objectives.length??0)>=GOAL_OBJECTIVE_LIMIT)return refuse('goals-exhausted')
+   // #318 M-4: an abandon with no deliveries journaled is unfinished: its jobs may never have been asked to stop, and once another
+   // objective exists its retry cannot finish it. The host retries the abandon first.
+   if(current?.state==='abandoned'&&!row!.journal.some(entry=>entry.command===current.abandoned!.command&&entry.outcome==='delivered'))return refuse('abandon-unfinished')
    // M10: a wait parked before the abandon, or after it (an abandon closes nothing), is resumed or ended before another
    // objective is created over a terminal one.
    if(current?.abandoned?.waits.some(left=>unresolvedWait(run.waits.find(wait=>wait.wait===left.wait))))return refuse('wait-unresolved')
@@ -324,7 +327,8 @@ export class GoalTable {
  * one transaction against the record's revision, the run's head, waits, jobs and lease as they are in it, and journals it,
  * accepted or refused; a repeat of a command id answers as the first did, with the record as it is now, while its entry is in
  * the journal, and another command under it is conflict. An achievement's finding is taken only from the record at the command's
- * revision (`read`). While the
+ * revision (`read`). The store trusts the transition it is handed: a direct caller of commandGoal can claim any `read` and any
+ * finding, so only the package's goalCommand composes them from what it read (#318 L-11). While the
  * current objective is paused, acquireLease and resumeWait refuse objective-paused; once the run has a goal record an unfenced
  * commit refuses lease-required. The package checks none of this in a host store; runStoreGoalConformance
  * (storage/goalConformance) does. */

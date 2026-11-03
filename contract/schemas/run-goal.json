@@ -401,7 +401,7 @@
         "delivery": {
           "enum": [
             "sent",
-            "already-sent",
+            "already-admitted",
             "failed",
             "undelivered",
             "no-handle",
@@ -480,7 +480,8 @@
             "jobs-unsettled",
             "waiver-invalid",
             "wait-unresolved",
-            "lease-required"
+            "lease-required",
+            "abandon-unfinished"
           ]
         },
         "revision": {
@@ -758,7 +759,8 @@
             "jobs-unsettled",
             "waiver-invalid",
             "wait-unresolved",
-            "lease-required"
+            "lease-required",
+            "abandon-unfinished"
           ]
         }
       },
@@ -849,7 +851,8 @@
             "jobs-unsettled",
             "waiver-invalid",
             "wait-unresolved",
-            "lease-required"
+            "lease-required",
+            "abandon-unfinished"
           ]
         },
         "revision": {

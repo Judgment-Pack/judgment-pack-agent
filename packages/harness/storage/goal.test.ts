@@ -121,9 +121,12 @@ describe('the objective: host commands without a model turn (#230)',()=>{
   await expect(achieve(held,held.binding.goal.revision)).rejects.toEqual(refusal('evidence-refused'))
   expect(await lastEntry(held.store)).toMatchObject({outcome:'evidence-refused',step:'step-1'})
  })
- it('H-1: an achievement whose read of the record precedes the bind it follows is refused, sent together or read just before the bind lands',async()=>{
-  // The third: a host store that does not compare the revision read; the package's own finding, plan-unbound, still refuses.
-  for(const how of ['together','read before the bind','a store that does not compare what was read'] as const){
+ it('H-1: an achievement sent with the bind it follows is never accepted, whichever lands first',async()=>{
+  // Sent together, either order may happen: read before the bind it is revision-changed, read after it the bound Plan's steps are
+  // unfinished. Each order is also a case of its own, the first strictly revision-changed. A host store that does not compare the
+  // revision read: the package's own finding, plan-unbound, still refuses.
+  const REASONS={'together':['revision-changed','step-incomplete'],'the bind lands first':['step-incomplete'],'read before the bind':['revision-changed'],'a store that does not compare what was read':['plan-unbound']} as const
+  for(const how of ['together','the bind lands first','read before the bind','a store that does not compare what was read'] as const){
    const held=await leased()
    const first=provider([plan([{id:'step-1',step:'Inspect',status:'in_progress'},{id:'step-2',step:'Report',status:'pending'}]),{call:{tool:'lookup',arguments:{}}},{say:'Read.'}])
    await drive(held.view,[LOOKUP],first.call)
@@ -131,22 +134,28 @@ describe('the objective: host commands without a model turn (#230)',()=>{
    const head=await headOf(held.store),r=created.goal.revision
    const bind=()=>goalCommand({store:held.store,command:command('bind',r,{steps:['step-1','step-2'],head})})
    const achieveIt=()=>goalCommand({store:held.store,command:command('achieve',r+1,{head})})
+   let refused:string|undefined
    if(how==='together'){
     const [bound,achieved]=await Promise.allSettled([bind(),achieveIt()])
-    expect(bound.status).toBe('fulfilled')
-    expect(achieved).toMatchObject({status:'rejected',reason:refusal('revision-changed')})
+    expect(bound.status).toBe('fulfilled');expect(achieved.status).toBe('rejected')
+    refused=(achieved as PromiseRejectedResult).reason?.reason
+   }else if(how==='the bind lands first'){
+    await bind()
+    refused=await achieveIt().then(()=>undefined,(error:{reason?:string})=>error.reason)
    }else{
     // The achievement reads the record, then the bind lands, then the achievement's transaction runs at the bind's revision.
     const store=held.store as unknown as {readGoal:(resource:string,signal?:AbortSignal)=>Promise<unknown>;commandGoal:(input:{command:GoalCommand;read?:number},signal?:AbortSignal)=>Promise<unknown>},real=store.readGoal.bind(store)
     let once=false
     store.readGoal=async(resource,signal)=>{const out=await real(resource,signal);if(!once){once=true;await bind()};return out}
     if(how==='a store that does not compare what was read'){const command=store.commandGoal.bind(store);store.commandGoal=(input,signal)=>command(input.command.kind==='achieve'?{...input,read:input.command.expectedRevision!}:input,signal)}
-    await expect(achieveIt()).rejects.toEqual(refusal(how==='read before the bind'?'revision-changed':'plan-unbound'))
+    await expect(achieveIt()).rejects.toEqual(refusal(REASONS[how][0]))
+    refused=REASONS[how][0]
    }
+   expect(REASONS[how]).toContain(refused)
    const goal=(await readGoal(held.store,RUN))!,steps=(await checkpoint(held.store)).plan.map(row=>row.status)
    expect(goal.objectives[0]).toMatchObject({state:'active',plan:{id:'accepted-plan'}});expect(goal.objectives[0]!.achieved).toBeUndefined()
    expect(steps).toEqual(['in_progress','pending'])
-   expect(goal.journal.map(entry=>`${entry.kind}:${entry.outcome}`).sort()).toEqual([how==='a store that does not compare what was read'?'achieve:plan-unbound':'achieve:revision-changed','bind:accepted','create:accepted'])
+   expect(goal.journal.map(entry=>`${entry.kind}:${entry.outcome}`).sort()).toEqual([`achieve:${refused}`,'bind:accepted','create:accepted'])
   }
  })
  it('competing and repeated commands: one wins by revision, a repeat answers as the first did, another under its id is conflict',async()=>{

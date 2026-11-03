@@ -582,11 +582,11 @@
      "objective": "objective-1",
      "outcome": "delivered",
      "revision": 2,
-     "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+     "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
      "deliveries": [
       {
        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-       "delivery": "already-sent"
+       "delivery": "already-admitted"
       },
       {
        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -728,11 +728,11 @@
      "objective": "objective-1",
      "outcome": "delivered",
      "revision": 2,
-     "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+     "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
      "deliveries": [
       {
        "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-       "delivery": "already-sent"
+       "delivery": "already-admitted"
       },
       {
        "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -1096,6 +1096,16 @@
      "outcome": "lease-required",
      "revision": 1,
      "digest": "sha256:731f43fca1fd5ab6986adaa56d4f7e91c3aea536df1f70d1889fb38e732f1ca8"
+    },
+    {
+     "command": "cmd-126",
+     "kind": "create",
+     "actor": "person-1",
+     "at": "2026-01-01T00:30:26.000Z",
+     "objective": "objective-y",
+     "outcome": "abandon-unfinished",
+     "revision": 1,
+     "digest": "sha256:ad8b1ba7f5bda3f1bf57d41e6721aa00fbdd1cf8f21c8cb7070c469e46d8d264"
     }
    ]
   }
@@ -1743,11 +1753,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -2082,11 +2092,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -2241,11 +2251,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -2438,11 +2448,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -3112,11 +3122,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -3363,11 +3373,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -3503,11 +3513,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -3633,11 +3643,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -4454,11 +4464,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
@@ -4594,11 +4604,11 @@
       "objective": "objective-1",
       "outcome": "delivered",
       "revision": 2,
-      "digest": "sha256:373701c550767eba9ddd24f747faa24a67d68deadcb8449ca498a0d9c2fc2d68",
+      "digest": "sha256:299205d682bc07301d53de4e61386fffd9f034892bd5f51180b547e4e4096f2b",
       "deliveries": [
        {
         "job": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-        "delivery": "already-sent"
+        "delivery": "already-admitted"
        },
        {
         "job": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
