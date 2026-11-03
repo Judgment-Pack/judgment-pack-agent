@@ -72,8 +72,11 @@ blocking Agent v0.13.0 release gate.
 
 The reason: v0.13.0 changes model-visible text only for hosts that use its new features
 (run-owned jobs, cancel and abandon, goal commands, and the framing of `list_context` and
-enrollment). The pre-release review confirmed that a host using none of them sees v0.12.0's bytes
-on the wire and in its records. The earlier reason ("not prompts") no longer holds for feature
+enrollment). Apart from the changes the guide states for every host: chat snapshot 2 with its one cold cache (#271), the per-wire changes of #271 and #275, and #328's refusal to resume a `complete` head, a host using none of them sees v0.12.0's behaviour. The decision's
+reason said the pre-release review confirmed v0.12.0's bytes for such a host without that exception: the
+comparison used no stored chat. The maintainer's
+[correction of 2026-11-03](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6615531794)
+states the exception and leaves the decision unchanged. The earlier reason ("not prompts") no longer holds for feature
 users, so it is not reused. The Desk's application-level comparison for its v0.14.0 release,
 tracked by [Desk #599](https://github.com/Judgment-Pack/judgment-pack-desk/issues/599), remains
 the route.

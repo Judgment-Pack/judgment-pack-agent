@@ -491,7 +491,7 @@ the host passes `chat` or the run's history head holds a stored chat: a person's
 and nothing ends such a wait short of a deadline. A run at its request limit is refused `not-resumable`: a claim would be spent
 and the continuation could make no request, so the model would never be told. The store's
 park transaction refuses a settled job (`job-settled`) and an unproven one (`job-unproven`), which closes the lost wake-up.
-`wakeWait` takes only a timeout, which does not close the run, and a deadline. `resumeParked` returns the job as its record
+`wakeRun` takes only a timeout, which does not close the run, and a deadline. `resumeParked` returns the job as its record
 says now; the host hands it to `context.jobContinuation`, and the run's first request carries one fixed line and one data
 block built from the record. No checkpoint member, and no text from the host.
 
@@ -563,7 +563,7 @@ The gateway builds, on `/act`:
 | Declare no sub-agent with a job tool | The definition is withheld; a child session offered one refuses `child-unsupported` |
 | Mint a completion key per job, store only its digest here, and keep the key across its own restarts | `key-reused` or `invalid` before any row; a lost key means the job can never be completed |
 | Answer `start` in the typed form, with a handle and a receipt of at most 256 bytes | Anything else leaves the job unproven, or keeps what it had. The row holds a fixed `unknown` failure that says it was not re-sent, and the model is answered from the job. A handle or receipt the record cannot hold is kept as the digest of its bytes, and the job is `started`; `handleDigested` marks such a handle |
-| Complete only through `completeJob`; hand the wake's evidence id to `resumeParked` | Event `wakeWait` is `mismatch`; `unacknowledged` |
+| Complete only through `completeJob`; hand the wake's evidence id to `resumeParked` | An event `wakeRun` is `mismatch`; `unacknowledged` |
 | Report `not-started` only when the authority has closed the start. A reference effect host cannot, its admitted set being process memory, so it answers `unknown` | A later completion is kept as a contradiction |
 | Map only an older gateway's closed-body refusal of the members to `{started: false}` | Any other mapping is a false closure |
 | Know that the gateway's one scope holds for a request under a lease only | A leaseless reconcile is not gated by it; under another credential it gets `action-key-scope-conflict`, which sends nothing |
@@ -611,8 +611,8 @@ from that record, never from the answer alone (#325). A job the record does not 
 source, tool, or handle and marker are not the record's) is answered `invalid` and sent nothing; the others still go. A start that
 answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses the abandon whole
 where it cannot read the store's answer (a lease that is not the abandon's, or a malformed job) and where reading a job back fails with
-an error that is not a job refusal. The lease is then taken. Jobs are decided and sent one at a time, so only a lease that is not the
-abandon's is refused before any send: a malformed job or a read error at a later job comes after the earlier jobs' cancels were sent, and
+an error that is not a job refusal. The lease is then taken. Jobs are decided and sent one at a time, so a refusal at a later job (a
+malformed job or a read error) comes after the earlier jobs' cancels were sent, and
 the host must treat the refusal as "some cancels may have gone". A retry of the same command answers those `already-admitted` only while
 the effect host remembers their operations, and is refused again while the store keeps answering so. Whether the refusal should precede
 every send is a question for v0.14.0. Cancels go

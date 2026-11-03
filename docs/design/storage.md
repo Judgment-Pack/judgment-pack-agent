@@ -818,8 +818,8 @@ decides and builds its cancel from that record, as a tool's cancel is (#325): a 
 job's, or an answer whose source, tool, or handle and marker are not the record's) is answered `invalid` and sent nothing, and the others
 still go. A start that answered after the transaction is asked its cancel then, under the abandon's fence, and sent. The package refuses
 the abandon whole where it cannot read the store's answer (a lease that is not the abandon's, or a malformed job) and where `readJob`
-fails with an error that is not a `JobRefused`; the lease is then taken. Jobs are decided and sent one at a time, so only a lease that is
-not the abandon's is refused before any send: a later malformed job or read error comes after the earlier jobs' cancels were sent, and
+fails with an error that is not a `JobRefused`; the lease is then taken. Jobs are decided and sent one at a time, so a refusal at a later
+job (a malformed job or a read error) comes after the earlier jobs' cancels were sent, and
 the host treats the refusal as "some cancels may have gone". A retry of the same command answers those `already-admitted` only while the
 effect host remembers their operations, and is refused again while the store keeps answering so. Each cancel goes through the effect host under `jobCancelOperation(command, job)`,
 admitted under the tool `job-abandon` and the job's source, with no run commit, so a retry of the command is admitted once by the same effect host;
