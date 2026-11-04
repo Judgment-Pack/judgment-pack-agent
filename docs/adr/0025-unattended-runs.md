@@ -493,9 +493,11 @@ and the continuation could make no request, so the model would never be told. Th
 park transaction refuses a settled job (`job-settled`) and an unproven one (`job-unproven`), which closes the lost wake-up.
 `wakeRun` takes only a timeout, which does not close the run, and a deadline. `resumeParked` returns the job as its record
 says now; the host hands it to `context.jobContinuation`, and the run's first request carries one fixed line and one data
-block built from the record. No checkpoint member, and no text from the host. This continuation is one of the two resumes a `complete` head takes (#328): any
-other resume of a run whose head is `complete` is refused `RunComplete` before any request, call or write, and the other is a
-re-authorization claim's view (`reauthorizedRunStore`) while its grant is unspent.
+block built from the record. No checkpoint member, and no text from the host. This continuation is one of the three resumes a `complete` head takes (#328), and
+only where the store holds that wait claimed at the head's own revision, so a continuation delivered again after it ran is
+refused (#330). The others are a re-authorization claim's view (`reauthorizedRunStore`) while its grant is unspent, and a leg of
+the run's objective while it is active, paused included, with a bound Plan that has a required step left. Any other resume of a run
+whose head is `complete` is refused `RunComplete` before any request, call or write.
 
 **What the model sees.** A start's row holds what the package composed: the job's identity, its state and the words
 "started, not finished". `job_read` always answers the state from the record (no handle, receipt or host text), and says

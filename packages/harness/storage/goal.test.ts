@@ -10,6 +10,7 @@ import type {JobLifetime} from './job'
 import {GOAL_JOURNAL_LIMIT,goalReportFromRecord,readGoalReport,readRunGoal,type GoalCommand,type GoalLifetime} from './goal'
 import {abandonGoal,admitGoals,goalCommand,goalReport,inspectGoal,readGoal} from './goalCommands'
 import {checkpointBytesDigest} from './wait'
+import {RUN_COMPLETE} from './writer'
 
 /* #230: one durable goal through the real Vercel engine, the package's writer and the memory store kind as a durable one. Every
  * command is the host's: no model is called. Jobs and the abandon are goalJobs.test.ts, a delegated step goalDelegated.test.ts. The
@@ -24,16 +25,7 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0}
  return {state,call:async()=>{const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
-/** #328: a finished run is resumed by no plain resume. A later leg here resumes the run as one stopped before its end would be:
- * its head is left running, under the run's own fence. */
-async function laterLeg(store:RunStore,resume?:boolean){
- if(!resume)return
- const head=await store.load(RUN)
- const saved=head?.checkpoint?JSON.parse(new TextDecoder().decode(head.checkpoint)):undefined
- if(saved?.status==='complete')await store.commit({runId:RUN,expectedRevision:head!.revision,commitId:crypto.randomUUID(),checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
-}
 async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;plan?:typeof PLAN;planDrift?:string[]}={}):Promise<AssistantEvent[]>{
- await laterLeg(store,extra.resume)
  const session:EngineSession={prompt:'Work.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:new AbortController().signal,allowConversation:true,critic:'off',
   context:{currentRequest:{message:'Work.',input:'work'},plan:extra.plan??PLAN,...(extra.planDrift?{planDrift:extra.planDrift}:{}),runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
@@ -89,6 +81,21 @@ const lastEntry=async(store:RunStore,resource=RUN)=>(await readGoal(store,resour
 // L-7: two of these runs take 70 to 80 s unloaded; a slow or loaded runner gets the room to finish them.
 vi.setConfig({testTimeout:300_000})
 describe('the objective: host commands without a model turn (#230)',()=>{
+ it('#330 MEDIUM-1: a leg resumes the finished head only while the objective is active and its Plan has a step left',async()=>{
+  const held=await bound(),errors=(events:AssistantEvent[])=>events.filter(e=>e.type==='error').map(e=>(e as Extract<AssistantEvent,{type:'error'}>).failure?.detail)
+  // Open, the objective's next leg resumes the finished head.
+  const open=provider([{say:'Still working.'}])
+  expect(errors(await drive(held.view,[LOOKUP],open.call,{resume:true}))).toEqual([]);expect(open.state.requests).toBe(1)
+  // Blocked, the objective takes no leg: the finished head is refused as any other. (Paused, it is still active: M8.)
+  const blocked=await goalCommand({store:held.store,command:command('block',held.binding.goal.revision,{condition:'waiting-on-data'})})
+  const stalled=provider([{say:'x'}])
+  expect(errors(await drive(held.view,[LOOKUP],stalled.call,{resume:true}))).toEqual([RUN_COMPLETE]);expect(stalled.state.requests).toBe(0)
+  await goalCommand({store:held.store,command:command('unblock',blocked.goal.revision)})
+  // Active again, its legs go on until the required steps are closed; then the finished head is refused.
+  await finish(held)
+  const after=provider([{say:'x'}])
+  expect(errors(await drive(held.view,[LOOKUP],after.call,{resume:true}))).toEqual([RUN_COMPLETE]);expect(after.state.requests).toBe(0)
+ })
  it('creates, binds the accepted Plan and is achieved by the steps\' own evidence; a helper step the model added is no departure (M17)',async()=>{
   const held=await bound()
   expect(held.binding.goal.objectives[0]!.plan).toMatchObject({id:'accepted-plan',steps:[{step:'step-1',index:0},{step:'step-2',index:1}]})
