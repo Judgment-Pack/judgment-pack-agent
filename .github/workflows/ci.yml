@@ -10,7 +10,7 @@ name: CI
 # part of them; on a push to main and on a dispatch, their whole part of the list.
 #
 # The release takes main's evidence instead of running this again (docs/ci-evidence.md): each job
-# records it with scripts/dev/release_evidence.py (devkit v0.14.0). On a push to main the `check`
+# records it with scripts/dev/release_evidence.py (devkit main at c0b75d3). On a push to main the `check`
 # and race jobs first ask whether the merged pull request's own run already passed some of
 # their tree-only checks (`pull_request_reuse` in .github/ci-evidence.json), bound through records
 # the pull request cannot write; every refusal runs the job's whole part. JPDEV_BIND_ENV names the

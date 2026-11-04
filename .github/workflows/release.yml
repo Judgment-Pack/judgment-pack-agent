@@ -141,11 +141,13 @@ jobs:
             || { echo "The release environment could not be read; create it with a required reviewer (docs/releasing.md)" >&2; exit 1; }
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
-  # The release evidence gate (scripts/dev/release_evidence.py, devkit v0.14.0; docs/ci-evidence.md):
+  # The release evidence gate (scripts/dev/release_evidence.py, devkit main at c0b75d3; docs/ci-evidence.md):
   # reuse only the complete evidence main CI and the full mutation table produced at this exact
-  # commit, on runners that reported the image this runner reports, or refuse. Tag-sensitive,
-  # package and publication gates stay fresh. A rolled hosted image refuses (runtime-identity) and
-  # takes the fresh route: there is no revalidation in this workflow.
+  # commit, or refuse: main CI's jobs on runners that reported the image this runner reports, the
+  # table's shards on runners that reported its image name, platform and OS release, whatever their
+  # image version, with node and npm at their pins (#332). Tag-sensitive, package and publication
+  # gates stay fresh. A rolled hosted image under a CI job, or another OS release under a shard,
+  # refuses (runtime-identity) and takes the fresh route: there is no revalidation in this workflow.
   verify:
     name: CI at the tag
     needs: admit
@@ -274,9 +276,14 @@ jobs:
           [ "${locked}" = "${version}" ] || { echo "package-lock.json holds the package at version ${locked}; the tag ${RELEASE_TAG} needs ${version}" >&2; exit 1; }
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
+      # The Node release CI built and tested with: dev.json's exact version.
+      - name: Read the Node version from dev.json
+        id: dev
+        run: python3 -I -c 'import json, os; open(os.environ["GITHUB_OUTPUT"], "a").write("node=" + json.load(open("dev.json"))["toolchains"]["node"]["version"] + "\n")'
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: ${{ steps.dev.outputs.node }}
 
       - name: Install the locked dependencies
         run: npm ci

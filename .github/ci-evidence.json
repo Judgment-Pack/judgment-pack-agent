@@ -1,10 +1,13 @@
 {
   "$comment": [
-    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.14.0), schema 2: docs/ci-evidence.md.",
+    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit main at c0b75d3), schema 2: docs/ci-evidence.md.",
     "Every job records the image identity its standard GitHub-hosted runner reports (identity), a reported identity and",
-    "not a pinned VM image. Every profile compares with the release runner: a rolled image refuses (runtime-identity)",
-    "and takes the fresh route; there is no revalidation here, because the check job does work outside the check list",
-    "(the Desk and Gateway checkouts) and the mutation shards are not the check list.",
+    "not a pinned VM image. The base and check profiles compare with the release runner: a rolled image refuses",
+    "(runtime-identity) and takes the fresh route. The mutation profile is release-os (#332): its tools must equal the",
+    "pins, and its image name, platform and OS-release digest what the release runner resolves; its ImageVersion is",
+    "recorded and compared with nothing, so the shards may run on different image patch versions, with different",
+    "preinstalled software outside node and npm. There is no revalidation here, because the check job does work outside",
+    "the check list (the Desk and Gateway checkouts) and the mutation shards are not the check list.",
     "pull_request_reuse lists only the checks of the check and three go-race jobs whose result depends on the tree and the recorded inputs;",
     "tests/test_release_evidence.py holds every check of those jobs to one side or the other."
   ],
@@ -77,12 +80,17 @@
       }
     },
     "mutation": {
+      "$comment": "The table's shards (#332): node is dev.json's exact toolchains.node.version, which mutation.yml installs, as node --version prints it; npm is the npm that Node release bundles.",
       "variant": "linux-x64",
       "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
-      "compare": "release-runner",
+      "compare": "release-os",
       "tools": {
         "node": ["node", "--version"],
         "npm": ["npm", "--version"]
+      },
+      "pins": {
+        "node": "v22.23.4",
+        "npm": "10.9.9"
       }
     }
   },

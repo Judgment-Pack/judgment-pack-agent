@@ -50,7 +50,12 @@ EVENTS = ('push', 'workflow_dispatch')
 # Runs of these events are neither evidence nor part of the newer-attempt scan.
 OUTSIDE_EVENT_PREFIX = 'pull_request'
 OUTSIDE_EVENTS = ('merge_group',)
-COMPARE = ('release-runner', 'pins')
+# How a profile's evidence is compared (docs/ci-evidence.md): with what the release runner resolves
+# (release-runner); with the pins alone (pins); with the pins and the OS release and platform the
+# release runner resolves, the image version recorded and never compared (release-os).
+COMPARE = ('release-runner', 'pins', 'release-os')
+# The compare modes under which every tool of the profile is pinned.
+PINNED = ('pins', 'release-os')
 # runner_group_id and runner_group_name of a job on a GitHub-hosted runner.
 HOSTED = (0, 'GitHub Actions')
 RUNNER_KEYS = ('ImageOS', 'ImageVersion', 'RUNNER_OS', 'RUNNER_ARCH')
@@ -312,6 +317,10 @@ def check_config(config):
                 text(value, '%s.platform.%s' % (where, key))
         if profile['compare'] not in COMPARE:
             fail(where + '.compare', 'one of %s is required' % (COMPARE,))
+        # "release-os" compares the OS release of the profile's variant, which only the identity
+        # policy names and records.
+        if profile['compare'] == 'release-os' and identity is None:
+            fail(where + '.compare', 'compare "release-os" needs config.identity')
         named(profile['tools'], where + '.tools', empty=True)
         for tool, argv in profile['tools'].items():
             texts(argv, '%s.tools.%s' % (where, tool), empty=False)
@@ -321,8 +330,8 @@ def check_config(config):
             text(pin, '%s.pins.%s' % (where, tool))
         if not set(pins) <= set(profile['tools']):
             fail(where + '.pins', 'every pin names a tool of the profile')
-        if profile['compare'] == 'pins' and (not pins or set(pins) != set(profile['tools'])):
-            fail(where + '.pins', 'compare "pins" needs a pin for every tool, and a tool')
+        if profile['compare'] in PINNED and (not pins or set(pins) != set(profile['tools'])):
+            fail(where + '.pins', 'compare "%s" needs a pin for every tool, and a tool' % profile['compare'])
 
     named(config['workflows'], 'config.workflows')
     for key, workflow in config['workflows'].items():
@@ -533,8 +542,9 @@ def actions_of(sha, path):
 
 def identity_context(config, sha):
     """The identity policy at the commit: the manifest, held to the digest the configuration pins,
-    its record, each profile's variant (the profile's platform is the variant's), and the actions
-    each configured workflow names, every one pinned."""
+    its record, each profile's variant (the profile's platform is the variant's, and under
+    "release-os" one with an OS-release file), and the actions each configured workflow names,
+    every one pinned."""
     setting = config['identity']
     raw = git('show', sha + ':' + setting['manifest'], code='identity-config')
     need(digest(raw) == setting['sha256'], 'identity-config',
@@ -547,6 +557,10 @@ def identity_context(config, sha):
         need(variant is not None, 'identity-config', '%s names no variant of the manifest' % name)
         need(all(profile['platform'][key] == variant[key] for key in ('RUNNER_OS', 'RUNNER_ARCH')),
              'identity-config', '%s: its platform is not the variant %s' % (name, profile['variant']))
+        # The release runner cannot resolve an OS release the variant has no file for.
+        need(profile['compare'] != 'release-os' or variant['os_release'] is not None, 'identity-config',
+             '%s: compare "release-os" needs an OS-release file, and the variant %s has none' % (
+                 name, profile['variant']))
     return {'record': {'manifest': setting['manifest'], 'sha256': setting['sha256'],
                        'revision': manifest['revision'], 'kind': manifest['identity']},
             'variants': manifest['variants'],
@@ -603,10 +617,10 @@ def check_identity(context, profile, payload, workflow_key, job_key):
 
 # --- the evidence a CI job records --------------------------------------------------------------
 
-def runtime(profile, variant=None):
-    """This runner's image, platform and tool identity, for a profile. Under the identity policy
-    (a variant), the image version must have the form a hosted runner reports, and the OS-release
-    digest is that of the variant's file, on every OS that has one."""
+def runner_runtime(profile, variant=None):
+    """This runner's image and platform identity, for a profile, without its tools. Under the
+    identity policy (a variant), the image version must have the form a hosted runner reports, and
+    the OS-release digest is that of the variant's file, on every OS that has one."""
     runner = {key: os.environ.get(key, '') for key in RUNNER_KEYS}
     need(all(runner.values()), 'runner-identity')
     for key, value in profile['platform'].items():
@@ -622,6 +636,12 @@ def runtime(profile, variant=None):
                 raise Refusal('identity-missing', 'no OS-release file ' + variant['os_release']) from error
     elif runner['RUNNER_OS'] == 'Linux':
         runner['os_release'] = digest(Path('/etc/os-release').read_bytes())
+    return runner
+
+
+def runtime(profile, variant=None):
+    """This runner's image, platform and tool identity, for a profile."""
+    runner = runner_runtime(profile, variant)
     tools = {name: command(argv, 'tool-identity', 65536).decode().strip()
              for name, argv in profile['tools'].items()}
     need(all(tools.values()), 'tool-identity')
@@ -993,7 +1013,10 @@ def check_runtime(profile, recorded, here, job_key):
     an image roll). For "release-runner", a record that differs from what this runner resolves is
     returned as the drift (its detail, and each differing key with its recorded value and this
     runner's), None when it is the same: verify refuses it only after every other check has
-    passed."""
+    passed. For "release-os", here holds only the runner fields this runner resolves: every one
+    but ImageVersion, which is recorded and never compared, must be the record's, or the job
+    refuses here, as a refusal and never a drift (the jobs' work is not the release runner's to
+    run again)."""
     need(isinstance(recorded, dict) and set(recorded) == {'runner', 'tools'} and
          isinstance(recorded['runner'], dict) and isinstance(recorded['tools'], dict),
          'runtime-identity', job_key + ': no runtime record')
@@ -1020,6 +1043,15 @@ def check_runtime(profile, recorded, here, job_key):
                   for part in ('runner', 'tools')}
         changed = list(values['runner']) + list(values['tools'])
         return '%s: differs from this runner in %s' % (job_key, changed), values
+    if profile['compare'] == 'release-os':
+        # Every runner field of either side but the image version: a missing or extra field
+        # differs too.
+        changed = [key for key in sorted(set(runner) | set(here['runner']))
+                   if key != 'ImageVersion' and runner.get(key) != here['runner'].get(key)]
+        need(not changed, 'runtime-identity',
+             "%s: the OS release or platform is not this runner's (compare release-os, never revalidated): %s" % (
+                 job_key, '; '.join('%s is %r, this runner %r' % (key, runner.get(key), here['runner'].get(key))
+                                    for key in changed)))
     return None
 
 
@@ -1380,7 +1412,8 @@ def verify_workflow(api, config, source, key, now, here, trail, drift, identity=
         # admitted again now (a refusal, never a drift).
         reused_trail = readmit(api, config, source, key, job_key, now, run, payload) if reused else None
         # The runtime identity is the job's last check, so that any other refusal of the job wins
-        # over it; a drift from this runner is only collected, for the end of verify.
+        # over it; a drift from this runner is only collected, for the end of verify. A
+        # "release-os" profile was resolved on this runner before any evidence was read.
         if profile['compare'] == 'release-runner' and spec['profile'] not in here:
             here[spec['profile']] = runtime(profile, variant)
         differs = check_runtime(profile, payload.get('runtime'), here.get(spec['profile']), job_key)
@@ -1406,6 +1439,34 @@ def verify_workflow(api, config, source, key, now, here, trail, drift, identity=
     need(selection(latest) == selection(run), 'latest-changed', 'run %d attempt %d' % (
         latest['id'], latest['run_attempt']))
     return resolved['id'], run
+
+
+def identity_group(compare, variant, name, members, release_runner=None):
+    """The decision record of one variant and profile's jobs (members: each job and its recorded
+    runtime), and the identity-changed detail where they disagree, None otherwise. The jobs of a
+    "pins" profile (a leg the release runner cannot resolve) must have reported one identity
+    between them. Those of a "release-os" profile must have reported one identity but for
+    ImageVersion, which is recorded, per job and as this runner resolved it (release_runner), and
+    never compared. A "release-runner" profile's jobs are each compared with this runner instead,
+    at the end of verify."""
+    same = all(runtime_identity == members[0][1] for _, runtime_identity in members)
+    group = {'compare': compare, 'jobs': [job for job, _ in members], 'runtime': members[0][1] if same else None}
+    if compare == 'release-os':
+        group.update(image_versions={job: runtime_identity['runner'].get('ImageVersion')
+                                     for job, runtime_identity in members},
+                     release_runner=release_runner)
+        held = [{'runner': {key: value for key, value in runtime_identity['runner'].items() if key != 'ImageVersion'},
+                 'tools': runtime_identity['tools']} for _, runtime_identity in members]
+        differ = sorted({'%s.%s' % (part, key) for other in held for part in ('runner', 'tools')
+                         for key in set(other[part]) | set(held[0][part])
+                         if other[part].get(key) != held[0][part].get(key)})
+        return group, ('the %s jobs of variant %s report different identities apart from ImageVersion: %s' % (
+            name, variant, differ) if differ else None)
+    if same or compare != 'pins':
+        return group, None
+    return group, 'the %s jobs of variant %s report different identities: %s' % (
+        name, variant, '; '.join('%s %s' % (job, runtime_identity['runner'].get('ImageVersion'))
+                                 for job, runtime_identity in members))
 
 
 def runner_bound_jobs(config):
@@ -1438,23 +1499,24 @@ def verify(api, config, source, release_tag, now, record):
                                   statement='a reported hosted-runner image identity, not a pinned VM image',
                                   release_workflow=release_workflow_actions(source), groups={})
     here, chosen, drift = {}, {}, []
+    # A "release-os" profile is resolved on this runner, its image and platform and OS release but
+    # not its tools, before any evidence is read: a profile this runner cannot resolve (another
+    # platform or image name, no OS-release file) refuses here, as a configuration fact.
+    for name, profile in config['profiles'].items():
+        if profile['compare'] == 'release-os':
+            here[name] = {'runner': runner_runtime(profile, identity['context']['variants'][profile['variant']])}
     for key in config['workflows']:
         record['workflows'][key] = {}
         chosen[key] = verify_workflow(api, config, source, key, now, here, record['workflows'][key],
                                       drift, identity)
     if identity:
-        # Identity is compared per variant and profile, never across them. Jobs of a "pins" profile
-        # (a leg the release runner cannot resolve) must have reported one identity between them;
-        # a "release-runner" profile's jobs are each compared with this runner at the end.
+        # Identity is compared per variant and profile, never across them.
         for (variant, name), members in sorted(identity['groups'].items()):
-            same = all(runtime_identity == members[0][1] for _, runtime_identity in members)
-            record['identity']['groups']['%s/%s' % (variant, name)] = {
-                'compare': config['profiles'][name]['compare'], 'jobs': [job for job, _ in members],
-                'runtime': members[0][1] if same else None}
-            need(same or config['profiles'][name]['compare'] != 'pins', 'identity-changed',
-                 'the %s jobs of variant %s report different identities: %s' % (
-                     name, variant, '; '.join('%s %s' % (job, runtime_identity['runner'].get('ImageVersion'))
-                                              for job, runtime_identity in members)))
+            compare = config['profiles'][name]['compare']
+            group, changed = identity_group(compare, variant, name, members,
+                                            here[name]['runner'] if compare == 'release-os' else None)
+            record['identity']['groups']['%s/%s' % (variant, name)] = group
+            need(changed is None, 'identity-changed', changed)
     # Collection takes time: every workflow's selection, then the tag, once more at the end.
     for key, (workflow_id, run) in chosen.items():
         final = select(api, source, config['workflows'][key], workflow_id, branch)
