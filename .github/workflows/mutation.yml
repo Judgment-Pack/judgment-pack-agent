@@ -91,7 +91,9 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
-          node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/28"
+          # A row's run is bounded at 1500 s here, not the runner's default 900: under a full table's load the
+          # rows that select the whole of storage/job.test.ts take 650 to 800 s (docs/ci-evidence.md).
+          node packages/harness/scripts/mutation-check.mjs --shard "$SHARD/28" --timeout 1500
           # Past three quarters of the job's limit it is time to add shards (docs/ci-evidence.md).
           if [ "$SECONDS" -gt 5400 ]; then echo "::warning::shard $SHARD of 28 took ${SECONDS}s, past three quarters of its 120-minute limit"; fi
 

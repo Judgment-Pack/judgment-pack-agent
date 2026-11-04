@@ -436,7 +436,8 @@ class Workflows(unittest.TestCase):
         self.assertLess(MAX_PARALLEL, 20)
         self.assertIn('    name: every row (shard ${{ matrix.shard }} of %d)\n' % SHARDS, full)
         self.assertIn('          SHARD: ${{ matrix.shard }}\n', full)
-        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/%d"' % SHARDS])
+        # Each shard's rows run under the table's bound of 1500 s a run (docs/ci-evidence.md), not the runner's default.
+        self.assertEqual(re.findall(r'mutation-check\.mjs[^\n]*', full), ['mutation-check.mjs --shard "$SHARD/%d" --timeout 1500' % SHARDS])
         self.assertEqual(list(config()['workflows']['mutation']['jobs']), ['full-%d' % n for n in range(1, SHARDS + 1)])
         self.assertIn('    timeout-minutes: 120\n', full)
 
