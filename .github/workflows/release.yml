@@ -141,7 +141,7 @@ jobs:
             || { echo "The release environment could not be read; create it with a required reviewer (docs/releasing.md)" >&2; exit 1; }
           [ "${reviewers}" -ge 1 ] || { echo "The release environment requires no reviewer" >&2; exit 1; }
 
-  # The release evidence gate (scripts/dev/release_evidence.py, devkit main at c0b75d3; docs/ci-evidence.md):
+  # The release evidence gate (scripts/dev/release_evidence.py, devkit v0.15.0; docs/ci-evidence.md):
   # reuse only the complete evidence main CI and the full mutation table produced at this exact
   # commit, or refuse: main CI's jobs on runners that reported the image this runner reports, the
   # table's shards on runners that reported its image name, platform and OS release, whatever their

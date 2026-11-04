@@ -1,5 +1,5 @@
-"""The agent's adoption of the devkit release evidence gate (agent #239, #240), from the kit's main at c0b75d3,
-which adds the release-os compare mode the mutation table's profile takes (agent #332, devkit #80).
+"""The agent's adoption of the devkit release evidence gate, v0.15.0 (agent #239, #240), whose release-os
+compare mode the mutation table's profile takes (agent #332, devkit #79).
 
 The gate itself is the kit's, vendored unchanged as scripts/dev/release_evidence.py; the kit's own
 suite tests its contract. These tests hold the agent's side of it: the vendored copies, the
@@ -29,20 +29,18 @@ _spec = importlib.util.spec_from_file_location('release_evidence', ROOT / 'scrip
 g = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(g)
 
-KIT = 'v0.14.0'
+KIT = 'v0.15.0'
 # Each vendored file: the kit file it copies (line 2 names both) and the SHA-256 of the copy as the
-# kit's main at commit c0b75d39201008560c2a4f3ec86a7079791ea6d7 (devkit #80, after the v0.14.0 tag
-# 9f555498a9e4c35d426ca1ce45352abf3363cbb3; no release holds it yet) ships it under scripts/dev/. Only
-# release_evidence.py differs from v0.14.0's copy; line 2 of every copy there still names v0.14.0.
+# kit's v0.15.0 tag (commit 9651d531d978be6c8cd296ffe644e8fd3dc0fe9b) ships it under scripts/dev/.
 VENDORED = {
     'scripts/dev/release_evidence.py': ('lib/release_evidence.py',
-                                        'bd285b1dfadb17388b823a6b5175bed1973315e0d3434bf039231b46ebce5b72'),
+                                        'd6a4ead2421dea0475e47a7c5536c66efec2c95bfdabda3217bc521793bd2742'),
     'scripts/dev/check.sh': ('templates/check.sh',
-                             'c203aa5253162068421831a679f063ce07110024e681341bf035dc739f14b410'),
+                             'e25ad69477cbb3c923cae51a557a6cb7d18598cdeaad1a78ddeca226279c686b'),
     'scripts/dev/handover_check.sh': ('lib/handover_check.sh',
-                                      '1a2b7e21c8acccd18da7779d1da62e775ac87853248ad51aea369daf8c7d13e4'),
+                                      '053bbc0b526634307ee949e782a40d247e2049ed3b7867e3d12d2eb43f8969f7'),
     'scripts/dev/changed_checks.py': ('lib/changed_checks.py',
-                                      '253f2be03751c609c44a2d29091ef5a9272b5c658012b6362089f56958e3fa22'),
+                                      '7be3b8297e08df021b883961da29173149404b4cad4e4e764064f9c7230dcd16'),
 }
 MANIFEST = '.github/runner-identity.json'
 MANIFEST_SHA = '333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da'

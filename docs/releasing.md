@@ -141,7 +141,7 @@ Every job works on the commit the run was started for, by its digest, not on the
    link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Verifies trusted exact-source CI evidence.** The devkit's
-   [release evidence gate](ci-evidence.md) (devkit `main` at `c0b75d3`, vendored as `scripts/dev/release_evidence.py`)
+   [release evidence gate](ci-evidence.md) (v0.15.0, vendored as `scripts/dev/release_evidence.py`)
    requires complete successful `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs and every full mutation shard of
    trusted main runs at the exact release commit, with the inputs the commit holds: the jobs on
    runners that reported the image the release runner reports, the shards on runners that reported

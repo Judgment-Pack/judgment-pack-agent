@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit main at c0b75d3), schema 2: docs/ci-evidence.md.",
+    "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.15.0), schema 2: docs/ci-evidence.md.",
     "Every job records the image identity its standard GitHub-hosted runner reports (identity), a reported identity and",
     "not a pinned VM image. The base and check profiles compare with the release runner: a rolled image refuses",
     "(runtime-identity) and takes the fresh route. The mutation profile is release-os (#332): its tools must equal the",

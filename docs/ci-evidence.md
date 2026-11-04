@@ -3,11 +3,9 @@
 A release takes the evidence main CI and the full mutation table already produced at the exact
 release commit, instead of running them again, and refuses when that evidence is missing, partial,
 stale, unreadable or different. The gate is the devkit's
-[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/c0b75d39201008560c2a4f3ec86a7079791ea6d7/docs/ci-evidence.md),
-vendored unchanged as `scripts/dev/release_evidence.py` from the devkit's `main` at `c0b75d3`
-([devkit #80](https://github.com/Judgment-Pack/judgment-pack-devkit/pull/80), the `release-os`
-mode), which comes after v0.14.0 and is not yet in a release. Line 2 of each vendored file names the
-kit file and, as the kit's own copies at that commit do, v0.14.0. This repository's configuration is
+[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.15.0/docs/ci-evidence.md),
+vendored unchanged from devkit v0.15.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
+file and release), with this repository's configuration in
 [`.github/ci-evidence.json`](../.github/ci-evidence.json), schema 2. The kit's document is the
 contract; this one records what the agent configures, why, and what changed.
 
@@ -21,8 +19,9 @@ Devkit v0.14.0 follows: at v0.13.0 every live plan on `main` decided
 `merge_commit_sha`, so every check ran. That failed closed. v0.14.0 binds the merge to the pull
 request timeline's `merged` event
 ([devkit #70](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/70)).
-`scripts/dev/ci_evidence.py` is removed. Devkit #80 adds the `release-os` compare mode, which the
-mutation table's profile takes since agent #332 ([Runner identity](#runner-identity-239)).
+`scripts/dev/ci_evidence.py` is removed. Devkit v0.15.0 adds the `release-os` compare mode
+([devkit #79](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/79)), which the mutation
+table's profile takes since agent #332 ([Runner identity](#runner-identity-239)).
 
 ## Why the shared gate, not a port
 
@@ -78,7 +77,7 @@ pinned VM image**: nothing here chooses, holds or attests the machine a job runs
   CI jobs use, makes the Python environment, and must resolve exactly what each job reported (image
   version, OS-release digest and every tool).
 - `mutation` compares `release-os` since #332 ([below](#the-tables-shards-compare-release-os-332)):
-  the shards' image name, platform and OS-release digest must be what the release runner reports,
+  the shards' image name, platform and OS-release digest must be what the release runner resolves,
   and their `node` and `npm` must equal the profile's pins; their image version is recorded and
   compared with nothing.
 - Every `uses:` of `ci.yml`, `mutation.yml` and `release.yml` is pinned to a full commit, and the
@@ -92,10 +91,10 @@ run, the release refuses (`runtime-identity`) when a `contract`, `check` or race
 another image than the release runner's: the agent does not opt in to revalidation,
 because its `check` job does work outside the check list (the Desk and Gateway checkouts) and its
 mutation shards are not the check list. The fresh route below applies to those jobs, as before. A
-roll under the table's shards refuses only where a shard reports another OS-release digest, image
-name or platform than the release runner, or a `node` or `npm` other than its pin
-(`runtime-identity`, never revalidated): the fresh route applies to the table then too, or a new
-release once the label serves one OS release again. When
+roll under the table's shards refuses only where a shard reports another OS-release digest than the
+release runner, or a `node` or `npm` other than its pin (`runtime-identity`, never revalidated):
+the fresh route applies to the table then too, or a new release once the label serves one OS
+release again. When
 `ubuntu-latest` moves to another OS release, capture refuses on the next main run
 (`runner-platform`) and the `ImageOS` pin moves in a reviewed change. GitHub patches and retires
 hosted images; nothing here freezes one.
@@ -108,16 +107,17 @@ versions (21, 6 and 1 shards), and the shard on the oldest image also reported a
 Under `release-runner` every shard must report the release runner's image version, so while a roll
 lasts a 28-shard table almost never passes, and a re-run draws the images again. `pins` does not
 help: under the identity policy its jobs must report one image version between them
-(`identity-changed`). The maintainer chose the kit's `release-os` mode
-([devkit #79](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/79), #80) for the
-`mutation` profile alone.
+(`identity-changed`). The maintainer chose the kit's
+[`release-os` mode](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.15.0/docs/ci-evidence.md#the-release-os-mode)
+for the `mutation` profile alone.
 
 - **What it holds.** Each shard's `node` and `npm` must equal the pins, `v22.23.4` and `10.9.9`.
   The `CI at the tag` job resolves the profile's image name (`ImageOS`), `RUNNER_OS`, `RUNNER_ARCH`
   and the digest of `/etc/os-release` on its own runner before it reads any evidence, and every
-  shard must have reported exactly those; the shards must also agree with each other on all of it.
-  A difference refuses (`runtime-identity`, or `identity-changed` between shards) and is never
-  revalidated.
+  shard must have reported exactly those. A shard of another image name, OS or architecture
+  refuses `identity-unexpected`; another OS-release digest, or a `node` or `npm` that is not its
+  pin, refuses `runtime-identity`. Neither is revalidated. The shards must also agree among
+  themselves (`identity-changed`), a backstop that the per-shard checks reach first.
 - **What it records.** Each shard's image version stays in its evidence, and the decision record's
   `linux-x64/mutation` group holds them (`image_versions`) beside what the release runner resolved
   (`release_runner`). The image version is compared with nothing: not with the release runner, and
@@ -514,8 +514,7 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   `base_ref` would not be refused (the kit's stated limit).
 - **The `release-os` mode.** The mutation profile's comparison first runs live at the next release's
   `CI at the tag` job. Until then it was exercised only against fixtures, here and in the kit, and a
-  table under the exact Node release has not run yet. The vendored gate is from the kit's `main`, not
-  from a kit release.
+  table under the exact Node release has not run yet.
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
   configuration and workflow files at a fixture commit, with handwritten Actions API answers. It is
   not evidence that a remote workflow ran. The kit's own suite tests the gate's contract.
