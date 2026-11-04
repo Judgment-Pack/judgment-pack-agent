@@ -5,7 +5,6 @@ import {answerWith} from '../testing/scenarioDriver'
 import {toolListDigest} from '../toolSources'
 import {canonicalJSON} from '../context/chat'
 import {evidenceFailure,availablePlanEvidence} from '../execution/planActions'
-import {planDigest} from '../execution/plan'
 import {approvalShownDigest,readExecution} from '../execution/state'
 import {MemoryRunStore,type RunStore} from './run'
 import {AIFailureError,failure} from '../failures'
@@ -504,35 +503,7 @@ describe('the model\'s read and plan evidence (#229)',()=>{
   expect(evidenceFailure({operations:[startRow.id],artifacts:[]},{book:unknown,scope,jobs:withJob(succeeded)})).toBeUndefined()
   expect(evidenceFailure({operations:[startRow.id],artifacts:[]},{book:unknown,scope:{execution:'other',role:'author'},jobs:withJob(succeeded)})).toBe('wrong-scope')
  })
- it('complete_plan_step reads the job afresh: a job that succeeded since the run opened closes its step',async()=>{
-  const held=await leased(),tool=await startTool(started),first=provider([CALL,{say:'running'}])
-  await drive(held.view,[tool],first.call)
-  const j=(await listJobs(held.store,RUN)).jobs[0]!
-  const list=held.store.listJobs.bind(held.store)
-  let opened=false
-  vi.spyOn(held.store,'listJobs').mockImplementation(async(...args)=>{const page=await list(...args);if(!opened){opened=true;await completeJob(held.store,completion(j.job))}return page})
-  const revision=planDigest([{step:'Run it',status:'in_progress',id:'step-1'}] as never)
-  const plan={call:{tool:'update_plan',arguments:{plan:[{step:'Run it',status:'in_progress'}],explanation:'start'}}}
-  const close={call:{tool:'complete_plan_step',arguments:{id:'step-1',expectedRevision:revision,outcome:'completed',evidence:{operations:[j.operation],artifacts:[]}}}}
-  const events=await drive(held.view,[tool],provider([plan,close,{say:'x'}]).call,{resume:true})
-  expect(events.some(e=>e.type==='plan_completion_refused')).toBe(false)
-  expect(events.some(e=>e.type==='plan_revised'&&JSON.stringify(e).includes('recorded evidence'))).toBe(true)
- })
- it('complete_plan_step reads the job afresh, so a job that failed since the turn began cannot close a step',async()=>{
-  const held=await leased(),tool=await startTool(started),job=()=>listJobs(held.store,RUN).then(p=>p.jobs[0]!)
-  const first=provider([CALL,{say:'running'}])
-  await drive(held.view,[tool],first.call)
-  const j=await job()
-  await completeJob(held.store,completion(j.job,{outcome:'failed'}))
-  const list=vi.spyOn(held.store,'listJobs')
-  const revision=planDigest([{step:'Run it',status:'in_progress',id:'step-1'}] as never)
-  const plan={call:{tool:'update_plan',arguments:{plan:[{step:'Run it',status:'in_progress'}],explanation:'start'}}}
-  const close={call:{tool:'complete_plan_step',arguments:{id:'step-1',expectedRevision:revision,outcome:'completed',evidence:{operations:[j.operation],artifacts:[]}}}}
-  const next=provider([plan,close,{say:'x'}])
-  const events=await drive(held.view,[tool],next.call,{resume:true})
-  expect(list).toHaveBeenCalled()
-  expect(events.find(e=>e.type==='plan_completion_refused')).toMatchObject({reason:'unsuccessful-operation',step:'step-1'})
- })
+ // complete_plan_step's fresh read of a cited job: storage/jobEvidence.test.ts.
 })
 
 describe('a held start goes through the ordinary approval (#229)',()=>{

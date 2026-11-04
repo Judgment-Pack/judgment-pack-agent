@@ -214,7 +214,11 @@ How 28 was chosen (#322), from the seconds each row printed in those two runs, 1
   everything else, so the table runs in two waves, in about the time ten shards took (107 and 122
   minutes from start to end).
 
-**A row's time is bounded by its runs, not capped.** `--timeout` (900 seconds) bounds one vitest run. A row
+**A row's time is bounded by its runs, not capped.** `--timeout` bounds one vitest run: 900 seconds by default,
+which the pull request's own rows and sample keep, and 1500 seconds in the full table's shards. The full table
+raised it for v0.13.0: under the table's load, the 93 rows that select the whole of `storage/job.test.ts` took
+up to 795 seconds (run 41734248527), and one of them timed out at 900 on a slower shard. Splitting that file,
+so that its rows select less, is the follow-up for v0.14.0. A row
 its selection catches is one run of its test files and, the first time a file fails in that shard, one run
 of that file with no mutant: seconds to 10 minutes. Only a row its selection does not catch goes on to the
 whole suite, which takes about 10 minutes on a hosted runner and more than 15 on a slow one, and a failure only the whole suite found is run

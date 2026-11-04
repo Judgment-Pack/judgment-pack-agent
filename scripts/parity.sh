@@ -406,6 +406,7 @@ $pkg/storage/job.test.ts
 $pkg/storage/jobRecords.test.ts
 $pkg/storage/jobConformance.ts
 $pkg/storage/jobConformance.test.ts
+$pkg/storage/jobEvidence.test.ts
 $pkg/storage/goal.ts
 $pkg/storage/goal.test.ts
 $pkg/storage/goalJobs.test.ts
