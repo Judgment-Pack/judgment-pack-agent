@@ -584,12 +584,14 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   from two readings of the weekly cron.
 - **Event names.** A future base-change event whose name contains neither `base_change` nor
   `base_ref` would not be refused (the kit's stated limit).
-- **The `release-os` mode.** The mutation profile's comparison first runs live at the next release's
-  `CI at the tag` job. Until then it was exercised only against fixtures, here and in the kit, and a
-  table under the exact Node release has not run yet. The same holds for the `base` and `check`
-  profiles' comparison (#336). That setup-python installs `3.12.16` on an image whose tool cache
-  holds `3.12.15` is read from the action's code and the published builds; the pull request of #336
-  is the first run of it, on whichever images its jobs draw.
+- **The `release-os` mode.** The mutation profile's comparison ran live at the `v0.13.1` tag's
+  `CI at the tag` job (release run 41859236684), over a table under the exact Node release whose
+  shards drew three image versions, and passed; the run refused on the `check` profile, then
+  still `release-runner` (#336). The `base` and `check` profiles' comparison first runs live at
+  the next release's `CI at the tag` job; until then it was exercised only against fixtures, here
+  and in the kit. setup-python installed `3.12.16` on images whose tool cache holds `3.12.15` (a
+  download from the published builds) and on images that hold it (the cache), on the pull request
+  of #336.
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
   configuration and workflow files at a fixture commit, with handwritten Actions API answers. It is
   not evidence that a remote workflow ran. The kit's own suite tests the gate's contract.

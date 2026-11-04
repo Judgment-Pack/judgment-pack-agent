@@ -64,15 +64,19 @@ All other implementation, privacy/security, regression, cross-language parity,
 safeguard-removal, required CI, independent review and artifact-verification gates
 remain. This decision does not waive the live comparison for later Agent releases.
 
-## v0.13.1 scope decision
+## v0.13.2 scope decision
 
 For Agent v0.13.0 only, the maintainer [deferred the live comparison again on 2026-11-03](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6614430639),
 as for v0.10.0, v0.11.0 and v0.12.0. The v0.13.0 tag was refused by the release evidence gate
 ([#332](https://github.com/Judgment-Pack/judgment-pack-agent/issues/332)) and never published, and
 its content ships as v0.13.1. On 2026-11-04 the maintainer
 [carried the deferral over to Agent v0.13.1 instead](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6629717633), with the same reasoning and the
-corrections below; releases after v0.13.1 are not covered. So the deferral is for Agent v0.13.1
-only. Issue #169 stays open on milestone v0.14.0, and is not a blocking Agent v0.13.1 release
+corrections below. The v0.13.1 tag was refused too
+([#336](https://github.com/Judgment-Pack/judgment-pack-agent/issues/336)) and never published, and
+the same day the maintainer
+[carried the deferral over to Agent v0.13.2 instead](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6636653965),
+on unchanged terms; releases after v0.13.2 are not covered. So the deferral is for Agent v0.13.2
+only. Issue #169 stays open on milestone v0.14.0, and is not a blocking Agent v0.13.2 release
 gate.
 
 The reason: v0.13.0 changes model-visible text only for hosts that use its new features
