@@ -590,8 +590,8 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   still `release-runner` (#336). The `base` and `check` profiles' comparison first runs live at
   the next release's `CI at the tag` job; until then it was exercised only against fixtures, here
   and in the kit. setup-python installed `3.12.16` on images whose tool cache holds `3.12.15` (a
-  download from the published builds) and on images that hold it (the cache), on the pull request
-  of #336.
+  download from the published builds) and on images that hold `3.12.16` (the cache), on the pull
+  request of #336 (#337).
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
   configuration and workflow files at a fixture commit, with handwritten Actions API answers. It is
   not evidence that a remote workflow ran. The kit's own suite tests the gate's contract.

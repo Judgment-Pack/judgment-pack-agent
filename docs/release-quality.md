@@ -69,7 +69,7 @@ remain. This decision does not waive the live comparison for later Agent release
 For Agent v0.13.0 only, the maintainer [deferred the live comparison again on 2026-11-03](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6614430639),
 as for v0.10.0, v0.11.0 and v0.12.0. The v0.13.0 tag was refused by the release evidence gate
 ([#332](https://github.com/Judgment-Pack/judgment-pack-agent/issues/332)) and never published, and
-its content ships as v0.13.1. On 2026-11-04 the maintainer
+its content was to ship as v0.13.1. On 2026-11-04 the maintainer
 [carried the deferral over to Agent v0.13.1 instead](https://github.com/Judgment-Pack/judgment-pack-agent/issues/169#issuecomment-6629717633), with the same reasoning and the
 corrections below. The v0.13.1 tag was refused too
 ([#336](https://github.com/Judgment-Pack/judgment-pack-agent/issues/336)) and never published, and
