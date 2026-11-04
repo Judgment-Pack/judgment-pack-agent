@@ -3,8 +3,8 @@
 A release takes the evidence main CI and the full mutation table already produced at the exact
 release commit, instead of running them again, and refuses when that evidence is missing, partial,
 stale, unreadable or different. The gate is the devkit's
-[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.14.0/docs/ci-evidence.md),
-vendored unchanged from devkit v0.14.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
+[release evidence gate](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.15.0/docs/ci-evidence.md),
+vendored unchanged from devkit v0.15.0 as `scripts/dev/release_evidence.py` (line 2 names the kit
 file and release), with this repository's configuration in
 [`.github/ci-evidence.json`](../.github/ci-evidence.json), schema 2. The kit's document is the
 contract; this one records what the agent configures, why, and what changed.
@@ -19,7 +19,9 @@ Devkit v0.14.0 follows: at v0.13.0 every live plan on `main` decided
 `merge_commit_sha`, so every check ran. That failed closed. v0.14.0 binds the merge to the pull
 request timeline's `merged` event
 ([devkit #70](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/70)).
-`scripts/dev/ci_evidence.py` is removed.
+`scripts/dev/ci_evidence.py` is removed. Devkit v0.15.0 adds the `release-os` compare mode
+([devkit #79](https://github.com/Judgment-Pack/judgment-pack-devkit/issues/79)), which the mutation
+table's profile takes since agent #332 ([Runner identity](#runner-identity-239)).
 
 ## Why the shared gate, not a port
 
@@ -39,9 +41,9 @@ agent's gate is held either by the gate's own contract or by this repository's c
 | Advisory: only `dependency-audit-live` may be skipped, which proves nothing about advisories | `optional_skips`; the live query stays fresh (below) |
 | Mutation: every full shard of a dispatch run on main at the commit | the `mutation` workflow's jobs, one per shard, and its `events` |
 | Approval, provenance, the paired Go tag | unchanged jobs of `release.yml`, outside the gate; named in `fresh_at_release` |
-| The runner and tools, resolved again on the release runner | every profile `compare: release-runner`, now with the reported identity |
+| The runner and tools, resolved again on the release runner | the `base` and `check` profiles, `compare: release-runner`, now with the reported identity; the table's `mutation` profile only in part since #332 (`compare: release-os`: its image name, platform and OS release resolved again, its tools pinned, its image version not compared) |
 
-Where the shared gate differs, it is stricter, with one exception named here. Stricter: the
+Where the shared gate differs, it is stricter, with two exceptions named here. Stricter: the
 workflow `name:` and the jobs' workflow name are bound; every job's labels and hosted-runner group;
 the default branch is read from the API; every run at the commit on main is scanned whatever its
 trigger (a newer failed nightly mutation run refuses); every `uses:` must be pinned. The exception
@@ -49,7 +51,9 @@ is the selection rule: the agent's verifier selected the run created last, the g
 whose latest attempt started last. A re-run of an older run is therefore the newest attempt, and an
 earlier failed run does not block it; any run whose attempt started after the selected one and did
 not succeed still refuses. This is the shared contract's definition of the newest attempt, and it
-is what makes its fresh route (re-run all jobs of the main run) work.
+is what makes its fresh route (re-run all jobs of the main run) work. The second exception is the
+maintainer's choice on #332: the table's shards are no longer held to the release runner's image
+version ([Runner identity](#runner-identity-239)).
 
 The v0.11.0 runner image exception is not carried over: the configuration had already dropped it,
 the gate has no such member, and the
@@ -67,22 +71,77 @@ pinned VM image**: nothing here chooses, holds or attests the machine a job runs
   by SHA-256 in the configuration's `identity` member.
 - Every profile (`base` for `contract`, `check` for the `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs, `mutation` for
   the shards) is variant `linux-x64`,
-  pins `ImageOS` `ubuntu26` and records its tools. Every profile compares with the release runner:
-  the release's `CI at the tag` job sets up Node, Go and Python from `dev.json` with the same pinned
-  actions the CI jobs use, makes the Python environment, and must resolve exactly what each job
-  reported (image version, OS-release digest and every tool).
+  pins `ImageOS` `ubuntu26` and records its tools.
+- `base` and `check` compare with the release runner (`release-runner`): the release's
+  `CI at the tag` job sets up Node, Go and Python from `dev.json` with the same pinned actions the
+  CI jobs use, makes the Python environment, and must resolve exactly what each job reported (image
+  version, OS-release digest and every tool).
+- `mutation` compares `release-os` since #332 ([below](#the-tables-shards-compare-release-os-332)):
+  the shards' image name, platform and OS-release digest must be what the release runner resolves,
+  and their `node` and `npm` must equal the profile's pins; their image version is recorded and
+  compared with nothing.
 - Every `uses:` of `ci.yml`, `mutation.yml` and `release.yml` is pinned to a full commit, and the
   producers and the consumer use the same pin of each action.
 - What the identity does not cover, as the kit states: the inner `uses:` of remote composite actions
   and reusable workflows, and container or service images. The agent's workflows use none of the
   latter.
 
-When the hosted image rolls between the CI run and the release, the release refuses
-(`runtime-identity`): the agent does not opt in to revalidation, because its `check` job does work
-outside the check list (the Desk and Gateway checkouts) and its mutation shards are not the check
-list. The fresh route below applies. When `ubuntu-latest` moves to another OS release, capture
-refuses on the next main run (`runner-platform`) and the `ImageOS` pin moves in a reviewed change.
-GitHub patches and retires hosted images; nothing here freezes one.
+When the hosted image rolls between the CI run and the release, or between the jobs of main CI's
+run, the release refuses (`runtime-identity`) when a `contract`, `check` or race job reported
+another image than the release runner's: the agent does not opt in to revalidation,
+because its `check` job does work outside the check list (the Desk and Gateway checkouts) and its
+mutation shards are not the check list. The fresh route below applies to those jobs, as before. A
+roll under the table's shards refuses only where a shard reports another OS-release digest than the
+release runner, or a `node` or `npm` other than its pin (`runtime-identity`, never revalidated):
+the fresh route applies to the table then too, or a new release once the label serves one OS
+release again. When
+`ubuntu-latest` moves to another OS release, capture refuses on the next main run
+(`runner-platform`) and the `ImageOS` pin moves in a reviewed change. GitHub patches and retires
+hosted images; nothing here freezes one.
+
+### The table's shards compare `release-os` (#332)
+
+The `v0.13.0` tag at `e8436e2` was refused twice at `CI at the tag` with `runtime-identity`. GitHub
+was rolling the hosted image out in stages: re-run at the commit, the 28 shards landed on three image
+versions (21, 6 and 1 shards), and the shard on the oldest image also reported another Node release.
+Under `release-runner` every shard must report the release runner's image version, so while a roll
+lasts a 28-shard table almost never passes, and a re-run draws the images again. `pins` does not
+help: under the identity policy its jobs must report one image version between them
+(`identity-changed`). The maintainer chose the kit's
+[`release-os` mode](https://github.com/Judgment-Pack/judgment-pack-devkit/blob/v0.15.0/docs/ci-evidence.md#the-release-os-mode)
+for the `mutation` profile alone.
+
+- **What it holds.** Each shard's `node` and `npm` must equal the pins, `v22.23.4` and `10.9.9`.
+  The `CI at the tag` job resolves the profile's image name (`ImageOS`), `RUNNER_OS`, `RUNNER_ARCH`
+  and the digest of `/etc/os-release` on its own runner before it reads any evidence, and every
+  shard must have reported exactly those. A shard of another image name, OS or architecture
+  refuses `identity-unexpected`; another OS-release digest, or a `node` or `npm` that is not its
+  pin, refuses `runtime-identity`. Neither is revalidated. The shards must also agree among
+  themselves (`identity-changed`), a backstop that the per-shard checks reach first.
+- **What it records.** Each shard's image version stays in its evidence, and the decision record's
+  `linux-x64/mutation` group holds them (`image_versions`) beside what the release runner resolved
+  (`release_runner`). The image version is compared with nothing: not with the release runner, and
+  not between shards.
+- **One exact Node release.** `dev.json` names it (`toolchains.node.version`, `22.23.4`), and every
+  workflow that sets up Node reads it from there: `ci.yml`, `mutation.yml`, `release.yml` (the
+  `CI at the tag` and `Package` jobs) and `dependency-audit.yml`. So every shard installs that release,
+  and the npm it bundles, whatever Node its image already holds. With `22`, the shard on the oldest
+  image reported `v22.23.3`. The pins are what main CI's `check` job (run 41757278975) and 27 of the
+  table's 28 shards (run 41757326630, attempt 2) reported at `e8436e2`; the 28th reported the same
+  npm. A change of `toolchains.node.version` moves the `node` pin with it, and the `npm` pin to the
+  npm that release bundles, in the same change: `tests/test_release_evidence.py` holds `dev.json`,
+  every workflow's Node and the `node` pin to one release, and the `npm` pin to its literal value.
+- **What it gives up.** The shards may run on different image patch versions of one OS release,
+  with different preinstalled software outside the pinned tools: a system package, a library, or
+  `git`, which lists the files a shard copies. Only `node` and `npm` are bound, and only to their
+  pins; everything else on the image may differ between the shards, and from the release runner.
+  The release runner does not run `node` or `npm` for this profile, so nothing shows that it could
+  reproduce the shards. The shards are evidence that each row's mutant is caught by the tests, run
+  under those tools with the dependencies `package-lock.json` locks, and not evidence of the release
+  bytes, which the `Package` job builds again.
+- **The check jobs stay `release-runner`.** `contract`, `check` and the race jobs are still held to
+  the release runner's whole identity, image version included, and a roll under them takes the
+  fresh route, as above.
 
 ## Removed repetition and pull-request reuse (#240)
 
@@ -453,6 +512,9 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   from two readings of the weekly cron.
 - **Event names.** A future base-change event whose name contains neither `base_change` nor
   `base_ref` would not be refused (the kit's stated limit).
+- **The `release-os` mode.** The mutation profile's comparison first runs live at the next release's
+  `CI at the tag` job. Until then it was exercised only against fixtures, here and in the kit, and a
+  table under the exact Node release has not run yet.
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own
   configuration and workflow files at a fixture commit, with handwritten Actions API answers. It is
   not evidence that a remote workflow ran. The kit's own suite tests the gate's contract.

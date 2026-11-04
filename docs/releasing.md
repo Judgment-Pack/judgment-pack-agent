@@ -141,10 +141,12 @@ Every job works on the commit the run was started for, by its digest, not on the
    link are also required before draft/publication. If a `go/<tag>` tag already exists it must name that same commit, or the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Verifies trusted exact-source CI evidence.** The devkit's
-   [release evidence gate](ci-evidence.md) (v0.14.0, vendored as `scripts/dev/release_evidence.py`)
+   [release evidence gate](ci-evidence.md) (v0.15.0, vendored as `scripts/dev/release_evidence.py`)
    requires complete successful `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs and every full mutation shard of
-   trusted main runs at the exact release commit, on runners that reported the image the release
-   runner reports, with the inputs the commit holds. Checks main took from its merged pull
+   trusted main runs at the exact release commit, with the inputs the commit holds: the jobs on
+   runners that reported the image the release runner reports, the shards on runners that reported
+   its image name, platform and OS release, whatever their image version, with `node` and `npm` at
+   their pins ([#332](ci-evidence.md#the-tables-shards-compare-release-os-332)). Checks main took from its merged pull
    request's run are admitted again. The `Package` job proceeds only on the gate's `reuse`
    decision. Tag-sensitive checks and fresh advisory review remain separate.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
@@ -192,8 +194,9 @@ pull request's sample and a partial re-run cannot qualify. What a nightly run do
 `mutation-rows` step of `dev.json`, which the `check` job runs, or, on a push to main, may reuse
 from the merged pull request's run, which the release admits again.
 
-The age limit is 48 hours. A rolled hosted image, changed tools or inputs, stale, missing or
-unreadable evidence, a missing or unexpected runner identity, or tag movement refuses. The bounded
+The age limit is 48 hours. A rolled hosted image under a CI job (under a mutation shard, another OS
+release or platform), changed tools or inputs, stale, missing or unreadable evidence, a missing or
+unexpected runner identity, or tag movement refuses. The bounded
 fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the CI push
 run or the table's dispatch run at the commit (or dispatch the workflow on main while main names the
 commit), then re-run the release's failed jobs once. Fresh advisory evidence and review and approved scoped exception

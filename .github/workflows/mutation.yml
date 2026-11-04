@@ -48,9 +48,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Read the Node version from dev.json
+        id: dev
+        run: python3 -I -c 'import json, os; open(os.environ["GITHUB_OUTPUT"], "a").write("node=" + json.load(open("dev.json"))["toolchains"]["node"]["version"] + "\n")'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: ${{ steps.dev.outputs.node }}
       - name: Install the locked dependencies
         run: npm ci
       - name: Build the harness (rows whose tests read dist/)
@@ -80,9 +83,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # dev.json names one exact Node release, so every shard installs the same node and npm whatever Node its
+      # image caches: the gate holds them to the mutation profile's pins (.github/ci-evidence.json, #332).
+      - name: Read the Node version from dev.json
+        id: dev
+        run: python3 -I -c 'import json, os; open(os.environ["GITHUB_OUTPUT"], "a").write("node=" + json.load(open("dev.json"))["toolchains"]["node"]["version"] + "\n")'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: ${{ steps.dev.outputs.node }}
       - name: Install the locked dependencies
         run: npm ci
       - name: Build the harness (rows whose tests read dist/)
