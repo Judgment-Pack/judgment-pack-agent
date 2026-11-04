@@ -13537,11 +13537,11 @@
    "find": "  await this.refreshProof?.(signal)\n",
    "replace": "",
    "tests": [
-    "storage/job.test.ts"
+    "storage/jobEvidence.test.ts"
    ],
    "status": "caught",
    "origin": "agent#229",
-   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobsACloseReadsTheJobAfresh."
+   "note": "#229. Go twin (by hand, in plan_actions.go): caught at TestJobsACloseReadsTheJobAfresh. The release table timed it out: storage/job.test.ts, which held its two tests, takes most of the 900 s bound under load. They are in storage/jobEvidence.test.ts now, and the row runs that file alone."
   },
   {
    "name": "job M1 a resumed run is not told why",
@@ -15521,11 +15521,11 @@
    "find": "   if(current?.abandoned?.waits.some(left=>unresolvedWait(run.waits.find(wait=>wait.wait===left.wait))))return refuse('wait-unresolved')\n",
    "replace": "",
    "tests": [
-    "storage/goalConformance.test.ts"
+    "storage/goalRecords.test.ts"
    ],
    "status": "caught",
    "origin": "agent#230",
-   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart."
+   "note": "#230. Go twin (by hand, in run_goal.go): caught at TestGoalTransitionVectors. The release table found its selection deciding nothing: the line below it refuses every wait the run lists, so this check only matters for a wait the abandon left that the run no longer lists. The shared transitions vector (contract/vectors/goal/transitions.json) now holds that create, refused wait-unresolved, so the row is caught by goalRecords.test.ts in seconds."
   },
   {
    "name": "goal G8 a terminal objective takes a command",

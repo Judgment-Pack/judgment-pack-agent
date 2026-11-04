@@ -2176,6 +2176,26 @@
      }
     },
     {
+     "at": "2026-02-01T00:06:50.000Z",
+     "op": "command",
+     "refused": "wait-unresolved",
+     "context": {
+      "waits": []
+     },
+     "input": {
+      "version": 1,
+      "command": {
+       "version": 1,
+       "resource": "run-t",
+       "command": "t-21d",
+       "actor": "host-1",
+       "expectedRevision": 3,
+       "kind": "create",
+       "objective": "goal-c"
+      }
+     }
+    },
+    {
      "at": "2026-02-01T00:07:00.000Z",
      "op": "command",
      "input": {
@@ -2352,6 +2372,16 @@
       "outcome": "wait-unresolved",
       "revision": 3,
       "digest": "sha256:3b67bf06ebee3f1d0c7a3c2246bd155487c0468dbd529fa2fde21e49235a31ed"
+     },
+     {
+      "command": "t-21d",
+      "kind": "create",
+      "actor": "host-1",
+      "at": "2026-02-01T00:06:50.000Z",
+      "objective": "goal-c",
+      "outcome": "wait-unresolved",
+      "revision": 3,
+      "digest": "sha256:81dc0723768e08cc0220f51d0d7f5f40a290f319d5320105bb2d975990f1985f"
      },
      {
       "command": "t-22",
