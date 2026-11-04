@@ -49,9 +49,13 @@ jobs:
           persist-credentials: false
       # Every JSON document under contract/ parses; no machine-local path in tracked text;
       # CLAUDE.md is AGENTS.md; whitespace.
+      # One exact Python release in every workflow, whatever Python the image caches (#336): the
+      # `python` pin of the base and check profiles in .github/ci-evidence.json. dev.json names only
+      # its minor version, which is all the kit takes there; tests/test_release_evidence.py holds
+      # every setup-python step to the pins and to that minor version.
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.12.16'
       - name: The cheap steps of dev.json
         run: |
           set -o pipefail
@@ -105,7 +109,6 @@ jobs:
           print("node=" + tc.get("node", {}).get("version", ""))
           print("go=" + ("true" if "go" in tc else "false"))
           print("goversion=" + tc.get("go", {}).get("version", ""))
-          print("python=" + tc.get("python", {}).get("version", "3.12"))
           PY
           # The required receipt proof uses the same immutable producer pin locally and in CI.
           python3 - >> "$GITHUB_OUTPUT" <<'PYGATEWAY'
@@ -132,9 +135,12 @@ jobs:
         with:
           go-version: ${{ steps.dev.outputs.goversion }}
           cache: false
+      # The exact Python release, as in the contract job (#336). check.sh makes the virtual
+      # environment with python3.12 (dev.json's minor version), which is this release: its
+      # directory comes first on PATH.
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ steps.dev.outputs.python }}
+          python-version: '3.12.16'
       # The parity step compares packages/harness with the Desk at the commit the script pins.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -250,7 +256,6 @@ jobs:
           tc = m.get("toolchains", {})
           print("node=" + tc.get("node", {}).get("version", ""))
           print("goversion=" + tc.get("go", {}).get("version", ""))
-          print("python=" + tc.get("python", {}).get("version", "3.12"))
           # Every other step, by name, so that a step added to the manifest never runs in this job.
           steps = [row["name"] for row in m["checks"]] + (["parity"] if "parity" in m else [])
           print("others=" + ",".join(name for name in steps if name != os.environ["RACE_STEP"]))
@@ -262,9 +267,10 @@ jobs:
         with:
           go-version: ${{ steps.dev.outputs.goversion }}
           cache: false
+      # The exact Python release, as in the contract job (#336).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ steps.dev.outputs.python }}
+          python-version: '3.12.16'
       - name: Setup steps
         run: |
           set -o pipefail

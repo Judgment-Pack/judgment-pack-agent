@@ -1,5 +1,5 @@
 """The agent's adoption of the devkit release evidence gate, v0.15.0 (agent #239, #240), whose release-os
-compare mode the mutation table's profile takes (agent #332, devkit #79).
+compare mode every profile takes: the mutation table's since agent #332, the CI jobs' since #336 (devkit #79).
 
 The gate itself is the kit's, vendored unchanged as scripts/dev/release_evidence.py; the kit's own
 suite tests its contract. These tests hold the agent's side of it: the vendored copies, the
@@ -50,6 +50,22 @@ MANIFEST_SHA = '333c3ffe1f5d93a863298133ad15717c384146797c0cc88f2463a361e1e358da
 # release bundles, as main CI's check job (run 41757278975) and the table (run 41757326630, attempt 2)
 # reported it at e8436e2.
 MUTATION_PINS = {'node': 'v22.23.4', 'npm': '10.9.9'}
+# The one exact Python release every actions/setup-python step of the workflows asks for (#336). The kit
+# takes only a minor version in dev.json (toolchains.python.version, its schema's ^3\.[0-9]+$), so the
+# workflows name the release, and the base and check profiles pin it as `python3 --version` prints it.
+PYTHON_RELEASE = '3.12.16'
+# The CI jobs compare "release-os" too (#336). Each pin is what main CI's jobs reported at 1c60cdc (run
+# 41836158895): node, npm and go every job; python and python-packages the check job, whose image's tool
+# cache held 3.12.16 (the other jobs reported 3.12.15, and the same packages: pip 25.0.1 is the pip both
+# releases bundle). python-packages is the virtual environment requirements-dev.txt makes, with that pip.
+BASE_PINS = {'python': 'Python 3.12.16'}
+CHECK_PINS = {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 linux/amd64',
+              'python': 'Python 3.12.16',
+              'python-packages': '[["attrs", "26.1.0"], ["jsonschema", "4.26.0"], ["jsonschema-specifications", '
+                                 '"2025.9.1"], ["pip", "25.0.1"], ["referencing", "0.37.0"], ["rpds-py", "2026.6.3"], '
+                                 '["typing_extensions", "4.16.0"]]'}
+# The pip that Python release bundles, which the virtual environment is made with.
+BUNDLED_PIP = '25.0.1'
 
 CONFIG_PATH = ROOT / '.github/ci-evidence.json'
 CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
@@ -271,32 +287,65 @@ class Configuration(unittest.TestCase):
                 self.assertEqual(profile['platform'], {'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64',
                                                        'ImageOS': 'ubuntu26'})
                 self.assertTrue(profile['tools'])
-        # A rolled image is a refusal and the fresh route, never a revalidation; the release
-        # workflow has no dispatch trigger and admits no prerelease tag.
+        # Another OS release, or a tool that is not its pin, is a refusal and the fresh route, never a
+        # revalidation; the release workflow has no dispatch trigger and admits no prerelease tag.
         self.assertNotIn('revalidation', current)
         self.assertNotIn('dispatch', current)
         self.assertNotIn('tag', current)
         self.assertEqual((current['branch'], current['max_age_hours']), ('main', 48))
 
-    def test_the_ci_jobs_compare_with_the_release_runner_and_the_shards_with_its_os_release(self):
-        """#332: the base and check profiles stay "release-runner", with no pin; the mutation profile alone
-        is "release-os", every tool pinned, its node pin dev.json's exact Node release."""
+    def test_every_profile_compares_with_the_release_runners_os_release_every_tool_pinned(self):
+        """#332, #336: every profile is "release-os", with a pin for every tool it records: the shards'
+        node and npm, the contract job's python, and the check and race jobs' five tools. node and go are
+        dev.json's exact releases, python the workflows' exact release, as their commands print them."""
         current = config()
         profiles = current['profiles']
-        for name in ('base', 'check'):
+        for name, profile in profiles.items():
             with self.subTest(profile=name):
-                self.assertEqual(profiles[name]['compare'], 'release-runner')
-                self.assertNotIn('pins', profiles[name])
+                self.assertEqual(profile['compare'], 'release-os')
+                self.assertEqual(set(profile['pins']), set(profile['tools']))
+        self.assertEqual(profiles['base']['tools'], {'python': ['python3', '--version']})
+        self.assertEqual(profiles['base']['pins'], BASE_PINS)
+        self.assertEqual(set(profiles['check']['tools']), {'node', 'npm', 'go', 'python', 'python-packages'})
+        self.assertEqual(profiles['check']['tools']['python'], ['.venv/bin/python3', '--version'])
+        self.assertEqual(profiles['check']['pins'], CHECK_PINS)
         mutation = profiles['mutation']
-        self.assertEqual(mutation['compare'], 'release-os')
         self.assertEqual(mutation['tools'], {'node': ['node', '--version'], 'npm': ['npm', '--version']})
         self.assertEqual(mutation['pins'], MUTATION_PINS)
-        # The table's jobs, and only they, take the mutation profile.
+        # The table's jobs, and only they, take the mutation profile; contract alone takes base.
         self.assertEqual({spec['profile'] for spec in current['workflows']['mutation']['jobs'].values()}, {'mutation'})
-        self.assertNotIn('mutation', {spec['profile'] for spec in current['workflows']['ci']['jobs'].values()})
-        node = json.loads(read('dev.json'))['toolchains']['node']['version']
+        self.assertEqual({key: spec['profile'] for key, spec in current['workflows']['ci']['jobs'].items()},
+                         dict({'contract': 'base', 'check': 'check'}, **{leg: 'check' for leg in RACE_JOBS}))
+        toolchains = json.loads(read('dev.json'))['toolchains']
+        node, go = toolchains['node']['version'], toolchains['go']['version']
         self.assertRegex(node, r'^[0-9]+\.[0-9]+\.[0-9]+$')
-        self.assertEqual(mutation['pins']['node'], 'v' + node)
+        self.assertRegex(go, r'^[0-9]+\.[0-9]+\.[0-9]+$')
+        for pins in (mutation['pins'], profiles['check']['pins']):
+            self.assertEqual(pins['node'], 'v' + node)
+        self.assertEqual(profiles['check']['pins']['npm'], mutation['pins']['npm'])
+        self.assertEqual(profiles['check']['pins']['go'], 'go version go%s linux/amd64' % go)
+        for name in ('base', 'check'):
+            self.assertEqual(profiles[name]['pins']['python'], 'Python ' + PYTHON_RELEASE)
+
+    def test_the_python_packages_pin_is_the_environment_requirements_dev_txt_makes(self):
+        """#336: the check profile's python-packages pin is requirements-dev.txt's exact pins and the pip the
+        Python release bundles, in the form and order the tool's command prints them. A change of either
+        moves the pin in the same change, or every CI job's evidence refuses at the release."""
+        pin = config()['profiles']['check']['pins']['python-packages']
+        listed = json.loads(pin)
+        self.assertEqual(json.dumps(sorted(tuple(item) for item in listed)), pin)
+
+        def normal(name):
+            return re.sub(r'[-_.]+', '-', name).lower()
+        required = {}
+        for line in read('requirements-dev.txt').splitlines():
+            line = line.split('#', 1)[0].strip()
+            if line:
+                exact = re.fullmatch(r'([A-Za-z0-9_.-]+)==(\S+)', line)
+                self.assertIsNotNone(exact, 'not an exact pin: ' + line)
+                required[normal(exact.group(1))] = exact.group(2)
+        self.assertEqual({normal(name): version for name, version in listed},
+                         dict(required, pip=BUNDLED_PIP))
 
     def test_the_check_list_is_divided_between_the_ci_jobs_each_check_once(self):
         jobs = config()['workflows']['ci']['jobs']
@@ -867,16 +916,64 @@ class Workflows(unittest.TestCase):
 
     def test_every_job_that_sets_node_up_installs_the_one_exact_release_dev_json_names(self):
         """#332: with `22`, the shard on an older image installed another Node 22 release than the others.
-        Every setup-node of every workflow is given dev.json's exact release, the table's shards and the
-        release's `CI at the tag` job included, and the mutation profile's node pin is that release."""
+        Every setup-node of every workflow is given dev.json's exact release, the table's shards included,
+        and the mutation and check profiles' node pins are that release. The release's `CI at the tag` job
+        sets up no Node since #336 (below)."""
         node = json.loads(read('dev.json'))['toolchains']['node']['version']
         found = self.node_releases()
         self.assertLessEqual({('ci.yml', 'check'), ('ci.yml', 'go-race'), ('mutation.yml', 'sample'),
-                              ('mutation.yml', 'full'), ('release.yml', 'verify'), ('release.yml', 'package'),
+                              ('mutation.yml', 'full'), ('release.yml', 'package'),
                               ('dependency-audit.yml', 'dependency-audit')},
                              {(workflow, job) for workflow, job, _ in found})
         self.assertEqual([entry for entry in found if entry[2] != node], [])
-        self.assertEqual(config()['profiles']['mutation']['pins']['node'], 'v' + node)
+        for name in ('mutation', 'check'):
+            self.assertEqual(config()['profiles'][name]['pins']['node'], 'v' + node)
+
+    def python_releases(self):
+        """(workflow, job, the Python release its setup-python is given, as written) for every
+        setup-python of every job of every workflow."""
+        found = []
+        for path in sorted((ROOT / '.github/workflows').glob('*.yml')):
+            text = path.read_text(encoding='utf-8')
+            jobs = text[text.index('\njobs:\n'):]
+            for job_id in re.findall(r'^  ([A-Za-z0-9_-]+):$', jobs, re.M):
+                job = job_block(jobs, job_id)
+                given = re.findall(r'uses: actions/setup-python@[0-9a-f]{40}[^\n]*\n        with:\n'
+                                   r'          python-version: ([^\n]*)\n', job)
+                self.assertEqual(len(given), job.count('uses: actions/setup-python@'), (path.name, job_id))
+                found.extend((path.name, job_id, value) for value in given)
+        return found
+
+    def test_every_setup_python_step_asks_for_the_one_exact_release_the_profiles_pin(self):
+        """#336: with `3.12`, the jobs on the older image of a roll took 3.12.15 from its tool cache and
+        the check job on the newer one 3.12.16, and the release refused. The kit takes only a minor
+        version in dev.json, so each setup-python step names the exact release itself, as a literal:
+        the contract, check and race jobs, the release's `CI at the tag` job and the live audit. It is
+        the base and check profiles' python pin, and a release of dev.json's minor version, which is the
+        python3.N check.sh makes the virtual environment with."""
+        found = self.python_releases()
+        self.assertLessEqual({('ci.yml', 'contract'), ('ci.yml', 'check'), ('ci.yml', 'go-race'),
+                              ('release.yml', 'verify'), ('dependency-audit.yml', 'dependency-audit')},
+                             {(workflow, job) for workflow, job, _ in found})
+        self.assertEqual([entry for entry in found if entry[2] != "'%s'" % PYTHON_RELEASE], [])
+        for name in ('base', 'check'):
+            self.assertEqual(config()['profiles'][name]['pins']['python'], 'Python ' + PYTHON_RELEASE)
+        minor = json.loads(read('dev.json'))['toolchains']['python']['version']
+        self.assertRegex(minor, r'^3\.[0-9]+$')
+        self.assertRegex(PYTHON_RELEASE, r'^%s\.[0-9]+$' % re.escape(minor))
+
+    def test_the_release_runner_resolves_no_tool_so_ci_at_the_tag_sets_up_only_python(self):
+        """#336: every profile compares "release-os", so the gate resolves on the release runner each
+        profile's image name, platform and OS-release digest, and runs no tool of any profile. The job
+        sets up no Node or Go and makes no Python environment; it runs the gate under the one exact Python
+        release. A profile moved back to "release-runner" would need them again (and fails the profiles
+        test)."""
+        verify = job_block(read('.github/workflows/release.yml'), 'verify')
+        self.assertEqual(re.findall(r'uses: ([a-z-]+/[a-z-]+)@', verify),
+                         ['actions/checkout', 'actions/setup-python', 'actions/upload-artifact'])
+        self.assertNotIn('check.sh', verify)
+        self.assertNotIn('steps.dev', verify)
+        self.assertEqual({profile['compare'] for profile in config()['profiles'].values()}, {'release-os'})
 
     def test_producers_and_the_consumer_use_the_same_action_pins(self):
         pins = {}
@@ -912,10 +1009,8 @@ TAG_OBJECT = 't' * 40
 NOW = dt.datetime(2026, 10, 30, 12, tzinfo=dt.timezone.utc)
 RUNNER = {'ImageOS': 'ubuntu26', 'ImageVersion': '20261026.180.1', 'RUNNER_OS': 'Linux', 'RUNNER_ARCH': 'X64',
           'os_release': 'c' * 64}
-TOOLS = {'base': {'python': 'Python 3.12.15'},
-         'check': {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 linux/amd64',
-                   'python': 'Python 3.12.15', 'python-packages': '[["pip", "25.0.1"]]'},
-         'mutation': {'node': 'v22.23.4', 'npm': '10.9.9'}}
+# What each profile's jobs report: their pins.
+TOOLS = {'base': dict(BASE_PINS), 'check': dict(CHECK_PINS), 'mutation': dict(MUTATION_PINS)}
 ENVIRONMENT_VALUES = {'CI': 'true', 'JPDEV_DESK': 'desk-checkout', 'JP_AGENT_GATEWAY_SOURCE': 'gateway-checkout'}
 # The race jobs make neither checkout, so they run without those two (unset, on both sides of a reuse).
 JOB_ENVIRONMENT = {'check': ENVIRONMENT_VALUES, 'go-race-a': {'CI': 'true'}, 'go-race-b': {'CI': 'true'}, 'go-race-c': {'CI': 'true'}}
@@ -1010,7 +1105,7 @@ class AgentWorld(AtCommit):
                                copy.deepcopy(self.here[profile_of(profile)]))
         self.resolved = resolve.start()
         self.addCleanup(resolve.stop)
-        # A "release-os" profile (the mutation table's, #332) is resolved without its tools.
+        # A "release-os" profile, every profile since #336, is resolved without its tools.
         resolve_runner = patch.object(g, 'runner_runtime', side_effect=lambda profile, variant=None:
                                       copy.deepcopy(self.here[profile_of(profile)]['runner']))
         self.runner_resolved = resolve_runner.start()
@@ -1126,6 +1221,16 @@ class AgentGate(AgentWorld):
         for leg in RACE_JOBS:
             self.assertEqual(self.record['workflows']['ci']['jobs'][leg]['coverage'],
                              {leg: 'PASS', 'setup:npm-ci': 'PASS', 'setup:python-deps': 'PASS'})
+        # #336: every group compares release-os, and the release runner resolved each profile's image and
+        # platform, never a tool.
+        for name, group in identity['groups'].items():
+            with self.subTest(group=name):
+                self.assertEqual(group['compare'], 'release-os')
+                self.assertEqual(group['release_runner'], RUNNER)
+                self.assertEqual(group['runtime'], {'runner': RUNNER, 'tools': TOOLS[name.split('/')[1]]})
+        self.assertEqual([profile_of(call.args[0]) for call in self.runner_resolved.call_args_list],
+                         ['base', 'check', 'mutation'])
+        self.resolved.assert_not_called()
 
     def test_a_release_requires_both_race_jobs(self):
         """Each race step is as required as the one step was: without either job, its artifact or its
@@ -1166,12 +1271,73 @@ class AgentGate(AgentWorld):
         listing['total_count'] = len(listing['jobs'])
         self.assertEqual(self.decide(), 'job-coverage')
 
-    def test_a_rolled_image_refuses_and_is_never_revalidated(self):
-        self.here['check']['runner']['ImageVersion'] = '20261102.200.1'
-        self.assertEqual(self.decide(), 'runtime-identity')
-        self.assertEqual(self.record['decision'], 'refuse')
-        self.assertNotIn('revalidation', self.record)
+    def test_a_release_runner_on_a_newer_image_version_reuses_every_job(self):
+        """#336: an image rolled between main CI and the release changes only the image version, which is
+        recorded and compared with nothing, for the CI jobs as for the shards."""
+        for profile in self.here.values():
+            profile['runner']['ImageVersion'] = '20261102.200.1'
+        self.assertEqual(self.decide(), 'reuse', self.record.get('refusal'))
+        for name in ('base', 'check', 'mutation'):
+            with self.subTest(profile=name):
+                group = self.record['identity']['groups']['linux-x64/' + name]
+                self.assertEqual(group['release_runner']['ImageVersion'], '20261102.200.1')
+                self.assertEqual(set(group['image_versions'].values()), {RUNNER['ImageVersion']})
         self.assertFalse(g.revalidation_allowed(self.config))
+
+    # #336: main CI at 1c60cdc (run 41836158895), the v0.13.1 tag's evidence, as its jobs reported it: the check
+    # job on the roll's newer image, the other jobs on the older one.
+    CI_ROLL = {'check': '20261101.186.1'}
+
+    def roll_the_ci_jobs(self):
+        for job_key, version in self.CI_ROLL.items():
+            self.change_evidence('ci', job_key,
+                                 lambda payload, version=version: payload['runtime']['runner'].update(ImageVersion=version))
+
+    def test_the_ci_jobs_of_the_v0_13_1_refusal_are_reused_with_python_pinned(self):
+        """The v0.13.1 tag refused with `check: differs from this runner in ['ImageVersion', 'python']`.
+        With every Python the one pinned release, the same image versions are reused, the release runner on
+        either image of the roll, and the decision record keeps each job's version beside the runner's."""
+        for here in ('20261026.180.1', '20261101.186.1'):
+            with self.subTest(release_runner=here):
+                self.data = self.world()
+                self.roll_the_table()
+                self.roll_the_ci_jobs()
+                for profile in self.here.values():
+                    profile['runner']['ImageVersion'] = here
+                self.assertEqual(self.decide(), 'reuse', self.record.get('refusal'))
+                group = self.record['identity']['groups']['linux-x64/check']
+                self.assertEqual(group['compare'], 'release-os')
+                self.assertEqual(group['image_versions'], dict({'ci/' + leg: RUNNER['ImageVersion'] for leg in RACE_JOBS},
+                                                               **{'ci/check': '20261101.186.1'}))
+                self.assertEqual(group['release_runner']['ImageVersion'], here)
+                self.assertIsNone(group['runtime'])
+                self.assertEqual(self.record['identity']['groups']['linux-x64/base']['image_versions'],
+                                 {'ci/contract': RUNNER['ImageVersion']})
+        self.resolved.assert_not_called()
+
+    def test_a_ci_job_with_a_tool_that_is_not_its_pin_refuses(self):
+        """The first is v0.13.1's case without the pin: a job on the older image reported the Python of its
+        tool cache. Each is a refusal at that job, never revalidated."""
+        packages = CHECK_PINS['python-packages'].replace('["pip", "25.0.1"]', '["pip", "25.3"]')
+        for job_key, tool, value in (('contract', 'python', 'Python 3.12.15'), ('go-race-a', 'python', 'Python 3.12.15'),
+                                     ('check', 'python', 'Python 3.12.15'), ('check', 'python-packages', packages),
+                                     ('go-race-b', 'node', 'v22.23.3'), ('go-race-c', 'npm', '10.9.8'),
+                                     ('check', 'go', 'go version go1.26.9 linux/amd64')):
+            with self.subTest(job=job_key, tool=tool):
+                self.data = self.world()
+                self.change_evidence('ci', job_key,
+                                     lambda payload, tool=tool, value=value: payload['runtime']['tools'].update({tool: value}))
+                self.assertEqual(self.decide(), 'runtime-identity')
+                pin = (BASE_PINS if job_key == 'contract' else CHECK_PINS)[tool]
+                self.assertEqual(self.record['refusal']['detail'], '%s: %s is %r, pinned %r' % (job_key, tool, value, pin))
+                self.assertNotIn('revalidation', self.record)
+
+    def test_a_ci_job_on_another_os_release_refuses_and_is_never_revalidated(self):
+        self.roll_the_ci_jobs()
+        self.change_evidence('ci', 'go-race-b', lambda payload: payload['runtime']['runner'].update(os_release='d' * 64))
+        self.assertEqual(self.decide(), 'runtime-identity')
+        self.assertIn('go-race-b:', self.record['refusal']['detail'])
+        self.assertIn('never revalidated', self.record['refusal']['detail'])
 
     # #332: the v0.13.0 table re-run at e8436e2, as its shards' evidence reported it.
     ROLL = {9: '20261101.186.1', 11: '20261101.186.1', 15: '20261101.186.1', 16: '20261101.186.1',
@@ -1193,19 +1359,10 @@ class AgentGate(AgentWorld):
                                                    for shard in range(1, SHARDS + 1)})
         self.assertEqual(group['release_runner'], RUNNER)
         self.assertIsNone(group['runtime'])
-        self.assertEqual(self.record['identity']['groups']['linux-x64/check']['compare'], 'release-runner')
-        self.assertEqual([profile_of(call.args[0]) for call in self.runner_resolved.call_args_list], ['mutation'])
-        self.assertNotIn('mutation', [profile_of(call.args[0]) for call in self.resolved.call_args_list])
-
-    def test_the_ci_jobs_still_refuse_the_same_roll(self):
-        """The release runner on the roll's newer image: the shards that ran on it, or not, stand; the CI
-        jobs, which ran on the older one, refuse and take the fresh route."""
-        self.roll_the_table()
-        for profile in self.here.values():
-            profile['runner']['ImageVersion'] = '20261101.186.1'
-        self.assertEqual(self.decide(), 'runtime-identity')
-        self.assertNotIn('full-', self.record['refusal']['detail'])
-        self.assertIn('contract', self.record['refusal']['detail'])
+        self.assertEqual(self.record['identity']['groups']['linux-x64/check']['compare'], 'release-os')
+        self.assertEqual([profile_of(call.args[0]) for call in self.runner_resolved.call_args_list],
+                         ['base', 'check', 'mutation'])
+        self.resolved.assert_not_called()
 
     def test_a_shard_on_another_os_release_refuses_and_is_never_revalidated(self):
         self.roll_the_table()
@@ -1214,12 +1371,15 @@ class AgentGate(AgentWorld):
         self.assertIn('full-19', self.record['refusal']['detail'])
         self.assertIn('never revalidated', self.record['refusal']['detail'])
 
-    def test_a_release_runner_on_another_os_release_refuses_at_a_shard_before_the_ci_jobs_drift(self):
+    def test_a_release_runner_on_another_os_release_refuses_at_the_first_job_it_reads(self):
+        """Since #336 there is no drift to wait for: the first job of the configuration, CI's contract job,
+        refuses."""
         for profile in self.here.values():
             profile['runner']['os_release'] = 'd' * 64
         self.assertEqual(self.decide(), 'runtime-identity')
-        self.assertIn('full-1:', self.record['refusal']['detail'])
+        self.assertTrue(self.record['refusal']['detail'].startswith('contract: '), self.record['refusal']['detail'])
         self.assertIn('os_release', self.record['refusal']['detail'])
+        self.assertIn('never revalidated', self.record['refusal']['detail'])
 
     def test_a_shard_with_another_node_or_npm_than_its_pin_refuses(self):
         """The v0.13.0 table's shard 19 reported v22.23.3."""

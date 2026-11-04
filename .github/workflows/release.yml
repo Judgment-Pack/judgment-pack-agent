@@ -143,11 +143,11 @@ jobs:
 
   # The release evidence gate (scripts/dev/release_evidence.py, devkit v0.15.0; docs/ci-evidence.md):
   # reuse only the complete evidence main CI and the full mutation table produced at this exact
-  # commit, or refuse: main CI's jobs on runners that reported the image this runner reports, the
-  # table's shards on runners that reported its image name, platform and OS release, whatever their
-  # image version, with node and npm at their pins (#332). Tag-sensitive, package and publication
-  # gates stay fresh. A rolled hosted image under a CI job, or another OS release under a shard,
-  # refuses (runtime-identity) and takes the fresh route: there is no revalidation in this workflow.
+  # commit, or refuse: every job (main CI's since #336, the table's shards since #332) on a runner
+  # that reported this runner's image name, platform and OS release, whatever its image version,
+  # with every tool its profile records at that profile's pin. Tag-sensitive, package and
+  # publication gates stay fresh. Another OS release, or a tool that is not its pin, refuses
+  # (runtime-identity) and takes the fresh route: there is no revalidation in this workflow.
   verify:
     name: CI at the tag
     needs: admit
@@ -167,29 +167,13 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
-      - name: Read current toolchain requirements from source
-        id: dev
-        run: |
-          python3 - >> "$GITHUB_OUTPUT" <<'PYTOOLS'
-          import json
-          m = json.load(open('dev.json'))['toolchains']
-          for key in ('node', 'go', 'python'):
-              print(key + '=' + m[key]['version'])
-          PYTOOLS
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: ${{ steps.dev.outputs.node }}
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: ${{ steps.dev.outputs.go }}
-          cache: false
-      # The same pinned actions the CI producers use, so that each profile resolves its tools here
-      # the way its jobs resolved them.
+      # Every profile compares "release-os" (#332, #336): this runner resolves each profile's image
+      # name, platform and OS-release digest, and no tool, which the pins hold. So the job sets up no
+      # Node or Go and makes no Python virtual environment. It runs the gate under the one exact Python
+      # release of every workflow (ci.yml's contract job says where it is pinned).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: ${{ steps.dev.outputs.python }}
-      - name: Resolve current Python dependency identities
-        run: scripts/dev/check.sh --setup --only python-deps
+          python-version: '3.12.16'
       - name: Reuse exact-commit main CI evidence, or refuse
         id: gate
         env:

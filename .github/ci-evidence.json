@@ -2,12 +2,12 @@
   "$comment": [
     "The release evidence gate (scripts/dev/release_evidence.py, judgment-pack-devkit v0.15.0), schema 2: docs/ci-evidence.md.",
     "Every job records the image identity its standard GitHub-hosted runner reports (identity), a reported identity and",
-    "not a pinned VM image. The base and check profiles compare with the release runner: a rolled image refuses",
-    "(runtime-identity) and takes the fresh route. The mutation profile is release-os (#332): its tools must equal the",
-    "pins, and its image name, platform and OS-release digest what the release runner resolves; its ImageVersion is",
-    "recorded and compared with nothing, so the shards may run on different image patch versions, with different",
-    "preinstalled software outside node and npm. There is no revalidation here, because the check job does work outside",
-    "the check list (the Desk and Gateway checkouts) and the mutation shards are not the check list.",
+    "not a pinned VM image. Every profile is release-os: the mutation profile since #332, base and check since #336.",
+    "Each job's tools must equal its profile's pins, and its image name, platform and OS-release digest what the release",
+    "runner resolves; its ImageVersion is recorded and compared with nothing, so the jobs may run on different image",
+    "patch versions, with different preinstalled software outside the pinned tools. The release runner resolves no tool.",
+    "There is no revalidation here, because the check job does work outside the check list (the Desk and Gateway",
+    "checkouts) and the mutation shards are not the check list.",
     "pull_request_reuse lists only the checks of the check and three go-race jobs whose result depends on the tree and the recorded inputs;",
     "tests/test_release_evidence.py holds every check of those jobs to one side or the other."
   ],
@@ -59,24 +59,35 @@
   },
   "profiles": {
     "base": {
-      "$comment": "The contract job: Python from actions/setup-python, as the release's verify job sets it up.",
+      "$comment": "The contract job (#336): python is the exact release every actions/setup-python step of the workflows asks for, as python3 --version prints it. dev.json names only its minor version, which is all the kit takes there.",
       "variant": "linux-x64",
       "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
-      "compare": "release-runner",
+      "compare": "release-os",
       "tools": {
         "python": ["python3", "--version"]
+      },
+      "pins": {
+        "python": "Python 3.12.16"
       }
     },
     "check": {
+      "$comment": "The check and race jobs (#336): node and go are dev.json's exact releases, as their commands print them, and npm the npm that Node release bundles; python is the workflows' exact setup-python release, as in base; python-packages is the virtual environment requirements-dev.txt makes with that Python and the pip it bundles.",
       "variant": "linux-x64",
       "platform": {"RUNNER_OS": "Linux", "RUNNER_ARCH": "X64", "ImageOS": "ubuntu26"},
-      "compare": "release-runner",
+      "compare": "release-os",
       "tools": {
         "node": ["node", "--version"],
         "npm": ["npm", "--version"],
         "go": ["go", "version"],
         "python": [".venv/bin/python3", "--version"],
         "python-packages": [".venv/bin/python3", "-c", "import importlib.metadata,json; print(json.dumps(sorted((d.metadata[\"Name\"],d.version) for d in importlib.metadata.distributions())))"]
+      },
+      "pins": {
+        "node": "v22.23.4",
+        "npm": "10.9.9",
+        "go": "go version go1.26.10 linux/amd64",
+        "python": "Python 3.12.16",
+        "python-packages": "[[\"attrs\", \"26.1.0\"], [\"jsonschema\", \"4.26.0\"], [\"jsonschema-specifications\", \"2025.9.1\"], [\"pip\", \"25.0.1\"], [\"referencing\", \"0.37.0\"], [\"rpds-py\", \"2026.6.3\"], [\"typing_extensions\", \"4.16.0\"]]"
       }
     },
     "mutation": {

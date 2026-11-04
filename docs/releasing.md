@@ -143,10 +143,11 @@ Every job works on the commit the run was started for, by its digest, not on the
 2. **Verifies trusted exact-source CI evidence.** The devkit's
    [release evidence gate](ci-evidence.md) (v0.15.0, vendored as `scripts/dev/release_evidence.py`)
    requires complete successful `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs and every full mutation shard of
-   trusted main runs at the exact release commit, with the inputs the commit holds: the jobs on
-   runners that reported the image the release runner reports, the shards on runners that reported
-   its image name, platform and OS release, whatever their image version, with `node` and `npm` at
-   their pins ([#332](ci-evidence.md#the-tables-shards-compare-release-os-332)). Checks main took from its merged pull
+   trusted main runs at the exact release commit, with the inputs the commit holds: every job on a
+   runner that reported the release runner's image name, platform and OS release, whatever its image
+   version, with every tool it records at its profile's pin
+   ([#332](ci-evidence.md#the-tables-shards-compare-release-os-332),
+   [#336](ci-evidence.md#the-ci-jobs-compare-release-os-336)). Checks main took from its merged pull
    request's run are admitted again. The `Package` job proceeds only on the gate's `reuse`
    decision. Tag-sensitive checks and fresh advisory review remain separate.
 3. **Builds the package.** It refuses unless the package's version, in `package.json` and in
@@ -194,8 +195,8 @@ pull request's sample and a partial re-run cannot qualify. What a nightly run do
 `mutation-rows` step of `dev.json`, which the `check` job runs, or, on a push to main, may reuse
 from the merged pull request's run, which the release admits again.
 
-The age limit is 48 hours. A rolled hosted image under a CI job (under a mutation shard, another OS
-release or platform), changed tools or inputs, stale, missing or unreadable evidence, a missing or
+The age limit is 48 hours. Another OS release or platform under a CI job or a mutation shard than
+the release runner's, a tool that is not its pin, changed inputs, stale, missing or unreadable evidence, a missing or
 unexpected runner identity, or tag movement refuses. The bounded
 fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the CI push
 run or the table's dispatch run at the commit (or dispatch the workflow on main while main names the
