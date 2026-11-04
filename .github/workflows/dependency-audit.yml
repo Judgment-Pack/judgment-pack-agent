@@ -24,9 +24,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ steps.dev.outputs.node }}
+      # The one exact Python release of every workflow (#336; ci.yml's contract job says where it is pinned).
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.12.16'
       # The live advisory query, fresh on every pull request, weekly and on demand. The offline test
       # of the audit's reporting (`dependency-audit`) is a step of the CI `check` job, which runs it
       # where jpdev.json maps a change to it and on main: it is not run a second time here.
