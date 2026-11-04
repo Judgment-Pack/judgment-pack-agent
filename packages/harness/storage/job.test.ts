@@ -20,7 +20,7 @@ import chains from '../../../contract/vectors/principal/chains.json'
 import type {AdmissionAnswer,PrincipalBinding,RunPrincipal} from '../principal'
 import {RECORD_DEFAULTS} from '../records'
 import type {ExecutionCheckpoint} from '../execution/state'
-import {RunWriter,type DurableBinding} from './writer'
+import {RUN_COMPLETE,RunWriter,type DurableBinding} from './writer'
 import {LeaseCapabilityRefused,LeaseRefused,ReferenceEffectHost,certifyEffectHost,fenceOf,fencedRunStore,reauthorizationOf,unattendedRunStore,type EffectHost,type EffectOperation,type LeaseLifetime} from './lease'
 import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer,JOB_ABANDON_OWNER,JOB_CANCEL_SCHEMA,abandonJobs,acknowledgeJobCancel,jobCancelCard,jobCancelOperation,jobCancelResult,jobCancelTool,jobReportFromExport,type JobCancelInput,admitJobs,completeJob,exportJobs,gatewayActionMembers,jobIdentity,jobKeyDigest,jobProjection,jobReadTool,jobReport,jobStartResult,jobStartTool,listJobs,readJob,reconcileJob,type JobAnswer,type JobCompletionEvidence,type JobLifetime,type JobReconciliation,type JobRegistration,type JobStartAnswer,type RunJob,type JobDelivery} from './job'
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
@@ -44,7 +44,21 @@ function provider(turns:Parameters<typeof answerWith>[0][]){
  const state={requests:0,bodies:[] as string[]}
  return {state,call:async(_path?:unknown,init?:{body?:unknown})=>{state.bodies.push(String(init?.body??''));const turn=turns[state.requests];state.requests++;if(!turn)throw Error('no scripted turn');return answerWith(turn,'stream',state.requests-1)}}
 }
+/** #330: a finished run is resumed by no plain resume, and a job continuation only where a claimed wait bears it out. A later
+ * turn here resumes the run as one stopped before its end would be: its head is left running, under the run's own fence. A
+ * continuation handed explicitly is the test's own case. */
+async function laterTurn(store:RunStore,extra:{resume?:boolean;jobContinuation?:RunJob}):Promise<void>{
+ if(!extra.resume||extra.jobContinuation)return
+ await interrupted(store)
+}
+/** A finished head left running, as a run stopped before its end leaves it. */
+async function interrupted(store:RunStore):Promise<void>{
+ const head=await store.load(RUN),saved=head?.checkpoint?JSON.parse(new TextDecoder().decode(head.checkpoint)):undefined
+ if(saved?.status!=='complete')return
+ await store.commit({runId:RUN,expectedRevision:head!.revision,commitId:crypto.randomUUID(),checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
+}
 async function drive(store:RunStore,tools:HostTool[],call:(...args:never[])=>Promise<Response>,extra:{resume?:boolean;approval?:{callId:string;approved:boolean;shownDigest?:string};jobContinuation?:RunJob;signal?:AbortSignal}={}):Promise<AssistantEvent[]>{
+ await laterTurn(store,extra)
  const session:EngineSession={prompt:'Run the job.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:tools,signal:extra.signal??new AbortController().signal,allowConversation:true,critic:'off',
   context:{currentRequest:{message:'Run the job.',input:'job'},runStore:{store,id:RUN,...(extra.resume?{resume:true}:{})},...(extra.approval?{approval:extra.approval}:{}),...(extra.jobContinuation?{jobContinuation:extra.jobContinuation}:{})},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
  const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
@@ -219,6 +233,9 @@ describe('the store\'s registration, and what the package holds itself to (#229)
  it('a continuation must be this run\'s job',async()=>{
   const held=await oneJob(),first=provider([{say:'never'}])
   const foreign={...held.job,resource:'run-other',job:jobIdentity('run-other',held.job.operation)}
+  // #330: at a finished head, a continuation no claimed wait bears out is RunComplete first; this reads the session's own check
+  // at a head left running.
+  await interrupted(held.view)
   const events=await drive(held.view,[held.tool],first.call,{resume:true,jobContinuation:foreign})
   expect(first.state.requests).toBe(0);expect(JSON.stringify(events)).toContain('JobRefused: invalid')
  })
@@ -343,6 +360,9 @@ describe('job waits: only a completion wakes one, and nothing wakes it twice (#2
   const resumed=await resumeParked({store,resource:RUN,wait:'wait-j',evidence:'done-1',owner:'worker-b',durationMs:HOUR,current:await current(store)})
   expect(resumed.job).toEqual(done)
   const view=unattendedRunStore({store,fence:resumed.fence,effectHost:held.host}),next=provider([READ(job.job),READ(job.job),{say:'It succeeded.'}])
+  // #330 HIGH-1: the claimed wait is on this job: a continuation of another job of the run is not borne out, and nothing runs.
+  const other=provider([CALL,{say:'x'}]),mismatched=await drive(view,[held.tool,jobReadTool(view)],other.call,{resume:true,jobContinuation:{...resumed.job!,job:jobIdentity(RUN,'op-other')}})
+  expect(other.state.requests).toBe(0);expect(mismatched.filter(e=>e.type==='error')).toEqual([expect.objectContaining({failure:expect.objectContaining({detail:RUN_COMPLETE})})])
   const events=await drive(view,[held.tool,jobReadTool(view)],next.call,{resume:true,jobContinuation:resumed.job!})
   expect(events.at(-1)?.type).toBe('end')
   expect(next.state.bodies[0]).toContain('JOB RESULT:');expect(next.state.bodies[0]).toContain('succeeded')
@@ -352,6 +372,22 @@ describe('job waits: only a completion wakes one, and nothing wakes it twice (#2
   expect(JSON.stringify(reads[0])).toContain('\\"changed\\":true');expect(JSON.stringify(reads[1])).toContain('\\"changed\\":false');expect(JSON.stringify(reads[1])).toContain('do not poll')
   expect(reads.every(r=>r.isError!==true)).toBe(true)
   expect(JSON.stringify(events)).not.toContain(SECRET)
+  // #330 HIGH-1: the same continuation delivered again, after it ran, meets a head that has moved: refused RunComplete, and
+  // the model is not asked.
+  const again=provider([CALL,{say:'x'}]),redelivered=await drive(view,[held.tool,jobReadTool(view)],again.call,{resume:true,jobContinuation:resumed.job!})
+  expect(again.state.requests).toBe(0);expect(held.start).toHaveBeenCalledTimes(1)
+  expect(redelivered.filter(e=>e.type==='error')).toEqual([expect.objectContaining({failure:expect.objectContaining({detail:RUN_COMPLETE})})])
+ })
+ it('#330 HIGH-1: a continuation no claimed wait bears out is refused at a finished run, and nothing starts again',async()=>{
+  const held=await oneJob(),second=provider([CALL,{say:'x'}])
+  const events=await drive(held.view,[held.tool,jobReadTool(held.view)],second.call,{resume:true,jobContinuation:held.job})
+  expect(second.state.requests).toBe(0);expect(held.start).toHaveBeenCalledTimes(1);expect((await listJobs(held.store,RUN)).jobs).toHaveLength(1)
+  expect(events.filter(e=>e.type==='error')).toEqual([expect.objectContaining({failure:expect.objectContaining({detail:RUN_COMPLETE})})])
+  // A wait parked on that job and not claimed bears nothing out either.
+  await parkJob(held.store,held.fence,held.job.job)
+  const third=provider([CALL,{say:'x'}]),unclaimed=await drive(held.view,[held.tool,jobReadTool(held.view)],third.call,{resume:true,jobContinuation:held.job})
+  expect(third.state.requests).toBe(0);expect(held.start).toHaveBeenCalledTimes(1)
+  expect(unclaimed.filter(e=>e.type==='error')).toEqual([expect.objectContaining({failure:expect.objectContaining({detail:RUN_COMPLETE})})])
  })
  it('the lost wake-up: a job settled before the park refuses it; an unproven or a foreign one too',async()=>{
   const held=await oneJob()
@@ -747,6 +783,7 @@ describe('a cancel asks; only a completion says it stopped (#229)',()=>{
   const sent=vi.fn(async(_:JobCancelInput)=>undefined),start=jobStartTool({...WS,source:notes,approve:(()=>'allow') as never,mint:async()=>jobKeyDigest(KEY),start:started as never})
   const cancel=jobCancelTool({name:CS.name,description:CS.description,source:notes,start,approve:(()=>'allow') as never,cancel:sent})
   const go=async(p:RunPrincipal,call:(...a:never[])=>Promise<Response>,resume=false)=>{
+   await laterTurn(view,{resume})
    const session={prompt:'Write.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[start,cancel],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{principal:p,currentRequest:{message:'Write.',input:'n'},runStore:{store:view,id:RUN,...(resume?{resume:true}:{})}},model:{family:'openai-compatible',model:'fixture',call}} as never as EngineSession
    const out:AssistantEvent[]=[];for await(const event of vercel.start(session))out.push(event);return out
   }

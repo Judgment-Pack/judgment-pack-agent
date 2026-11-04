@@ -7392,7 +7392,7 @@
   ],
   "status": "caught",
   "origin": "agent#237",
-  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 decided retained missing-pause evidence cannot restore the private exemption. Missing retained pause evidence restores an exemption and permits a third provider call (3 rather than 2). Go counterpart caught: incomplete decided proof restored native exemption:. Restored focused checks pass."
+  "note": "TypeScript safeguard removal caught at storage/nativePlanPause.test.ts > #219 decided retained missing-pause evidence cannot restore the private exemption. Missing retained pause evidence restores an exemption and permits a third provider call (3 rather than 2). Go counterpart caught: incomplete decided proof restored native exemption:. Restored focused checks pass. Since #328 a complete head is refused RunComplete before this restore, so both tests read the decided proof again at a head left running, as a run stopped before its end leaves it; the Go twin is caught there again."
 },
 {
   "name": "native Plan pause R1 single-unknown-exemption",
@@ -15202,6 +15202,126 @@
    "status": "caught",
    "origin": "agent#303",
    "note": "#326's review round. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "resume #328 a resume of a complete head is not refused",
+   "file": "storage/writer.ts",
+   "find": " if(head&&await finished(store,id,head,execution,input,session.signal))throw new RunComplete()\n",
+   "replace": "",
+   "tests": [
+    "storage/startRefusal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328, repointed in #330's review round. Go twin (by hand, in run_writer.go): caught at TestAResumeOfACompleteHeadIsRefusedBeforeAnything, on eino and the agent adapter, plain and through the coordinator."
+  },
+  {
+   "name": "resume #328 a job wait's continuation is refused at a complete head",
+   "file": "storage/writer.ts",
+   "find": " if(input?.jobContinuation!==undefined&&await claimedJobWait(store,id,input.jobContinuation,head.revision,signal))return false\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328, repointed in #330's review round. The designed path: a job wait parked on a complete head, claimed through resumeParked, resumed with its job. Go twin (by hand, in run_writer.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
+  },
+  {
+   "name": "resume #328 a re-authorization claim's continuation is refused at a complete head",
+   "file": "storage/writer.ts",
+   "find": "||reauthorizedContinuation(store,execution))return false",
+   "replace": ")return false",
+   "tests": [
+    "storage/reauth.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#328, repointed in #330's review round. Another view of a re-authorization claim sends the never-admitted operation once more. Go twin (by hand, in run_writer.go): caught at TestReauthorizationARefusedResendCannotParkAndItsGrantIsSpent."
+  },
+  {
+   "name": "resume #330 a job continuation is admitted on the host's word",
+   "file": "storage/writer.ts",
+   "find": " if(input?.jobContinuation!==undefined&&await claimedJobWait(store,id,input.jobContinuation,head.revision,signal))return false\n",
+   "replace": " if(input?.jobContinuation!==undefined)return false\n",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestJobsAContinuationNoClaimedWaitBearsOutIsRefusedAtAFinishedRun."
+  },
+  {
+   "name": "resume #330 a continuation delivered again after it ran is admitted",
+   "file": "storage/writer.ts",
+   "find": "&&record(wait.checkpoint)&&wait.checkpoint.revision===revision",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
+  },
+  {
+   "name": "resume #330 an unclaimed wait bears out a continuation",
+   "file": "storage/writer.ts",
+   "find": "&&wait.state==='resumed'&&",
+   "replace": "&&",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestJobsAContinuationNoClaimedWaitBearsOutIsRefusedAtAFinishedRun."
+  },
+  {
+   "name": "resume #330 a claimed wait on another job bears out a continuation",
+   "file": "storage/writer.ts",
+   "find": "&&wait.pending.job===job.job",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy."
+  },
+  {
+   "name": "resume #330 an open objective's leg is refused at a finished head",
+   "file": "storage/writer.ts",
+   "find": " return !await openObjective(store,id,execution,signal)\n",
+   "replace": " return true\n",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestGoalALegResumesAFinishedHeadOnlyWhileTheObjectiveIsOpen."
+  },
+  {
+   "name": "resume #330 a blocked objective's leg is admitted",
+   "file": "storage/writer.ts",
+   "find": "current.state==='active'&&",
+   "replace": "",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestGoalALegResumesAFinishedHeadOnlyWhileTheObjectiveIsOpen."
+  },
+  {
+   "name": "resume #330 a leg is admitted with the Plan's steps done",
+   "file": "storage/writer.ts",
+   "find": "&&(row.status==='pending'||row.status==='in_progress')",
+   "replace": "",
+   "tests": [
+    "storage/goal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#303",
+   "note": "#330's review round. Go twin (by hand, in run_writer.go): caught at TestGoalALegResumesAFinishedHeadOnlyWhileTheObjectiveIsOpen."
   },
   {
    "name": "job B21 #314 the history observation reader reads members of what is no object",

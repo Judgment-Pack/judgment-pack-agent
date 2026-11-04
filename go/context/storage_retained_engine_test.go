@@ -74,6 +74,11 @@ func TestRetainedRepresentationActualEinoRequestBytesAfterResume(t *testing.T) {
 							}
 							return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 						}}
+						// #328: a finished head is resumed by no plain resume, so the resume here is of a head left
+						// running, as a run stopped before its end leaves it.
+						if resume && profile != "callback" {
+							interruptRetainedHead(t, memory, "retained-engine")
+						}
 						if profile == "callback" {
 							run.Context.RunStore = nil
 							run.Context.Checkpoint = checkpoint
@@ -120,5 +125,26 @@ func TestRetainedRepresentationActualEinoRequestBytesAfterResume(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// interruptRetainedHead leaves a finished head running, as a run stopped before its end leaves it (#328).
+func interruptRetainedHead(t *testing.T, store *runcontext.MemoryRunStore, id string) {
+	t.Helper()
+	head, err := store.Load(context.Background(), id)
+	if err != nil || head == nil || head.Checkpoint == nil {
+		t.Fatal(head, err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	saved["status"] = "running"
+	raw, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Commit(context.Background(), runcontext.RunCommit{RunID: id, ExpectedRevision: head.Revision, CommitID: "interrupted", Checkpoint: raw, Events: [][]byte{}}); err != nil {
+		t.Fatal(err)
 	}
 }

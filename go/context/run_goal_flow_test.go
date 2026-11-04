@@ -739,3 +739,64 @@ func TestGoalAnAbandonOnARunNoWorkerLeasedTakesTheLease(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// end saves the run's end as an adapter's does: the checkpoint marked complete, through the run's own writer.
+func (f *goalFlow) end() {
+	f.t.Helper()
+	f.run.Context.Execution.MutateCheckpoint(CheckpointPatch{"Status": "complete"})
+	state, err := f.run.Context.Execution.Snapshot("complete")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.run.Session.Context.Checkpoint(context.Background(), state); err != nil {
+		f.t.Fatal(err)
+	}
+	if status := planText(f.saved().Get("status")); status != "complete" {
+		f.t.Fatalf("the head reads %s", status)
+	}
+}
+
+// reopen resumes the run as a host's next leg would, and keeps the run open only where the resume is admitted.
+func (f *goalFlow) reopen() error {
+	session, _ := trackedSession(f.t)
+	session.Context.RunStore = &DurableRunInput{Store: f.view, ID: goalRun, Resume: true}
+	session.Context.Plan = goalAcceptedPlan("Inspect", "Report")
+	session.Context.Phase = "work"
+	session.HostTools = []HostTool{{Name: "lookup", Effect: "read", Taxonomy: &ToolTaxonomy{Operation: "read", Effect: "read"}, Description: "Read supplied evidence.", InputSchema: json.RawMessage(`{"type":"object"}`), Execute: func(context.Context, json.RawMessage) (ToolResult, error) {
+		return ResultOf([]Content{TextContent("Evidence.")}, nil), nil
+	}}}
+	run, err := ContextualSession(context.Background(), session)
+	if err != nil {
+		return err
+	}
+	f.run.Context.Close()
+	f.run = run
+	return nil
+}
+
+// #330 MEDIUM-1: a leg resumes the finished head only while the objective is active, not paused, and its Plan has a
+// required step left; otherwise the head is refused RunComplete as any other.
+func TestGoalALegResumesAFinishedHeadOnlyWhileTheObjectiveIsOpen(t *testing.T) {
+	f, bound := goalBound(t)
+	defer func() { f.run.Context.Close() }()
+	var finished *RunComplete
+	f.end()
+	if err := f.reopen(); err != nil {
+		t.Fatal("an open objective's leg:", err)
+	}
+	// Blocked, the objective takes no leg (paused, it is still active: M8).
+	blocked := f.must(f.command("block", bound.Goal.Revision, func(c *GoalCommand) { c.Condition = goalKitString("waiting-on-data") }))
+	f.end()
+	if err := f.reopen(); !errors.As(err, &finished) {
+		t.Fatal("a blocked objective's leg:", err)
+	}
+	f.must(f.command("unblock", blocked.Goal.Revision, nil))
+	if err := f.reopen(); err != nil {
+		t.Fatal("an unblocked objective's leg:", err)
+	}
+	f.finish(`[{"id":"step-1","step":"Inspect","status":"completed"},{"id":"step-2","step":"Report","status":"in_progress"}]`)
+	f.end()
+	if err := f.reopen(); !errors.As(err, &finished) {
+		t.Fatal("a Plan with nothing left:", err)
+	}
+}

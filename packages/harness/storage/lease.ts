@@ -514,6 +514,11 @@ export function attachReauthorizedDispatch(store:RunStore,operation:EffectOperat
  if(!lease||lease.grant||canonicalJSON(lease.fence)!==canonicalJSON(bound)||held.run!==bound.resource)return invalid()
  lease.grant={operation:held,used:false}
 }
+/** @internal #328: the operation a resumed re-authorization wait's grant holds on this view, while it is unspent. */
+export function reauthorizedGrant(store:RunStore):EffectOperation|undefined{
+ const grant=leased.get(store)?.grant
+ return grant&&!grant.used?structuredClone(grant.operation):undefined
+}
 /** @internal H2 of the #229 design review: whether takeReauthorizedDispatch would answer true, spending nothing. */
 export function reauthorizedDispatchOpen(store:RunStore,operation:EffectOperation,recorded:unknown):boolean{
  const grant=leased.get(store)?.grant

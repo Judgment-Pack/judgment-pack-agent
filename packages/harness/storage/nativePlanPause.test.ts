@@ -113,6 +113,11 @@ for(const fault of ['missing-pause','missing-decision','wrong-request'])it(`#219
  const run:AgentRun=async(request,cb)=>{calls++;try{if(calls===1){const tool=request.tools.find(tool=>tool.description.startsWith('update_plan: '))!;await cb.tool({id:'pause',name:tool.name,arguments:{explanation:'Remove accepted work',plan:[{id:'step-2',step:'Report',status:'pending'}]}},cb.signal)}else await cb.event({type:'message',id:'done',text:'Done.',phase:'final'})}finally{cb.providerRelease?.acknowledge(cb.providerRelease.invocation)}}
  await events(input(store,run,'standalone'),'standalone');const before=await checkpoint(store)
  const resumed=await events(input(store,run,'standalone',true,{callId:before.planState.pending.callId,approved:true}),'standalone');expect(resumed.filter(event=>event.type==='error')).toEqual([]);expect(calls).toBe(2)
+ // #328: a finished run is resumed by no plain resume, so the decided proof is read again at a head left running, as a run
+ // stopped before its end leaves it. That resume restores the decision from the retained evidence.
+ const head=(await memory.load('native-plan'))!,held=JSON.parse(new TextDecoder().decode(head.checkpoint!))
+ expect(held.status).toBe('complete')
+ await memory.commit({runId:'native-plan',expectedRevision:head.revision,commitId:'interrupted',checkpoint:new TextEncoder().encode(JSON.stringify({...held,status:'running'})),events:[]})
  corrupt=true;const refused=await events(input(store,run,'standalone',true),'standalone');expect(calls).toBe(2);expect(refused.some(event=>event.type==='error')).toBe(true)
 })
 

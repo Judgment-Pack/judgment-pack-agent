@@ -96,8 +96,11 @@ describe('jobs and the abandon at the objective (#230)',()=>{
   const jobA=(await listJobs(held.store,RUN)).jobs[0]!.job
   expect(sent).toEqual([jobA])
   const second=await goalCommand({store:held.store,command:command('create',abandoned.goal.revision,{objective:'objective-2'})})
-  // Objective 2's run goes on under the abandon's fence and starts job B.
-  await drive(unattendedRunStore({store:held.store,fence:abandoned.fence!,effectHost:held.host}),[tool],provider([call('b'),{say:'Started b.'}]).call,{resume:true})
+  // Objective 2's run goes on under the abandon's fence and starts job B. Objective 2 binds no Plan, so its run's finished head
+  // takes no leg (#330): the run goes on as one stopped before its end, its head left running.
+  const goesOn=unattendedRunStore({store:held.store,fence:abandoned.fence!,effectHost:held.host}),head=(await goesOn.load(RUN))!,saved=JSON.parse(new TextDecoder().decode(head.checkpoint!))
+  await goesOn.commit({runId:RUN,expectedRevision:head.revision,commitId:'interrupted',checkpoint:new TextEncoder().encode(JSON.stringify({...saved,status:'running'})),events:[]})
+  await drive(goesOn,[tool],provider([call('b'),{say:'Started b.'}]).call,{resume:true})
   const jobB=(await listJobs(held.store,RUN)).jobs.map(job=>job.job).find(job=>job!==jobA)!
   const lease=await held.store.readLease(RUN),before=(await readGoal(held.store,RUN))!
   await expect(abandonGoal({store:held.store,effectHost:held.host,command:abandonCmd,durationMs:HOUR,cancel})).rejects.toEqual(refusal('revision-changed'))

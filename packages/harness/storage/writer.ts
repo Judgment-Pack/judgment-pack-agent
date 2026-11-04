@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,reauthorizedDispatchOpen,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
+import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,leasedViewOf,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
@@ -58,6 +58,50 @@ export class DurableRequestConflict extends AIFailureError {constructor(){super(
  */
 export class DurableRequestUnrecordable extends AIFailureError {constructor(){super({...failure('invalid-tool-input','tool','not-started'),detail:DURABLE_REQUEST_UNRECORDABLE});this.name='DurableRequestUnrecordable'}}
 export class ContinuationIdentityChanged extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:'ContinuationIdentityChanged: the admitted continuation identity differs.'});this.name='ContinuationIdentityChanged'}}
+/** #328: the detail of a refused resume of a finished run. */
+export const RUN_COMPLETE='RunComplete: the run is complete, and a finished run is not resumed. Only a claimed job wait\'s or a re-authorization\'s continuation, or a leg of an open objective, resumes it.'
+/**
+ * #328: a resume of a run whose run-store head is `complete` is refused by name, before anything of the run is bound: no model
+ * request, no tool call and no record write. A finished run asked again would make new requests and could act again. Three
+ * resumes of a complete head are kept, each borne out by the store: a job wait's continuation (`resumeParked`, then
+ * `context.jobContinuation`) where the store holds that wait claimed at this head, a re-authorization claim's view
+ * (`reauthorizedRunStore`) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution the host holds itself, with no
+ * run store, is the host's own record and is not refused.
+ */
+export class RunComplete extends AIFailureError {constructor(){super({...failure('stale-state','context','not-started'),detail:RUN_COMPLETE});this.name='RunComplete'}}
+/** #328: a resumed re-authorization claim's view, its grant unspent, over a head that holds the granted operation as its
+ * never-admitted row: the host may open another view of the claim, which sends it once more. */
+const reauthorizedContinuation=(store:RunStore,execution:ExecutionCheckpoint)=>{
+ const grant=reauthorizedGrant(store),row=grant&&execution.durable?.dispatches.find(row=>row.id===grant.operation&&row.state==='unknown'&&(row.kind==='host'||row.kind==='runtime'))
+ return !!row&&isNeverAdmittedFailure(row.failure)
+}
+const record=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
+/** #330 HIGH-1: a job continuation resumes a complete head only where the store bears it out: this run's wait on that job,
+ * claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head that has moved. */
+async function claimedJobWait(store:RunStore,id:string,job:unknown,revision:string,signal?:AbortSignal):Promise<boolean>{
+ const base=(leasedViewOf(store)?.store??store) as {exportWaits?:(resource:string,signal?:AbortSignal)=>Promise<unknown>}
+ if(!record(job)||typeof job.job!=='string'||typeof base.exportWaits!=='function')return false
+ const held=await base.exportWaits(id,signal),waits=record(held)&&Array.isArray(held.waits)?held.waits:[]
+ return waits.some(wait=>record(wait)&&wait.resource===id&&wait.state==='resumed'&&record(wait.pending)&&wait.pending.kind==='job'&&wait.pending.job===job.job&&record(wait.checkpoint)&&wait.checkpoint.revision===revision)
+}
+/** #330 MEDIUM-1: a later leg of an objective's run. A complete head resumes while the store's goal record for this run has an
+ * active objective whose bound Plan still has a required step the head holds unfinished; a paused one is still active, and its
+ * held lease runs on (M8). Once the objective is blocked or terminal, or its Plan has nothing left, the head is refused as any
+ * other. */
+async function openObjective(store:RunStore,id:string,execution:ExecutionCheckpoint,signal?:AbortSignal):Promise<boolean>{
+ const base=(leasedViewOf(store)?.store??store) as {readGoal?:(resource:string,signal?:AbortSignal)=>Promise<unknown>}
+ if(typeof base.readGoal!=='function')return false
+ const goal=await base.readGoal(id,signal),objectives=record(goal)&&goal.resource===id&&Array.isArray(goal.objectives)?goal.objectives:[]
+ const current=objectives.at(-1),bound=record(current)&&current.state==='active'&&record(current.plan)?current.plan:undefined,accepted=execution.planState?.accepted
+ if(!bound||!Array.isArray(bound.steps)||!accepted||accepted.id!==bound.id||accepted.revision!==bound.revision)return false
+ return bound.steps.some(required=>record(required)&&execution.plan.some(row=>row.origin?.plan===accepted.id&&row.origin.revision===accepted.revision&&row.origin.index===required.index&&(row.status==='pending'||row.status==='in_progress')))
+}
+/** #328: a complete head resumes only as a job wait's continuation, a re-authorization claim's, or a leg of an open objective. */
+async function finished(store:RunStore,id:string,head:RunHead,execution:ExecutionCheckpoint|undefined,input:EngineSession['context'],signal?:AbortSignal):Promise<boolean>{
+ if(execution?.status!=='complete'||reauthorizedContinuation(store,execution))return false
+ if(input?.jobContinuation!==undefined&&await claimedJobWait(store,id,input.jobContinuation,head.revision,signal))return false
+ return !await openObjective(store,id,execution,signal)
+}
 /**
  * What a request with a recorded row's fingerprint is to that row (#275), from the exact text. The
  * fingerprint is published, persisted and re-derived when a book is read; it says two requests read alike,
@@ -987,6 +1031,8 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(head&&!head.checkpoint)throw new ContinuationNotRecoverable()
  const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
+ // #328: decided as soon as the head is read, before anything of the run is bound, as in Go.
+ if(head&&await finished(store,id,head,execution,input,session.signal))throw new RunComplete()
  if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
  const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined

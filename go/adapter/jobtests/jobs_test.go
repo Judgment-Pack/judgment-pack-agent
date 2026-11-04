@@ -158,10 +158,46 @@ type options struct {
 	plan         *runcontext.Value
 }
 
+// laterTurn (#330): a finished run is resumed by no plain resume, and a job continuation only where a claimed wait bears
+// it out. A later turn here resumes the run as one stopped before its end would be: its head is left running, under the
+// run's own fence. A continuation handed explicitly is the test's own case.
+func laterTurn(t *testing.T, store runcontext.RunStore, with options) {
+	t.Helper()
+	if !with.resume || with.continuation != nil {
+		return
+	}
+	interrupted(t, store)
+}
+
+// interrupted leaves a finished head running, as a run stopped before its end leaves it.
+func interrupted(t *testing.T, store runcontext.RunStore) {
+	t.Helper()
+	head, err := store.Load(context.Background(), jobRun)
+	if err != nil || head == nil || head.Checkpoint == nil {
+		return
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["status"] != "complete" {
+		return
+	}
+	saved["status"] = "running"
+	raw, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Commit(context.Background(), runcontext.RunCommit{RunID: jobRun, ExpectedRevision: head.Revision, CommitID: fmt.Sprintf("interrupted-%d", time.Now().UnixNano()), Checkpoint: raw, Events: [][]byte{}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // drive runs the tools: the model or the agent makes each call, then ends.
 func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runcontext.HostTool, calls []jobCall, with options) *runResult {
 	t.Helper()
 	out := &runResult{}
+	laterTurn(t, store, with)
 	var mu sync.Mutex
 	g := gate.New(gate.Options{})
 	g.SetOffer(contract.ToolOffer{})
@@ -689,6 +725,12 @@ func TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// #330 HIGH-1: the claimed wait is on this job: a continuation of another job of the run is not borne out.
+			other := *resumed.Job
+			other.Job = runcontext.JobIdentity(jobRun, "op-other")
+			if mismatched := drive(t, view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{resume: true, continuation: &other}); mismatched.err != nil || mismatched.asks.Load() != 0 || !refusedComplete(mismatched) {
+				t.Fatal(mismatched.err, mismatched.asks.Load(), mismatched.events)
+			}
 			read, err = runcontext.JobReadTool(view)
 			if err != nil {
 				t.Fatal(err)
@@ -704,6 +746,51 @@ func TestJobsAWaitIsWokenByTheCompletionAndTheResumeSaysWhy(t *testing.T) {
 			all := toolAnswer(next)
 			if strings.Contains(all, jobSecret) || !strings.Contains(all, `\"changed\":true`) || !strings.Contains(all, `\"changed\":false`) || !strings.Contains(all, "unchanged: do not poll") {
 				t.Fatal(all)
+			}
+			// #330 HIGH-1: the same continuation delivered again, after it ran, meets a head that has moved: refused
+			// RunComplete, and the model is not asked.
+			again := drive(t, view, engine, []runcontext.HostTool{tool, read}, []jobCall{{"start", jobArgs}}, options{resume: true, continuation: resumed.Job})
+			if again.err != nil || again.asks.Load() != 0 || !refusedComplete(again) {
+				t.Fatal(again.err, again.asks.Load(), again.events)
+			}
+		})
+	}
+}
+
+// refusedComplete: the run was refused RunComplete (#328).
+func refusedComplete(result *runResult) bool {
+	for _, event := range result.events {
+		if event.Error != nil && strings.HasPrefix(event.Error.Message, "RunComplete:") {
+			return true
+		}
+	}
+	return false
+}
+
+// #330 HIGH-1: a resume of a complete head that hands this run's own job as the continuation, with no wait parked and none
+// claimed, is refused RunComplete before the model is asked: nothing starts again.
+func TestJobsAContinuationNoClaimedWaitBearsOutIsRefusedAtAFinishedRun(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			l := newLeased(t, nil)
+			calls := &startCalls{}
+			tool := startTool(t, calls, answered(startedAnswer, nil), "allow", nil)
+			if result := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{}); result.err != nil {
+				t.Fatal(result.err)
+			}
+			job := onlyJob(t, l.store)
+			second := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", `{"name":"again"}`}}, options{resume: true, continuation: &job})
+			page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", runcontext.JobPageLimit)
+			if second.err != nil || second.asks.Load() != 0 || !refusedComplete(second) || calls.count() != 1 || len(page.Jobs) != 1 {
+				t.Fatal(second.err, second.asks.Load(), calls.count(), len(page.Jobs), second.events)
+			}
+			// A wait parked on that job and not claimed bears nothing out either.
+			if err := parkJob(t, l, job.Job, nil); err != nil {
+				t.Fatal(err)
+			}
+			third := drive(t, l.view, engine, []runcontext.HostTool{tool}, []jobCall{{"start", `{"name":"again"}`}}, options{resume: true, continuation: &job})
+			if third.err != nil || third.asks.Load() != 0 || !refusedComplete(third) || calls.count() != 1 {
+				t.Fatal(third.err, third.asks.Load(), calls.count(), third.events)
 			}
 		})
 	}
@@ -821,6 +908,9 @@ func TestJobsAContinuationMustBeThisRunsJob(t *testing.T) {
 	drive(t, l.view, "eino", []runcontext.HostTool{tool}, []jobCall{{"start", jobArgs}}, options{})
 	foreign := onlyJob(t, l.store)
 	foreign.Resource, foreign.Job = "run-other", runcontext.JobIdentity("run-other", foreign.Operation)
+	// #330: at a finished head, a continuation no claimed wait bears out is RunComplete first; this reads the session's own
+	// check at a head left running.
+	interrupted(t, l.view)
 	result := drive(t, l.view, "eino", []runcontext.HostTool{tool}, nil, options{resume: true, continuation: &foreign})
 	if result.asks.Load() != 0 || !strings.Contains(fmt.Sprint(result.err)+toolAnswer(result), "JobRefused: invalid") {
 		t.Fatal(result.asks.Load(), result.err, toolAnswer(result))

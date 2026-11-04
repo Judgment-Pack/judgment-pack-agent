@@ -136,6 +136,10 @@ func TestNativePlanActualDecidedJournalRefusals(t *testing.T) {
 			if events := nativePlanResume(t, run, prepared); nativePlanHasError(events) || *calls != 2 {
 				t.Fatalf("valid decided continuation failed: calls=%d events=%+v", *calls, events)
 			}
+			// #328: a finished run is resumed by no plain resume, so the decided proof is read again at a head left
+			// running, as a run stopped before its end leaves it. That resume restores the decision from the retained
+			// evidence.
+			nativePlanInterrupted(t, store)
 			base := store.RunStore
 			store.read = func(ctx context.Context, id, after string, limit int) (runcontext.RunEventPage, error) {
 				page, err := base.ReadEvents(ctx, id, after, limit)
@@ -329,5 +333,29 @@ func TestNativePlanInterruptedTerminalNextUnknownRefuses(t *testing.T) {
 				t.Fatal("refusal changed retained unknown audit rows")
 			}
 		})
+	}
+}
+
+// nativePlanInterrupted leaves the finished head running, as a run stopped before its end leaves it (#328).
+func nativePlanInterrupted(t *testing.T, store *nativePlanBasicStore) {
+	t.Helper()
+	head, err := store.RunStore.Load(context.Background(), "native-proof")
+	if err != nil || head == nil || head.Checkpoint == nil {
+		t.Fatal("missing retained native head", err)
+	}
+	var saved map[string]any
+	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["status"] != "complete" {
+		t.Fatalf("the decided continuation did not finish the run: %v", saved["status"])
+	}
+	saved["status"] = "running"
+	raw, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.RunStore.Commit(context.Background(), runcontext.RunCommit{RunID: "native-proof", ExpectedRevision: head.Revision, CommitID: "interrupted", Checkpoint: raw, Events: [][]byte{}}); err != nil {
+		t.Fatal(err)
 	}
 }

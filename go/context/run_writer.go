@@ -151,6 +151,128 @@ func (e *ContinuationNotRecoverable) Unwrap() error {
 
 type ContinuationIdentityChanged struct{}
 
+// RunCompleteDetail is the detail of a refused resume of a finished run (#328).
+const RunCompleteDetail = "RunComplete: the run is complete, and a finished run is not resumed. Only a claimed job wait's or a re-authorization's continuation, or a leg of an open objective, resumes it."
+
+// RunComplete (#328): a resume of a run whose run-store head is complete is refused by name, before anything of the run
+// is bound: no model request, no tool call and no record write. A finished run asked again would make new requests and
+// could act again. Three resumes of a complete head are kept, each borne out by the store: a job wait's continuation
+// (ResumeParked, then Input.JobContinuation) where the store holds that wait claimed at this head, a re-authorization
+// claim's view (ReauthorizedRunStore) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution
+// the host holds itself, with no run store, is the host's own record and is not refused.
+type RunComplete struct{}
+
+func (*RunComplete) Error() string { return RunCompleteDetail }
+func (e *RunComplete) Unwrap() error {
+	return storageNamedFailure("stale-state", "context", "not-started", e.Error())
+}
+
+// completeHeadBase is the store a view reads through: the store itself for a plain store.
+func completeHeadBase(store RunStore) RunStore {
+	if view := leaseViewOf(store); view != nil {
+		return view.store
+	}
+	return store
+}
+
+// claimedJobWait (#330 HIGH-1): a job continuation resumes a complete head only where the store bears it out: this run's
+// wait on that job, claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head
+// that has moved.
+func claimedJobWait(ctx context.Context, store RunStore, id, job, revision string) (bool, error) {
+	waits, ok := completeHeadBase(store).(interface {
+		ExportWaits(context.Context, string) (WaitExport, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	held, err := waits.ExportWaits(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	for _, wait := range held.Waits {
+		if wait.Resource == id && wait.State == "resumed" && wait.Pending.Job != nil && wait.Pending.Job.Job == job && wait.Checkpoint.Revision == revision {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// openObjective (#330 MEDIUM-1): a later leg of an objective's run. A complete head resumes while the store's goal record
+// for this run has an active objective whose bound Plan still has a required step the head holds unfinished; a paused
+// one is still active, and its held lease runs on (M8). Once the objective is blocked or terminal, or its Plan has
+// nothing left, the head is refused as any other.
+func openObjective(ctx context.Context, store RunStore, id string, saved *contract.Checkpoint) (bool, error) {
+	goals, ok := completeHeadBase(store).(interface {
+		ReadGoal(context.Context, string) (*RunGoal, error)
+	})
+	if !ok {
+		return false, nil
+	}
+	goal, err := goals.ReadGoal(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if goal == nil || goal.Resource != id || len(goal.Objectives) == 0 {
+		return false, nil
+	}
+	current := goal.Objectives[len(goal.Objectives)-1]
+	if current.State != "active" || current.Plan == nil || saved.PlanState == nil || saved.PlanState.Accepted == nil {
+		return false, nil
+	}
+	accepted := saved.PlanState.Accepted
+	if accepted.ID != current.Plan.ID || accepted.Revision != current.Plan.Revision {
+		return false, nil
+	}
+	for _, required := range current.Plan.Steps {
+		for _, row := range saved.Plan {
+			if row.Origin != nil && row.Origin.Plan == accepted.ID && row.Origin.Revision == accepted.Revision && row.Origin.Index == required.Index && (row.Status == "pending" || row.Status == "in_progress") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// reauthorizedContinuation (#328): a resumed re-authorization claim's view, its grant unspent, over a head that holds
+// the granted operation as its never-admitted row: the host may open another view of the claim, which sends it once
+// more.
+func reauthorizedContinuation(store RunStore, checkpoint []byte) bool {
+	view := leaseViewOf(store)
+	if view == nil {
+		return false
+	}
+	view.mu.Lock()
+	grant := view.grant
+	var operation EffectOperation
+	open := grant != nil && !grant.used
+	if open {
+		operation = grant.operation
+	}
+	view.mu.Unlock()
+	if !open {
+		return false
+	}
+	var head struct {
+		Durable *struct {
+			Dispatches []struct {
+				ID      string            `json:"id"`
+				Kind    string            `json:"kind"`
+				State   string            `json:"state"`
+				Failure *contract.Failure `json:"failure"`
+			} `json:"dispatches"`
+		} `json:"durable"`
+	}
+	if json.Unmarshal(checkpoint, &head) != nil || head.Durable == nil {
+		return false
+	}
+	for _, row := range head.Durable.Dispatches {
+		if row.ID == operation.Operation && row.State == "unknown" && (row.Kind == "host" || row.Kind == "runtime") && isNeverAdmittedFailure(row.Failure) {
+			return true
+		}
+	}
+	return false
+}
+
 func (*ContinuationIdentityChanged) Error() string {
 	return "ContinuationIdentityChanged: the admitted continuation identity differs."
 }
@@ -1980,6 +2102,24 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				}
 			}
 			copy.Execution = saved
+			// #328: a complete head resumes only as a claimed job wait's continuation, a re-authorization claim's, or a
+			// leg of an open objective (#330).
+			if saved.Status == "complete" && !reauthorizedContinuation(store, head.Checkpoint) {
+				admitted := false
+				if copy.JobContinuation != nil {
+					if admitted, err = claimedJobWait(ctx, store, id, copy.JobContinuation.Job, head.Revision); err != nil {
+						return nil, err
+					}
+				}
+				if !admitted {
+					if admitted, err = openObjective(ctx, store, id, saved); err != nil {
+						return nil, err
+					}
+				}
+				if !admitted {
+					return nil, &RunComplete{}
+				}
+			}
 		}
 	} else {
 		store = NewCheckpointCallbackRunStore(copy.Checkpoint, func(raw []byte) (contract.Checkpoint, error) {
