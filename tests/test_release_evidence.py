@@ -66,6 +66,19 @@ CHECK_PINS = {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 l
                                  '["typing_extensions", "4.16.0"]]'}
 # The pip that Python release bundles, which the virtual environment is made with.
 BUNDLED_PIP = '25.0.1'
+# What main CI's jobs recorded at 44f4ddd (run 41882209845), written out by hand from its evidence
+# artifacts (#338): the check job's and each race leg's tools were these, the contract job's its python.
+# The pins above are held to them, so a pin no source derives (the npm and the pip a release bundles, a
+# package name as the tool's command spells it) cannot drift from what the jobs install unnoticed.
+RECORDED_ON_MAIN = {
+    'contract': {'python': 'Python 3.12.16'},
+    'check': {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 linux/amd64',
+              'python': 'Python 3.12.16',
+              'python-packages': '[["attrs", "26.1.0"], ["jsonschema", "4.26.0"], ["jsonschema-specifications", '
+                                 '"2025.9.1"], ["pip", "25.0.1"], ["referencing", "0.37.0"], ["rpds-py", "2026.6.3"], '
+                                 '["typing_extensions", "4.16.0"]]'},
+}
+RECORDED_TOOLS = ROOT / 'scripts/recorded-tools.py'
 
 CONFIG_PATH = ROOT / '.github/ci-evidence.json'
 CONTRACT_CHECKS = ['contract', 'local-paths', 'agent-docs', 'diff-check']
@@ -434,6 +447,31 @@ class Configuration(unittest.TestCase):
 
 
 class Workflows(unittest.TestCase):
+    def test_each_ci_capture_is_followed_by_the_comparison_of_its_tools_with_their_pins(self):
+        """#338: right after the job's last capture step and before its upload, under the upload's own
+        condition, so that the comparison runs whenever the job keeps evidence, on the record it keeps."""
+        ci = read('.github/workflows/ci.yml')
+        for job_id, key in (('contract', 'contract'), ('check', 'check'), ('go-race', 'go-race-${{ matrix.part }}')):
+            with self.subTest(job=key):
+                job = job_block(ci, job_id)
+                compare = step_block(job, 'Compare the recorded tools with their pins')
+                upload = step_block(job, 'Upload immutable CI evidence')
+                condition = re.search(r'^        if: (.*)$', upload, re.M).group(1)
+                self.assertEqual(compare, '      - name: Compare the recorded tools with their pins\n'
+                                          '        if: %s\n'
+                                          '        run: python3 scripts/recorded-tools.py --workflow ci --job %s '
+                                          '--evidence "${{ runner.temp }}/evidence.json"\n' % (condition, key))
+                captures = [match.start() for match in re.finditer(r'release_evidence\.py capture ', job)]
+                self.assertTrue(captures)
+                self.assertTrue(all('--output "${{ runner.temp }}/evidence.json"' in line
+                                    for line in job.splitlines() if 'release_evidence.py capture ' in line))
+                at = job.index('- name: Compare the recorded tools with their pins')
+                self.assertLess(max(captures), at)
+                self.assertLess(at, job.index('- name: Upload immutable CI evidence'))
+                # Every capture's condition is within the comparison's.
+                for record in re.findall(r'- name: Record [^\n]*\n        if: ([^\n]*)\n', job):
+                    self.assertIn(record, condition)
+
     def test_ci_captures_every_configured_job_under_the_name_verify_reads(self):
         current = config()
         for key, workflow in current['workflows'].items():
@@ -1207,6 +1245,24 @@ class AgentWorld(AtCommit):
         return record['refusal']['code']
 
 
+    def refusal_says(self, record):
+        """What release.yml's own step prints for a decision record of the gate."""
+        step = step_block(job_block(read('.github/workflows/release.yml'), 'verify'), 'Say what to do about a refusal')
+        self.assertIn("        if: ${{ failure() && steps.gate.outcome == 'failure' }}\n", step)
+        self.assertIn('          RECORD: ${{ runner.temp }}/release-evidence.json\n', step)
+        source = step[step.index("<<'PYCURE'\n") + len("<<'PYCURE'\n"):step.index('          PYCURE\n')]
+        source = '\n'.join(line[10:] for line in source.splitlines())
+        path = self.root.parent / ('%s-record.json' % self.root.name)
+        path.write_text(json.dumps(record), encoding='utf-8')
+        self.addCleanup(path.unlink, missing_ok=True)
+        done = subprocess.run([sys.executable, '-I', '-c', source], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, timeout=30,
+                              env={'RECORD': str(path), 'GITHUB_REPOSITORY': REPO, 'PATH': os.environ['PATH']})
+        self.assertEqual((done.returncode, done.stderr), (0, ''))
+        self.assertTrue(done.stdout.startswith('::error::'), done.stdout)
+        return done.stdout
+
+
 class AgentGate(AgentWorld):
 
     def test_complete_evidence_of_both_workflows_is_reused_with_its_reported_identity(self):
@@ -1331,6 +1387,12 @@ class AgentGate(AgentWorld):
                 pin = (BASE_PINS if job_key == 'contract' else CHECK_PINS)[tool]
                 self.assertEqual(self.record['refusal']['detail'], '%s: %s is %r, pinned %r' % (job_key, tool, value, pin))
                 self.assertNotIn('revalidation', self.record)
+                # #338: the job's own setup installed that tool, so a re-run cannot help.
+                self.assertEqual(self.refusal_says(self.record),
+                                 '::error::A job recorded a tool that is not its pin (%s). A re-run installs the same '
+                                 'tool again and refuses the same way: fix the pin, or the toolchain the job sets up, '
+                                 'on main, and release a new version (docs/ci-evidence.md#the-fresh-route).\n'
+                                 % self.record['refusal']['detail'])
 
     def test_a_ci_job_on_another_os_release_refuses_and_is_never_revalidated(self):
         self.roll_the_ci_jobs()
@@ -1338,6 +1400,9 @@ class AgentGate(AgentWorld):
         self.assertEqual(self.decide(), 'runtime-identity')
         self.assertIn('go-race-b:', self.record['refusal']['detail'])
         self.assertIn('never revalidated', self.record['refusal']['detail'])
+        # Another OS release keeps the fresh route: a re-run may draw the release runner's.
+        self.assertEqual(self.refusal_says(self.record),
+                         '::error::See docs/ci-evidence.md#the-fresh-route for what to do about runtime-identity.\n')
 
     # #332: the v0.13.0 table re-run at e8436e2, as its shards' evidence reported it.
     ROLL = {9: '20261101.186.1', 11: '20261101.186.1', 15: '20261101.186.1', 16: '20261101.186.1',
@@ -1389,6 +1454,8 @@ class AgentGate(AgentWorld):
                 self.change_evidence('mutation', 'full-19', lambda payload: payload['runtime']['tools'].update({tool: value}))
                 self.assertEqual(self.decide(), 'runtime-identity')
                 self.assertIn('%s is %r, pinned %r' % (tool, value, MUTATION_PINS[tool]), self.record['refusal']['detail'])
+                self.assertIn('release a new version', self.refusal_says(self.record))
+                self.assertNotIn('re-run all jobs', self.refusal_says(self.record))
 
     def test_another_image_name_than_the_pin_refuses(self):
         self.change_evidence('mutation', 'full-2', lambda payload: payload['runtime']['runner'].update(ImageOS='ubuntu24'))
@@ -1582,23 +1649,6 @@ class TheTableAtACandidate(AgentWorld):
         listing['jobs'].remove(job)
         listing['total_count'] = len(listing['jobs'])
         self.assertEqual(self.decide(), 'job-coverage')
-
-    def refusal_says(self, record):
-        """What release.yml's own step prints for a decision record of the gate."""
-        step = step_block(job_block(read('.github/workflows/release.yml'), 'verify'), 'Say what to do about a refusal')
-        self.assertIn("        if: ${{ failure() && steps.gate.outcome == 'failure' }}\n", step)
-        self.assertIn('          RECORD: ${{ runner.temp }}/release-evidence.json\n', step)
-        source = step[step.index("<<'PYCURE'\n") + len("<<'PYCURE'\n"):step.index('          PYCURE\n')]
-        source = '\n'.join(line[10:] for line in source.splitlines())
-        path = self.root.parent / ('%s-record.json' % self.root.name)
-        path.write_text(json.dumps(record), encoding='utf-8')
-        self.addCleanup(path.unlink, missing_ok=True)
-        done = subprocess.run([sys.executable, '-I', '-c', source], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True, timeout=30,
-                              env={'RECORD': str(path), 'GITHUB_REPOSITORY': REPO, 'PATH': os.environ['PATH']})
-        self.assertEqual((done.returncode, done.stderr), (0, ''))
-        self.assertTrue(done.stdout.startswith('::error::'), done.stdout)
-        return done.stdout
 
     def test_the_release_run_says_what_to_do_about_each_refusal_of_the_table(self):
         runs = self.runs()
@@ -2094,6 +2144,82 @@ class AgentCapture(AtCommit):
         with self.assertRaises(g.Refusal) as caught:
             self.capture(self.logs(line=False))
         self.assertEqual(caught.exception.code, 'check-environment')
+
+
+class RecordedTools(unittest.TestCase):
+    """#338: scripts/recorded-tools.py, the step main CI runs after each capture, over handwritten records."""
+
+    def compare(self, job, tools=None, record=None, raw=None):
+        with tempfile.TemporaryDirectory(prefix='recorded-tools-') as room:
+            path = Path(room, 'evidence.json')
+            if raw is not None:
+                path.write_text(raw, encoding='utf-8')
+            elif record is not False:
+                record = record or {'workflow': 'ci', 'job': job,
+                                    'runtime': {'runner': dict(RUNNER), 'tools': tools}}
+                path.write_text(json.dumps(record), encoding='utf-8')
+            done = subprocess.run([sys.executable, '-I', str(RECORDED_TOOLS), '--config', str(CONFIG_PATH),
+                                   '--workflow', 'ci', '--job', job, '--evidence', str(path)],
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  text=True, timeout=30, env={'PATH': os.environ.get('PATH', '')})
+        self.assertEqual(done.stderr, '')
+        return done.returncode, done.stdout
+
+    def recorded(self, job):
+        return dict(RECORDED_ON_MAIN['contract' if job == 'contract' else 'check'])
+
+    def test_what_main_ci_recorded_is_at_the_pins(self):
+        """The issue's mutant, typing-extensions for typing_extensions in the configuration and in the
+        test's constant both, fails here: the record spells the name as the tool's command printed it."""
+        for job in ['contract', 'check'] + RACE_JOBS:
+            with self.subTest(job=job):
+                tools = self.recorded(job)
+                self.assertEqual(self.compare(job, tools), (0, 'recorded-tools: %s: %d tools at their pins\n' % (job, len(tools))))
+
+    def test_a_tool_that_is_not_its_pin_fails_the_job_and_says_to_fix_it_on_main(self):
+        packages = RECORDED_ON_MAIN['check']['python-packages']
+        for job, tool, value in (('contract', 'python', 'Python 3.12.15'), ('check', 'npm', '10.9.8'),
+                                 ('go-race-a', 'node', 'v22.23.3'), ('go-race-c', 'go', 'go version go1.26.9 linux/amd64'),
+                                 ('check', 'python-packages', packages.replace('"pip", "25.0.1"', '"pip", "25.3"')),
+                                 ('go-race-b', 'python-packages', packages.replace('typing_extensions', 'typing-extensions'))):
+            with self.subTest(job=job, tool=tool):
+                tools = dict(self.recorded(job), **{tool: value})
+                pin = config()['profiles']['base' if job == 'contract' else 'check']['pins'][tool]
+                self.assertEqual(self.compare(job, tools), (1, (
+                    '::error::recorded-tools: %s: %s is %r, pinned %r. A re-run installs the same tool again: fix the '
+                    'pin, or the toolchain the job sets up, on main, and release a new version '
+                    '(docs/ci-evidence.md#the-fresh-route).\n') % (job, tool, value, pin)))
+
+    def test_a_record_without_a_tool_or_with_another_fails(self):
+        tools = self.recorded('check')
+        del tools['npm']
+        code, said = self.compare('check', tools)
+        self.assertEqual(code, 1)
+        self.assertEqual(said.splitlines()[0], "::error::recorded-tools: check: records the tools ['go', 'node', 'python', "
+                                               "'python-packages'], profile check records ['go', 'node', 'npm', 'python', "
+                                               "'python-packages']. " + said.splitlines()[0].split('. ', 1)[1])
+        tools = dict(self.recorded('contract'), node='v22.23.4')
+        code, said = self.compare('contract', tools)
+        self.assertEqual(code, 1)
+        self.assertIn("records the tools ['node', 'python'], profile base records ['python']", said)
+
+    def test_a_record_of_another_job_fails(self):
+        record = {'workflow': 'ci', 'job': 'check', 'runtime': {'runner': dict(RUNNER), 'tools': self.recorded('check')}}
+        code, said = self.compare('go-race-a', record=record)
+        self.assertEqual(code, 1)
+        self.assertTrue(said.startswith('::error::recorded-tools: go-race-a: the evidence is ci/check, not ci/go-race-a. '), said)
+
+    def test_a_record_that_cannot_be_read_fails(self):
+        """Could not read is never at the pins."""
+        for name, kwargs in (('missing', {'record': False}), ('empty', {'raw': ''}), ('not JSON', {'raw': '{'}),
+                             ('no runtime', {'raw': '{"workflow": "ci", "job": "check"}'}),
+                             ('tools not an object', {'raw': '{"workflow": "ci", "job": "check", "runtime": {"tools": []}}'}),
+                             ('a list', {'raw': '[]'})):
+            with self.subTest(record=name):
+                code, said = self.compare('check', **kwargs)
+                self.assertEqual(code, 1)
+                self.assertTrue(said.startswith('::error::recorded-tools: check: could not compare the recorded tools: '), said)
+                self.assertEqual(len(said.splitlines()), 1)
 
 
 if __name__ == '__main__':

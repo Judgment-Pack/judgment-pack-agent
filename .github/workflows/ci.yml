@@ -64,6 +64,11 @@ jobs:
       - name: Record exact CI inputs and coverage
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: python3 scripts/dev/release_evidence.py capture --workflow ci --job contract --check-log "${{ runner.temp }}/checks.log" --output "${{ runner.temp }}/evidence.json"
+      # The tools the capture recorded, against the job's profile's pins (#338): a tool that is not its
+      # pin fails this job, here, and not the release's `CI at the tag` job after the tag.
+      - name: Compare the recorded tools with their pins
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python3 scripts/recorded-tools.py --workflow ci --job contract --evidence "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -201,6 +206,11 @@ jobs:
       - name: Record the pull request's checks
         if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
         run: python3 scripts/dev/release_evidence.py capture --workflow ci --job check --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
+      # The tools the capture recorded, against the job's profile's pins (#338): a tool that is not its
+      # pin fails this job, here, and not the release's `CI at the tag` job after the tag.
+      - name: Compare the recorded tools with their pins
+        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
+        run: python3 scripts/recorded-tools.py --workflow ci --job check --evidence "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
         if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -319,6 +329,11 @@ jobs:
       - name: Record the pull request's checks
         if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository
         run: python3 scripts/dev/release_evidence.py capture --workflow ci --job go-race-${{ matrix.part }} --check-log "${{ runner.temp }}/checks.log" --setup-log "${{ runner.temp }}/setup.log" --output "${{ runner.temp }}/evidence.json"
+      # The tools the capture recorded, against the job's profile's pins (#338): a tool that is not its
+      # pin fails this job, here, and not the release's `CI at the tag` job after the tag.
+      - name: Compare the recorded tools with their pins
+        if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
+        run: python3 scripts/recorded-tools.py --workflow ci --job go-race-${{ matrix.part }} --evidence "${{ runner.temp }}/evidence.json"
       - name: Upload immutable CI evidence
         if: (github.ref == 'refs/heads/main' && github.event_name != 'pull_request') || (github.event_name == 'pull_request' && github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

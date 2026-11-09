@@ -200,7 +200,8 @@ the release runner's, a tool that is not its pin, changed inputs, stale, missing
 unexpected runner identity, or tag movement refuses. The bounded
 fresh route is in [the gate document](ci-evidence.md#the-fresh-route): re-run all jobs of the CI push
 run or the table's dispatch run at the commit (or dispatch the workflow on main while main names the
-commit), then re-run the release's failed jobs once. Fresh advisory evidence and review and approved scoped exception
+commit), then re-run the release's failed jobs once. A tool that is not its pin is not on that route:
+a re-run installs the same tool again, so fix it on main and release a new version. Fresh advisory evidence and review and approved scoped exception
 decisions remain required; the optional audit's CI skip proves nothing about current advisories.
 Actual-tag upgrade, packaging, approval, publication and paired Go-tag gates stay in force.
 
