@@ -472,6 +472,31 @@ class Workflows(unittest.TestCase):
                 for record in re.findall(r'- name: Record [^\n]*\n        if: ([^\n]*)\n', job):
                     self.assertIn(record, condition)
 
+    def test_each_job_that_records_node_sets_it_up_unconditionally_before_its_first_node_step(self):
+        """#334: the capture records `node` and `npm` at the end of the job. A setup-node that a
+        condition skipped, or that ran after a step that used Node, would record the pin for steps that
+        ran on the image's own Node, and the gate would pass them."""
+        current = config()
+        uses_node = re.compile(r'(?<![\w"\'./-])(?:node|npm|npx)(?=\s)|scripts/dev/check\.sh|release_evidence\.py capture ')
+        first = {'check': 'Setup steps', 'go-race': 'Setup steps', 'full': 'Install the locked dependencies'}
+        jobs = sorted({(workflow['path'], spec['job_id']) for workflow in current['workflows'].values()
+                       for spec in workflow['jobs'].values()
+                       if 'node' in current['profiles'][spec['profile']]['tools']})
+        self.assertEqual([job_id for _, job_id in jobs], ['check', 'go-race', 'full'])
+        for path, job_id in jobs:
+            with self.subTest(job=job_id):
+                job = job_block(read(path), job_id)
+                steps = re.split(r'\n(?=      - )', job[job.index('    steps:\n'):])[1:]
+                setup = [at for at, step in enumerate(steps) if step.startswith('      - uses: actions/setup-node@')]
+                self.assertTrue(setup)
+                self.assertNotRegex(steps[setup[0]], r'(?m)^        if:')
+                runs = [at for at, step in enumerate(steps)
+                        if uses_node.search('\n'.join(line for line in step.splitlines()
+                                                      if not line.lstrip().startswith('#')))]
+                self.assertTrue(runs)
+                self.assertLess(setup[0], runs[0])
+                self.assertTrue(steps[runs[0]].startswith('      - name: %s\n' % first[job_id]), steps[runs[0]])
+
     def test_ci_captures_every_configured_job_under_the_name_verify_reads(self):
         current = config()
         for key, workflow in current['workflows'].items():

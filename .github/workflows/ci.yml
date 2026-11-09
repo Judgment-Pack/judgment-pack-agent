@@ -128,8 +128,10 @@ jobs:
           pin="$(sed -n 's/^desk_pin=\([0-9a-f]\{40\}\)$/\1/p' scripts/parity.sh)"
           [ -n "${pin}" ] || { echo 'scripts/parity.sh has no desk_pin= line of a full commit id' >&2; exit 1; }
           echo "desk=${pin}" >> "$GITHUB_OUTPUT"
+      # Unconditionally, before the first step that runs Node (#334): the check profile records `node`
+      # only at the end of the job, so a setup-node skipped or moved later would record the pin for steps
+      # that ran on the image's own Node.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.dev.outputs.node != ''
         with:
           node-version: ${{ steps.dev.outputs.node }}
       # The Go release is the manifest's (toolchains.go.version), not a pin here. The Go module's
