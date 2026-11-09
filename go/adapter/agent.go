@@ -89,6 +89,13 @@ type AgentCallbacks struct {
 // stops the provider's run and returns. It answers an error wrapping ErrBusy where the account
 // refused the invocation at admission because another was active, nothing having run; any other
 // error is an admitted invocation's outcome, which is never sent again.
+//
+// After an error from Tool, it returns that error, once the provider's run is stopped and the
+// account released. Where Tool paused the run (the person asked, or a delegation handed off), the
+// adapter cancelled ctx itself: a function that returns ctx's error or another cancellation in
+// place of the Tool error is read as that pause, never as a cancelled or failed invocation
+// (agent#342). It returns ctx's error as a cancellation only where the caller's own context ended
+// the run.
 type AgentRun func(ctx context.Context, request AgentRequest, callbacks AgentCallbacks) error
 
 // ErrBusy is the documented not-admitted refusal (failure class busy, outcome not-started): the

@@ -540,6 +540,20 @@ this.storedBinding=session.context?.[durableOwner];this.storedChat=session.conte
   return {type:'approval_requested',callId:asked.callId,name:asked.name,tool:asked.tool,source:{...asked.source},args:structuredClone(asked.args)}
  }
  /**
+  * agent#342: once `approval` answered an asked approval, and before the engine shows it or stops its provider's run, the
+  * checkpoint is saved paused on a durable run, as `prepareRuntimeCall` saves a Runtime action's ask: the stop cannot then
+  * leave the stored run running with the ask unsaved. Where the save fails, the approval is withdrawn and the error thrown,
+  * so nothing is shown to the person and the call is not run. The writer refuses the save once the run's own signal is
+  * aborted, and closes the run's dispatch where it is aborted during the save, so an ask the caller stopped is not shown
+  * either.
+  */
+ async saveAsked():Promise<void>{
+  const binding=this.storedBinding
+  if(!binding)return
+  this.execution.mutate({status:'paused'})
+  try{await binding.writer.save(binding,this.execution.snapshot('paused'),this.signal)}catch(error){this.execution.mutate({approval:undefined,status:'stopped'});throw error}
+ }
+ /**
   * ADR-0008: the act call the person approved, run once under its bounds through the host's own
   * execute (`SourceGate.approved`); set by `contextualSession` where the run's approval asks it.
   */

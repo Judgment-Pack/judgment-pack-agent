@@ -16422,6 +16422,42 @@
    "status": "caught",
    "origin": "agent#318",
    "note": "#310/#318 batch. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "pause P1 agent#342 a custom source's ask is shown before it is saved paused",
+   "file": "engines/codex/index.ts",
+   "find": "            if (route.host) try { await context.saveAsked() } catch (cause) { fatal ??= { cause }; inputPause.abort(); throw cause }\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#342",
+   "note": "agent#342. Go twin (by hand, in invoke.go: SaveAsked not called before the ask is shown): caught at TestAnAskStoppedByItsOwnPauseIsSavedAndResumed."
+  },
+  {
+   "name": "pause P2 agent#342 an ask that could not be saved ends the run silently",
+   "file": "engines/codex/index.ts",
+   "find": "fatal ??= { cause }; inputPause.abort(); throw cause",
+   "replace": "inputPause.abort(); throw cause",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#342",
+   "note": "agent#342. Go twin (by hand, in invoke.go: the failed save not kept as the run's fatal error): caught at TestTheCallersOwnCancellationStillStops (a host stop that closed dispatch before the save ends complete); the storage cases alone miss it, the writer ending the run with its own failure."
+  },
+  {
+   "name": "pause P3 agent#342 an ask that could not be saved stays asked",
+   "file": "context/session.ts",
+   "find": "catch(error){this.execution.mutate({approval:undefined,status:'stopped'});throw error}",
+   "replace": "catch(error){throw error}",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#342",
+   "note": "agent#342. Go twin (by hand, in session.go: SaveAsked keeps the ask after a failed save): caught at TestAnAskThatCouldNotBeSavedIsNotShown."
   }
  ]
 }

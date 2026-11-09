@@ -60,6 +60,8 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
   const inputPause = new AbortController()
   const executionSignal = AbortSignal.any([gate.signal, inputPause.signal])
   let awaitingInput = false
+  /** A failure the run ends with whatever the agent returns (agent#342): an ask that could not be saved. */
+  let fatal: { cause: unknown } | undefined
   context.claimApprovalPause=()=>{if(awaitingInput)return false;awaitingInput=true;return true}
   const callTool = guardedCallTool(session, executionSignal)
   const deliver = (event: AssistantEvent) => channel.push(event)
@@ -163,6 +165,10 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           const runtime = route.host ? undefined : await context.prepareRuntimeCall(route.name, call.arguments, call.id)
           const held = route.host ? await context.approval(route.name, call.arguments, call.id) : runtime?.requested
           if (held !== undefined) {
+            // agent#342: a custom source's ask is saved paused before it is shown or the provider stopped, as a Runtime
+            // action's is. Where it could not be saved, the run ends with that failure, whatever the agent returns: the
+            // person is shown nothing and the call is not run.
+            if (route.host) try { await context.saveAsked() } catch (cause) { fatal ??= { cause }; inputPause.abort(); throw cause }
             await deliver(held)
             awaitingInput = true
             inputPause.abort()
@@ -397,7 +403,8 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
   }
   const open = () => {
     void drive().catch(async (cause: unknown) => {
-      if (!awaitingInput && !isCancelled(cause) && !gate.signal.aborted) await deliver(failureEvent(cause,'agent'))
+      const ended = fatal ? fatal.cause : cause
+      if ((fatal || !awaitingInput) && !isCancelled(ended) && !gate.signal.aborted) await deliver(failureEvent(ended,fatal?'storage':'agent'))
     }).then(async () => { await deliver({ type: 'end' }); channel.close() })
     return channel.drain()
   }
