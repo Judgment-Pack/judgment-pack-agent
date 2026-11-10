@@ -153,7 +153,7 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 | node_modules/@ai-sdk/openai-compatible | 3.0.64 | runtime graph | dependencies | {"peerDependencies":{"zod":"^3.25.76 &#124;&#124; ^4.1.8"}} | Apache-2.0 | unknown: versioned package metadata does not declare publishing owner | https://github.com/vercel/ai |
 | node_modules/@ai-sdk/provider | 4.0.23 | runtime graph | transitive | {} | Apache-2.0 | unknown: versioned package metadata does not declare publishing owner | https://github.com/vercel/ai |
 | node_modules/@ai-sdk/provider-utils | 5.0.55 | runtime graph | transitive | {"peerDependencies":{"zod":"^3.25.76 &#124;&#124; ^4.1.8"}} | Apache-2.0 | unknown: versioned package metadata does not declare publishing owner | https://github.com/vercel/ai |
-| node_modules/@ai-sdk/provider-utils/node_modules/undici | 7.30.1 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/nodejs/undici.git |
+| node_modules/@ai-sdk/provider-utils/node_modules/undici | 7.30.2 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/nodejs/undici.git |
 | node_modules/@asamuzakjp/css-color | 7.1.0 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/asamuzaK/cssColor.git |
 | node_modules/@asamuzakjp/dom-selector | 9.2.1 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/asamuzaK/domSelector.git |
 | node_modules/@babel/helper-string-parser | 7.29.7 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | https://github.com/babel/babel.git |
@@ -425,7 +425,7 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 | node_modules/type-is | 2.1.0 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | jshttp/type-is |
 | node_modules/type-is/node_modules/content-type | 2.1.0 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | jshttp/content-type |
 | node_modules/typescript | 7.0.2 | development | devDependencies | {} | Apache-2.0 | unknown: versioned package metadata does not declare publishing owner | https://github.com/microsoft/TypeScript.git |
-| node_modules/undici | 8.12.2 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/nodejs/undici.git |
+| node_modules/undici | 8.12.4 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/nodejs/undici.git |
 | node_modules/undici-types | 8.3.0 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/nodejs/undici.git |
 | node_modules/unpipe | 1.0.0 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | stream-utils/unpipe |
 | node_modules/vary | 1.1.2 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | jshttp/vary |
@@ -450,8 +450,8 @@ Metadata records bind exact module/version/sum or npm location/version/integrity
 
 - `go/go.mod`: `a5e7847150e3d021ba92d575887e3fac069ca012d940bb0a207ddfb8241dff99`
 - `go/go.sum`: `90154d6afad1d1c9111dfc54d4ce606142976ef83bb43d3866e587777a2c902d`
-- `package-lock.json`: `4e28f3ccf1134cc5ebdef07b63e4f1d7a08b738664a39f376793f392c6f18762`
+- `package-lock.json`: `91b8b9e90b2ca7ceda96d64b2e5f5ad7b812efe30ea4b992c72b976f719a6c60`
 - `scripts/dependencies-config.json`: `02fbaac28ac926d8abe15484f60c9f8c2833a188bf8c375d149568dddcb56a9b`
-- `scripts/dependencies-metadata.json`: `0eaf54e569147df4c2a7fc2939133c14eae8015f15531e4c035075ff3d756bf1`
+- `scripts/dependencies-metadata.json`: `8cd5e33339bd7ff1f64cb7cbdc11abb75369b3aa944783e92a07a0524f8186e1`
 
 Selected third-party modules: 77. npm installation entries: 296.
