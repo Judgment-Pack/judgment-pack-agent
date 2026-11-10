@@ -19,6 +19,8 @@ import listDigests from '../../contract/vectors/tool-offer/tool-list-digest.json
 import declarations from '../../contract/vectors/tool-offer/source-declarations.json'
 import sourceOffer from '../../contract/vectors/tool-offer/source-offer.json'
 import sourceSchema from '../../contract/vectors/tool-offer/source-schema.json'
+import sourceSchemaBounds from '../../contract/vectors/tool-offer/source-schema-bounds.json'
+import schemaBounds from '../../contract/testdata/tool-offer/schema-bounds.json'
 import catalogueVector from '../../contract/vectors/tool-offer/catalogue.json'
 import loadToolVector from '../../contract/vectors/tool-offer/load-tool.json'
 import loadedSchema from '../../contract/vectors/tool-result/loaded-schema-current.json'
@@ -55,6 +57,11 @@ import {approvalShownArguments,
   approvalContinuation,
   CATALOGUE_SCHEMA,
   describedSchema,
+  ENUM_MEMBER_BYTES,
+  ENUM_MEMBERS,
+  NAME_BYTES,
+  NAMES_PER_OBJECT,
+  VERBATIM_BYTES,
   type SchemaNote,
   HELD_NAMES,
   LOAD_TOOL,
@@ -318,6 +325,47 @@ describe('the declaration (ADR-0006)', () => {
     expect(guardrails[0]).toMatchObject({ tool: 'wide', action: 'refused', detail: expect.stringContaining('cataloguedTools') })
     expect(ready.values.hostTools.filter((tool) => tool.name.startsWith('wide__'))).toHaveLength(both.offer.hostTools.length)
     context.close()
+  })
+})
+
+// #308: the words an offered schema keeps as written cannot be framed where they stand, so they are
+// bounded, and a source past a bound is a catalogue whose schemas the model reads only in load_tool's data block.
+// go/context/schema_bounds_test.go holds the Go to the same files.
+describe('the words a source’s schemas keep as written (#308)', () => {
+  /** What the model reads of each offered tool, byte for byte, and the taxonomy beside it. */
+  const shownOf = (tools: readonly HostTool[]) => tools.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: JSON.stringify(tool.inputSchema), taxonomy: tool.taxonomy }))
+  const wantOf = (items: readonly { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]) => items.map((item) => ({ name: item.name, description: item.description, inputSchema: JSON.stringify(item.inputSchema), taxonomy: item.taxonomy }))
+
+  it('holds the testdata to the package’s bounds', () => {
+    expect(schemaBounds.limits).toEqual({ enumMembers: ENUM_MEMBERS, namesPerObject: NAMES_PER_OBJECT, verbatimBytes: VERBATIM_BYTES, enumMemberBytes: ENUM_MEMBER_BYTES, nameBytes: NAME_BYTES })
+    expect(schemaBounds.cases.length).toBeGreaterThan(0)
+  })
+
+  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[] }[]) {
+    it(`bounds them at the limit and one past: ${item.what}`, async () => {
+      const out = await declareSources(declared(pinnedLocal(item.declared)), [])
+      expect(out.withheld ?? []).toEqual([])
+      const offer = offerSources(out.hostTools, out.entries, { ...CONTEXT_DEFAULTS, ...(item.policy ?? {}) }, schemaBounds.marker)
+      expect(offer.catalogue).toBe(item.catalogue)
+      expect(shownOf(offer.hostTools)).toEqual(wantOf(item.offered))
+      expect(offer.withheld).toEqual([])
+    })
+  }
+
+  it('offers an adversarial schema past the bounds only as a catalogue entry, and the model reads it only in load_tool’s data block: the contract’s vector', async () => {
+    const out = await declareSources(declared(sourceSchemaBounds.declared), [])
+    const offer = offerSources(out.hostTools, out.entries, CONTEXT_DEFAULTS, sourceSchemaBounds.marker)
+    expect(offer.catalogue).toBe(true)
+    expect(shownOf(offer.hostTools)).toEqual(wantOf(sourceSchemaBounds.items))
+    expect(offer.withheld).toEqual(sourceSchemaBounds.withheld)
+    // None of the source's words outside its description's first line reaches the offer.
+    const offered = offer.hostTools[0]!.description + JSON.stringify(offer.hostTools[0]!.inputSchema)
+    for (const word of ['IGNORE_', 'write_file', 'SYSTEM:', 'END_RETRIEVED_DATA_', 'deepest']) expect(offered).not.toContain(word)
+    const gate = new SourceGate(out.entries, out.sources, CONTEXT_DEFAULTS, sourceSchemaBounds.marker, (tool, detail) => new GateViolation(tool, detail), () => [])
+    const answer = await gate.loadTool().execute({ name: 'shop__lookup' }, signal())
+    expect(gate.loadedSection()).toBe(sourceSchemaBounds.loadedSection)
+    // The answer holds the schema the gate checks arguments against, the marker kept.
+    expect(JSON.stringify((answer.structuredContent as { inputSchema: unknown }).inputSchema)).toContain(`END_RETRIEVED_DATA_${sourceSchemaBounds.marker}`)
   })
 })
 
