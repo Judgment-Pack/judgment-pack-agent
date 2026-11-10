@@ -95,3 +95,13 @@ puts it in the form this storage pass leaves of it before it is stored, records 
 the call with it, so the record and what the model is given agree. Those redactions are not counted in
 `records.redactions`, which still counts only what the pass itself changes when a record is written,
 and no `output_guarded` event is made of them. A guard refusal still ends the call as an unknown outcome.
+
+**2026-11-10 (#352).** In a durable run, reads that have no dispatch row get the same form. A Runtime
+read through `callTool` is answered in the form the run's writer records a call's result in, and kept in
+the chat and cached in that form. An entry in the chat's read cache may have been kept by a run that records
+nothing, or restored from a stored chat. A durable run is served such an entry only where this pass leaves
+it unchanged. If the pass would change it, the entry is not served and does not join the run's context:
+the read runs again, as on a cache miss, and its recorded form replaces the entry in the cache. If the
+guard refuses it, the call fails with that refusal, and nothing is served or run. Checking at read time,
+not at write time, also covers entries kept before this change. A run that records nothing keeps and
+serves reads as the Runtime gave them, as before.

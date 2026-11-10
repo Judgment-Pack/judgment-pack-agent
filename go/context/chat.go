@@ -923,10 +923,35 @@ func (t *ChatTurn) Release() {
 
 // Cached is an immutable read's result, served from the chat's read cache, or false. A child's
 // turn is given the entry it was served.
-func (t *ChatTurn) Cached(key string) (ToolResult, bool) {
+func (t *ChatTurn) Cached(key string) (ToolResult, bool) { return t.cachedAs(key, "") }
+
+// Peek is the entry the read cache holds under key and its id, not served: neither touched nor revealed
+// to this run, so it is not the run's (#352). CachedAs serves it.
+func (t *ChatTurn) Peek(key string) (ToolResult, string, bool) {
 	t.context.mu.Lock()
 	defer t.context.mu.Unlock()
 	id, ok := t.context.cachedEntry(key)
+	if !ok {
+		return ToolResult{}, "", false
+	}
+	entry := t.context.entries.get(id)
+	if entry == nil {
+		return ToolResult{}, "", false
+	}
+	return ReadToolResult(entry.Value.Clone()), id, true
+}
+
+// CachedAs is Cached where the read cache still holds the entry id under key (the one Peek gave), and
+// nothing otherwise.
+func (t *ChatTurn) CachedAs(key, id string) (ToolResult, bool) { return t.cachedAs(key, id) }
+
+func (t *ChatTurn) cachedAs(key, want string) (ToolResult, bool) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	id, ok := t.context.cachedEntry(key)
+	if ok && want != "" && id != want {
+		return ToolResult{}, false
+	}
 	if ok && t.visible != nil {
 		t.visible[id] = true
 	}

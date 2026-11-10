@@ -409,6 +409,8 @@ export class ChatTurn implements LedgerStore {
  /** The run ended: its turn closes and what it referenced may be evicted. The chat keeps it all. */
  release(){this.context.close(this)}
  /** An immutable read's result, served from the chat's read cache, or undefined. A child's turn is given the entry it was served. */
+ /** #352: the entry the read cache holds under `key`, not served: neither touched nor revealed to this run, so it is not the run's. `cached` serves it. */
+ peek(key:string):McpToolResult|undefined{const id=this.context.cachedEntry(key),entry=id===undefined?undefined:this.context.entries.get(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}
  cached(key:string):McpToolResult|undefined{
   const id=this.context.cachedEntry(key)
   if(id!==undefined)this.visible?.add(id)

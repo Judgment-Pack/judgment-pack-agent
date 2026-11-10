@@ -3021,8 +3021,8 @@
   {
    "name": "the chat's read cache serves a name the run's session does not offer",
    "file": "execution/controller.ts",
-   "find": "if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey)",
-   "replace": "if(chatKey!==undefined){const held=chat!.cached(chatKey)",
+   "find": "if(chatKey!==undefined&&kept!.offered!==false){\n",
+   "replace": "if(chatKey!==undefined){\n",
    "tests": [
     "delegation.test.ts",
     "context/chat.test.ts"
@@ -17565,6 +17565,66 @@
    "status": "caught",
    "origin": "agent#315",
    "note": "Go twin (by hand, in run_goal.go the create's abandon-unfinished gate: any delivered entry): caught at TestGoalTheFirstAbandonsDeliveryDoesNotLetACreateOverTheSecondThrough."
+  },
+  {
+   "name": "#352 a durable run's Runtime read is answered and kept in the form its writer records",
+   "file": "execution/controller.ts",
+   "find": "const executed=await execute(args),result=this.recordedRead?this.recordedRead(executed):executed\n",
+   "replace": "const executed=await execute(args),result=executed\n",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: no recordedRead of the executed result): caught at TestADurableRunsRuntimeReadIsAnsweredAndKeptInTheRecordedForm, TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun and TestADurableRunsRuntimeReadIsWhatTheModelIsGiven (api and native)."
+  },
+  {
+   "name": "#352 a durable run is served a cached entry the record guard would change",
+   "file": "execution/controller.ts",
+   "find": "if(!peeked||this.recordedRead!(peeked)===peeked){",
+   "replace": "if(!peeked||(this.recordedRead!(peeked),true)){",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: served whether or not changed): caught at TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun."
+  },
+  {
+   "name": "#352 a cached entry a refusing guard withholds is read again",
+   "file": "execution/controller.ts",
+   "find": "if(!peeked||this.recordedRead!(peeked)===peeked){",
+   "replace": "if(!peeked||(()=>{try{return this.recordedRead!(peeked)===peeked}catch{return false}})()){",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: the peeked entry's refusal ignored): caught at TestAChatsCachedReadARefusingGuardWithholdsIsNotServed."
+  },
+  {
+   "name": "#352 a durable run's reads are not bound to its writer's recorded form",
+   "file": "context/session.ts",
+   "find": "  context.execution.recordedRead=result=>persistence.writer.recordedResult(result)\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, session.go: held.Execution.recordedRead not set): caught at TestAChatsCachedReadARefusingGuardWithholdsIsNotServed and the other recorded_reads_test.go tests."
+  },
+  {
+   "name": "#352 a peeked cache entry is made the run's",
+   "file": "context/chat.ts",
+   "find": "entry=id===undefined?undefined:this.context.entries.get(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}",
+   "replace": "entry=id===undefined?undefined:this.use(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go Peek: t.use(id)): caught at TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun (the checkpoint holds the kept entry)."
   }
  ]
 }

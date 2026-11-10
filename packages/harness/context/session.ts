@@ -962,6 +962,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   await persistence.writer.attachUsage(persistence,session.context?.usageBudget,session.signal)
   if(persistence.root){context.execution.mutate({id:persistence.writer.id});persistence.writer.bind(()=>context.execution.snapshot(),context.execution.storagePolicy,()=>context.execution.storageGuard)}
   else context.execution.mutate({id:persistence.scope.execution})
+  // #352: every read this run serves takes the form its writer records, a child's as the root's.
+  context.execution.recordedRead=result=>persistence.writer.recordedResult(result)
  }
  const repeats=repeatPolicy(context.resolvedPolicy)
  if(repeats&&!persistence)throw new ContinuationNotRecoverable()

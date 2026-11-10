@@ -381,6 +381,9 @@ type ExecutionController struct {
 	// RecordGuard resolves late because the output guard opens after the execution journal.
 	RecordGuard func() RecordGuard
 	recordError error
+	// recordedRead is the durable run's writer's recorded form of a result and whether it differs from the
+	// result (#352), or nil outside one.
+	recordedRead func(ToolResult) (ToolResult, bool, error)
 	// PauseRequested is set by request_budget_increase: the adapter pauses after the call's result.
 	PauseRequested bool
 	// ToolAllowance is the tool-call cap this run works under, where a delegation coordinator holds
@@ -1302,8 +1305,23 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		// The cache serves only a name the run's session offers: an unoffered name goes on to the
 		// inner offer check and the gate, and a served entry never joins a child's visible set.
 		if hasChatKey && !(kept.Offered != nil && !*kept.Offered) {
-			if held, ok := chat.Cached(chatKey); ok {
-				return held, nil
+			if c.recordedRead == nil {
+				if held, ok := chat.Cached(chatKey); ok {
+					return held, nil
+				}
+			} else if peeked, id, ok := chat.Peek(chatKey); ok {
+				// #352: a durable run is served an entry another run kept (one that records nothing, or one a
+				// stored chat brought back) only where its record guard leaves the entry as it is. One the
+				// guard would change is not served nor made this run's: the read runs as on a miss, and its
+				// result, in the recorded form, is kept in its place. One the guard refuses is the call's
+				// refusal, and nothing is served or run.
+				if _, changed, err := c.recordedRead(peeked); err != nil {
+					return ToolResult{}, err
+				} else if !changed {
+					if held, ok := chat.CachedAs(chatKey, id); ok {
+						return held, nil
+					}
+				}
 			}
 		}
 		key := name + ":" + args.Text()
@@ -1315,6 +1333,14 @@ func (c *ExecutionController) WrapRead(name string, execute func(ctx context.Con
 		result, err := execute(ctx, raw)
 		if err != nil {
 			return result, err
+		}
+		// #352: in a durable run a read that is no dispatch of its own (a Runtime read through CallTool) is
+		// answered, retained and cached in the form the record guard leaves of it, as a dispatch's result is
+		// (#343). A dispatch's result already has that form, and keeps it.
+		if c.recordedRead != nil {
+			if result, _, err = c.recordedRead(result); err != nil {
+				return ToolResult{}, err
+			}
 		}
 		// #242: an external read's result is retained only once its receipt verifies; one that does
 		// not is answered as the source gate's refusal and kept nowhere a reader could reach.

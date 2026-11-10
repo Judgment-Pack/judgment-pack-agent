@@ -1514,6 +1514,19 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 	return at >= 0
 }
 
+// RecordedResult is result in the form this writer records a call's result (#343), and whether that form
+// differs from it, for a read its run serves without a dispatch of its own: a Runtime read, or a chat's
+// cached entry (#352). A guard refusal is returned with no result.
+func (w *RunWriter) RecordedResult(result ToolResult) (ToolResult, bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	recorded, err := w.recordedResultLocked(result)
+	if err != nil {
+		return ToolResult{}, false, err
+	}
+	return recorded, !bytes.Equal(recorded.JSON(), result.JSON()), nil
+}
+
 // recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
 // leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
 // With nothing redacted it is result itself. A guard refusal is returned with no result.

@@ -460,6 +460,8 @@ export class RunWriter {
  get checkpoint(){return this.latest?structuredClone(this.latest):undefined}
  get failed(){return this.fatal!==undefined||this.dispatchClosed}
  bind(snapshot:()=>ExecutionCheckpoint,policy:RecordsPolicy,guard:()=>RecordGuard|undefined){this.root=snapshot;this.policy=policy;this.guard=guard}
+ /** #352: result in the form this writer records a call's result (#343), for a read its run serves without a dispatch of its own: a Runtime read, or a chat's cached entry. A guard refusal is thrown, never result. */
+ recordedResult<V>(result:V):V{return recordedForm(result,this.policy,this.guard?.())}
  private async commitWithContext(input:import('./run').RunCommit,signal?:AbortSignal,terminal=false,checkpointScope?:string,state=this.latest,scope:DurableScope={execution:this.id,role:'author'}){
   input={...input,checkpoint:input.checkpoint===null?null:new Uint8Array(input.checkpoint),events:input.events.map(bytes=>new Uint8Array(bytes))}
   const detached={...input,checkpoint:input.checkpoint===null?null:new Uint8Array(input.checkpoint),events:input.events.map(bytes=>new Uint8Array(bytes))}

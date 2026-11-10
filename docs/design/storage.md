@@ -149,13 +149,19 @@ call's result is recorded in the form the record guard (ADR-0018) leaves of it, 
 answered with that same form, an external read's checked result included, so the record and what
 the model is given agree and the call settles (#343). A job's start or cancel is answered from its
 job record and keeps the earlier rule. A durable handoff's parent is given the continuation its
-record holds. A guard refusal, or a result whose
+record holds. A Runtime read, which has no row, gets the same form (#352). A durable run
+is served an entry of the chat's read cache only where the record guard leaves the entry unchanged. If the
+guard would change it, the read runs again and its recorded form replaces the entry. If the guard refuses
+it, that refusal is the call's error. A guard refusal of a call's result, or a result whose
 commit was not acknowledged, surfaces `StorageOutcomeUnknown`; it never claims the effect did not
 happen. Two limits remain. A request's text is guarded as text, so a result that matches only once
 JSON escapes are added (`C:\Users"x` written inside a request) makes the next model or agent request
 unrecordable: the run stops with `ContinuationNotRecoverable`, and nothing runs again. An immutable
 external read served from its cache is checked again against its receipt over the recorded, redacted
-text, so a cached read whose result held a match is withheld on a cache hit. The redactions made
+text, so a cached read whose result held a match is withheld on a cache hit. A chat's index shows later runs the first
+line of each result kept earlier. If a run that records nothing kept a result whose first line holds a
+match, a durable run on that chat cannot record its first request and stops there with
+`ContinuationNotRecoverable` (#352). The redactions made
 before a result is stored are not counted in `records.redactions`, and no `output_guarded` event is
 made of them. Checkpoints
 remain at most 4 MiB, with at most 400 dispatches, 400 observations and 32 children. Structural

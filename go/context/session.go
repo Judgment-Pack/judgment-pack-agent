@@ -1583,6 +1583,8 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			if binding.Root {
 				binding.Writer.Bind(func() (contract.Checkpoint, error) { return held.Snapshot("") }, held.Execution.RecordPolicy, func() RecordGuard { return held.Execution.recordGuard() })
 			}
+			// #352: every read this run serves takes the form its writer records, a child's as the root's.
+			held.Execution.recordedRead = binding.Writer.RecordedResult
 		}
 		outputCounts := map[string]int64{}
 		for name, count := range held.Execution.State().OutputGuard {
