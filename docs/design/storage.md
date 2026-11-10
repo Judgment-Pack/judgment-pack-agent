@@ -152,7 +152,10 @@ job record and keeps the earlier rule. A durable handoff's parent is given the c
 record holds. A Runtime read, which has no row, gets the same form (#352). A durable run
 is served an entry of the chat's read cache only where the record guard leaves the entry unchanged. If the
 guard would change it, the read runs again and its recorded form replaces the entry. If the guard refuses
-it, that refusal is the call's error. A guard refusal of a call's result, or a result whose
+it, that refusal is the call's error. A chat entry a durable run reads by id, or that its restored
+checkpoint referenced, is read and carried by its checkpoint in the recorded form, and the chat keeps its
+own; a refusal is the read's error. A read a durable run kept stays in the recorded form, so a later run
+on the chat that records nothing is served that form. A guard refusal of a call's result, or a result whose
 commit was not acknowledged, surfaces `StorageOutcomeUnknown`; it never claims the effect did not
 happen. Two limits remain. A request's text is guarded as text, so a result that matches only once
 JSON escapes are added (`C:\Users"x` written inside a request) makes the next model or agent request

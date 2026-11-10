@@ -14,6 +14,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 )
 
 // readSession is a run on chat whose Runtime answers get_schema with the pack id given, counted in calls;
@@ -139,5 +141,185 @@ func TestAChatsCachedReadARefusingGuardWithholdsIsNotServed(t *testing.T) {
 	// The entry is left as it was kept.
 	if got, err := readOnce(t, readSession(chat, nil, &calls, recordedRaw), `{}`); err != nil || string(got.JSON()) != recordedPack(recordedRaw) || calls != 1 {
 		t.Fatalf("the refused entry is %s, %v; ran %d", got.JSON(), err, calls)
+	}
+}
+
+// keptRawEntry is the id and text of the entry a run that records nothing kept on chat for its get_schema read.
+func keptRawEntry(t *testing.T, chat *ChatContext) (string, string) {
+	t.Helper()
+	calls := 0
+	if _, err := readOnce(t, readSession(chat, nil, &calls, recordedRaw), `{}`); err != nil || len(chat.results) != 1 {
+		t.Fatalf("the chat kept nothing: %v", err)
+	}
+	id := chat.results[0].entry
+	chat.mu.Lock()
+	defer chat.mu.Unlock()
+	return id, chat.entries.get(id).Value.Text()
+}
+
+// recordedEntry is the record guard's form of the entry keptRawEntry keeps, its members in their order.
+const recordedEntry = `{"content":[{"type":"text","text":"{\"packId\":\"https://packs.example[redacted: local-temp-path]\",\"status\":\"evaluated\"}"}],"structuredContent":{"packId":"https://packs.example[redacted: local-temp-path]","status":"evaluated"}}`
+
+// carriedEntry is the entry under id a checkpoint carries, or nil.
+func carriedEntry(saved contract.Checkpoint, id string) *contract.CheckpointRetainedEntry {
+	for i := range saved.Context.Entries {
+		if saved.Context.Entries[i].ID == id {
+			return &saved.Context.Entries[i]
+		}
+	}
+	return nil
+}
+
+// #352: an entry of the chat a durable run reads by id is read, and carried by its checkpoint, in the form
+// its writer records; the chat keeps its own. A refusing guard's refusal is the read's, and nothing is
+// referenced. The run through both Go adapters is durableapprovaltests/recorded_reads_test.go.
+func TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm(t *testing.T) {
+	for _, name := range []string{ReadTool, "read_context"} {
+		t.Run(name, func(t *testing.T) {
+			chat := NewChatContext("recorded-reads")
+			id, kept := keptRawEntry(t, chat)
+			want := recordedEntry
+			calls := 0
+			run := openRun(t, readSession(chat, NewMemoryRunStore(MemoryRunStoreOptions{}), &calls, recordedRaw))
+			defer run.Context.Close()
+			got, err := hostTool(t, run, name).Execute(context.Background(), json.RawMessage(`{"id":"`+id+`"}`))
+			if err != nil || strings.Contains(string(got.JSON()), recordedRawPath) || !strings.Contains(string(got.JSON()), "local-temp-path") {
+				t.Fatalf("read %s, %v", got.JSON(), err)
+			}
+			// Read again, it is the same: the run reads the recorded form it holds, not the chat's.
+			if again, err := hostTool(t, run, name).Execute(context.Background(), json.RawMessage(`{"id":"`+id+`"}`)); err != nil || string(again.JSON()) != string(got.JSON()) {
+				t.Fatalf("read again %s, %v; first %s", again.JSON(), err, got.JSON())
+			}
+			saved, err := run.Context.Snapshot("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			carried := carriedEntry(saved, id)
+			if carried == nil || string(carried.Value) != want || carried.Digest != ContextDigest(want) || carried.Bytes != int64(UTF8Bytes(want)) {
+				t.Fatalf("the checkpoint carries %s, want %s", carried.Value, want)
+			}
+			chat.mu.Lock()
+			own := chat.entries.get(id).Value.Text()
+			chat.mu.Unlock()
+			if own != kept {
+				t.Fatalf("the chat's own entry is %s", own)
+			}
+		})
+	}
+	t.Run("a refusing guard", func(t *testing.T) {
+		chat := NewChatContext("recorded-reads")
+		id, _ := keptRawEntry(t, chat)
+		calls := 0
+		session := readSession(chat, NewMemoryRunStore(MemoryRunStoreOptions{}), &calls, recordedRaw)
+		session.Policy = PolicyLayer{"outputGuard": "refuse"}
+		run := openRun(t, session)
+		defer run.Context.Close()
+		_, err := hostTool(t, run, ReadTool).Execute(context.Background(), json.RawMessage(`{"id":"`+id+`"}`))
+		var refused *OutputRefused
+		if !errors.As(err, &refused) || refused.Pattern != "local-temp-path" {
+			t.Fatalf("read by id answered %v", err)
+		}
+		saved, err := run.Context.Snapshot("")
+		if err != nil || carriedEntry(saved, id) != nil {
+			t.Fatalf("the refused entry was made the run's: %v", err)
+		}
+	})
+}
+
+// #352: a checkpoint restored into a chat that still holds an entry as it was kept: the durable run reads
+// it, and carries it, in the recorded form, as RecordWith gives the entries a restore referenced.
+func TestARestoredChatEntryIsCarriedInTheRecordedForm(t *testing.T) {
+	chat := NewChatContext("recorded-reads")
+	id, _ := keptRawEntry(t, chat)
+	want := recordedEntry
+	turn, err := chat.OpenTurn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer turn.Release()
+	ledger := NewContextLedger(&Defaults, turn)
+	saved := contract.CheckpointContext{Scope: turn.Scope(), Entries: []contract.CheckpointRetainedEntry{{ID: id, Kind: "tool", Label: "get_schema", Value: json.RawMessage(want), Bytes: int64(UTF8Bytes(want)), Digest: ContextDigest(want)}}}
+	if err := ledger.Restore(saved); err != nil {
+		t.Fatal(err)
+	}
+	guard, err := NewOutputGuard(PolicyMembers{}, func() map[string]int64 { return map[string]int64{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordWith(recordedValueForm(RecordDefaults, func() RecordGuard { return guard })); err != nil {
+		t.Fatal(err)
+	}
+	carried := ledger.Snapshot().Entries
+	if len(carried) != 1 || carried[0].ID != id || string(carried[0].Value) != want || carried[0].Digest != ContextDigest(want) {
+		t.Fatalf("the restored run carries %d entries: %s, want %s", len(carried), carried[0].Value, want)
+	}
+	// And the run reads that form, as its checkpoint carries it, not the chat's.
+	read, err := ledger.ReadItem(ObjectOf("id", String(id)))
+	if err != nil || strings.Contains(string(read.JSON()), recordedRawPath) || !strings.Contains(string(read.JSON()), "[redacted: local-temp-path]") {
+		t.Fatalf("the restored run read %s, %v", read.JSON(), err)
+	}
+}
+
+// #352: a restored checkpoint references a chat entry the record guard now refuses: binding the run fails
+// with that refusal, and the entry is no longer the run's, so nothing of it is carried or read.
+func TestARestoredChatEntryTheRecordGuardRefusesIsNotCarried(t *testing.T) {
+	chat := NewChatContext("recorded-reads")
+	id, _ := keptRawEntry(t, chat)
+	turn, err := chat.OpenTurn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer turn.Release()
+	ledger := NewContextLedger(&Defaults, turn)
+	saved := contract.CheckpointContext{Scope: turn.Scope(), Entries: []contract.CheckpointRetainedEntry{{ID: id, Kind: "tool", Label: "get_schema", Value: json.RawMessage(recordedEntry), Bytes: int64(UTF8Bytes(recordedEntry)), Digest: ContextDigest(recordedEntry)}}}
+	if err := ledger.Restore(saved); err != nil {
+		t.Fatal(err)
+	}
+	guard, err := NewOutputGuard(PolicyMembers{"outputGuard": {Value: "refuse", Layer: "host"}}, func() map[string]int64 { return map[string]int64{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ledger.RecordWith(recordedValueForm(RecordDefaults, func() RecordGuard { return guard }))
+	var refused *OutputRefused
+	if !errors.As(err, &refused) || refused.Pattern != "local-temp-path" {
+		t.Fatalf("binding the run answered %v, want the guard's refusal", err)
+	}
+	if carried := ledger.Snapshot().Entries; len(carried) != 0 {
+		t.Fatalf("the refused run carries %d entries: %s", len(carried), carried[0].Value)
+	}
+	if read, err := ledger.ReadItem(ObjectOf("id", String(id))); !errors.As(err, &refused) {
+		t.Fatalf("the refused run read %s, %v", read.JSON(), err)
+	}
+}
+
+// #352: the read cache serves a durable run the entry it peeked and found unchanged, and no other: where
+// the key has since been given another entry, CachedAs serves nothing, and the read runs as on a miss.
+func TestTheReadCacheServesOnlyTheEntryThatWasPeeked(t *testing.T) {
+	chat := NewChatContext("recorded-reads")
+	turn, err := chat.OpenTurn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer turn.Release()
+	ledger := NewContextLedger(&Defaults, turn)
+	text := func(s string) ToolResult {
+		return ReadToolResult(ObjectOf("content", Array(ObjectOf("type", String("text"), "text", String(s)))))
+	}
+	if err := turn.Keep(ledger, "get_schema", ObjectOf("v", String("1")), text("peeked"), "get_schema:key", true); err != nil {
+		t.Fatal(err)
+	}
+	_, peeked, ok := turn.Peek("get_schema:key")
+	if !ok {
+		t.Fatal("nothing to peek")
+	}
+	if err := turn.Keep(ledger, "get_schema", ObjectOf("v", String("2")), text("replaced"), "get_schema:key", true); err != nil {
+		t.Fatal(err)
+	}
+	if held, ok := turn.CachedAs("get_schema:key", peeked); ok {
+		t.Fatalf("the read cache served %s for the entry it no longer holds under the key", held.JSON())
+	}
+	_, now, _ := turn.Peek("get_schema:key")
+	if held, ok := turn.CachedAs("get_schema:key", now); !ok || !strings.Contains(string(held.JSON()), "replaced") {
+		t.Fatalf("the read cache served %s, %v for the entry it holds", held.JSON(), ok)
 	}
 }

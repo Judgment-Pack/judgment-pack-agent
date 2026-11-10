@@ -155,6 +155,18 @@ func (s *orderedSet) add(id string) {
 }
 func (s *orderedSet) has(id string) bool { return s.held[id] }
 func (s *orderedSet) list() []string     { return append([]string{}, s.order...) }
+func (s *orderedSet) remove(id string) {
+	if !s.held[id] {
+		return
+	}
+	delete(s.held, id)
+	for at, one := range s.order {
+		if one == id {
+			s.order = append(s.order[:at], s.order[at+1:]...)
+			break
+		}
+	}
+}
 func (m *entryMap) values() []*Entry {
 	out := make([]*Entry, 0, len(m.order))
 	for _, id := range m.order {
@@ -269,6 +281,52 @@ type ContextLedger struct {
 	// attached are the entries the host retained as the run's attachments (agent#5): the scope
 	// search calls attachments.
 	attached map[string]bool
+	// recorded is, in a durable run, the form its writer records a value in and whether it differs
+	// (#352), or nil: what this run reads of the chat's entries by id takes it.
+	recorded func(*Value) (*Value, bool, error)
+}
+
+// RecordWith makes the chat's entries this durable run reads by id take form, the form its writer records
+// a value in (#352): an entry the record guard changes is read, and carried by the run's checkpoint, in
+// that form, and the chat keeps its own. The entries the run already references (a restored checkpoint's)
+// are given it now. A guard refusal is answered, and the entry it refuses is not, or no longer, the run's.
+func (l *ContextLedger) RecordWith(form func(*Value) (*Value, bool, error)) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.recorded = form
+	if turn := l.store.Chat(); turn != nil {
+		for _, id := range turn.referencedIDs() {
+			if _, err := l.use(id); err != nil {
+				// The refused entry is no longer the run's: no checkpoint of it carries the entry.
+				turn.withhold(id)
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// use is the store's Use; in a durable run on a chat, the entry in the form its writer records (#352).
+func (l *ContextLedger) use(id string) (*Entry, error) {
+	turn := l.store.Chat()
+	if l.recorded == nil || turn == nil {
+		return l.store.Use(id), nil
+	}
+	entry, recorded := turn.Look(id)
+	if entry == nil || recorded {
+		return turn.Use(id), nil
+	}
+	value, changed, err := l.recorded(entry.Value)
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return turn.Use(id), nil
+	}
+	text := value.Text()
+	held := &Entry{ID: entry.ID, Kind: entry.Kind, Label: entry.Label, Value: value, Revision: entry.Revision, revisionPresent: entry.revisionPresent,
+		Bytes: UTF8Bytes(text), Digest: ContextDigest(text)}
+	return turn.UseRecorded(id, held), nil
 }
 
 // NewContextLedger is a ledger over a store: a chat's turn (agent#8), or, where store is nil, a
@@ -335,7 +393,10 @@ func (l *ContextLedger) entry(id *Value) (*Entry, error) {
 	var held *Entry
 	missing := ""
 	if id.IsString() {
-		held = l.store.Use(id.Str())
+		var err error
+		if held, err = l.use(id.Str()); err != nil {
+			return nil, err
+		}
 		if held == nil {
 			missing = l.store.Missing(id.Str())
 		}
@@ -748,7 +809,10 @@ func (l *ContextLedger) readItemHeld(args *Value) (ToolResult, error) {
 	if err != nil {
 		return ToolResult{}, err
 	}
-	e := l.store.Use(request.ID)
+	e, err := l.use(request.ID)
+	if err != nil {
+		return ToolResult{}, err
+	}
 	var image *ImagePart
 	var line string
 	meant := false
@@ -785,7 +849,10 @@ func (l *ContextLedger) Image(reference string) *ImagePart {
 }
 
 func (l *ContextLedger) imageHeld(reference string) *ImagePart {
-	e := l.store.Use(reference)
+	e, err := l.use(reference)
+	if err != nil {
+		return nil
+	}
 	if e == nil {
 		for _, held := range l.store.entryList().values() {
 			if held.ID == l.store.Scope()+":"+reference+":"+held.Digest[:16] {
@@ -797,7 +864,9 @@ func (l *ContextLedger) imageHeld(reference string) *ImagePart {
 	if e == nil {
 		return nil
 	}
-	l.store.Use(e.ID)
+	if e, err = l.use(e.ID); err != nil || e == nil {
+		return nil
+	}
 	return heldImage(e.Value)
 }
 
@@ -999,7 +1068,11 @@ func (l *ContextLedger) restoreHeld(saved contract.CheckpointContext) error {
 	}
 	if intoChat {
 		for _, e := range checked {
-			if l.store.Use(e.ID) == nil {
+			held, err := l.use(e.ID)
+			if err != nil {
+				return err
+			}
+			if held == nil {
 				if err := l.store.Put(e, l.Policy.RetainedBytes); err != nil {
 					return err
 				}

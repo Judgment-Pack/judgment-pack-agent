@@ -100,10 +100,15 @@ and no `output_guarded` event is made of them. A guard refusal still ends the ca
 read through `callTool` is answered in the form the run's writer records a call's result in, and kept in
 the chat and cached in that form. An entry in the chat's read cache may have been kept by a run that records
 nothing, or restored from a stored chat. A durable run is served such an entry only where this pass leaves
-it unchanged. If the pass would change it, the entry is not served and does not join the run's context:
-the read runs again, as on a cache miss, and its recorded form replaces the entry in the cache. If the
-guard refuses it, the call fails with that refusal, and nothing is served or run. Checking at read time,
-not at write time, also covers entries kept before this change. A run that records nothing keeps and
-serves reads as the Runtime gave them, as before.
+it unchanged. If the pass would change it, the entry is not served from the cache: the read runs again,
+as on a cache miss, and its recorded form replaces the entry in the cache. If the guard refuses it, the
+call fails with that refusal, and nothing is served or run. Checking at read time, not at write time, also
+covers entries kept before this change. A chat entry a durable run reads by id (`read_window`,
+`read_context`, a search of one item, an image), and one its restored checkpoint referenced, joins the
+run's context in the form this pass leaves of it: the run reads that form, its checkpoint carries it,
+and the chat keeps its own entry. If the guard refuses the entry, that refusal is the read's error, and
+the entry is not made the run's. A run that records nothing keeps and serves reads as the Runtime gave
+them, as before. A read a durable run kept is in the recorded form, though, so a later run on the same
+chat that records nothing is served that form from the cache.
 `handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an
 answer is present and gives the parent the continuation, so nothing is delivered from the answer itself.

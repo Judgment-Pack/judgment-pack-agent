@@ -964,6 +964,8 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   else context.execution.mutate({id:persistence.scope.execution})
   // #352: every read this run serves takes the form its writer records, a child's as the root's.
   context.execution.recordedRead=result=>persistence.writer.recordedResult(result)
+  // #352: and so does every entry of the chat it reads by id, which its checkpoint then carries.
+  context.ledger.recordWith(value=>persistence.writer.recordedResult(value))
  }
  const repeats=repeatPolicy(context.resolvedPolicy)
  if(repeats&&!persistence)throw new ContinuationNotRecoverable()

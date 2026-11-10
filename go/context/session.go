@@ -1585,6 +1585,10 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			}
 			// #352: every read this run serves takes the form its writer records, a child's as the root's.
 			held.Execution.recordedRead = binding.Writer.RecordedResult
+			// #352: and so does every entry of the chat it reads by id, which its checkpoint then carries.
+			if err := held.Ledger.RecordWith(binding.Writer.RecordedValueForm()); err != nil {
+				return err
+			}
 		}
 		outputCounts := map[string]int64{}
 		for name, count := range held.Execution.State().OutputGuard {

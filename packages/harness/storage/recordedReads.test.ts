@@ -10,6 +10,10 @@ import {MemoryRunStore} from './run'
 import {ChatContext} from '../context/chat'
 import {codexTurn,ofType,runtimeAnswer,sseTurn,streamed,vercelTurn} from '../testing/scripted'
 import type {AgentRun} from '../agent'
+import {ContextLedger} from '../context/ledger'
+import {CONTEXT_DEFAULTS} from '../context/policy'
+import {OutputGuard} from '../outputGuard'
+import {recordedForm,sha256,type RecordGuard,type RecordsPolicy} from '../records'
 
 const RAW='https://packs.example/tmp/evaluation-pack',REDACTED='https://packs.example[redacted: local-temp-path]',RAW_PATH='packs.example/tmp/'
 const pack=(id:string)=>({packId:id,status:'evaluated'})
@@ -104,5 +108,89 @@ describe('a chat’s cached read in a durable run (#352)',()=>{
   // The entry is left as it was kept.
   expect(schemaResults((await read(calls,{chat,answer})).events)).toEqual([answer(RAW).content[0]!.text])
   expect(calls).toEqual(['get_schema'])
+ })
+})
+
+// #352: a chat entry a durable run reads by id, as the chat's index tells it to, is read and carried by its checkpoint in the
+// form its writer records; the chat keeps its own. The entry was kept by a run that records nothing, its match past its
+// first line. Before, the model was given the recorded form but the stored checkpoint carried the entry as it was kept.
+describe('a chat entry a durable run reads by id (#352)',()=>{
+ const keptID=(chat:ChatContext)=>new TextDecoder().decode(chat.snapshot()).match(/[^"\\]*result-get_schema-[0-9a-f]{64}[^"\\]*/)?.[0]
+ const byID=(calls:string[],tool:string,id:string,options:{chat:ChatContext;store:MemoryRunStore;policy?:Record<string,unknown>})=>vercelTurn({
+  handle:call=>{calls.push(call.name);return lines(RAW)},
+  answer:request=>streamed(request.number===1?sseTurn({tool:{name:tool,args:{id}}}):sseTurn({text:'Done.'})),
+  session:{...(options.policy?{policy:options.policy}:{}),context:{currentRequest:{message:'Read the schema.',input:'Read the schema.'},runtime:RUNTIME,chat:options.chat,runStore:{store:options.store,id:'read'}}} as never})
+ // The recorded form of the entry, spelled as the run read it: the checkpoint keeps that spelling (valueJSON) beside the value.
+ const RECORDED=JSON.stringify(lines(REDACTED))
+ const carried=async(store:MemoryRunStore,id:string)=>(JSON.parse(await storedCheckpoint(store)).context.entries as {id:string;value:unknown;valueJSON?:string;bytes:number;digest:string}[]).find(entry=>entry.id===id)
+ for(const tool of ['read_window','read_context'])it(`api, ${tool}: the stored checkpoint carries the recorded form, and the chat keeps its own`,async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!
+  expect(new TextDecoder().decode(chat.snapshot())).toContain(RAW_PATH)
+  const store=new MemoryRunStore(),out=await byID(calls,tool,id,{chat,store})
+  expect(ofType(out.events,'error')).toEqual([])
+  for(const request of out.requests)expect(JSON.stringify(request.body)).not.toContain(RAW_PATH)
+  expect(JSON.stringify(out.requests[1]!.body)).toContain('[redacted: local-temp-path]')
+  expect(await storedCheckpoint(store)).not.toContain(RAW_PATH)
+  const entry=await carried(store,id),want=RECORDED
+  expect(entry?.valueJSON).toBe(want)
+  expect(entry?.value).toEqual(lines(REDACTED))
+  expect([entry?.bytes,entry?.digest]).toEqual([new TextEncoder().encode(want).length,sha256(want)])
+  expect(new TextDecoder().decode(chat.snapshot())).toContain(RAW_PATH)
+ })
+ it('native, read_window: the agent and the stored checkpoint get the recorded form',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!,given:string[]=[],store=new MemoryRunStore()
+  const run:AgentRun=async(request,callbacks)=>{
+   try{
+    const tool=request.tools.find(t=>t.description.startsWith('read_window:'))!
+    given.push((await callbacks.tool({id:'read-by-id',name:tool.name,arguments:{id}},callbacks.signal)).text)
+    await callbacks.event({type:'message',id:'reply',text:'Done.',phase:'final'})
+   }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
+  }
+  const out=await codexTurn({script:async()=>{},handle:()=>lines(RAW),session:{agent:{model:'fixture',run},context:{currentRequest:{message:'Read the schema.',input:'Read the schema.'},runtime:RUNTIME,chat,runStore:{store,id:'read'}}} as never})
+  expect(ofType(out.events,'error')).toEqual([])
+  expect(given).toHaveLength(1)
+  expect(given[0]).not.toContain(RAW_PATH)
+  expect(given[0]).toContain('[redacted: local-temp-path]')
+  expect(await storedCheckpoint(store)).not.toContain(RAW_PATH)
+  expect((await carried(store,id))?.valueJSON).toBe(RECORDED)
+ })
+ it('a refusing guard: the read is refused, and nothing is referenced or stored',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!,store=new MemoryRunStore(),out=await byID(calls,'read_window',id,{chat,store,policy:{outputGuard:'refuse'}})
+  expect(ofType(out.events,'tool_result').filter(e=>e.name==='read_window').map(e=>e.text).join('')).not.toContain(RAW_PATH)
+  for(const request of out.requests)expect(JSON.stringify(request.body)).not.toContain(RAW_PATH)
+  expect(await storedCheckpoint(store)).not.toContain(RAW_PATH)
+  expect(await carried(store,id)).toBeUndefined()
+ })
+ it('a restored checkpoint: an entry the chat still holds as it was kept is carried in the recorded form',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!,want=lines(REDACTED),text=JSON.stringify(want),turn=chat.openTurn(),ledger=new ContextLedger({...CONTEXT_DEFAULTS},turn)
+  await ledger.restore({scope:ledger.scope,entries:[{id,kind:'tool',label:'get_schema',value:want,bytes:new TextEncoder().encode(text).length,digest:sha256(text)}]})
+  const guard=new OutputGuard({},()=>({}),()=>{}) as unknown as RecordGuard
+  ledger.recordWith(value=>recordedForm(value,{redactOnStore:true} as RecordsPolicy,guard))
+  const held=ledger.snapshot().entries
+  expect(held.map(entry=>[entry.id,JSON.stringify(entry.value),entry.digest])).toEqual([[id,text,sha256(text)]])
+  // And the run reads that form, as its checkpoint carries it, not the chat's.
+  const shown=JSON.stringify(ledger.readItem({id}))
+  expect(shown).not.toContain(RAW_PATH)
+  expect(shown).toContain('[redacted: local-temp-path]')
+  turn.release()
+ })
+ it('a restored checkpoint: an entry the record guard refuses is neither carried nor read',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!,want=lines(REDACTED),text=JSON.stringify(want),turn=chat.openTurn(),ledger=new ContextLedger({...CONTEXT_DEFAULTS},turn)
+  await ledger.restore({scope:ledger.scope,entries:[{id,kind:'tool',label:'get_schema',value:want,bytes:new TextEncoder().encode(text).length,digest:sha256(text)}]})
+  const guard=new OutputGuard({outputGuard:{value:'refuse',layer:'host'}} as never,()=>({}),()=>{}) as unknown as RecordGuard
+  expect(()=>ledger.recordWith(value=>recordedForm(value,{redactOnStore:true} as RecordsPolicy,guard))).toThrow(/local-temp-path/)
+  expect(ledger.snapshot().entries).toEqual([])
+  expect(()=>ledger.readItem({id})).toThrow(/local-temp-path/)
+  turn.release()
  })
 })

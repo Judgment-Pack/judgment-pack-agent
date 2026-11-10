@@ -17637,6 +17637,126 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, records.go recordTextPaths without handoff.answer): caught at TestRecordsKeepAHandoffsAnswerInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run reads the chat's entries by id as the chat keeps them",
+   "file": "context/ledger.ts",
+   "find": "  if(!this.recorded||!turn)return this.store.use(id)\n",
+   "replace": "  return this.store.use(id)\n",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go use: l.store.Use(id) alone): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm and TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm (api and native)."
+  },
+  {
+   "name": "#352 a durable run's checkpoint carries the chat's entry, not the one it read",
+   "file": "context/chat.ts",
+   "find": "return entry?[this.recorded.get(id)??entry]:[]",
+   "replace": "return entry?[entry]:[]",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go Held without the overlay): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm."
+  },
+  {
+   "name": "#352 a chat entry the record guard refuses is read by id as it is",
+   "file": "context/ledger.ts",
+   "find": "const {entry}=looked,value=this.recorded(entry.value)",
+   "replace": "const {entry}=looked,value=(()=>{try{return this.recorded!(entry.value)}catch{return entry.value}})()",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go use: the refusal taken as unchanged): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#352 the entries a restored checkpoint referenced keep the chat's form",
+   "file": "context/ledger.ts",
+   "find": "  if(turn)for(const id of [...turn.referenced])try{this.use(id)}catch(error){turn.withhold(id);throw error}\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go RecordWith without the loop): caught at TestARestoredChatEntryIsCarriedInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run's reads by id are not bound to its writer's recorded form",
+   "file": "context/session.ts",
+   "find": "  context.ledger.recordWith(value=>persistence.writer.recordedResult(value))\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, session.go without held.Ledger.RecordWith): caught at TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm (api and native)."
+  },
+  {
+   "name": "#352 a durable run reads the chat's entry, not the one its checkpoint carries",
+   "file": "context/chat.ts",
+   "find": "this.context.touch(id,this);return this.recorded.get(id)??entry}",
+   "replace": "this.context.touch(id,this);return entry}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go ChatTurn.use without the overlay): caught at TestARestoredChatEntryIsCarriedInTheRecordedForm (its ReadItem)."
+  },
+  {
+   "name": "#352 read_context reads a chat entry by id as the chat keeps it",
+   "file": "context/ledger.ts",
+   "find": "const request=readArguments(args),e=this.use(request.id)",
+   "replace": "const request=readArguments(args),e=this.store.use(request.id)",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go readItemHeld: l.store.Use): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm/read_context."
+  },
+  {
+   "name": "#352 a window read takes a chat entry by id as the chat keeps it",
+   "file": "context/ledger.ts",
+   "find": "const e=typeof id==='string'?this.use(id):undefined",
+   "replace": "const e=typeof id==='string'?this.store.use(id):undefined",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go entry: l.store.Use): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm and TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run's read is answered in the recorded form but kept in the chat raw",
+   "file": "execution/controller.ts",
+   "find": "if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)",
+   "replace": "if(!result.isError&&chat)await chat.keep(this.ledger,name,args,executed,chatKey)",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "The clean room's M3. Go twin (by hand, controller.go WrapRead keeping the executed result): caught at TestADurableRunsRuntimeReadIsAnsweredAndKeptInTheRecordedForm and TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun."
+  },
+  {
+   "name": "#352 a restored entry the record guard refuses stays the run's",
+   "file": "context/ledger.ts",
+   "find": "try{this.use(id)}catch(error){turn.withhold(id);throw error}",
+   "replace": "try{this.use(id)}catch(error){throw error}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go RecordWith without turn.withhold): caught at TestARestoredChatEntryTheRecordGuardRefusesIsNotCarried."
   }
  ]
 }

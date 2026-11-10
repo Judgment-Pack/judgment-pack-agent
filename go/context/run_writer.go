@@ -1530,6 +1530,48 @@ func (w *RunWriter) RecordedResult(result ToolResult) (ToolResult, bool, error) 
 // recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
 // leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
 // With nothing redacted it is result itself. A guard refusal is returned with no result.
+// RecordedValueForm is the form this writer records a value in and whether it differs (#352), as the
+// writer is bound now. The function takes no lock of the writer's: a ledger calls it under its own, and a
+// commit holds the writer's lock while it reads the ledger.
+func (w *RunWriter) RecordedValueForm() func(*Value) (*Value, bool, error) {
+	w.mu.Lock()
+	policy, guard := w.policy, w.guard
+	w.mu.Unlock()
+	return recordedValueForm(policy, guard)
+}
+
+// recordedValueForm is what the storage pass leaves of a value under policy and guard, its members in their
+// order as a recorded result's are (the TypeScript's recordedForm), and whether it differs (#352).
+func recordedValueForm(policy RecordsPolicy, guard func() RecordGuard) func(*Value) (*Value, bool, error) {
+	return func(value *Value) (*Value, bool, error) {
+		var held RecordGuard
+		if guard != nil {
+			held = guard()
+		}
+		clean, changed, err := recordedForm(policy, held, value.JSON())
+		if err != nil {
+			return nil, false, err
+		}
+		if !changed {
+			return value, false, nil
+		}
+		parsed, err := ParseJSON(clean)
+		if err != nil {
+			return nil, false, err
+		}
+		rename := func(key string) string {
+			raw, _ := json.Marshal(key)
+			clean, _, err := recordedForm(policy, held, raw)
+			name := key
+			if err != nil || json.Unmarshal(clean, &name) != nil {
+				return key
+			}
+			return name
+		}
+		return inOrderOf(value, parsed, rename), true, nil
+	}
+}
+
 func (w *RunWriter) recordedResultLocked(result ToolResult) (ToolResult, error) {
 	var guard RecordGuard
 	if w.guard != nil {
