@@ -187,7 +187,8 @@ func readSuccessorInput(input *Input) error {
 	if asked == nil {
 		return nil
 	}
-	if !validStorageID(asked.Predecessor) || !validStorageID(asked.Question) || input.Execution != nil || input.JobContinuation != nil || input.QuestionContinuation != "" {
+	// A usage budget's journal and a chat's context are not carried, so a successor opens without them.
+	if !validStorageID(asked.Predecessor) || !validStorageID(asked.Question) || input.Execution != nil || input.JobContinuation != nil || input.QuestionContinuation != "" || input.UsageBudget != nil || input.RunStore.Context != nil {
 		return successorRefused("invalid")
 	}
 	if input.RunStore.ID != SuccessorRunID(asked.Predecessor, asked.Question) {

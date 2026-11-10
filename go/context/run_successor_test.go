@@ -188,13 +188,28 @@ func TestASuccessorCarriesThePredecessorsAllowanceAndNothingElse(t *testing.T) {
 		t.Fatal(head, err)
 	}
 	predecessor, _ := s.store.Load(ctx, successorPredecessor)
-	var held map[string]any
-	_ = json.Unmarshal(predecessor.Checkpoint, &held)
-	want, _ := canonicalRaw(map[string]any{"version": 2, "id": id, "requestKey": held["requestKey"], "phase": held["phase"], "status": "running", "unit": "model-requests", "used": 20, "limit": 30,
-		"grants": []any{map[string]any{"from": 20, "to": 30, "at": "2026-01-01T00:00:00.000Z"}}, "plan": []any{}, "explanation": "", "operations": []any{}, "context": map[string]any{"scope": held["context"].(map[string]any)["scope"], "entries": []any{}}})
-	got, _ := ParseJSON(head.Checkpoint)
-	if CanonicalJSON(got) != string(want) {
-		t.Fatalf("the successor's first checkpoint\n%s\nnot\n%s", CanonicalJSON(got), want)
+	raw, err := os.ReadFile("../../contract/vectors/checkpoint/successor.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vector struct {
+		Made struct{ Predecessor, Checkpoint json.RawMessage }
+	}
+	if err := json.Unmarshal(raw, &vector); err != nil {
+		t.Fatal(err)
+	}
+	canonical := func(raw []byte) string {
+		value, err := ParseJSON(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return CanonicalJSON(value)
+	}
+	if canonical(predecessor.Checkpoint) != canonical(vector.Made.Predecessor) {
+		t.Fatal("the fixture is not the vector's predecessor")
+	}
+	if got := canonical(head.Checkpoint); got != canonical(vector.Made.Checkpoint) || got != string(head.Checkpoint) {
+		t.Fatalf("the successor's first checkpoint\n%s\nnot\n%s", head.Checkpoint, canonical(vector.Made.Checkpoint))
 	}
 	if len(prepared.questionAnswers) != 1 || prepared.questionAnswers[0].answer.Selected[0] != "risk" || prepared.questionAnswers[0].question.Title != "Buyer" || prepared.Execution.ID != id {
 		t.Fatalf("%+v", prepared.questionAnswers)
@@ -243,6 +258,16 @@ func TestASuccessorIsRefusedByName(t *testing.T) {
 		{"a question continuation beside it", "invalid", nil, func(s *successorScene) *Input {
 			in := s.input(s.store, "question-1", false)
 			in.QuestionContinuation = "wait-q"
+			return in
+		}},
+		{"a usage budget beside it", "invalid", nil, func(s *successorScene) *Input {
+			in := s.input(s.store, "question-1", false)
+			in.UsageBudget = &UsageBudgetInput{}
+			return in
+		}},
+		{"a chat context beside it", "invalid", nil, func(s *successorScene) *Input {
+			in := s.input(s.store, "question-1", false)
+			in.RunStore.Context = &StoredChatScope{}
 			return in
 		}},
 		{"an id not derived", "unbound", nil, func(s *successorScene) *Input {
