@@ -52,7 +52,8 @@ export function inventoryUndici(projectRoot){
 }
 
 export const publicUndiciInventory=inventory=>({copies:inventory.copies.map(({location,version})=>({location,version})),owners:inventory.owners})
-const approved=new Set(['7.30.1','8.12.2'])
+// 7.30.2 and 8.12.4 patch the six advisories published 2026-11-05; 7.30.1 and 8.12.2 are affected.
+const approved=new Set(['7.30.2','8.12.4'])
 export function requireFixedUndici(inventory){
  assert.ok(inventory.copies.length>0,'installed Undici inventory must not be empty')
  for(const copy of inventory.copies)assert.ok(approved.has(copy.version),`unverified Undici copy: ${copy.location}@${copy.version}`)
