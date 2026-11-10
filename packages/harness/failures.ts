@@ -36,12 +36,14 @@ function metadata(headers:unknown,now:number):Pick<AIFailure,'requestId'|'retryA
  return {...(typeof id==='string'&&/^[-a-zA-Z0-9_]{1,128}$/.test(id)?{requestId:id}:{}),...(Number.isFinite(delay)&&delay>=0?{retryAt:new Date(now+Math.min(delay,86400000)).toISOString()}: {})}
 }
 /** Typed SDK/Desk codes and status only. Never retain provider prose, bodies, URLs, headers or stacks. */
-export function normalizeFailure(cause:unknown,source:FailureSource='desk',now=Date.now()):AIFailure {
- const seen=new Set<unknown>()
+export function normalizeFailure(cause:unknown,source:FailureSource='desk',now=Date.now()):AIFailure {return classifyFailure(cause,source,now).failure}
+/** #352: `normalizeFailure`, and the AIFailureError it read the failure from, where it read one. */
+export function classifyFailure(cause:unknown,source:FailureSource='desk',now=Date.now()):{failure:AIFailure;from?:AIFailureError} {
+ const seen=new Set<unknown>(),read=new Map<AIFailure,AIFailureError>()
  const classify=(value:unknown,depth:number):AIFailure=>{
   if(!object(value)||depth>4||seen.has(value))return failure('unknown',source)
   seen.add(value)
-  const held=value instanceof AIFailureError?readFailure(value.failure):undefined;if(held)return held
+  if(value instanceof AIFailureError){const held=readFailure(value.failure);if(held){read.set(held,value);return held}}
   if(value.name==='AbortError'||value.name==='RunCancelled')return failure('cancelled',source)
   if(value.name==='NoSession')return failure('authentication','desk','not-started')
   const own=value instanceof Error&&code(value.failureCode)?value.failureCode:alias(value.code)??alias(value.type)??alias(value.status)
@@ -60,7 +62,18 @@ export function normalizeFailure(cause:unknown,source:FailureSource='desk',now=D
   for(const nested of [value.lastError,value.cause,value.error])if(object(nested)){const found=classify(nested,depth+1);if(found.code!=='unknown')return found}
   return failure('unknown',source)
  }
- return classify(cause,0)
+ const found=classify(cause,0),from=read.get(found)
+ return from?{failure:found,from}:{failure:found}
+}
+/** A failure's detail cut to the thousand UTF-16 code units it may hold, never half a pair (#352). */
+export const cutDetail=(detail:string)=>detail.length<=1000?detail:detail.slice(0,/[\uD800-\uDBFF]/.test(detail[999]!)?999:1000)
+/**
+ * #352: `error` given `recorded`, the form a durable record holds of its failure, in place, its message with it: the same
+ * error, so a check of its identity still holds.
+ */
+export function restateFailure(error:AIFailureError,recorded:AIFailure){
+ const safe=readFailure(recorded);if(!safe)throw Error('Invalid AI failure')
+ ;(error as {failure:AIFailure}).failure=safe;error.message=failureMessage(safe)
 }
 export function failureEvent(cause:unknown,source:FailureSource='desk'):Extract<AssistantEvent,{type:'error'}>{const value=normalizeFailure(cause,source);return {type:'error',message:failureMessage(value),failure:value}}
 /** Automatic retry requires positive admission refusal; never infer replay safety from a 5xx or a timeout. */
@@ -96,8 +109,26 @@ export function canRetryRefusal(value:AIFailure,code?:string):boolean {
 }
 export function retryReady(value:AIFailure|undefined,now=Date.now()):boolean {return !value?.retryAt||Date.parse(value.retryAt)<=now}
 
-/** Host-authored validation only; never pass provider prose or arbitrary caught messages. */
-export function authoredFailure(code:FailureCode,detail:string,source:FailureSource='desk'):AIFailureError{return new AIFailureError({...failure(code,source),detail:detail.slice(0,1000)})}
+/**
+ * #352: the whole detail an authored failure was cut from, by its error. Only a durable writer's record guard reads it
+ * (`takeWholeDetail`), so that a match the cut would split is still found; it is no member of the error, so nothing
+ * encodes, prints or sends it, and it is dropped once read.
+ */
+const wholeDetails=new WeakMap<AIFailureError,string>()
+/** Host-authored validation only; never pass provider prose or arbitrary caught messages. The detail is cut to what a detail may hold (`cutDetail`). */
+export function authoredFailure(code:FailureCode,detail:string,source:FailureSource='desk'):AIFailureError{
+ const cut=cutDetail(detail),authored=new AIFailureError({...failure(code,source),detail:cut})
+ if(cut!==detail)wholeDetails.set(authored,detail)
+ return authored
+}
+/**
+ * #352: the detail a durable writer's record guard reads of `error`'s failure: the whole one it was authored with, where
+ * `authoredFailure` cut it, and otherwise its own. Read once: the error no longer holds it.
+ */
+export function takeWholeDetail(error:AIFailureError):string|undefined{
+ const whole=wholeDetails.get(error);wholeDetails.delete(error)
+ return whole!==undefined&&cutDetail(whole)===error.failure.detail?whole:error.failure.detail
+}
 
 /** A failed tool result is recoverable working data, not a failed assistant turn. */
 export function toolFailureResult(cause:unknown){

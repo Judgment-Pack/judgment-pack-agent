@@ -770,6 +770,9 @@ type ChatTurn struct {
 	// eviction while the run is open.
 	referenced *orderedSet
 	offered    []*evictedResult
+	// recorded is, in a durable run, the record guard's form of each entry this run referenced that the
+	// guard changes (#352): this run reads it and its checkpoint carries it; the chat's entry is unchanged.
+	recorded map[string]*Entry
 }
 
 // Number is the turn's number on its chat, counted from 1.
@@ -857,8 +860,53 @@ func (t *ChatTurn) use(id string) *Entry {
 	entry := t.context.entries.get(id)
 	if entry != nil {
 		t.context.touch(id, t)
+		if held := t.recorded[id]; held != nil {
+			return held
+		}
 	}
 	return entry
+}
+
+// Look is the entry under id this turn may read, neither touched nor made the run's (#352), and whether
+// this run already reads it in its recorded form; nil where Use would answer nil.
+func (t *ChatTurn) Look(id string) (*Entry, bool) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	if t.visible != nil && !t.visible[id] {
+		return nil, false
+	}
+	return t.context.entries.get(id), t.recorded[id] != nil
+}
+
+// UseRecorded is Use, this run reading held, the record guard's form of the entry under id, in its place
+// (#352); nil where Use would answer nil.
+func (t *ChatTurn) UseRecorded(id string, held *Entry) *Entry {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	if t.use(id) == nil {
+		return nil
+	}
+	if t.recorded == nil {
+		t.recorded = map[string]*Entry{}
+	}
+	t.recorded[id] = held
+	return held
+}
+
+// withhold makes the entry under id no longer this run's (#352): the record guard refuses the entry a
+// restored checkpoint referenced, so the run neither reads it nor carries it.
+func (t *ChatTurn) withhold(id string) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	t.referenced.remove(id)
+	delete(t.recorded, id)
+}
+
+// referencedIDs is what this run retained or read, in the order it reached them.
+func (t *ChatTurn) referencedIDs() []string {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	return append([]string(nil), t.referenced.list()...)
 }
 
 // Adopt is an entry the chat holds that this run retained itself with the same content: a child's
@@ -884,6 +932,9 @@ func (t *ChatTurn) Held() []*Entry {
 	out := []*Entry{}
 	for _, id := range t.referenced.list() {
 		if entry := t.context.entries.get(id); entry != nil {
+			if held := t.recorded[id]; held != nil {
+				entry = held
+			}
 			out = append(out, entry)
 		}
 	}
@@ -923,10 +974,35 @@ func (t *ChatTurn) Release() {
 
 // Cached is an immutable read's result, served from the chat's read cache, or false. A child's
 // turn is given the entry it was served.
-func (t *ChatTurn) Cached(key string) (ToolResult, bool) {
+func (t *ChatTurn) Cached(key string) (ToolResult, bool) { return t.cachedAs(key, "") }
+
+// Peek is the entry the read cache holds under key and its id, not served: neither touched nor revealed
+// to this run, so it is not the run's (#352). CachedAs serves it.
+func (t *ChatTurn) Peek(key string) (ToolResult, string, bool) {
 	t.context.mu.Lock()
 	defer t.context.mu.Unlock()
 	id, ok := t.context.cachedEntry(key)
+	if !ok {
+		return ToolResult{}, "", false
+	}
+	entry := t.context.entries.get(id)
+	if entry == nil {
+		return ToolResult{}, "", false
+	}
+	return ReadToolResult(entry.Value.Clone()), id, true
+}
+
+// CachedAs is Cached where the read cache still holds the entry id under key (the one Peek gave), and
+// nothing otherwise.
+func (t *ChatTurn) CachedAs(key, id string) (ToolResult, bool) { return t.cachedAs(key, id) }
+
+func (t *ChatTurn) cachedAs(key, want string) (ToolResult, bool) {
+	t.context.mu.Lock()
+	defer t.context.mu.Unlock()
+	id, ok := t.context.cachedEntry(key)
+	if ok && want != "" && id != want {
+		return ToolResult{}, false
+	}
 	if ok && t.visible != nil {
 		t.visible[id] = true
 	}

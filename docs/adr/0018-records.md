@@ -95,3 +95,35 @@ puts it in the form this storage pass leaves of it before it is stored, records 
 the call with it, so the record and what the model is given agree. Those redactions are not counted in
 `records.redactions`, which still counts only what the pass itself changes when a record is written,
 and no `output_guarded` event is made of them. A guard refusal still ends the call as an unknown outcome.
+
+**2026-11-10 (#352).** In a durable run, reads that have no dispatch row get the same form. A Runtime
+read through `callTool` is answered in the form the run's writer records a call's result in, and kept in
+the chat and cached in that form. An entry in the chat's read cache may have been kept by a run that records
+nothing, or restored from a stored chat. A durable run is served such an entry only where this pass leaves
+it unchanged. If the pass would change it, the entry is not served from the cache: the read runs again,
+as on a cache miss, and its recorded form replaces the entry in the cache. If the guard refuses it, the
+call fails with that refusal, and nothing is served or run. Checking at read time, not at write time, also
+covers entries kept before this change. A chat entry a durable run reads by id (`read_window`,
+`read_context`, a search of one item, an image), and one its restored checkpoint referenced, joins the
+run's context in the form this pass leaves of it: the run reads that form, its checkpoint carries it,
+and the chat keeps its own entry. If the guard refuses the entry, that refusal is the read's error, and
+the entry is not made the run's. A durable run's search of every item, or of the attachments, matches
+each chat entry in that same form, so what it finds, and where, agrees with a search of that one item;
+the search makes no entry the run's, and a refusal of any entry is the search's error. A run that records nothing keeps and serves reads as the Runtime gave
+them, as before. A read a durable run kept is in the recorded form, though, so a later run on the same
+chat that records nothing is served that form from the cache.
+`handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an
+answer is present and gives the parent the continuation, so nothing is delivered from the answer itself.
+A durable row's failure (`durable.dispatches.*.failure`) is stored with the form this pass leaves of its
+`detail` alone, then cut to the thousand UTF-16 code units a detail may hold without splitting a
+surrogate pair; its other members are the catalogue's and stay as they are. The pass reads the detail
+whole, before the cut. An authored failure (`authoredFailure`, Go `failure.Authored`) is cut to that
+length when it is made, so its error keeps the whole detail for this pass alone: a module-private map in
+TypeScript, an unexported field in Go, never encoded, printed or sent, and dropped once read. A match the
+cut would split, such as a private key whose END marker lies past the cut, is therefore still found.
+Where no durable writer reads it, the failure is cut as before. Where a host or Runtime call's failure
+reaches a model, the call fails with that same form. In Go the call's error is wrapped in
+`failure.RecordedError`, which `failure.Normalize` reads before anything it wraps. In TypeScript the
+`AIFailureError` the failure was read from is given the form in place, with its message, so a check of
+the error's identity still holds. A model's own failure is only stored in that form. If the guard
+refuses the detail, the call ends as `StorageOutcomeUnknown` and nothing of the failure is stored.
