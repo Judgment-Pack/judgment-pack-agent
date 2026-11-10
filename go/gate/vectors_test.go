@@ -52,18 +52,20 @@ var notTheGates = map[string]string{
 	"bounds/turn-clock.json":                      "the turn's wall clock: the adapter's loop",
 	// ADR-0006: tools with a source are host tools, held by the boundary's source gate
 	// (go/context, sources_test.go), not by the gate on the Runtime's wire.
-	"tool-offer/source-declarations.json":  "host tool declarations with a source: the boundary's (go/context, DeclareSources)",
-	"tool-offer/source-offer.json":         "the offer of tools with a source: the boundary's (go/context, OfferSources)",
-	"tool-offer/catalogue.json":            "catalogue entries: the boundary's schema budget (go/context, OfferSources)",
-	"tool-offer/source-schema.json":        "the text inside a source's input schema, framed and bounded: the boundary's (go/context, OfferSources, DescribedSchema)",
+	"tool-offer/source-declarations.json": "host tool declarations with a source: the boundary's (go/context, DeclareSources)",
+	"tool-offer/source-offer.json":        "the offer of tools with a source: the boundary's (go/context, OfferSources)",
+	"tool-offer/catalogue.json":           "catalogue entries: the boundary's schema budget (go/context, OfferSources)",
+	"tool-offer/source-schema.json":       "the text inside a source's input schema, framed and bounded: the boundary's (go/context, OfferSources, DescribedSchema)",
+	"tool-offer/load-tool.json":           "load_tool, a host tool the boundary adds (go/context, SourceGate.LoadToolHost)",
+	"tool-offer/source-names.json":        "wire names of tools with a source: the boundary's (go/context, WireName)",
+	"tool-offer/tool-list-digest.json":    "a source's pinned tool list: the boundary's (go/context, ToolListDigest)",
+	"tool-offer/descriptor-snapshot.json": "complete Gateway descriptor byte pins and malformed descriptors: the source boundary (go/context, ReadDescriptorSnapshot, DescriptorSnapshotDigest, SourceGate), held by descriptor_snapshot_test.go and descriptor_sources_test.go rather than Runtime call admission",
+	"tool-call/source-calls.json":         "the source record on a tool_call event: the boundary's (go/context, SourceGate.Decorate)",
+	"tool-result/loaded-schema.json":      "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
+	"tool-result/source-results.json":     "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",
+	// #308: a source past the bounds on the words its schemas keep as written, held by
+	// go/context/schema_bounds_test.go and toolSources.test.ts.
 	"tool-offer/source-schema-bounds.json": "a source's schema past the bounds on the words it keeps as written, offered as a catalogue entry and read in load_tool's data block: the boundary's (go/context, OfferSources, SourceGate.LoadToolHost)",
-	"tool-offer/load-tool.json":            "load_tool, a host tool the boundary adds (go/context, SourceGate.LoadToolHost)",
-	"tool-offer/source-names.json":         "wire names of tools with a source: the boundary's (go/context, WireName)",
-	"tool-offer/tool-list-digest.json":     "a source's pinned tool list: the boundary's (go/context, ToolListDigest)",
-	"tool-offer/descriptor-snapshot.json":  "complete Gateway descriptor byte pins and malformed descriptors: the source boundary (go/context, ReadDescriptorSnapshot, DescriptorSnapshotDigest, SourceGate), held by descriptor_snapshot_test.go and descriptor_sources_test.go rather than Runtime call admission",
-	"tool-call/source-calls.json":          "the source record on a tool_call event: the boundary's (go/context, SourceGate.Decorate)",
-	"tool-result/loaded-schema.json":       "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
-	"tool-result/source-results.json":      "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",
 	// ADR-0008: the approval pause is the boundary's and the source gate's (go/context,
 	// approval_test.go, decision_test.go; certified scenario 8), not a decision of the gate on the
 	// Runtime's wire.
