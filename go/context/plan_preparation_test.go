@@ -1,6 +1,7 @@
 package runcontext
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -319,6 +320,40 @@ func TestPreparePlanDecisionPreservesRetainedClaimsAndLexicalEvidence(t *testing
 	}
 }
 
+// A decision on a checkpoint stored as canonical text stores canonical text: retained history reads a checkpoint only in
+// that spelling, so a takeover after the decision would refuse the run's history otherwise. The decided members are
+// written in canonical key order, and a retained "<" or "&" is not escaped.
+func TestPreparePlanDecisionStoresCanonicalText(t *testing.T) {
+	_, input, expected, store, _ := pendingPreparation(t, false)
+	head, _ := store.Load(context.Background(), "prepare-plan")
+	var cp contract.Checkpoint
+	if err := json.Unmarshal(head.Checkpoint, &cp); err != nil {
+		t.Fatal(err)
+	}
+	cp.Durable.Dispatches[0].Result = json.RawMessage(`{"content":[],"opaque":"<b> & c"}`)
+	cp.Digest = nil
+	raw, _ := canonicalRaw(cp)
+	digest := RecordDigest(MustParseJSON(string(raw)))
+	cp.Digest = &digest
+	raw, _ = canonicalRaw(cp)
+	if _, err := store.Commit(context.Background(), RunCommit{RunID: "prepare-plan", ExpectedRevision: head.Revision, CommitID: "canonical-fixture", Checkpoint: raw}); err != nil {
+		t.Fatal(err)
+	}
+	input.Execution = &cp
+	input.Persistence = nil
+	input.Checkpoint = nil
+	input.RunStore = &DurableRunInput{ID: "prepare-plan", Store: store, Resume: true}
+	if _, _, err := PreparePlanDecision(context.Background(), input, expected); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := store.Load(context.Background(), "prepare-plan")
+	if text := CanonicalJSON(MustParseJSON(string(after.Checkpoint))); text != string(after.Checkpoint) {
+		t.Fatalf("the decided checkpoint is not canonical text:\n%s\n%s", after.Checkpoint, text)
+	}
+	if !bytes.Contains(after.Checkpoint, []byte(`"opaque":"<b> & c"`)) {
+		t.Fatalf("the retained result changed: %s", after.Checkpoint)
+	}
+}
 func TestPreparePlanDecisionRetainedPolicyAndSimultaneousApprovalRefuse(t *testing.T) {
 	for _, mode := range []string{"missing-policy", "invalid-policy", "simultaneous"} {
 		t.Run(mode, func(t *testing.T) {

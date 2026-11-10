@@ -27,6 +27,7 @@ import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal
 import {authoredFailure} from '../failures'
 import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,failure,normalizeFailure} from '../failures'
 import {approvalNotShown,readApprovalDecision,readExecution,type ExecutionCheckpoint} from '../execution/state'
+import {carriesApprovalContinuation} from '../toolSources'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
 import {CHECKPOINT_SCHEMA,recordDigest,recordedForm,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
@@ -652,8 +653,12 @@ export class RunWriter {
  private supersededNative(binding:DurableBinding,row:DurableDispatch){
   const plan=this.nativePlanSuperseded.get(row.id)
   if(plan){if(row.kind!=='agent'||row.state!=='unknown'||!row.read||scopeKey(row.scope)!==scopeKey(binding.scope)||canonicalJSON(row)!==plan)throw new ContinuationIdentityChanged();return true}
-  // A Plan decision exempts its exact claim, never another unknown in that scope.
-  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()
+  // A Plan decision exempts its exact claim, and a row that ended before a continuation the response has since taken
+  // (#317); never another unknown in that scope.
+  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope))){
+   if(!row.planPause&&this.endedBeforeContinuation(binding,row))return true
+   throw new HostOutcomeUnknown()
+  }
   if(row.kind!=='agent'||scopeKey(row.scope)!==scopeKey(binding.scope)||!this.latest?.turnRoute?.widened)return false
   const marker=this.latest.turnRoute.widenedInvocation,proof=this.nativeSuperseded.get(scopeKey(binding.scope))
   if(!marker||!proof||proof.route!==canonicalJSON(this.latest.turnRoute))throw new ContinuationIdentityChanged()
@@ -730,7 +735,7 @@ export class RunWriter {
   if(!binding.root||binding.scope.role!=='author'||binding.scope.task!==undefined||!this.latest)return
   const pending=this.latest.planState?.pending
   if(!pending||pending.callId!==event.callId||pending.revision!==event.revision||pending.candidate.planState.revision!==event.candidateRevision)throw new ContinuationIdentityChanged()
-  const rows=this.book.dispatches.filter(row=>row.kind==='agent'&&(row.state==='unknown'||row.state==='claimed')&&scopeKey(row.scope)===scopeKey(binding.scope)&&!this.nativePlanSuperseded.has(row.id))
+  const rows=this.book.dispatches.filter(row=>row.kind==='agent'&&(row.state==='unknown'||row.state==='claimed')&&scopeKey(row.scope)===scopeKey(binding.scope)&&!this.nativePlanSuperseded.has(row.id)&&!(row.state==='unknown'&&!row.planPause&&this.endedBeforeContinuation(binding,row)))
   if(rows.length>1||rows.some(row=>row.state!=='unknown'||row.planPause?.callId!==event.callId||row.planPause.revision!==event.revision||row.planPause.candidateRevision!==event.candidateRevision))throw new HostOutcomeUnknown();const old=rows[0];if(!old)return
   const head=await this.store.load(this.id,signal);if(!head||head.revision!==this.revision||!this.acknowledgedCheckpoint||!head.checkpoint||historyBytesDigest(head.checkpoint)!==historyBytesDigest(this.acknowledgedCheckpoint))throw new ContinuationIdentityChanged()
   const invocation=await verifyNativePlanEvidence(this.store,head,this.latest,old,undefined,false,signal)
@@ -757,12 +762,73 @@ export class RunWriter {
   // #293, #297: refused before the writer is bound (a policy the bind sets is what finalizing needs), on a fresh run or at a resume with a head, nothing was sent and nothing can be recorded: the host hears the refusal and its end as they are, and the head's bytes do not change (a stored chat's resume claim moves its revision and context with the same bytes).
   if(binding.root&&!this.policy&&(event.type==='error'||event.type==='usage'||event.type==='end'||event.type==='guardrail'))return writeRunEvent(event);const delivery=this.planDelivery.get(event);if(delivery){this.planDelivery.delete(event);if(delivery.scope!==scopeKey(binding.scope)||delivery.bytes!==canonicalJSON(event))throw new ContinuationIdentityChanged();return event}if(binding.root&&event.type==='delegation_requested'){if(!event.callId)throw new ContinuationNotRecoverable();this.book.pendingHandoff={callId:event.callId,request:structuredClone(event.request)}}return this.publish(binding,event.type==='execution_checkpoint'||event.type==='budget_paused'?event.checkpoint:undefined,event,undefined,signal)}).then(result=>result!)}
  recovering(binding:DurableBinding,kind:DurableDispatch['kind']):boolean {
-  return this.book.dispatches.some(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row)&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&row.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1))))
+  return this.replayed(binding,kind)!==undefined
+ }
+ /**
+  * The recovered row a model or agent request of this scope is sent again as, or undefined where it is sent fresh. Only
+  * the newest recovered unknown row of the scope that no Plan decision or widened route supersedes is a candidate, and
+  * an agent row only where it carries the newest continuation (agentReplay). `prepared` and `recovering` both read it,
+  * so the coordinator counts the very row that is sent again (#312 LOW-6).
+  */
+ private replayed(binding:DurableBinding,kind:DurableDispatch['kind']):DurableDispatch|undefined {
+  const rows=this.book.dispatches
+  for(let at=rows.length-1;at>=0;at--){
+   const row=rows[at]!
+   if(!this.recovered.has(row.id)||row.kind!==kind||scopeKey(row.scope)!==scopeKey(binding.scope)||row.state!=='unknown'||this.supersededNative(binding,row))continue
+   return kind!=='agent'||this.agentReplay(binding,at)?row:undefined
+  }
+  return undefined
+ }
+ /**
+  * Whether the recovered agent invocation at `at`, whose outcome is unknown, is sent again as recorded (#309): only where
+  * it carries the newest continuation the checkpoint holds. One that ended at an approval pause or a delegation handoff
+  * carries none newer than its own end, so it is never sent again in place of the request that carries the person's
+  * decision or the batch's answer; one lost after it was sent carries it, and is. The continuations are the decided
+  * approval's (approvalContinuation, which its decidedAt makes the decision's own, whatever its call id) and the
+  * handoff's; the newer is the one whose first carrying row of this scope comes later, and one no row carries yet is
+  * newer than any that is carried. A handoff released, or answered and not yet carried, is newer than any approval.
+  */
+ private agentReplay(binding:DurableBinding,at:number):boolean {
+  const latest=this.latest,row=this.book.dispatches[at]!
+  if(!latest)return true
+  const approvalAt=this.approvalCarrier(binding),handoff=latest.handoff
+  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)
+  if(handoff)return handoff.state==='continued'&&!!handoff.continuation&&row.request.includes(JSON.stringify(handoff.continuation).slice(1,-1))
+  return true
+ }
+ /** The first agent row of the parent's scope that carries the decided approval's continuation, the row count where none does yet, and undefined where no approval is decided or the scope is not the one its continuation is sent in. */
+ private approvalCarrier(binding:DurableBinding):number|undefined {
+  const approval=this.latest?.approval
+  if(!approval||approval.state==='asked'||approval.state==='approved'||binding.scope.role!=='author'||binding.scope.task!==undefined)return undefined
+  const at=this.book.dispatches.findIndex(row=>row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&carriesApprovalContinuation(row.request,approval))
+  return at<0?this.book.dispatches.length:at
+ }
+ /** The first agent row of this scope that carries the handoff's continuation, and the row count where none does. */
+ private handoffCarrier(binding:DurableBinding):number {
+  const continuation=this.latest?.handoff?.continuation
+  const at=continuation===undefined?-1:this.book.dispatches.findIndex(row=>row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.request.includes(JSON.stringify(continuation).slice(1,-1)))
+  return at<0?this.book.dispatches.length:at
+ }
+ /**
+  * Whether a fresh request of this scope continues the decided approval the checkpoint holds, so that it carries the
+  * decision's block (#309, #312's MEDIUM-2): the approval was answered, and no handoff the response released since is
+  * newer. A takeover after the continuing invocation was claimed, or after it finished with the response unfinished,
+  * sends a request with no step to take; without this the model would never be told the result.
+  */
+ approvalContinuationOwed(binding:DurableBinding):boolean {
+  if(this.latest?.approval?.state!=='answered')return false
+  const approvalAt=this.approvalCarrier(binding)
+  return approvalAt!==undefined&&(!this.latest.handoff||approvalAt>this.handoffCarrier(binding))
+ }
+ /** Whether an unknown agent row of a scope with a decided Plan pause ended before a continuation the response has since taken (#317, #312's MEDIUM-B): it does not carry the newest continuation, having ended at a delegation handoff or an approval pause the response has gone on from. */
+ private endedBeforeContinuation(binding:DurableBinding,row:DurableDispatch):boolean {
+  const at=this.book.dispatches.findIndex(held=>held.id===row.id)
+  return at>=0&&!this.agentReplay(binding,at)
  }
  prepared(binding:DurableBinding,kind:DurableDispatch['kind'],source:string,tool:string,request:string,consume=false):string {
   if(kind!=='model'&&kind!=='agent')return request
-  const pending=[...this.book.dispatches].reverse().find(row=>this.recovered.has(row.id)&&row.kind===kind&&scopeKey(row.scope)===scopeKey(binding.scope)&&row.state==='unknown'&&!this.supersededNative(binding,row))
-  if(pending&&(kind!=='agent'||!this.latest?.handoff||this.latest.handoff.state==='continued'&&!!this.latest.handoff.continuation&&pending.request.includes(JSON.stringify(this.latest.handoff.continuation).slice(1,-1)))){
+  const pending=this.replayed(binding,kind)
+  if(pending){
    if(this.hasTaskSteps||this.taskSchedule||kind==='model'&&!pending.read)throw new HostOutcomeUnknown()
    if(pending.source!==source||pending.tool!==tool)throw new ContinuationIdentityChanged()
    // The original admitted claim stays visible to coordinator accounting until this invocation returns.

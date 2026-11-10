@@ -298,11 +298,15 @@ export class ExecutionPaused extends Error {readonly failureCode='request-limit'
 
 /**
  * The decision a coordinator's parent open is given (#305). The response's first open takes the host's decision and
- * refuses it where it is stale, as any open does. A later open of the same response is given it only where it is not
- * the act call's decision that the checkpoint shows taken: a Plan decision, or one for another call, is still given,
- * and refused there if it is stale.
+ * refuses it where it is stale, as any open does. A later open of the same response is given it only where the
+ * checkpoint does not show it taken: not the act call's decision past asked, and not a Plan decision that
+ * planState.decisions holds while no Plan pause of that call id waits (#317). A decision for another call is still
+ * given, and refused there as stale.
  */
-export function decisionForParentOpen<T extends {callId?:unknown}>(given:T|undefined,execution:{approval?:{callId:string;state:string}}|undefined,opened:boolean):T|undefined{
- if(given===undefined||!opened||execution?.approval===undefined)return given
- return execution.approval.callId===given.callId&&execution.approval.state!=='asked'?undefined:given
+export function decisionForParentOpen<T extends {callId?:unknown}>(given:T|undefined,execution:{approval?:{callId:string;state:string};planState?:{pending?:{callId:string};decisions?:{callId:string}[]}}|undefined,opened:boolean):T|undefined{
+ if(given===undefined||!opened||execution===undefined)return given
+ if(execution.approval!==undefined&&execution.approval.callId===given.callId&&execution.approval.state!=='asked')return undefined
+ const plan=execution.planState
+ if(plan&&plan.pending?.callId!==given.callId&&(plan.decisions??[]).some(row=>row.callId===given.callId))return undefined
+ return given
 }

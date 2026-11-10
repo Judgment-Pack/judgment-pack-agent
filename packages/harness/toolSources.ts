@@ -714,12 +714,50 @@ export const APPROVAL_CONTINUATION =
 
 /**
  * The text a continued run's first request carries after the request text (ADR-0008): the line, then
- * one data block under a marker drawn for it, whose data is the decision, the call's result and the
- * person's note. The note is the person's words and reaches the model only inside the block.
+ * one data block under a marker drawn for it, whose data is the decision, the call's result, the
+ * person's note and when the decision was taken. The note is the person's words and reaches the model
+ * only inside the block. The time makes the block this decision's own, whatever its call id: a
+ * recovered request that carries it is the one sent after the decision (#309).
  */
 export function approvalContinuation(record: ApprovalRecord, marker = dataMarker()): string {
-  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }) }
+  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }), ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }
   return `${APPROVAL_CONTINUATION}\n${frameData(record.name, JSON.stringify(data), marker)}`
+}
+
+/**
+ * Whether a durable request carries `record`'s continuation under any marker (#309): the block
+ * approvalContinuation builds, its line and frame as the request's JSON encodes a string, each marker
+ * occurrence the same 32 lowercase hex digits, and its data the same value as the record's. The data
+ * is compared as a value, not as text: the block was built from the record as the run held it, and a
+ * restored record holds the same result with its members in the order the checkpoint stores them.
+ * NUL stands for the marker while it is matched: no data block, source or line holds one, since
+ * their JSON text escapes it.
+ *
+ * A copy of the block's text inside another frame (a result that quotes it, say) matches too. That
+ * is harmless: a match only marks the row as one that carries the decision, and no request before
+ * the decision's own continuation can hold the block, whose data (the call's result and decidedAt)
+ * exists only once the decision is taken, so the first carrying row's index (approvalCarrier)
+ * cannot move earlier.
+ */
+export function carriesApprovalContinuation(request: string, record: ApprovalRecord): boolean {
+  const parts = approvalContinuation(record, '\u0000').split('\u0000')
+  if (parts.length !== 4 || parts[3] !== '') return false
+  const closing = parts[2]!.lastIndexOf('\n')
+  if (!parts[2]!.startsWith('\n') || closing < 1) return false
+  const want = canonicalJSON(JSON.parse(parts[2]!.slice(1, closing)))
+  const [head, first, open, close] = [parts[0]!, parts[1]!, '\n', parts[2]!.slice(closing)].map(part => JSON.stringify(part).slice(1, -1)) as [string, string, string, string]
+  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {
+    const from = at + head.length, marker = request.slice(from, from + 32)
+    if (!/^[0-9a-f]{32}$/.test(marker) || !request.startsWith(first + marker + open, from + 32)) continue
+    const start = from + 32 + first.length + marker.length + open.length, end = request.indexOf(close + marker, start)
+    if (end < 0) continue
+    try {
+      if (canonicalJSON(JSON.parse(JSON.parse(`"${request.slice(start, end)}"`))) === want) return true
+    } catch {
+      // Not one string's JSON text, or not one JSON value: not this block.
+    }
+  }
+  return false
 }
 
 /** What a model engine's loop is answered for an act call held for the person's decision (ADR-0008); never sent, since the run's next request is refused. */

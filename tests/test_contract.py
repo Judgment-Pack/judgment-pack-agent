@@ -1412,6 +1412,9 @@ class VectorTests(unittest.TestCase):
                     self.assertEqual(data["note"], decision["note"])
                     self.assertEqual(text.count(decision["note"]), 1)
                 written = [item["checkpoint"]["approval"] for item in vector["items"] if item["type"] == "execution_checkpoint"]
+                # #309: the block names when the decision was taken, last, so a recovered request is known by it.
+                self.assertEqual(list(data)[-1], "decidedAt")
+                self.assertEqual(data["decidedAt"], written[-1]["decidedAt"])
                 states = [held["state"] for held in written]
                 self.assertEqual(states, ["refused", "answered"] if not approved else ["approved", "executed", "answered"])
                 self.assertEqual(written[-2]["result"], data["result"])
