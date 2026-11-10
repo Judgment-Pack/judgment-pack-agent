@@ -2280,7 +2280,7 @@ func prepareDurableInput(ctx context.Context, input *Input, request *DurableRequ
 		if !validStorageID(id) || store == nil {
 			return nil, &ContinuationIdentityChanged{}
 		}
-		if err = readSuccessorInput(&copy); err != nil {
+		if err = readSuccessorInput(copy.RunStore, copy.Execution != nil || copy.JobContinuation != nil || copy.QuestionContinuation != "" || copy.UsageBudget != nil); err != nil {
 			return nil, err
 		}
 		if copy.RunStore.Successor != nil && store.Durability() == RunStoreSingleWriterCallback {
@@ -2374,7 +2374,7 @@ func prepareDurableInput(ctx context.Context, input *Input, request *DurableRequ
 			}
 		} else if copy.RunStore.Successor != nil {
 			var answered *questionAnswer
-			if copy.Execution, answered, predecessor, err = makeSuccessor(ctx, store, &copy, id, *copy.RunStore.Successor, request); err != nil {
+			if copy.Execution, answered, predecessor, err = makeSuccessor(ctx, store, &copy, copy.RequestCap, id, *copy.RunStore.Successor, request); err != nil {
 				return nil, err
 			}
 			// ADR-0029: the successor carries the predecessor's principal, and is made only under it.

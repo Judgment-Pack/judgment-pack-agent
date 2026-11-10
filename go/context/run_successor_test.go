@@ -670,7 +670,7 @@ func TestASuccessorIsMadeOnlyUnderThePredecessorsPrincipal(t *testing.T) {
 	}
 	principal := members.Items[0]["principal"]
 	s := successorStore(t, func(c map[string]any) { c["version"], c["principal"] = 4, principal })
-	made, _, _, err := makeSuccessor(ctx, s.store, s.input(s.store, "question-1", false), SuccessorRunID(successorPredecessor, "question-1"), *s.input(s.store, "question-1", false).RunStore.Successor, &DurableRequest{})
+	made, _, _, err := makeSuccessor(ctx, s.store, s.input(s.store, "question-1", false), nil, SuccessorRunID(successorPredecessor, "question-1"), *s.input(s.store, "question-1", false).RunStore.Successor, &DurableRequest{})
 	if err != nil || made.Version != 4 || made.Principal == nil || made.Principal.RootActor != "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1" {
 		t.Fatalf("%+v %v", made, err)
 	}
@@ -1013,7 +1013,7 @@ func TestASuccessorIsWrittenAtTheVersionOfWhatItCarries(t *testing.T) {
 	// A turn's test calls are the turn's: the successor's first turn counts its own.
 	ctx := context.Background()
 	s := successorStore(t, func(c map[string]any) { c["version"], c["testCalls"] = 3, 2 })
-	made, _, _, err := makeSuccessor(ctx, s.store, s.input(s.store, "question-1", false), SuccessorRunID(successorPredecessor, "question-1"), *s.input(s.store, "question-1", false).RunStore.Successor, &DurableRequest{})
+	made, _, _, err := makeSuccessor(ctx, s.store, s.input(s.store, "question-1", false), nil, SuccessorRunID(successorPredecessor, "question-1"), *s.input(s.store, "question-1", false).RunStore.Successor, &DurableRequest{})
 	if err != nil || made.TestCalls != nil || made.Version != 3 {
 		t.Fatalf("%+v %v", made, err)
 	}

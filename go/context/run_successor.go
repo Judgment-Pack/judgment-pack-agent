@@ -201,20 +201,22 @@ func claimedQuestionWait(ctx context.Context, store RunStore, id, wait, revision
 
 // readSuccessorInput refuses a successor's input this package does not read, a run id that is not the question's
 // successor's, and an open at a successor's id that is not a successor's: no other run holds a question's successor id,
-// where it would take the question from its wait and run on an allowance of its own.
-func readSuccessorInput(input *Input) error {
-	asked := input.RunStore.Successor
+// where it would take the question from its wait and run on an allowance of its own. beside is whether the open holds
+// an execution, a job or question continuation or a usage budget beside its run store: prepareDurableInput, the
+// conversion that reads those raw input members, passes on only that they are there.
+func readSuccessorInput(run *DurableRunInput, beside bool) error {
+	asked := run.Successor
 	if asked == nil {
-		if strings.HasPrefix(input.RunStore.ID, successorPrefix) {
+		if strings.HasPrefix(run.ID, successorPrefix) {
 			return successorRefused("unbound")
 		}
 		return nil
 	}
 	// A usage budget's journal and a chat's context are not carried, so a successor opens without them.
-	if !validStorageID(asked.Predecessor) || !validStorageID(asked.Question) || input.Execution != nil || input.JobContinuation != nil || input.QuestionContinuation != "" || input.UsageBudget != nil || input.RunStore.Context != nil {
+	if !validStorageID(asked.Predecessor) || !validStorageID(asked.Question) || beside || run.Context != nil {
 		return successorRefused("invalid")
 	}
-	if input.RunStore.ID != SuccessorRunID(asked.Predecessor, asked.Question) {
+	if run.ID != SuccessorRunID(asked.Predecessor, asked.Question) {
 		return successorRefused("unbound")
 	}
 	return nil
@@ -352,14 +354,14 @@ func requestChanged() error {
 }
 
 // makeSuccessor is the successor's first checkpoint, and the predecessor's head it was read from: the predecessor's
-// allowance, request identity and retention, and nothing else of it.
-func makeSuccessor(ctx context.Context, store RunStore, input *Input, id string, asked RunSuccessor, request *DurableRequest) (*contract.Checkpoint, *questionAnswer, *RunHead, error) {
+// allowance, request identity and retention, and nothing else of it. requestCap is the open's, as prepareDurableInput
+// read it.
+func makeSuccessor(ctx context.Context, store RunStore, input *Input, requestCap *int, id string, asked RunSuccessor, request *DurableRequest) (*contract.Checkpoint, *questionAnswer, *RunHead, error) {
 	head, saved, answered, err := readPredecessor(ctx, store, asked)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	// The restore holds the request cap to the saved one; a successor is held to it before its checkpoint is written.
-	requestCap := input.RequestCap
 	if (saved.RequestCap == nil) != (requestCap == nil) || saved.RequestCap != nil && *saved.RequestCap != int64(*requestCap) {
 		return nil, nil, nil, requestCapRefusal("stale-state")
 	}

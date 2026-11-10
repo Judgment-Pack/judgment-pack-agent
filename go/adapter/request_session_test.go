@@ -222,7 +222,7 @@ func requestSourceViolations(root string, files *token.FileSet, trees []*ast.Fil
 	}
 	admittedFields := map[string][]fieldAdmission{}
 	fieldConversions := map[string]map[string][]string{
-		"context/run_writer.go":         {"PrepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget", "Principal", "JobContinuation"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
+		"context/run_writer.go":         {"prepareDurableInput": {"RunStore", "RequestCap", "Capture", "UsageBudget", "Principal", "JobContinuation", "QuestionContinuation", "questionAnswers"}, "*SessionContext.ProviderStorageIdentity": {"ConnectionRevisions"}, "ChildPersistence": {"UsageBudget"}},
 		"context/turn_route_owner.go":   {"*SessionContext.initializeTurnRoute": {"ChildDefinition", "Agent", "Tools", "HostTools", "Route", "RouteFacts"}},
 		"adapter/physical_model.go":     {"BindPhysicalModel": {"physicalModel", "Model"}, "BindPolicyPhysicalModel": {"physicalModel", "Model"}},
 		"context/controller.go":         {"NewExecutionController": {"TaskSteps"}},
@@ -588,8 +588,8 @@ func TestRequestSourceGuardDeclarationOwnership(t *testing.T) {
  type Input struct { RunStore, RequestCap, ConnectionRevisions, Configuration, Future string; Persistence string; checkpointProfile bool; checkpointRunID string }
  type SessionContext struct{}
  type unrelated struct{}
- func PrepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap; _=input.Configuration }
- func (unrelated) PrepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap }
+ func prepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap; _=input.Configuration }
+ func (unrelated) prepareDurableInput(input *Input) { _=input.RunStore; _=input.RequestCap }
  func (*SessionContext) ProviderStorageIdentity(input *Input) { _=input.ConnectionRevisions; _=input.Future }
  func other(input *Input) { _=input.RunStore; _=input.RequestCap; _=input.ConnectionRevisions; _=input.Persistence; _=input.checkpointProfile; _=input.checkpointRunID }
 `, []string{"context/run_writer.go:Configuration", "context/run_writer.go:RunStore", "context/run_writer.go:RequestCap", "context/run_writer.go:Future", "context/run_writer.go:RunStore", "context/run_writer.go:RequestCap", "context/run_writer.go:ConnectionRevisions"}},
