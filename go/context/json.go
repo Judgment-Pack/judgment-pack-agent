@@ -55,8 +55,9 @@ type Value struct {
 	a    []*Value
 	o    []member
 	// unscalar is set only by parseMarkedJSON: the value's text, a member name inside it included,
-	// held a lone UTF-16 surrogate escape or bytes that are not UTF-8, which this reading holds as
-	// U+FFFD where JSON.parse would hold a string that is not well-formed (#308).
+	// held a lone UTF-16 surrogate escape, which this reading holds as U+FFFD where JSON.parse would
+	// hold a string that is not well-formed (#308). Bytes that are not UTF-8 are not marked: this
+	// reading holds them as U+FFFD, as a host that decodes them to a JavaScript string does (#357).
 	unscalar bool
 }
 
@@ -98,8 +99,9 @@ var errTrailing = errors.New("data after the JSON value")
 func ParseJSON(data []byte) (*Value, error) { return parseJSON(data, false) }
 
 // parseMarkedJSON is ParseJSON that also marks each value whose text holds a lone UTF-16 surrogate
-// escape or bytes that are not UTF-8 (unscalar; scalarValue in context/chat.ts): a source's declared
-// input schema is read so, and DescribedSchema keeps no such value in an enum or const (#308).
+// escape (unscalar; scalarValue in context/chat.ts): a source's declared input schema is read so,
+// and DescribedSchema keeps no such value in an enum or const (#308). Bytes that are not UTF-8 are
+// read as U+FFFD and not marked, so a value of them is kept as the TypeScript keeps it (#357).
 func parseMarkedJSON(data []byte) (*Value, error) { return parseJSON(data, true) }
 
 func parseJSON(data []byte, mark bool) (*Value, error) {
@@ -129,15 +131,15 @@ func MustParseJSON(text string) *Value {
 }
 
 // readValue reads one value. Where raw is the text being read, a string whose text holds a lone
-// surrogate escape or bytes that are not UTF-8 is marked unscalar, and so is every array or object
-// holding one, or a member name that does.
+// surrogate escape is marked unscalar, and so is every array or object holding one, or a member
+// name that does.
 func readValue(decoder *json.Decoder, raw []byte) (*Value, error) {
 	start := decoder.InputOffset()
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
 	}
-	unscalar := func() bool { return raw != nil && !validReportUnicode(raw[start:decoder.InputOffset()]) }
+	unscalar := func() bool { return raw != nil && !pairedSurrogateEscapes(raw[start:decoder.InputOffset()]) }
 	switch t := token.(type) {
 	case nil:
 		return Null(), nil

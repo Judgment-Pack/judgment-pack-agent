@@ -728,8 +728,9 @@ func plainName(name string) bool {
 
 // plainValue reports whether value may stay in an offered enum or const: a short, one-line string,
 // or a short value (plainValue), and in either, no text that is not well-formed (#308: a lone
-// surrogate escape, or bytes that are not UTF-8, marked by parseMarkedJSON), which JSON.stringify
-// writes as an escape where Go holds U+FFFD, so the two languages would offer and count other bytes.
+// surrogate escape, marked by parseMarkedJSON), which JSON.stringify writes as an escape where Go
+// holds U+FFFD, so the two languages would offer and count other bytes. Bytes that are not UTF-8
+// are read as U+FFFD, as a host decoding them for the TypeScript does, and are kept (#357).
 func plainValue(value *Value) bool {
 	if value.unscalar {
 		return false
@@ -752,8 +753,9 @@ type SchemaNote struct{ Path, What string }
 // numeric bounds, uniqueItems, additionalProperties, items, oneOf, anyOf, allOf, properties, $defs
 // and definitions (a name over NameBytes bytes, or with white space, is dropped with its schema),
 // required (its entries the same), enum and const (dropped where a string is over EnumMemberBytes
-// bytes or has a line break, where one was read from a lone surrogate escape or bytes that are not
-// UTF-8 (#308, parseMarkedJSON; a value read with ParseJSON is never marked), or where enum is no
+// bytes or has a line break, where one was read from a lone surrogate escape (#308,
+// parseMarkedJSON; bytes that are not UTF-8 are read as U+FFFD and kept, #357; a value read with
+// ParseJSON is never marked), or where enum is no
 // list) and description, cut to bytes and, where frame is given, framed as retrieved text. Every other keyword, its value whatever it is, is not
 // offered. A branch deeper than sixteen levels is offered empty. What is dropped that the model would
 // need is said in notes, when given.

@@ -151,8 +151,9 @@ structural keywords are offered (`type` of the seven JSON types, `format` from a
 `pattern`, an `x-` extension), is not offered. A property or definition name, or a `required` entry,
 over 64 bytes or holding white space is dropped (a name with its schema); an `enum` or `const` that
 holds a string over 64 bytes, a line break or a lone surrogate (in a Go host's schema bytes, a `\u`
-escape of half a pair alone, or bytes that are not UTF-8), or an `enum` that is no list, is dropped
-whole, since the two implementations would not offer it the same. Each
+escape of half a pair alone), or an `enum` that is no list, is dropped whole, since the two
+implementations would not offer it the same. Bytes that are not UTF-8 in a Go host's schema are read
+as U+FFFD, as a host that decodes them to a JavaScript string reads them, and are kept (#357). Each
 such drop earns a `guardrail` naming where, at the start of the run, since the host still validates
 what it executes. A branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
 treated the same, its descriptions cut and unframed, for it rides inside a block framed as a whole.

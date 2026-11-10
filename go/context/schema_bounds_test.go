@@ -265,3 +265,26 @@ func TestASchemaPastTheBoundsReachesTheModelOnlyInADataBlock(t *testing.T) {
 		t.Errorf("the refusal echoes the source's text: %v", err)
 	}
 }
+
+// Bytes that are not UTF-8 in a Go host's schema are read as U+FFFD and kept, as the TypeScript
+// keeps the U+FFFD its host decoded them to: an enum member and a const of them are offered, with
+// no guardrail, and only a lone surrogate escape is left out (#357). The bytes are written here, as
+// a JSON file cannot hold them.
+func TestASchemaHoldingBytesThatAreNotUTF8OffersThemAsUFFFD(t *testing.T) {
+	const marker = "6f1c0d2e9a8b47c3b5d4e2f1a0c9b8d7"
+	tools := declaredTools(t, []*Value{MustParseJSON(`{"name":"pick","description":"Pick a byte.","taxonomy":{"operation":"read","effect":"read"},"source":{"kind":"custom","id":"odd","trust":"person","version":"1"},"effectClass":"read"}`)})
+	tools[0].InputSchema = json.RawMessage("{\"type\":\"object\",\"properties\":{\"word\":{\"type\":\"string\",\"enum\":[\"a\",\"b\xff\"]},\"mark\":{\"const\":\"\xfe\"},\"odd\":{\"const\":\"\\ud800\"}}}")
+	out, err := DeclareSources(pinLocalFixture(tools), nil)
+	if err != nil || len(out.Withheld) != 0 {
+		t.Fatalf("%v %+v", err, out.Withheld)
+	}
+	shown, catalogue, withheld := OfferSources(out.HostTools, out.Entries, Defaults, marker)
+	if catalogue {
+		t.Fatal("the source is a catalogue")
+	}
+	want := MustParseJSON(`{"type":"object","properties":{"word":{"type":"string","enum":["a","b\ufffd"]},"mark":{"const":"\ufffd"},"odd":{}}}`).Text()
+	if len(shown) != 1 || string(shown[0].InputSchema) != want {
+		t.Fatalf("offered %+v, not %s", shown, want)
+	}
+	withheldAre(t, withheld, []*Value{MustParseJSON(`{"tool":"odd__pick","detail":"in the input schema of odd__pick, at /properties/odd: its const holds a string over 64 bytes, a line break or a lone surrogate, or is no list, and it is not offered; the host still validates the arguments it executes"}`)})
+}
