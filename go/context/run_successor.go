@@ -49,12 +49,14 @@ const successorLeaseMs = 60_000
 // opened without a successor, the question is not the predecessor's last user_question, or the answer is not a real
 // answer to it. budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry.
 // succeeded: the question already has its successor, or the head's last question has one and the head is asked to
-// resume another way. not-complete: the predecessor's head is missing or not complete. exhausted: the predecessor used
-// all of its allowance, so a successor could only pause. parked: the question has a wait of its own, and is answered
-// through it. moved: the predecessor's head moved while the successor was made; the successor's head stands, and since
-// nothing records the revision it was made from, a later open of it is not refused for the move. A request cap other than the predecessor's is the request cap's own refusal (stale-state), as is
-// another request or phase the controller's, and the predecessor's lease and records refusals are their own, each
-// before anything is written.
+// resume another way. not-complete: the predecessor's head is missing or not
+// complete. exhausted: the predecessor used all of its allowance, so a successor could only pause. parked: the question
+// has a wait of its own, and is answered through it. moved: the predecessor's head moved while the successor was made.
+// Every continuation of a complete head is fenced (#355), so only a commit made outside this package moves it while the
+// successor holds its lease; the refusal is kept as a defence. The successor's head stands, and since nothing records
+// the revision it was made from, a later open of it is not refused for the move. A request cap other than the
+// predecessor's is the request cap's own refusal (stale-state), as is another request or phase the controller's, and
+// the predecessor's lease and records refusals are their own, each before anything is written.
 type SuccessorRefused struct{ Reason string }
 
 func (e *SuccessorRefused) Error() string { return "SuccessorRefused: " + e.Reason + "." }
@@ -180,7 +182,7 @@ func claimedQuestionWait(ctx context.Context, store RunStore, id, wait, revision
 			continue
 		}
 		pending := row.Pending.Question
-		if row.Reason != "question" || row.State != "resumed" || pending == nil || pending.Question == nil || row.Resolution == nil || row.Checkpoint.Revision != revision {
+		if row.Reason != "question" || row.State != "resumed" || pending == nil || pending.Question == nil || row.Resolution == nil || row.Checkpoint.Revision != revision || !claimedThrough(store, id, row.Resumed) {
 			return nil, nil
 		}
 		out := &questionAnswer{question: *pending.Question}
@@ -391,8 +393,8 @@ func holdPredecessor(ctx context.Context, store RunStore, id string, asked RunSu
 }
 
 // predecessorUnmoved: after the create, the predecessor's head is still the revision the successor was made from. A
-// commit that moved it meanwhile, which only an unfenced one can while the successor holds its lease, refuses the
-// successor.
+// commit that moved it meanwhile, which only an unfenced one made outside this package can while the successor holds
+// its lease (#355), refuses the successor.
 func predecessorUnmoved(ctx context.Context, store RunStore, asked RunSuccessor, head *RunHead) error {
 	after, err := completeHeadBase(store).Load(ctx, asked.Predecessor)
 	if err != nil {

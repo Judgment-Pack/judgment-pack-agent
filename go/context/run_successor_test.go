@@ -377,6 +377,14 @@ func TestAClaimedQuestionWaitContinuesACompleteHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	resumed := s.claim(t)
+	// #355: the claim is its owner's: through the plain store it admits nothing, and the head is complete.
+	if _, err := prepare(ctx, continuation("wait-q")); !errors.As(err, new(*RunComplete)) || err.Error() != RunCompleteDetail {
+		t.Fatal(err)
+	}
+	view := leaseView(t, s.store, resumed.Fence, nil)
+	continuation = func(wait string) *Input {
+		return &Input{RunStore: &DurableRunInput{Store: view, ID: successorPredecessor, Resume: true}, QuestionContinuation: wait}
+	}
 	prepared, err := prepare(ctx, continuation("wait-q"))
 	if err != nil {
 		t.Fatal(err)
@@ -385,7 +393,7 @@ func TestAClaimedQuestionWaitContinuesACompleteHead(t *testing.T) {
 		t.Fatalf("%+v", prepared.questionAnswers)
 	}
 	// Another wait, no continuation, or none at all: refused as before.
-	for _, in := range []*Input{continuation("wait-other"), {RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}}} {
+	for _, in := range []*Input{continuation("wait-other"), {RunStore: &DurableRunInput{Store: view, ID: successorPredecessor, Resume: true}}} {
 		if _, err := prepare(ctx, in); !errors.As(err, new(*RunComplete)) {
 			t.Fatal(err)
 		}
@@ -416,6 +424,16 @@ func TestAQuestionContinuationOfARunningHeadNeedsItsClaimedWait(t *testing.T) {
 		if _, err := prepare(ctx, in); waitReasonOf(err) != reason {
 			t.Fatalf("%q: %v", wait, err)
 		}
+	}
+	// #355: claimed, it continues only through the claim's own view; through the plain store it is not borne out.
+	s.park(t)
+	resumed := s.claim(t)
+	if _, err := prepare(ctx, &Input{RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}, QuestionContinuation: "wait-q"}); waitReasonOf(err) != "mismatch" || err.Error() != "WaitRefused: mismatch." {
+		t.Fatal(err)
+	}
+	prepared, err := prepare(ctx, &Input{RunStore: &DurableRunInput{Store: leaseView(t, s.store, resumed.Fence, nil), ID: successorPredecessor, Resume: true}, QuestionContinuation: "wait-q"})
+	if err != nil || len(prepared.questionAnswers) != 1 {
+		t.Fatal(err)
 	}
 }
 
@@ -539,8 +557,8 @@ func TestASuccessorAndAQuestionWaitAtOnceBothFailClosed(t *testing.T) {
 	if _, err := prepare(ctx, s.input(s.store, "question-1", true)); successorRefusal(t, err) != successorFailure("parked") {
 		t.Fatal(err)
 	}
-	s.claim(t)
-	if _, err := prepare(ctx, &Input{RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}, QuestionContinuation: "wait-q"}); successorRefusal(t, err) != successorFailure("succeeded") {
+	resumed := s.claim(t)
+	if _, err := prepare(ctx, &Input{RunStore: &DurableRunInput{Store: leaseView(t, s.store, resumed.Fence, nil), ID: successorPredecessor, Resume: true}, QuestionContinuation: "wait-q"}); successorRefusal(t, err) != successorFailure("succeeded") {
 		t.Fatal(err)
 	}
 }
@@ -734,18 +752,20 @@ func TestASuccessorIsMadeOnlyForThePredecessorsRequest(t *testing.T) {
 	}
 }
 
-// admittingStore stands for a store that holds a claimed job wait of the predecessor at its head (#330), or an open
-// objective of it (#330) where goal is set: each admits a continuation of the complete head.
+// admittingStore stands for a store that holds a claimed job wait of the predecessor at its head (#330), claimed under
+// the lease resumed names, or an open objective of it (#330) where goal is set: each admits a continuation of the
+// complete head.
 type admittingStore struct {
 	durableWaitStore
 	job, revision string
+	resumed       *contract.RunWaitActor
 	goal          *RunGoal
 }
 
 func (a admittingStore) ExportWaits(ctx context.Context, run string) (WaitExport, error) {
 	held, err := a.durableWaitStore.ExportWaits(ctx, run)
 	if err == nil && a.job != "" && run == successorPredecessor {
-		held.Waits = append(held.Waits, RunWait{Version: 1, Resource: run, Wait: "wait-job", Reason: "job", State: "resumed", Pending: contract.RunWaitPending{Job: &contract.RunWaitPendingJob{Kind: "job", Job: a.job, Generation: JobGeneration}}, Checkpoint: contract.RunWaitCheckpointBinding{Revision: a.revision}})
+		held.Waits = append(held.Waits, RunWait{Version: 1, Resource: run, Wait: "wait-job", Reason: "job", State: "resumed", Pending: contract.RunWaitPending{Job: &contract.RunWaitPendingJob{Kind: "job", Job: a.job, Generation: JobGeneration}}, Checkpoint: contract.RunWaitCheckpointBinding{Revision: a.revision}, Resumed: a.resumed})
 	}
 	return held, err
 }
@@ -780,6 +800,19 @@ func objectiveGoal() *RunGoal {
 		Plan: &contract.RunGoalPlan{ID: "accepted-plan", Revision: "sha256:a8e181bf218df2f98469173636720266f4e0da8fe4f55d8f13d9eb80e5891233", Steps: []contract.RunGoalStep{{Step: "Inspect", Index: 0}}, Bound: stamp}}}}
 }
 
+// claimedJob is a job wait of the predecessor claimed under worker-b's lease of the head, as ResumeParked leaves it, and
+// the claim's own view: the store that bears the continuation out, and the store it is opened through.
+func claimedJob(t *testing.T, s *successorScene) (admittingStore, RunStore) {
+	t.Helper()
+	lease := leaseAcquire(t, s.store.MemoryRunStore, successorPredecessor, "worker-b")
+	store := admittingStore{durableWaitStore: s.store, job: "job-1", revision: s.revision, resumed: &contract.RunWaitActor{Owner: lease.Owner, Epoch: lease.Epoch, At: waitTime(s.clock, 0)}}
+	return store, leaseView(t, store, FenceOf(lease), nil)
+}
+
+func jobContinuation(store RunStore) *Input {
+	return &Input{RunStore: &DurableRunInput{Store: store, ID: successorPredecessor, Resume: true}, JobContinuation: &RunJob{Job: "job-1"}}
+}
+
 // LOW-4: once the head's last question has its successor, the head resumes no other way, whichever admission would
 // have continued it: a claimed job wait's continuation, or a leg of an open objective (the claimed question wait's is
 // TestASuccessorAndAQuestionWaitAtOnceBothFailClosed's).
@@ -788,13 +821,13 @@ func TestAHeadWhoseQuestionHasItsSuccessorResumesNoOtherWay(t *testing.T) {
 	for _, c := range []struct {
 		name  string
 		edit  func(*testing.T) func(map[string]any)
-		admit func(s *successorScene) (admittingStore, *Input)
+		admit func(s *successorScene) (RunStore, *Input)
 	}{
-		{"a claimed job wait's continuation", func(*testing.T) func(map[string]any) { return nil }, func(s *successorScene) (admittingStore, *Input) {
-			store := admittingStore{durableWaitStore: s.store, job: "job-1", revision: s.revision}
-			return store, &Input{RunStore: &DurableRunInput{Store: store, ID: successorPredecessor, Resume: true}, JobContinuation: &RunJob{Job: "job-1"}}
+		{"a claimed job wait's continuation", func(*testing.T) func(map[string]any) { return nil }, func(s *successorScene) (RunStore, *Input) {
+			store, view := claimedJob(t, s)
+			return store, jobContinuation(view)
 		}},
-		{"a leg of an open objective", objectiveCheckpoint, func(s *successorScene) (admittingStore, *Input) {
+		{"a leg of an open objective", objectiveCheckpoint, func(s *successorScene) (RunStore, *Input) {
 			store := admittingStore{durableWaitStore: s.store, goal: objectiveGoal()}
 			return store, &Input{RunStore: &DurableRunInput{Store: store, ID: successorPredecessor, Resume: true}}
 		}},
@@ -805,6 +838,7 @@ func TestAHeadWhoseQuestionHasItsSuccessorResumesNoOtherWay(t *testing.T) {
 			if _, err := prepare(ctx, continuation); err != nil {
 				t.Fatalf("not admitted: %v", err)
 			}
+			s.clock.advance(leaseMinute)
 			if _, err := prepare(ctx, s.input(store, "question-1", false)); err != nil {
 				t.Fatal(err)
 			}
@@ -815,15 +849,18 @@ func TestAHeadWhoseQuestionHasItsSuccessorResumesNoOtherWay(t *testing.T) {
 	}
 }
 
-// HIGH-1: an admitted continuation of the predecessor and its successor do not both spend its allowance. The
-// continuation is a claimed job wait's, under its claim's lease of the head.
+// HIGH-1 and #355: an admitted continuation of the predecessor and its successor do not both spend its allowance. The
+// continuation is a claimed job wait's, admitted only through its claim's own view, so each of its commits is fenced
+// by the claim's lease of the head.
 func TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance(t *testing.T) {
 	ctx := context.Background()
 	s := successorStore(t, nil)
-	store := admittingStore{durableWaitStore: s.store, job: "job-1", revision: s.revision}
-	claim := FenceOf(leaseAcquire(t, s.store.MemoryRunStore, successorPredecessor, "worker-b"))
-	continuation := &Input{RunStore: &DurableRunInput{Store: store, ID: successorPredecessor, Resume: true}, JobContinuation: &RunJob{Job: "job-1"}}
-	if _, err := prepare(ctx, continuation); err != nil {
+	store, view := claimedJob(t, s)
+	// Through the plain store, whose commits no lease stops, the claim admits nothing: the head is complete.
+	if _, err := prepare(ctx, jobContinuation(store)); !errors.As(err, new(*RunComplete)) || err.Error() != RunCompleteDetail {
+		t.Fatal(err)
+	}
+	if _, err := prepare(ctx, jobContinuation(view)); err != nil {
 		t.Fatal(err)
 	}
 	// While the continuation holds the head's lease, no successor is made.
@@ -835,22 +872,34 @@ func TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance(t *testin
 	if head, err := s.store.Load(ctx, id); err != nil || head != nil {
 		t.Fatalf("a successor was made beside a live continuation: %v", err)
 	}
-	// Once its lease has lapsed the successor is made at a new epoch: the continuation commits nothing more, and is
-	// not opened again.
+	// Once its lease has lapsed, another lease of the head, the claim's owner's at a new epoch or another owner's, is not
+	// the claim's, and admits nothing either.
 	s.clock.advance(leaseMinute)
+	for _, owner := range []string{"worker-b", "worker-c"} {
+		other := leaseAcquire(t, s.store.MemoryRunStore, successorPredecessor, owner)
+		if _, err := prepare(ctx, jobContinuation(leaseView(t, store, FenceOf(other), nil))); !errors.As(err, new(*RunComplete)) {
+			t.Fatal(owner, err)
+		}
+		if _, err := s.store.ReleaseLease(ctx, FenceOf(other)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The successor is made at a new epoch: the continuation commits nothing more through its own store, and is not
+	// opened again.
 	if _, err := prepare(ctx, s.input(store, "question-1", false)); err != nil {
 		t.Fatal(err)
 	}
 	head, _ := s.store.Load(ctx, successorPredecessor)
-	if _, err := s.store.CommitFenced(ctx, RunCommit{RunID: successorPredecessor, ExpectedRevision: head.Revision, CommitID: "spent", Checkpoint: head.Checkpoint}, claim); leaseReason(err) != "stale-epoch" {
+	if _, err := view.Commit(ctx, RunCommit{RunID: successorPredecessor, ExpectedRevision: head.Revision, CommitID: "spent", Checkpoint: head.Checkpoint}); leaseReason(err) != "stale-epoch" {
 		t.Fatalf("the continuation committed beside its successor: %v", err)
 	}
-	if _, err := prepare(ctx, continuation); successorRefusal(t, err) != successorFailure("succeeded") {
+	if _, err := prepare(ctx, jobContinuation(view)); successorRefusal(t, err) != successorFailure("succeeded") {
 		t.Fatal(err)
 	}
 }
 
-// HIGH-1: the predecessor is read again after the create; a commit that moved it meanwhile refuses the successor.
+// HIGH-1: the predecessor is read again after the create; a commit that moved it meanwhile refuses the successor. Every
+// continuation of a complete head is fenced (#355), so only a commit made outside this package, as here, can.
 func TestASuccessorWhosePredecessorMovedWhileItWasMadeIsRefused(t *testing.T) {
 	ctx := context.Background()
 	s := successorStore(t, nil)

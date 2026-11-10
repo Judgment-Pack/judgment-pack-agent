@@ -783,7 +783,11 @@ job, condition: {event: {kind: 'job-completion', subject: job}}})`. A pending de
 `chat-store-unsupported` (Go has no chat binding). `wakeRun` refuses an event for a job wait
 (`mismatch`); it takes a timeout, which does not close the run, and a deadline. `resumeParked` needs the completion's or the
 timeout's evidence id and no decision, and returns `job`, read through the reader; the host passes it as `context.jobContinuation`
-(Go `Input.JobContinuation`), and the first request carries one fixed line and one data block built from the record.
+(Go `Input.JobContinuation`), and the first request carries one fixed line and one data block built from the record. The host opens
+the continuation through the claim's fenced view (`fencedRunStore(store, resumed.fence, effectHost)`, Go `FencedRunStore`). At a
+`complete` head that is required (#355): the continuation is admitted only through a view of this run whose fence is the owner and
+epoch the claim recorded, so each of its commits is fenced by the claim's lease and a later lease of the run stops it; through any
+other store the head is refused `RunComplete`.
 
 **What the model reads.** A start's row holds what the package composed (`jobStartResult`): the job's identity, its state and the
 words "started, not finished". `job_read` answers the state every time, with `changed` and, when nothing moved, a fixed instruction
@@ -1093,7 +1097,8 @@ continues the same run with `context.questionContinuation` (Go `Input.QuestionCo
 id, through the claim's fenced view. This is a fourth resume a `complete` head takes (#328): it is admitted only where
 the store's `exportWaits` holds this run's question wait by that id, claimed (`resumed`) with its resolution,
 and parked at the head's own revision, so a continuation delivered again after the head moved is refused
-`RunComplete`. The answer handed on is the wait's resolution, never host text. A continuation with no run
+`RunComplete`, and only through a fenced view of this run whose fence is the owner and epoch the claim recorded
+(#355), so each of its commits is fenced by the claim's lease. Through any other store it admits nothing. The answer handed on is the wait's resolution, never host text. A continuation with no run
 store, or of a run with no head, a wait id that is not a storage id, and one beside a job continuation are
 `WaitRefused` `invalid`. One that names no such wait admits nothing: a `complete` head is then admitted only as
 before (#328), and any other head is `WaitRefused` `mismatch`.
@@ -1133,13 +1138,14 @@ The run's deadline is not carried: no store port reads a run's deadline, so a su
 its host sets (`limitRun`), and a predecessor already past its deadline has no successor (its lease is refused
 `deadline-passed`).
 
-**Refusals.** `SuccessorRefused` (`configuration` for `invalid` and `unbound`, `stale-state` otherwise, from
+**Refusals.** `SuccessorRefused` (`configuration` for `invalid`, `unbound` and `budgeted`, `stale-state` otherwise, from
 `context`, `not-started`), before any model request or tool call:
 
 - `invalid`: `successor` is not a record whose `predecessor` and `question` are storage ids; it sits beside an
   execution, a job or question continuation, a usage budget or a chat context; the store is one writer's
   checkpoint callback, which cannot create once; or the open does not name its request (Go
-  `PrepareDurableInput`).
+  `PrepareDurableInput`, which makes no successor: a create through it is `invalid`, while a successor that exists
+  opens through either it or `PrepareDurableInputFor`).
 - `unbound`: the run id is not the derived one, the question is not the predecessor's latest
   `user_question`, or the answer is not a real answer to it; or the run id has the `successor-` prefix and the
   open has no `successor`.
@@ -1153,8 +1159,10 @@ its host sets (`limitRun`), and a predecessor already past its deadline has no s
   one request included): there is nothing to carry.
 - `parked`: the question has a wait of its own, and is answered through it.
 - `moved`: the predecessor's head is not the revision the successor was made from when the package reads it
-  again after the create. The successor's head stands, and since nothing records the revision it was made from,
-  a later open of it is not refused for the move.
+  again after the create. Every continuation of a `complete` head this package admits is fenced (#355), so only a
+  commit made outside the package can move the head while the successor holds its lease; the refusal is kept as a
+  defence against such a commit. The successor's head stands, and since nothing records the revision it was made
+  from, a later open of it is not refused for the move.
 
 The bytes are `SuccessorRefused: <reason>.` (the vector's `items`). A request cap other than the predecessor's
 is the request cap's own refusal (`stale-state`), a principal other than the predecessor's is
@@ -1168,13 +1176,15 @@ the predecessor is live), `revision-changed` and `principal-changed`, and `WaitR
 the predecessor are on different resources (the successor's head, the predecessor's wait, the predecessor's
 head), and no one transaction covers them. Where the store has a lease port the successor is made under the
 predecessor's lease, which a park and a claimed continuation also need, so those are serialized; the package
-reads each again where it can, and every order fails closed:
+reads each again where it can, and every order of what the package admits fails closed:
 
-- An admitted continuation and a successor: while the continuation's lease of the predecessor (its claim's, or
-  an objective leg's) is live the successor is `LeaseRefused` `held` and writes nothing. Once it has lapsed the
-  successor's lease is a new epoch, so the continuation's fenced commits are `stale-epoch`, and an open of it
-  after the create is `succeeded`. An unfenced commit of the predecessor during the create refuses the
-  successor `moved`; one after the re-read is not seen.
+- An admitted continuation and a successor: a continuation of a `complete` head is admitted only through a fenced
+  view (a claimed job or question wait's through its claim's own, a re-authorization claim's through its view), and
+  an objective's run refuses unfenced commits, so every commit it makes is fenced (#355). While its lease of the
+  predecessor is live the successor is `LeaseRefused` `held` and writes nothing. Once it has lapsed the
+  successor's lease is a new epoch, so the continuation's commits are `stale-epoch`, and an open of it after the
+  create is `succeeded`. A commit of the predecessor made outside the package during the create refuses the
+  successor `moved`; one after the re-read is not seen, since it is no continuation the package admitted.
 - Two successors at once: under the predecessor's lease the later is `LeaseRefused` `held`; on a store with no
   lease port the store's create admits one, and the other is `succeeded`, having written nothing.
 - A park that commits before the successor's first read: the successor is `parked` and writes nothing.

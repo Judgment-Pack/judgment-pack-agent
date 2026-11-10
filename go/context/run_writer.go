@@ -161,7 +161,8 @@ const RunCompleteDetail = "RunComplete: the run is complete, and a finished run 
 // RunComplete (#328): a resume of a run whose run-store head is complete is refused by name, before anything of the run
 // is bound: no model request, no tool call and no record write. A finished run asked again would make new requests and
 // could act again. Three resumes of a complete head are kept, each borne out by the store: a job wait's continuation
-// (ResumeParked, then Input.JobContinuation) where the store holds that wait claimed at this head, a re-authorization
+// (ResumeParked, then Input.JobContinuation) where the store holds that wait claimed at this head, opened through the
+// claim's own view (#355), a re-authorization
 // claim's view (ReauthorizedRunStore) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution
 // the host holds itself, with no run store, is the host's own record and is not refused.
 type RunComplete struct{}
@@ -179,9 +180,19 @@ func completeHeadBase(store RunStore) RunStore {
 	return store
 }
 
+// claimedThrough (#355): a claimed wait's continuation is the claim's own, opened through the lease view of this run
+// whose fence is the owner and epoch the claim recorded, as a re-authorization claim's is. Its commits are then fenced:
+// once a later lease of the run (a successor's, or another claim's) takes a new epoch, they are refused. Through the
+// plain store, or a view of another lease, the claim admits nothing, since an unfenced commit passes every check a
+// lease makes.
+func claimedThrough(store RunStore, id string, resumed *contract.RunWaitActor) bool {
+	view := leaseViewOf(store)
+	return view != nil && resumed != nil && view.fence.Resource == id && view.fence.Owner == resumed.Owner && view.fence.Epoch == resumed.Epoch
+}
+
 // claimedJobWait (#330 HIGH-1): a job continuation resumes a complete head only where the store bears it out: this run's
-// wait on that job, claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head
-// that has moved.
+// wait on that job, claimed, and parked at this head's revision, and only through the claim's own view (#355). A
+// continuation delivered again after it ran meets a head that has moved.
 func claimedJobWait(ctx context.Context, store RunStore, id, job, revision string) (bool, error) {
 	waits, ok := completeHeadBase(store).(interface {
 		ExportWaits(context.Context, string) (WaitExport, error)
@@ -194,7 +205,7 @@ func claimedJobWait(ctx context.Context, store RunStore, id, job, revision strin
 		return false, err
 	}
 	for _, wait := range held.Waits {
-		if wait.Resource == id && wait.State == "resumed" && wait.Pending.Job != nil && wait.Pending.Job.Job == job && wait.Checkpoint.Revision == revision {
+		if wait.Resource == id && wait.State == "resumed" && wait.Pending.Job != nil && wait.Pending.Job.Job == job && wait.Checkpoint.Revision == revision && claimedThrough(store, id, wait.Resumed) {
 			return true, nil
 		}
 	}
@@ -2110,7 +2121,8 @@ func (w *RunWriter) closed() error {
 }
 
 // PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload. It does not know
-// the request, so it makes no successor (#340); PrepareDurableInputFor does.
+// the request, so it makes no successor (#340): a successor's create through it is refused SuccessorRefused invalid,
+// and PrepareDurableInputFor makes it. A successor that exists opens through either.
 func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	return prepareDurableInput(ctx, input, nil)
 }

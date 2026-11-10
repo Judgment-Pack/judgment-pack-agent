@@ -6,7 +6,7 @@ import {frameBlock} from '../framing'
 import {RequestCapRefusal,readExecution,type ExecutionCheckpoint} from '../execution/state'
 import type {QuestionDraft,UserQuestion} from '../questions'
 import {principalBinding} from '../principal'
-import {fenceOf,leasedViewOf,type LeaseStore} from './lease'
+import {claimedThrough,fenceOf,leasedViewOf,type LeaseStore} from './lease'
 import {readQuestionAnswer,readWaitExport,retainedQuestion,type WaitExport} from './wait'
 import {readStoredRunEvent} from './writer'
 import {STORAGE_PAGE_LIMIT,storageId} from './common'
@@ -48,8 +48,10 @@ export type SuccessorRefusalReason='invalid'|'unbound'|'budgeted'|'succeeded'|'n
  * already has its successor, or the head's last question has one and the head is asked to resume another way.
  * not-complete: the predecessor's head is missing or not complete. exhausted: the predecessor used all of its allowance,
  * so a successor could only pause. parked: the question has a wait of its own, and is answered through it. moved: the
- * predecessor's head moved while the successor was made; the successor's head stands, and since nothing records the
- * revision it was made from, a later open of it is not refused for the move. A request cap other than the predecessor's
+ * predecessor's head moved while the successor was made. Every continuation of a complete head is fenced (#355), so only
+ * a commit made outside this package moves it while the successor holds its lease; the refusal is kept as a defence. The
+ * successor's head stands, and since nothing records the revision it was made from, a later open of it is not refused for
+ * the move. A request cap other than the predecessor's
  * is the request cap's own refusal (stale-state), as is another request or phase the controller's, and the predecessor's
  * lease and records refusals are their own, each before anything is written.
  */
@@ -106,14 +108,14 @@ export async function succeededHead(store:RunStore,run:string,signal?:AbortSigna
 }
 
 /** #341: a question wait's continuation resumes a head only where the store bears it out: this run's question wait by
- * that id, claimed (resumed) with its resolution, and parked at this head's revision. The answer handed on is the
- * wait's, never the host's. */
+ * that id, claimed (resumed) with its resolution, and parked at this head's revision, opened through the claim's own
+ * view (claimedThrough, #355). The answer handed on is the wait's, never the host's. */
 export async function claimedQuestionWait(store:RunStore,id:string,wait:string,revision:string,signal?:AbortSignal):Promise<QuestionAnswer|undefined>{
  const held=await waitsOf(store,id,signal)
  const row=held?.waits.find(row=>row.resource===id&&row.wait===wait)
  if(!row)return undefined
  const pending=row.pending,resolution=row.resolution
- if(row.reason!=='question'||row.state!=='resumed'||pending.kind!=='question'||!pending.question||!resolution||row.checkpoint.revision!==revision)return undefined
+ if(row.reason!=='question'||row.state!=='resumed'||pending.kind!=='question'||!pending.question||!resolution||row.checkpoint.revision!==revision||!claimedThrough(store,id,row.resumed))return undefined
  if(resolution.kind==='answered'&&resolution.answer)return {question:pending.question,answer:{selected:[...resolution.answer.selected],text:resolution.answer.text}}
  return resolution.kind==='unanswered'?{question:pending.question}:undefined
 }
@@ -187,7 +189,8 @@ export async function holdPredecessor(store:RunStore,id:string,asked:RunSuccesso
 }
 
 /** After the create, the predecessor's head is still the revision the successor was made from. A commit that moved it
- * meanwhile, which only an unfenced one can while the successor holds its lease, refuses the successor. */
+ * meanwhile, which only an unfenced one made outside this package can while the successor holds its lease (#355),
+ * refuses the successor. */
 export async function predecessorUnmoved(store:RunStore,asked:RunSuccessor,head:RunHead,signal?:AbortSignal):Promise<void>{
  if((await baseOf(store).load(asked.predecessor,signal))?.revision!==head.revision)throw new SuccessorRefused('moved')
 }

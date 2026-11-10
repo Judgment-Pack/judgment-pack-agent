@@ -881,18 +881,19 @@ approval binding, across restarts of the store. See `docs/design/storage.md`.
 `storage/successor.ts` hands a run that asked a `user_question` and completed the person's answer, as the
 store bears it out. With a question wait, the host continues the same run after `resumeParked` with
 `context.questionContinuation` set to the claimed wait's id; it is admitted only at the head the wait was
-parked at, and the first request is given the wait's resolution. With no wait, the host opens a successor
+parked at and through the claim's own fenced view, and the first request is given the wait's resolution. With no wait, the host opens a successor
 run: `runStore.successor = {predecessor, question, answer}` at `successorRunId(predecessor, question)`, on
 every open (`resume` false makes it once, `resume` true continues it). Its first checkpoint carries the
 predecessor's allowance (unit, used, limit, grants, request cap), request identity and retention and nothing
 else, so the run goes on under the allowance the person approved instead of the default. It is made for the
-predecessor's request and phase only, under the predecessor's lease, so a continuation still holding that lease
-and the successor do not both spend the allowance. Each open reads the predecessor again (complete, not
-expired, no usage budget, allowance left, the question its latest, the answer a real answer, no wait on the
-question) and gives the first request the answer as one data block. No record links the two runs or holds the
-answer, so a later open cannot be checked against the answer the successor was made with, and the run's
-deadline is not carried. Refusals are `SuccessorRefused` (`invalid`, `unbound`, `budgeted`, `succeeded`,
-`not-complete`, `exhausted`, `parked`, `moved`) and the predecessor's lease refusals. See
+predecessor's request and phase only, under the predecessor's lease. Every continuation of a complete head is
+admitted only through a fenced view (a claimed job or question wait's through its claim's own), so a
+continuation and the successor do not both spend the allowance. Each open reads the predecessor again (complete,
+not expired, no usage budget, allowance left, the question its latest, the answer a real answer,
+no wait on the question) and gives the first request the answer as one data block. No record links the two runs
+or holds the answer, so a later open cannot be checked against the answer the successor was made with, and the
+run's deadline is not carried. Refusals are `SuccessorRefused` (`invalid`, `unbound`, `budgeted`, `succeeded`, `not-complete`, `exhausted`, `parked`,
+`moved`) and the predecessor's lease refusals. See
 `docs/design/storage.md`.
 
 ### Deadlines, approval expiry and resume revalidation (#225, #227)

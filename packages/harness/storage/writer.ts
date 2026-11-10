@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,leasedViewOf,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
+import {claimedThrough,fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,leasedViewOf,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
@@ -67,7 +67,7 @@ export const RUN_COMPLETE='RunComplete: the run is complete, and a finished run 
  * #328: a resume of a run whose run-store head is `complete` is refused by name, before anything of the run is bound: no model
  * request, no tool call and no record write. A finished run asked again would make new requests and could act again. Three
  * resumes of a complete head are kept, each borne out by the store: a job wait's continuation (`resumeParked`, then
- * `context.jobContinuation`) where the store holds that wait claimed at this head, a re-authorization claim's view
+ * `context.jobContinuation`) where the store holds that wait claimed at this head, opened through the claim's own view (#355), a re-authorization claim's view
  * (`reauthorizedRunStore`) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution the host holds itself, with no
  * run store, is the host's own record and is not refused.
  */
@@ -80,12 +80,13 @@ const reauthorizedContinuation=(store:RunStore,execution:ExecutionCheckpoint)=>{
 }
 const record=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 /** #330 HIGH-1: a job continuation resumes a complete head only where the store bears it out: this run's wait on that job,
- * claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head that has moved. */
+ * claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head that has moved.
+ * #355: and only through the claim's own view (claimedThrough), so its commits are fenced by the claim's lease. */
 async function claimedJobWait(store:RunStore,id:string,job:unknown,revision:string,signal?:AbortSignal):Promise<boolean>{
  const base=(leasedViewOf(store)?.store??store) as {exportWaits?:(resource:string,signal?:AbortSignal)=>Promise<unknown>}
  if(!record(job)||typeof job.job!=='string'||typeof base.exportWaits!=='function')return false
  const held=await base.exportWaits(id,signal),waits=record(held)&&Array.isArray(held.waits)?held.waits:[]
- return waits.some(wait=>record(wait)&&wait.resource===id&&wait.state==='resumed'&&record(wait.pending)&&wait.pending.kind==='job'&&wait.pending.job===job.job&&record(wait.checkpoint)&&wait.checkpoint.revision===revision)
+ return waits.some(wait=>record(wait)&&wait.resource===id&&wait.state==='resumed'&&record(wait.pending)&&wait.pending.kind==='job'&&wait.pending.job===job.job&&record(wait.checkpoint)&&wait.checkpoint.revision===revision&&claimedThrough(store,id,record(wait.resumed)?wait.resumed:undefined))
 }
 /** #330 MEDIUM-1: a later leg of an objective's run. A complete head resumes while the store's goal record for this run has an
  * active objective whose bound Plan still has a required step the head holds unfinished; a paused one is still active, and its

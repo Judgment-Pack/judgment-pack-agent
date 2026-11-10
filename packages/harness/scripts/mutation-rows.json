@@ -16942,8 +16942,8 @@
   {
    "name": "#341 a question continuation resumes only at the head the wait was parked at",
    "file": "storage/successor.ts",
-   "find": "||row.checkpoint.revision!==revision)return undefined",
-   "replace": ")return undefined",
+   "find": "||row.checkpoint.revision!==revision||",
+   "replace": "||",
    "tests": [
     "storage/successor.test.ts"
    ],
@@ -17226,6 +17226,42 @@
    "status": "caught",
    "origin": "agent#340",
    "note": "No Go twin: Go's answers are an unexported member of the prepared input, which a host cannot set."
+  },
+  {
+   "name": "#355 a claimed job wait's continuation of a complete head is admitted only through the claim's own view",
+   "file": "storage/writer.ts",
+   "find": "&&claimedThrough(store,id,record(wait.resumed)?wait.resumed:undefined)",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_writer.go claimedJobWait's claimedThrough): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance."
+  },
+  {
+   "name": "#355 a claimed question wait's continuation is admitted only through the claim's own view",
+   "file": "storage/successor.ts",
+   "find": "||!claimedThrough(store,id,row.resumed))return undefined",
+   "replace": ")return undefined",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go claimedQuestionWait's claimedThrough): caught at TestAClaimedQuestionWaitContinuesACompleteHead."
+  },
+  {
+   "name": "#355 a claim's view is the claim's epoch, not a later lease of its owner",
+   "file": "storage/lease.ts",
+   "find": "&&fence.epoch===resumed.epoch",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_writer.go claimedThrough's epoch match): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance."
   }
  ]
 }

@@ -12,7 +12,7 @@ import {CHECKPOINT_SCHEMA,RECORD_DEFAULTS,RecordsExpired,recordDigest,writeRecor
 import {readExecution} from '../execution/state'
 import {MemoryRunStore,checkpointCallbackRunStore,type RunCommit,type RunReceipt,type RunStore} from './run'
 import type {RunHistoryCommit,RunHistoryReceipt} from './history'
-import {fenceOf,type LeaseFence,type LeaseLifetime} from './lease'
+import {fenceOf,fencedRunStore,type LeaseFence,type LeaseLifetime} from './lease'
 import {parkRun,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
 import {RunComplete,durableSession,questionAnswers} from './writer'
 import {QUESTION_ANSWERED,SuccessorRefused,makeSuccessor,questionAnswerText,successorRunId,successorVersion,type QuestionAnswer,type RunSuccessor} from './successor'
@@ -165,17 +165,20 @@ describe('a claimed question wait continues a complete head (#341)',()=>{
   await wake(s)
   await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
   const resumed=await claim(s)
-  expect(answersOf(await continuation('wait-q'))).toEqual([{question:QUESTION,answer:{selected:['risk'],text:''}}])
+  // #355: through the plain store, whose commits no lease stops, the claim admits nothing: the head is complete.
+  await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
+  const view=fencedRunStore(s.store,resumed.fence),through=(wait:string)=>open({runStore:{store:view,id:PREDECESSOR,resume:true},questionContinuation:wait})
+  expect(answersOf(await through('wait-q'))).toEqual([{question:QUESTION,answer:{selected:['risk'],text:''}}])
   // Another wait, or none: refused as before. A continuation needs the store's head.
-  await expect(continuation('wait-other')).rejects.toBeInstanceOf(RunComplete)
-  await expect(open({runStore:{store:s.store,id:PREDECESSOR,resume:true}})).rejects.toBeInstanceOf(RunComplete)
+  await expect(through('wait-other')).rejects.toBeInstanceOf(RunComplete)
+  await expect(open({runStore:{store:view,id:PREDECESSOR,resume:true}})).rejects.toBeInstanceOf(RunComplete)
   await expect(open({questionContinuation:'wait-q'})).rejects.toEqual(waitRefused('invalid'))
   // The question was answered through its wait: no successor of it.
   await expect(asSuccessor(s)).rejects.toEqual(refused('parked'))
   // Once the head moves, the continuation delivered again is refused.
   const head=(await s.store.load(PREDECESSOR))!
-  await s.store.commitFenced({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'moved',checkpoint:head.checkpoint!,events:[]},resumed.fence)
-  await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
+  await view.commit({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'moved',checkpoint:head.checkpoint!,events:[]})
+  await expect(through('wait-q')).rejects.toBeInstanceOf(RunComplete)
  })
 })
 
@@ -185,6 +188,11 @@ describe('a question continuation of a running head (#341)',()=>{
   const continuation=(wait:string)=>open({runStore:{store:s.store,id:PREDECESSOR,resume:true},questionContinuation:wait})
   await expect(continuation('wait-q')).rejects.toEqual(waitRefused('mismatch'))
   await expect(continuation('wait\nq')).rejects.toEqual(waitRefused('invalid'))
+  // #355: claimed, it continues only through the claim's own view.
+  await park(s)
+  const resumed=await claim(s)
+  await expect(continuation('wait-q')).rejects.toEqual(waitRefused('mismatch'))
+  expect(answersOf(await open({runStore:{store:fencedRunStore(s.store,resumed.fence),id:PREDECESSOR,resume:true},questionContinuation:'wait-q'}))).toHaveLength(1)
  })
 })
 
@@ -243,8 +251,8 @@ describe('a successor made while something else happens (#340)',()=>{
   // the successor exists.
   expect(await s.store.load(SUCCESSOR)).toBeDefined()
   await expect(asSuccessor(s,s.store,true)).rejects.toEqual(refused('parked'))
-  await claim(s)
-  await expect(open({runStore:{store:s.store,id:PREDECESSOR,resume:true},questionContinuation:'wait-q'})).rejects.toEqual(refused('succeeded'))
+  const resumed=await claim(s)
+  await expect(open({runStore:{store:fencedRunStore(s.store,resumed.fence),id:PREDECESSOR,resume:true},questionContinuation:'wait-q'})).rejects.toEqual(refused('succeeded'))
  })
 })
 
@@ -295,14 +303,22 @@ describe('a successor run on an engine (#340)',()=>{
  * revision, on the reads of the continuation's admission only (the wait is not a full record), or an open objective of
  * it (#330) where goal is set. */
 class Admitting extends DurableWaitStore {
- job?:string;goal?:unknown;admitting=false
+ job?:string;resumed?:{owner:string;epoch:string;at:string};goal?:unknown;admitting=false
  override async exportWaits(resource:string,signal?:AbortSignal){
   const held=await super.exportWaits(resource,signal)
-  return this.admitting&&this.job!==undefined&&resource===PREDECESSOR?{...held,waits:[...held.waits,{resource,wait:'wait-job',reason:'job',state:'resumed',pending:{kind:'job',job:'job-1'},checkpoint:{revision:this.job}}]} as typeof held:held
+  return this.admitting&&this.job!==undefined&&resource===PREDECESSOR?{...held,waits:[...held.waits,{resource,wait:'wait-job',reason:'job',state:'resumed',pending:{kind:'job',job:'job-1'},checkpoint:{revision:this.job},...(this.resumed?{resumed:this.resumed}:{})}]} as typeof held:held
  }
  override async readGoal(resource:string,signal?:AbortSignal){return this.goal!==undefined&&resource===PREDECESSOR?this.goal as Awaited<ReturnType<DurableWaitStore['readGoal']>>:super.readGoal(resource,signal)}
 }
 async function admitted<T>(store:Admitting,open:()=>Promise<T>):Promise<T>{store.admitting=true;try{return await open()}finally{store.admitting=false}}
+/** A job wait of the predecessor claimed under worker-b's lease of the head, as resumeParked leaves it, and the claim's own
+ * view: the store that bears the continuation out, and the store it is opened through. */
+async function claimedJob(s:Scene){
+ const store=s.store as Admitting,fence=fenceOf(await store.acquireLease({resource:PREDECESSOR,owner:'worker-b',expectedRevision:s.revision,durationMs:MINUTE}))
+ store.job=s.revision;store.resumed={owner:fence.owner,epoch:fence.epoch,at:new Date(s.clock.at).toISOString()}
+ return fencedRunStore(store,fence)
+}
+const jobContinuation=(store:Admitting,through:RunStore)=>admitted(store,()=>open({runStore:{store:through,id:PREDECESSOR,resume:true},jobContinuation:{job:'job-1'}}))
 /** A complete head holding a step of its accepted Plan unfinished, as an objective's leg finds it. */
 const objectiveCheckpoint=(c:Record<string,unknown>)=>{
  const {pending:_,...planState}=nativeCheckpoints.items[1]!.planState as Record<string,unknown>
@@ -327,37 +343,48 @@ describe('what a successor is made of, and what it is not (#340 review)',()=>{
   expect(error?.message).toBe('The request or execution phase changed. Start a new response with the current context.')
   expect(await s.store.load(SUCCESSOR)).toBeUndefined()
  })
- // HIGH-1: an admitted continuation of the predecessor and its successor do not both spend its allowance. The
- // continuation is a claimed job wait's, under its claim's lease of the head.
+ // HIGH-1 and #355: an admitted continuation of the predecessor and its successor do not both spend its allowance. The
+ // continuation is a claimed job wait's, admitted only through its claim's own view, so each of its commits is fenced by
+ // the claim's lease of the head.
  it('an admitted continuation and a successor do not both spend the allowance',async()=>{
-  const s=await scene(undefined,Admitting),store=s.store as Admitting
-  store.job=s.revision
-  const claim=fenceOf(await s.store.acquireLease({resource:PREDECESSOR,owner:'worker-b',expectedRevision:s.revision,durationMs:MINUTE}))
-  const continuation=()=>admitted(store,()=>open({runStore:{store,id:PREDECESSOR,resume:true},jobContinuation:{job:'job-1'}}))
-  await continuation()
+  const s=await scene(undefined,Admitting),store=s.store as Admitting,view=await claimedJob(s)
+  // Through the plain store, whose commits no lease stops, the claim admits nothing: the head is complete.
+  await expect(jobContinuation(store,store)).rejects.toBeInstanceOf(RunComplete)
+  await jobContinuation(store,view)
   // While the continuation holds the head's lease, no successor is made.
   const error=await asSuccessor(s).then(()=>undefined,error=>error)
   expect(error).toMatchObject({name:'LeaseRefused',reason:'held'});expect(error.message).toBe('LeaseRefused: held.')
   expect(await s.store.load(SUCCESSOR)).toBeUndefined()
-  // Once its lease has lapsed the successor is made at a new epoch: the continuation commits nothing more, and is not
-  // opened again.
+  // Once its lease has lapsed, another lease of the head, the claim's owner's at a new epoch or another owner's, is not
+  // the claim's, and admits nothing either.
   s.clock.at+=MINUTE
+  for(const owner of ['worker-b','worker-c']){
+   const other=fenceOf(await store.acquireLease({resource:PREDECESSOR,owner,expectedRevision:(await store.load(PREDECESSOR))!.revision,durationMs:MINUTE}))
+   await expect(jobContinuation(store,fencedRunStore(store,other)),owner).rejects.toBeInstanceOf(RunComplete)
+   await store.releaseLease(other)
+  }
+  // The successor is made at a new epoch: the continuation commits nothing more through its own store, and is not
+  // opened again.
   await asSuccessor(s)
   const head=(await s.store.load(PREDECESSOR))!
-  await expect(s.store.commitFenced({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'spent',checkpoint:head.checkpoint!,events:[]},claim)).rejects.toMatchObject({name:'LeaseRefused',reason:'stale-epoch'})
-  await expect(continuation()).rejects.toEqual(refused('succeeded'))
+  await expect(view.commit({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'spent',checkpoint:head.checkpoint!,events:[]})).rejects.toMatchObject({name:'LeaseRefused',reason:'stale-epoch'})
+  await expect(jobContinuation(store,view)).rejects.toEqual(refused('succeeded'))
  })
  // LOW-4: once the head's last question has its successor, the head resumes no other way, whichever admission would
  // have continued it: a claimed job wait's continuation, or a leg of an open objective (the claimed question wait's is
  // 'a successor and a question wait made at once both fail closed').
  for(const objective of [false,true])it(`a head whose question has its successor resumes no other way: ${objective?'a leg of an open objective':'a claimed job wait\'s continuation'}`,async()=>{
   const s=await scene(objective?objectiveCheckpoint:undefined,Admitting),store=s.store as Admitting
-  if(objective)store.goal=OBJECTIVE_GOAL;else store.job=s.revision
-  const continuation=()=>admitted(store,()=>open({runStore:{store,id:PREDECESSOR,resume:true},...(objective?{}:{jobContinuation:{job:'job-1'}})}))
+  let through:RunStore=store
+  if(objective)store.goal=OBJECTIVE_GOAL;else through=await claimedJob(s)
+  const continuation=()=>admitted(store,()=>open({runStore:{store:through,id:PREDECESSOR,resume:true},...(objective?{}:{jobContinuation:{job:'job-1'}})}))
   await continuation()
+  s.clock.at+=MINUTE
   await asSuccessor(s)
   await expect(continuation()).rejects.toEqual(refused('succeeded'))
  })
+ // HIGH-1: the predecessor is read again after the create; a commit that moved it meanwhile refuses the successor. Every
+ // continuation of a complete head is fenced (#355), so only a commit made outside this package, as here, can.
  it('a successor whose predecessor moved while it was made is refused',async()=>{
   let s:Scene|undefined
   s=await scene(undefined,hooked(async()=>{const head=(await s!.store.load(PREDECESSOR))!;await s!.store.commit({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'unfenced',checkpoint:head.checkpoint!,events:[]})}))
