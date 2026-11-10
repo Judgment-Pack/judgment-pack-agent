@@ -152,17 +152,19 @@ structural keywords are offered (`type` of the seven JSON types, `format` from a
 over 64 bytes or holding white space is dropped (a name with its schema); an `enum` or `const` that
 holds a string over 64 bytes or a line break, or an `enum` that is no list, is dropped whole. Each
 such drop earns a `guardrail` naming where, at the start of the run, since the host still validates
-what it executes. A branch deeper than sixteen levels is offered empty. What the offered schema keeps
-as written, `enum` members, `const` values, property and definition names, `required` entries and
-`$ref` pointers, cannot be framed where it stands, for the model writes those words back as
-arguments; so they are bounded (agent#308, `tool-offer/source-schema-bounds.json`). A source whose
-offered schemas hold, at any depth they keep, an `enum` of more than 64 members, or an object with
-more than 64 property names, definitions or `required` entries, or more than 4,096 bytes of those
-words across its tools (each string's UTF-8 bytes, any other `enum` or `const` value as its JSON), is
-made a catalogue (§5) whatever the schema budget, so the model reads those words only inside
-`load_tool`'s data block. These bounds cut and drop nothing, and so raise no guardrail. A schema `load_tool` loads is
+what it executes. A branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
 treated the same, its descriptions cut and unframed, for it rides inside a block framed as a whole.
 Its results are framed the same way whatever its effect class.
+
+What an offered schema keeps as written, `enum` members, `const` values, property and definition
+names, `required` entries and `$ref` pointers, cannot be framed where it stands, for the model
+writes those words back as arguments; so they are bounded (agent#308,
+`tool-offer/source-schema-bounds.json`). A source whose offered schemas hold, at any depth they keep,
+an `enum` of more than 64 members, a `properties`, `$defs` or `definitions` map of more than 64 names
+or a `required` list of more than 64 entries, or more than 4,096 bytes of those words across its
+tools (each string's UTF-8 bytes, any other `enum` or `const` value as its JSON), is made a catalogue
+(§5) whatever the schema budget, so the model reads those words only inside `load_tool`'s data
+block. These bounds cut and drop nothing, and so raise no guardrail.
 
 **Gateway snapshot pins (agent#168).** New MCP registrations supply the approved canonical UTF-8
 snapshot bytes as `source.descriptorSnapshot` (Go `DescriptorSnapshot`), their full SHA-256 as
