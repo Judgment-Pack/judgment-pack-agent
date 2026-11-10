@@ -17156,6 +17156,18 @@
    "status": "caught",
    "origin": "agent#308",
    "note": "schema-bounds.json: an enum of 65 members in a list of items. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a lone surrogate in an enum or const is offered",
+   "file": "toolSources.ts",
+   "find": "if (!scalarValue(value)) return false",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: a lone surrogate in an enum member and inside a const object, each dropped with its guardrail, and a well-formed U+FFFD kept. Go twin (by hand, the same break in go/context/sources.go; and, apart, the marking left out of go/context/json.go): caught at go/context/schema_bounds_test.go."
   }
  ]
 }

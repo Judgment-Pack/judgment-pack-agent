@@ -669,8 +669,13 @@ func plainName(name string) bool {
 }
 
 // plainValue reports whether value may stay in an offered enum or const: a short, one-line string,
-// or a short value (plainValue).
+// or a short value (plainValue), and in either, no text that is not well-formed (#308: a lone
+// surrogate escape, or bytes that are not UTF-8, marked by parseMarkedJSON), which JSON.stringify
+// writes as an escape where Go holds U+FFFD, so the two languages would offer and count other bytes.
 func plainValue(value *Value) bool {
+	if value.unscalar {
+		return false
+	}
 	if value.IsString() {
 		return UTF8Bytes(value.Str()) <= EnumMemberBytes && !strings.ContainsAny(value.Str(), "\r\n")
 	}
@@ -689,8 +694,9 @@ type SchemaNote struct{ Path, What string }
 // numeric bounds, uniqueItems, additionalProperties, items, oneOf, anyOf, allOf, properties, $defs
 // and definitions (a name over NameBytes bytes, or with white space, is dropped with its schema),
 // required (its entries the same), enum and const (dropped where a string is over EnumMemberBytes
-// bytes or has a line break, or where enum is no list) and description, cut to bytes and, where
-// frame is given, framed as retrieved text. Every other keyword, its value whatever it is, is not
+// bytes or has a line break, where one was read from a lone surrogate escape or bytes that are not
+// UTF-8 (#308, parseMarkedJSON; a value read with ParseJSON is never marked), or where enum is no
+// list) and description, cut to bytes and, where frame is given, framed as retrieved text. Every other keyword, its value whatever it is, is not
 // offered. A branch deeper than sixteen levels is offered empty. What is dropped that the model would
 // need is said in notes, when given.
 func DescribedSchema(node *Value, bytes int, frame func(string) string, notes *[]SchemaNote) *Value {
@@ -890,7 +896,7 @@ func schemaNoteDetail(wire string, note SchemaNote) string {
 	case "required":
 		what = "a required entry there is over " + itoa(NameBytes) + " bytes or holds white space, and it is not offered"
 	default:
-		what = "its " + note.What + " holds a string over " + itoa(EnumMemberBytes) + " bytes or a line break, or is no list, and it is not offered"
+		what = "its " + note.What + " holds a string over " + itoa(EnumMemberBytes) + " bytes, a line break or a lone surrogate, or is no list, and it is not offered"
 	}
 	return "in the input schema of " + wire + ", at " + where + ": " + what + "; the host still validates the arguments it executes"
 }
@@ -931,7 +937,7 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 			ids = append(ids, entry.Record.ID)
 		}
 		held.count++
-		schema, err := ParseJSON(tool.InputSchema)
+		schema, err := parseMarkedJSON(tool.InputSchema)
 		if err != nil {
 			schema = Null()
 		}
@@ -1670,7 +1676,7 @@ func (g *SourceGate) Approved(ctx context.Context, record contract.CheckpointApp
 		return refusedWith(err)
 	}
 	if entry.Catalogued {
-		declared, _ := ParseJSON(entry.Declared.InputSchema)
+		declared, _ := parseMarkedJSON(entry.Declared.InputSchema)
 		given, _ := ParseJSON(args)
 		if problem := ArgumentProblem(DescribedSchema(orNullValue(declared), g.policy.ToolDescriptionBytes, nil, nil), orNullValue(given)); problem != "" {
 			err := g.refused(entry, record.CallID, failure.ToolInput(record.Name+"'s arguments do not match its schema: "+problem+". This call was not run."))
@@ -2517,7 +2523,7 @@ func (g *SourceGate) LoadToolHost() HostTool {
 				return ToolResult{}, failure.ToolInput(LoadTool + " loads the schema of a catalogued tool, and " + QuoteJSON(shown) + " is not one; nothing was loaded.")
 			}
 			// The loaded schema rides inside a block framed as a whole, so its descriptions are bounded and not framed again.
-			declared, err := ParseJSON(entry.Declared.InputSchema)
+			declared, err := parseMarkedJSON(entry.Declared.InputSchema)
 			if err != nil {
 				return ToolResult{}, err
 			}

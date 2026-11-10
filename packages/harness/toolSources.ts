@@ -48,7 +48,7 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
 import type { SourceIdentityState } from './execution/state'
 import { admitCall, refusalDetail, type OpenedPrincipal, type PrincipalRefusal } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
-import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether } from './context/chat'
+import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether, scalarValue } from './context/chat'
 import { readHistoryRequestJSON } from './history/codec'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
@@ -537,6 +537,9 @@ function plainName(name: string): boolean {
 
 /** Whether `value` may stay in an offered `enum` or `const`: a short, one-line string, or a short value. */
 function plainValue(value: unknown): boolean {
+  // #308: a lone surrogate anywhere in it is not plain: JSON.stringify writes it as an escape where
+  // Go holds U+FFFD, so the two languages would offer and count other bytes.
+  if (!scalarValue(value)) return false
   if (typeof value === 'string') return utf8Bytes(value) <= ENUM_MEMBER_BYTES && !/[\r\n]/.test(value)
   return utf8Bytes(JSON.stringify(value) ?? '') <= ENUM_MEMBER_BYTES
 }
@@ -555,7 +558,8 @@ export interface SchemaNote {
  * `additionalProperties`, `items`, `oneOf`, `anyOf`, `allOf`, `properties`, `$defs` and `definitions`
  * (a name over `NAME_BYTES` bytes, or with white space or a line break, is dropped with its schema),
  * `required` (its entries the same), `enum` and `const` (dropped where a string is over
- * `ENUM_MEMBER_BYTES` bytes or has a line break, or where `enum` is no list) and `description`, which
+ * `ENUM_MEMBER_BYTES` bytes or has a line break, where a lone surrogate is anywhere in one (#308), or
+ * where `enum` is no list) and `description`, which
  * is cut to `bytes` and, where `frame` is given, framed as retrieved text. Every other keyword, its
  * value whatever it is, is not offered: `title`, `$comment`, `default`, `examples`, `pattern`, the
  * `x-` extensions and the rest. A branch deeper than `SCHEMA_DEPTH` is offered empty. What is dropped
@@ -672,7 +676,7 @@ function schemaNoteDetail(wire: string, note: SchemaNote): string {
   const where = note.path === '' ? 'the schema' : note.path
   const what = note.what === 'name' ? `a property or definition name there is over ${NAME_BYTES} bytes or holds white space, and it is not offered with its schema`
     : note.what === 'required' ? `a required entry there is over ${NAME_BYTES} bytes or holds white space, and it is not offered`
-    : `its ${note.what} holds a string over ${ENUM_MEMBER_BYTES} bytes or a line break, or is no list, and it is not offered`
+    : `its ${note.what} holds a string over ${ENUM_MEMBER_BYTES} bytes, a line break or a lone surrogate, or is no list, and it is not offered`
   return `in the input schema of ${wire}, at ${where}: ${what}; the host still validates the arguments it executes`
 }
 
