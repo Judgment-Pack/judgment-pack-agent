@@ -105,6 +105,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  // #230 (M8): a paused objective's run is resumed by no claim, as it is leased by no acquisition.
  resumeWait(claim:WaitClaim,signal?:AbortSignal){return this.serial(signal,()=>{const resource=claim&&typeof claim==='object'&&storageId(claim.resource)?claim.resource:undefined;if(resource!==undefined)this.goals.admitLease(resource);return this.waits.resume(claim,resource===undefined?undefined:this.head(resource),this.leases)})}
  limitRun(limit:RunLimit,signal?:AbortSignal){return this.serial(signal,()=>{const held=this.waits.limit(limit);this.leases.lower(held.resource,Date.parse(held.run));return held})}
+ /** #355: the run's deadline the store holds (RunDeadlineReader), or undefined. */
+ readRunDeadline(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.deadline(resource))}
  readWait(resource:string,wait:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.read(resource,wait))}
  exportWaits(resource:string,signal?:AbortSignal){return this.serial(signal,()=>this.waits.export(resource))}
  recordDelivery(delivery:Omit<AttentionDelivery,'at'|'version'>,signal?:AbortSignal){return this.serial(signal,()=>this.waits.deliver(delivery))}

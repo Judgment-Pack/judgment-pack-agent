@@ -8,6 +8,7 @@ import type {QuestionDraft,UserQuestion} from '../questions'
 import {principalBinding} from '../principal'
 import {claimedThrough,fenceOf,leasedViewOf,type LeaseStore} from './lease'
 import {readQuestionAnswer,readWaitExport,retainedQuestion,type WaitExport} from './wait'
+import type {RunLimit} from './resume'
 import {readStoredRunEvent} from './writer'
 import {STORAGE_PAGE_LIMIT,storageId} from './common'
 import type {RunHead,RunStore} from './run'
@@ -39,12 +40,14 @@ const SUCCESSOR_PREFIX='successor-'
  * store's own deadline for the run shortens it. */
 const SUCCESSOR_LEASE_MS=60_000
 
-export type SuccessorRefusalReason='invalid'|'unbound'|'budgeted'|'succeeded'|'not-complete'|'exhausted'|'parked'|'moved'
+export type SuccessorRefusalReason='invalid'|'unbound'|'budgeted'|'succeeded'|'not-complete'|'exhausted'|'parked'|'moved'|'deadlined'
 /**
  * #340: a successor run refused by name before any model request or tool call. invalid: the input is not one this
  * package reads. unbound: the run id is not the one `successorRunId` derives, a `successor-` id is opened without a
  * successor, the question is not the predecessor's last user_question, or the answer is not a real answer to it.
- * budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry. succeeded: the question
+ * budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry. deadlined (#355): the
+ * predecessor has a run deadline (limitRun), which a successor does not carry, or its store holds deadlines and cannot say
+ * whether it has one. succeeded: the question
  * already has its successor, or the head's last question has one and the head is asked to resume another way.
  * not-complete: the predecessor's head is missing or not complete. exhausted: the predecessor used all of its allowance,
  * so a successor could only pause. parked: the question has a wait of its own, and is answered through it. moved: the
@@ -56,7 +59,7 @@ export type SuccessorRefusalReason='invalid'|'unbound'|'budgeted'|'succeeded'|'n
  * lease and records refusals are their own, each before anything is written.
  */
 export class SuccessorRefused extends AIFailureError {
- constructor(readonly reason:SuccessorRefusalReason){super({...failure(reason==='invalid'||reason==='unbound'||reason==='budgeted'?'configuration':'stale-state','context','not-started'),detail:`SuccessorRefused: ${reason}.`});this.name='SuccessorRefused'}
+ constructor(readonly reason:SuccessorRefusalReason){super({...failure(reason==='invalid'||reason==='unbound'||reason==='budgeted'||reason==='deadlined'?'configuration':'stale-state','context','not-started'),detail:`SuccessorRefused: ${reason}.`});this.name='SuccessorRefused'}
 }
 
 /** The fixed line before the one data block that hands a run the person's answer to the question it asked: a
@@ -131,9 +134,19 @@ export function readSuccessorInput(id:string,asked:unknown,input:{execution?:unk
  return {predecessor:held.predecessor,question:held.question,answer:held.answer as QuestionDraft}
 }
 
+/** A store that reads back the run deadline it holds (#355): undefined where it holds none. */
+export interface RunDeadlineReader {readRunDeadline(resource:string,signal?:AbortSignal):Promise<RunLimit|undefined>}
+/** #355: the predecessor has a run deadline its store holds. A store that holds deadlines (limitRun) and cannot read them
+ * back is taken as holding one; a read error refuses, and is never taken for none. */
+async function predecessorDeadlined(store:RunStore,run:string,signal?:AbortSignal):Promise<boolean>{
+ const held=store as Partial<RunDeadlineReader>&{limitRun?:unknown}
+ if(typeof held.readRunDeadline==='function')return await held.readRunDeadline(run,signal)!==undefined
+ return typeof held.limitRun==='function'
+}
+
 /** Holds on every open of a successor: the predecessor's head is complete, its records are not expired, it ran under no
- * usage budget and has allowance left, the question is its last user_question, the answer is a real answer to it, and the
- * question has no wait of its own. */
+ * usage budget or run deadline and has allowance left, the question is its last user_question, the answer is a real
+ * answer to it, and the question has no wait of its own. */
 export async function readPredecessor(store:RunStore,asked:RunSuccessor,signal?:AbortSignal):Promise<{head:RunHead;saved:ExecutionCheckpoint;answered:QuestionAnswer}>{
  const base=baseOf(store),head=await base.load(asked.predecessor,signal)
  if(!head?.checkpoint)throw new SuccessorRefused('not-complete')
@@ -144,6 +157,8 @@ export async function readPredecessor(store:RunStore,asked:RunSuccessor,signal?:
  if(saved.usageBudget!==undefined)throw new SuccessorRefused('budgeted')
  // MEDIUM-3: with nothing of the allowance left, a successor's first request could only pause, and the question would be used up.
  if(saved.used>=saved.limit)throw new SuccessorRefused('exhausted')
+ // #355: a successor runs under no deadline of the predecessor's, so a run with one has no successor.
+ if(await predecessorDeadlined(base,asked.predecessor,signal))throw new SuccessorRefused('deadlined')
  const question=await retainedQuestion(base,asked.predecessor,asked.question,signal)
  if(!question)throw new SuccessorRefused('unbound')
  const answer=readQuestionAnswer(question,asked.answer)

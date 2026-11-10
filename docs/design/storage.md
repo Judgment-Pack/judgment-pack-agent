@@ -1112,7 +1112,7 @@ character, so each pair has its own id, and an id with the `successor-` prefix i
 and presents the predecessor's request and phase (Go: through `PrepareDurableInputFor` with the
 `DurableRequest`, as a session and the delegate coordinator do; `PrepareDurableInput` names no request and
 makes no successor). On every open the package reads that the predecessor's head is `complete` under its own
-id, that its records have not expired (`retainUntil`), that it has no usage budget and has not used its whole
+id, that its records have not expired (`retainUntil`), that it has no usage budget and no run deadline and has not used its whole
 allowance (`used` below `limit`), that the question is the latest `user_question` in its retained log, that the
 answer is a real answer to it, read as a wake's answer is (an offered option or non-blank text; a
 recommendation is none), and that the predecessor holds no wait, in any state, on that question. Making it
@@ -1134,11 +1134,13 @@ so a host that must hold the answer to one value keeps it itself. The successor 
 the predecessor's approvals. A predecessor with a usage budget is refused `budgeted`, since its journal is not
 carried, and a successor input with a usage budget or a run-store chat context is refused `invalid`. A host
 that passes the chat as the input's own chat, with no run-store context and no usage budget, is not affected.
-The run's deadline is not carried: no store port reads a run's deadline, so a successor runs under the deadline
-its host sets (`limitRun`), and a predecessor already past its deadline has no successor (its lease is refused
-`deadline-passed`).
+The run's deadline is not carried, so a predecessor with one has no successor, before or past it (`deadlined`,
+#355). The package reads it through the store's `readRunDeadline` (Go `RunDeadlineReader.ReadRunDeadline`; the
+memory stores have it): a store that holds deadlines (`limitRun`) and does not read them back is taken as holding
+one, a failed read refuses as itself, and a store with no wait port holds none. A host that wants the successor
+bounded sets its deadline with `limitRun` after the create.
 
-**Refusals.** `SuccessorRefused` (`configuration` for `invalid`, `unbound` and `budgeted`, `stale-state` otherwise, from
+**Refusals.** `SuccessorRefused` (`configuration` for `invalid`, `unbound`, `budgeted` and `deadlined`, `stale-state` otherwise, from
 `context`, `not-started`), before any model request or tool call:
 
 - `invalid`: `successor` is not a record whose `predecessor` and `question` are storage ids; it sits beside an
@@ -1150,6 +1152,7 @@ its host sets (`limitRun`), and a predecessor already past its deadline has no s
   `user_question`, or the answer is not a real answer to it; or the run id has the `successor-` prefix and the
   open has no `successor`.
 - `budgeted`: the predecessor has a usage budget.
+- `deadlined`: the predecessor has a run deadline, or its store holds deadlines and cannot read them back.
 - `succeeded`: the run is made again (`resume` false over a head), its create meets a head another open made
   meanwhile, a `complete` head whose latest question has its successor is resumed another way (a job or
   question continuation, a re-authorization claim, a leg of an objective): the successor carries the allowance;

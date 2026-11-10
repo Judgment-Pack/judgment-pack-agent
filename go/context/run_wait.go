@@ -1674,6 +1674,16 @@ func (t *WaitTable) AdmitAcquire(resource string) error {
 	return nil
 }
 
+// Deadline is the run's deadline the table holds, or nil; an approval's expiry is not one.
+func (t *WaitTable) Deadline(resource string) *RunLimit {
+	held, ok := t.ceilings[resource]
+	if !ok {
+		return nil
+	}
+	run, _ := leaseExpiryAt(held)
+	return &RunLimit{Version: ResumeRecordVersion, Resource: resource, Run: run}
+}
+
 // Limit sets the run's deadline: the earliest one held wins.
 func (t *WaitTable) Limit(input RunLimit) (RunLimit, error) {
 	raw, err := json.Marshal(input)
@@ -2242,6 +2252,12 @@ func (m *MemoryRunStore) LimitRun(ctx context.Context, limit RunLimit) (held Run
 		}
 		return err
 	})
+	return held, err
+}
+
+// ReadRunDeadline is the run's deadline the store holds (RunDeadlineReader), or nil.
+func (m *MemoryRunStore) ReadRunDeadline(ctx context.Context, resource string) (held *RunLimit, err error) {
+	err = m.leaseTransition(ctx, func() error { held = m.waits.Deadline(resource); return nil })
 	return held, err
 }
 func (m *MemoryRunStore) ReadWait(ctx context.Context, resource, wait string) (held *RunWait, err error) {

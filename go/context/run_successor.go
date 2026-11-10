@@ -48,8 +48,9 @@ const successorLeaseMs = 60_000
 // PrepareDurableInputFor name it). unbound: the run id is not the one SuccessorRunID derives, a "successor-" id is
 // opened without a successor, the question is not the predecessor's last user_question, or the answer is not a real
 // answer to it. budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry.
-// succeeded: the question already has its successor, or the head's last question has one and the head is asked to
-// resume another way. not-complete: the predecessor's head is missing or not
+// deadlined (#355): the predecessor has a run deadline (LimitRun), which a successor does not carry, or its store holds
+// deadlines and cannot say whether it has one. succeeded: the question already has its successor, or the head's last
+// question has one and the head is asked to resume another way. not-complete: the predecessor's head is missing or not
 // complete. exhausted: the predecessor used all of its allowance, so a successor could only pause. parked: the question
 // has a wait of its own, and is answered through it. moved: the predecessor's head moved while the successor was made.
 // Every continuation of a complete head is fenced (#355), so only a commit made outside this package moves it while the
@@ -62,7 +63,7 @@ type SuccessorRefused struct{ Reason string }
 func (e *SuccessorRefused) Error() string { return "SuccessorRefused: " + e.Reason + "." }
 func (e *SuccessorRefused) Unwrap() error {
 	code := "stale-state"
-	if e.Reason == "invalid" || e.Reason == "unbound" || e.Reason == "budgeted" {
+	if e.Reason == "invalid" || e.Reason == "unbound" || e.Reason == "budgeted" || e.Reason == "deadlined" {
 		code = "configuration"
 	}
 	return storageNamedFailure(code, "context", "not-started", e.Error())
@@ -256,6 +257,14 @@ func readPredecessor(ctx context.Context, store RunStore, asked RunSuccessor) (*
 	if saved.Used >= saved.Limit {
 		return nil, nil, nil, successorRefused("exhausted")
 	}
+	// #355: a successor runs under no deadline of the predecessor's, so a run with one has no successor.
+	deadlined, err := predecessorDeadlined(ctx, base, asked.Predecessor)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if deadlined {
+		return nil, nil, nil, successorRefused("deadlined")
+	}
 	question, err := retainedQuestion(ctx, base, asked.Predecessor, asked.Question)
 	if err != nil {
 		return nil, nil, nil, err
@@ -279,6 +288,25 @@ func readPredecessor(ctx context.Context, store RunStore, asked RunSuccessor) (*
 		return nil, nil, nil, successorRefused("parked")
 	}
 	return head, saved, &questionAnswer{question: *question, answer: &answer}, nil
+}
+
+// RunDeadlineReader is the optional port that reads a run's deadline (LimitRun): the run limit the store holds, or nil
+// for none. A successor (#340) is made only of a run with none.
+type RunDeadlineReader interface {
+	ReadRunDeadline(ctx context.Context, resource string) (*RunLimit, error)
+}
+
+// predecessorDeadlined: the run has a deadline. A store without the wait port holds none; one with it that cannot read
+// it is taken as holding one, never as holding none.
+func predecessorDeadlined(ctx context.Context, store RunStore, run string) (bool, error) {
+	if reader, ok := store.(RunDeadlineReader); ok {
+		held, err := reader.ReadRunDeadline(ctx, run)
+		return held != nil, err
+	}
+	_, limits := store.(interface {
+		LimitRun(context.Context, RunLimit) (RunLimit, error)
+	})
+	return limits, nil
 }
 
 // successorVersion is the version of the members the successor carries: a principal keeps checkpoint 4; a kept

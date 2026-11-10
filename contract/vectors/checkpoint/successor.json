@@ -42,7 +42,8 @@
     "not-complete",
     "exhausted",
     "parked",
-    "moved"
+    "moved",
+    "deadlined"
   ],
   "answer": {
     "marker": "0123456789abcdef0123456789abcdef",
@@ -280,6 +281,18 @@
         "source": "context",
         "outcome": "not-started",
         "detail": "SuccessorRefused: moved."
+      }
+    },
+    {
+      "version": 1,
+      "type": "error",
+      "message": "SuccessorRefused: deadlined.",
+      "failure": {
+        "version": 1,
+        "code": "configuration",
+        "source": "context",
+        "outcome": "not-started",
+        "detail": "SuccessorRefused: deadlined."
       }
     },
     {

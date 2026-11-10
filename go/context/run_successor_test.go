@@ -145,7 +145,7 @@ func successorRefusal(t *testing.T, err error) string {
 
 func successorFailure(reason string) string {
 	code := "stale-state"
-	if reason == "invalid" || reason == "unbound" || reason == "budgeted" {
+	if reason == "invalid" || reason == "unbound" || reason == "budgeted" || reason == "deadlined" {
 		code = "configuration"
 	}
 	return `{"code":"` + code + `","detail":"SuccessorRefused: ` + reason + `.","outcome":"not-started","source":"context","version":1}`
@@ -173,7 +173,7 @@ func TestASuccessorRunIDIsDerivedFromThePredecessorAndItsQuestion(t *testing.T) 
 	if err := json.Unmarshal(raw, &vector); err != nil {
 		t.Fatal(err)
 	}
-	if len(vector.Derivations) != 4 || len(vector.Reasons) != 8 || len(vector.Items) != 9 {
+	if len(vector.Derivations) != 4 || len(vector.Reasons) != 9 || len(vector.Items) != 10 {
 		t.Fatal("the vector is short")
 	}
 	// A storage id holds no control character, so the NUL-separated derivation is one id per pair.
@@ -913,20 +913,47 @@ func TestASuccessorWhosePredecessorMovedWhileItWasMadeIsRefused(t *testing.T) {
 	}
 }
 
-// MEDIUM-2: a predecessor past its deadline, or closed, leases to no one, so it has no successor; nothing is written.
-func TestASuccessorIsNotMadeOfARunPastItsDeadline(t *testing.T) {
+// limitingStore holds run deadlines (the wait port's LimitRun) and cannot read them back.
+type limitingStore struct{ RunStore }
+
+func (limitingStore) LimitRun(context.Context, RunLimit) (RunLimit, error) { return RunLimit{}, nil }
+
+// unreadDeadlines is a store whose read of a run's deadline fails.
+type unreadDeadlines struct{ RunStore }
+
+func (unreadDeadlines) ReadRunDeadline(context.Context, string) (*RunLimit, error) {
+	return nil, errors.New("the deadline could not be read")
+}
+
+// #355: a successor carries no deadline, so a predecessor with one has none, before or past it; a store that holds
+// deadlines and cannot say whether it has one is taken as holding one, and a failed read is never none. Nothing is
+// written.
+func TestASuccessorIsNotMadeOfARunWithADeadline(t *testing.T) {
 	ctx := context.Background()
+	id := SuccessorRunID(successorPredecessor, "question-1")
 	s := successorStore(t, nil)
-	if _, err := LimitRun(ctx, s.store, RunLimit{Version: 1, Resource: successorPredecessor, Run: waitTime(s.clock, leaseMinute)}); err != nil {
+	if _, err := LimitRun(ctx, s.store, RunLimit{Version: 1, Resource: successorPredecessor, Run: waitTime(s.clock, waitHour)}); err != nil {
 		t.Fatal(err)
 	}
-	s.clock.advance(leaseMinute)
-	in := s.input(s.store, "question-1", false)
-	if _, err := prepare(ctx, in); waitReasonOf(err) != "deadline-passed" || err.Error() != "WaitRefused: deadline-passed." {
+	for _, at := range []int64{0, waitHour} {
+		s.clock.advance(at)
+		if _, err := prepare(ctx, s.input(s.store, "question-1", false)); successorRefusal(t, err) != successorFailure("deadlined") || err.Error() != "SuccessorRefused: deadlined." {
+			t.Fatal(err)
+		}
+	}
+	s = successorStore(t, nil)
+	if _, err := prepare(ctx, s.input(limitingStore{s.store}, "question-1", false)); successorRefusal(t, err) != successorFailure("deadlined") {
 		t.Fatal(err)
 	}
-	if head, err := s.store.Load(ctx, in.RunStore.ID); err != nil || head != nil {
-		t.Fatalf("a successor of a run past its deadline was written: %v", err)
+	if _, err := prepare(ctx, s.input(unreadDeadlines{s.store}, "question-1", false)); err == nil || err.Error() != "the deadline could not be read" {
+		t.Fatal(err)
+	}
+	if head, err := s.store.Load(ctx, id); err != nil || head != nil {
+		t.Fatalf("a successor of a run with a deadline was written: %v", err)
+	}
+	// A store with no wait port holds no deadline: the successor is made.
+	if _, err := prepare(ctx, s.input(plainStore{s.store}, "question-1", false)); err != nil {
+		t.Fatal(err)
 	}
 }
 

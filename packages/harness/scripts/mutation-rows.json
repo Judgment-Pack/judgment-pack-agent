@@ -17262,6 +17262,42 @@
    "status": "caught",
    "origin": "agent#355",
    "note": "Go twin (by hand, run_writer.go claimedThrough's epoch match): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance."
+  },
+  {
+   "name": "#355 a predecessor with a run deadline has no successor",
+   "file": "storage/successor.ts",
+   "find": "if(await predecessorDeadlined(base,asked.predecessor,signal))throw new SuccessorRefused('deadlined')",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go readPredecessor's deadlined): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#355 a store that holds deadlines and cannot read them back is taken as holding one",
+   "file": "storage/successor.ts",
+   "find": "return typeof held.limitRun==='function'",
+   "replace": "return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go predecessorDeadlined's LimitRun port): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#355 the memory store reads back the run's deadline",
+   "file": "storage/wait.ts",
+   "find": "return held===undefined?undefined:{version:1,resource,run:new Date(held).toISOString()}",
+   "replace": "return undefined",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_wait.go WaitTable.Deadline): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
   }
  ]
 }

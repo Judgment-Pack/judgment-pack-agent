@@ -492,6 +492,8 @@ export class WaitTable {
   if(ceiling!==undefined&&at(this.now())>=ceiling)throw new WaitRefused('deadline-passed')
   if(rows.some(row=>row.state!=='resumed'))throw new WaitRefused('wait-pending')
  }
+ /** #355: the run's deadline the table holds, or undefined; an approval's expiry is not one. */
+ deadline(resource:string):RunLimit|undefined{const held=this.ceilings.get(resource);return held===undefined?undefined:{version:1,resource,run:new Date(held).toISOString()}}
  /** #229: whether an abandon can have a lease: a closed run and one past its deadline grant none. A parked run can: its wait stands. */
  leasable(resource:string):boolean{
   if((this.rows.get(resource)??[]).some(terminal))return false

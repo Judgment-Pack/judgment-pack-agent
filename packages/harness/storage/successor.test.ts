@@ -75,7 +75,7 @@ describe('the shared successor vector (#340)',()=>{
   for(const row of vector.derivations)expect(successorRunId(row.predecessor,row.question),`${row.predecessor}/${row.question}`).toBe(row.id)
   // A storage id holds no control character, so the NUL-separated derivation is one id per pair.
   expect(new Set(vector.derivations.map(row=>row.id)).size).toBe(4)
-  expect(vector.reasons).toEqual(['invalid','unbound','budgeted','succeeded','not-complete','exhausted','parked','moved'])
+  expect(vector.reasons).toEqual(['invalid','unbound','budgeted','succeeded','not-complete','exhausted','parked','moved','deadlined'])
   vector.reasons.forEach((reason,i)=>{const error=new SuccessorRefused(reason as never);expect({version:1,type:'error',message:error.message,failure:error.failure}).toEqual(vector.items[i])})
   expect(vector.items.at(-1)).toEqual({version:1,type:'end'})
   expect(questionAnswerText(QUESTION,vector.answer.answered.answer,vector.answer.marker)).toBe(vector.answer.answered.text)
@@ -390,14 +390,25 @@ describe('what a successor is made of, and what it is not (#340 review)',()=>{
   s=await scene(undefined,hooked(async()=>{const head=(await s!.store.load(PREDECESSOR))!;await s!.store.commit({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'unfenced',checkpoint:head.checkpoint!,events:[]})}))
   await expect(asSuccessor(s)).rejects.toEqual(refused('moved'))
  })
- // MEDIUM-2: a predecessor past its deadline leases to no one, so it has no successor; nothing is written.
- it('is not made of a run past its deadline',async()=>{
-  const s=await scene()
-  await s.store.limitRun({version:1,resource:PREDECESSOR,run:new Date(s.clock.at+MINUTE).toISOString()})
-  s.clock.at+=MINUTE
-  const error=await asSuccessor(s).then(()=>undefined,error=>error)
-  expect(error).toEqual(waitRefused('deadline-passed'));expect(error.message).toBe('WaitRefused: deadline-passed.')
+ // #355: a successor carries no deadline, so a predecessor with one has none, before or past it; a store that holds
+ // deadlines and cannot say whether it has one is taken as holding one, and a failed read is never none. Nothing is
+ // written.
+ it('is not made of a run with a deadline',async()=>{
+  let s=await scene()
+  await s.store.limitRun({version:1,resource:PREDECESSOR,run:new Date(s.clock.at+HOUR).toISOString()})
+  for(const step of [0,HOUR]){
+   s.clock.at+=step
+   const error=await asSuccessor(s).then(()=>undefined,error=>error)
+   expect(error).toEqual(refused('deadlined'));expect(error.message).toBe('SuccessorRefused: deadlined.')
+  }
   expect(await s.store.load(SUCCESSOR)).toBeUndefined()
+  s=await scene()
+  await expect(asSuccessor(s,{...plain(s.store),limitRun:async()=>{throw Error('not called')}} as RunStore)).rejects.toEqual(refused('deadlined'))
+  await expect(asSuccessor(s,{...plain(s.store),readRunDeadline:async()=>{throw Error('the deadline could not be read')}} as RunStore)).rejects.toThrow('the deadline could not be read')
+  expect(await s.store.load(SUCCESSOR)).toBeUndefined()
+  // A store with no wait port holds no deadline: the successor is made.
+  await asSuccessor(s,plain(s.store))
+  expect(await s.store.load(SUCCESSOR)).toBeDefined()
  })
  // MEDIUM-2: a predecessor's records keep their retainUntil in the successor, and expired records have no successor.
  it('keeps the predecessor\'s retention, and expired records have none',async()=>{

@@ -889,11 +889,11 @@ else, so the run goes on under the allowance the person approved instead of the 
 predecessor's request and phase only, under the predecessor's lease. Every continuation of a complete head is
 admitted only through a fenced view (a claimed job or question wait's through its claim's own), so a
 continuation and the successor do not both spend the allowance. Each open reads the predecessor again (complete,
-not expired, no usage budget, allowance left, the question its latest, the answer a real answer,
+not expired, no usage budget or run deadline, allowance left, the question its latest, the answer a real answer,
 no wait on the question) and gives the first request the answer as one data block. No record links the two runs
-or holds the answer, so a later open cannot be checked against the answer the successor was made with, and the
-run's deadline is not carried. Refusals are `SuccessorRefused` (`invalid`, `unbound`, `budgeted`, `succeeded`, `not-complete`, `exhausted`, `parked`,
-`moved`) and the predecessor's lease refusals. See
+or holds the answer, so a later open cannot be checked against the answer the successor was made with. Refusals
+are `SuccessorRefused` (`invalid`, `unbound`, `budgeted`, `succeeded`, `not-complete`, `exhausted`, `parked`,
+`moved`, `deadlined`) and the predecessor's lease refusals. See
 `docs/design/storage.md`.
 
 ### Deadlines, approval expiry and resume revalidation (#225, #227)
