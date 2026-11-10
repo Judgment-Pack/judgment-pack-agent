@@ -807,6 +807,18 @@ export class ReceiptAdmission {
     this.checked ??= this.check(result).catch(() => ({ shown: {}, receipt: undefined, verified: false }))
     if (!(await this.checked).verified) throw receiptWithheld()
   }
+  /**
+   * Gives the checked result, which the gate answers with, the form the durable writer recorded the call's result in and
+   * answered with (#343), so no text the record redacted reaches the model this way. A check that has not run or did not
+   * verify has nothing to give. A guard refusal is thrown and the checked result left as it was: the writer then answers
+   * the call as an unknown outcome, and the gate with that.
+   */
+  async deliver(form: (result: McpToolResult) => McpToolResult): Promise<void> {
+    const held = await this.checked
+    if (!held?.verified) return
+    const shown = form(held.shown)
+    this.checked = Promise.resolve({ ...held, shown })
+  }
   /** The checked result, its receipt and whether it verified, once the check has run. */
   outcome() { return this.checked }
 }

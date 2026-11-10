@@ -613,7 +613,17 @@ func (c *coordinator) driveAgent(ctx context.Context) {
 			}
 			c.emitMu.Lock()
 			last := c.parentCheckpoint
+			// #343: the record guard (ADR-0018) keeps the continuation in the form it leaves of it, and a
+			// resumed run is given that form; so is this one, and its next request holds what the record can.
+			recorded := c.run.Context == nil || c.run.Context.Persistence == nil
+			if !recorded && last != nil && last.Handoff != nil && last.Handoff.CallID == pending.callID && last.Handoff.State == "answered" && last.Handoff.Continuation != nil {
+				pending.continuation, recorded = *last.Handoff.Continuation, true
+			}
 			c.emitMu.Unlock()
+			if !recorded {
+				fail(&runcontext.ContinuationNotRecoverable{})
+				return
+			}
 			execution = last
 		}
 		if pending != nil && pending.answer != nil {

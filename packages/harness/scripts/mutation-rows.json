@@ -16422,6 +16422,54 @@
    "status": "caught",
    "origin": "agent#318",
    "note": "#310/#318 batch. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "#343 the writer records and answers a host result in the record guard's form",
+   "file": "storage/writer.ts",
+   "find": "    value=form(value)\n",
+   "replace": "    void form\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, run_writer.go value = any(recorded).(T)): caught at TestARedactedResultIsRecordedAndAnsweredInTheSameForm and TestARedactedResultSettlesAndIsWhatTheModelIsGiven."
+  },
+  {
+   "name": "#343 an external read's checked result is given the recorded form",
+   "file": "storage/writer.ts",
+   "find": "    if(admission)await admission.deliver(form)\n",
+   "replace": "    void admission\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, run_writer.go held.deliver): caught at TestAnExternalReadsCheckedResultIsGivenTheRecordedForm and TestAnExternalReadThroughTheGateAnswersTheRecordedForm."
+  },
+  {
+   "name": "#343 the receipt admission answers with the form it is given",
+   "file": "toolSources.ts",
+   "find": "    this.checked = Promise.resolve({ ...held, shown })\n",
+   "replace": "    void shown\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, sources.go a.result = shown): caught at the same two tests."
+  },
+  {
+   "name": "#343 a handoff's parent is given the continuation its record holds",
+   "file": "delegation.ts",
+   "find": ";handoff.continuation=held.continuation}",
+   "replace": "}",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, delegate/agent.go pending.continuation from the last checkpoint): caught at TestAHandoffsParentIsGivenTheContinuationItsRecordHolds."
   }
  ]
 }

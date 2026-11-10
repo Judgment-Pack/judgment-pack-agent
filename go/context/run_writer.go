@@ -1437,6 +1437,64 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 	return false
 }
 
+// recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
+// leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
+// With nothing redacted it is result itself. A guard refusal is returned with no result.
+func (w *RunWriter) recordedResultLocked(result ToolResult) (ToolResult, error) {
+	var guard RecordGuard
+	if w.guard != nil {
+		guard = w.guard()
+	}
+	raw := result.JSON()
+	clean, changed, err := recordedForm(w.policy, guard, raw)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if !changed {
+		return result, nil
+	}
+	original, err := ParseJSON(raw)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	redacted, err := ParseJSON(clean)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	out := ReadToolResult(inOrderOf(original, redacted))
+	out.Receipt = result.Receipt
+	return out, nil
+}
+
+// inOrderOf is redacted with each object's members in the order original wrote them (#343). The guard
+// writes an object it changed with its members sorted, and a result's member order is part of the text a
+// model is given, which TypeScript keeps. Every member and value is redacted's: a member whose name the
+// guard rewrote follows the others, in redacted's order.
+func inOrderOf(original, redacted *Value) *Value {
+	switch {
+	case original.IsObject() && redacted.IsObject():
+		out := Object()
+		for _, key := range original.Keys() {
+			if held := redacted.Get(key); held != nil {
+				out.Set(key, inOrderOf(original.Get(key), held))
+			}
+		}
+		for _, key := range redacted.Keys() {
+			if !out.Has(key) {
+				out.Set(key, redacted.Get(key))
+			}
+		}
+		return out
+	case original.IsArray() && redacted.IsArray() && original.Len() == redacted.Len():
+		out := Array()
+		for at, item := range redacted.Items() {
+			out.Append(inOrderOf(original.Items()[at], item))
+		}
+		return out
+	}
+	return redacted
+}
+
 // InvokeDurable is used only AFTER existing current offer/source/authority checks. Its execution
 // callback rechecks host authority after claim acknowledgement. Generic recovered action results
 // are isolated by logical execution/role/task/source/tool/args, never shared by siblings.
@@ -1872,6 +1930,22 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 			} else {
 				updated.State = "result"
 				if kind == "host" || kind == "runtime" {
+					// #343: the result is recorded in the form the record guard leaves of it, and the call is
+					// answered with that same form, so the record and what the model is given agree and the
+					// claim settles. An external read's checked result, which the source gate answers with, is
+					// given the same form. A job's start or cancel is answered from its job's record (ADR-0025),
+					// so its row keeps today's rule: a redacted answer cannot be recorded.
+					if result, ok := any(value).(ToolResult); ok && jobStart == nil && jobCancel == nil {
+						recorded, err := w.recordedResultLocked(result)
+						if held := receiptAdmissionOf(ctx); err == nil && admit != nil && held != nil {
+							err = held.deliver(w.recordedResultLocked)
+						}
+						if err != nil {
+							w.fatal = &StorageOutcomeUnknown{cause: err}
+							return zero, w.fatal
+						}
+						value = any(recorded).(T)
+					}
 					if w.repeatStateLocked(binding.Scope.Execution) != nil {
 						var exact []byte
 						if result, ok := any(value).(ToolResult); ok {

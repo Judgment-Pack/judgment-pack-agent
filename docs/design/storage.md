@@ -144,8 +144,13 @@ Checkpoint version 2 carries a bounded durable journal, trusted acknowledged ope
 artifact observations, children and the four delegation handoff states. Prepared request bodies
 and exact continuation frames are retained without transport headers or private reasoning.
 Redaction, incompatible admitted identities, bounds, or absent exact bytes cause
-`ContinuationNotRecoverable` or `ContinuationIdentityChanged` before dispatch. A result whose
-commit was not acknowledged surfaces `StorageOutcomeUnknown`; it never claims the effect did not
+`ContinuationNotRecoverable` or `ContinuationIdentityChanged` before dispatch. A host or runtime
+call's result is recorded in the form the record guard (ADR-0018) leaves of it, and the call is
+answered with that same form, an external read's checked result included, so the record and what
+the model is given agree and the call settles (#343). A job's start or cancel is answered from its
+job record and keeps the earlier rule. A durable handoff's parent is given the continuation its
+record holds. A guard refusal, or a result whose
+commit was not acknowledged, surfaces `StorageOutcomeUnknown`; it never claims the effect did not
 happen. Checkpoints
 remain at most 4 MiB, with at most 400 dispatches, 400 observations and 32 children. Structural
 checkpoint nesting permits four record boundaries; arbitrary declared payloads stay opaque.
