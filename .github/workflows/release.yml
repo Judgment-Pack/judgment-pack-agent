@@ -210,6 +210,12 @@ jobs:
               print('::error::A job recorded a tool that is not its pin (%s). A re-run installs the same tool '
                     'again and refuses the same way: fix the pin, or the toolchain the job sets up, on main, and '
                     'release a new version (docs/ci-evidence.md#the-fresh-route).' % detail)
+          elif code == 'runtime-identity' and detail.endswith(': tool set'):
+              # Another set of tools than the job's profile names (#348): the job's own steps record the
+              # set, and a re-run records the same one, so only a change on main helps.
+              print('::error::A job recorded another set of tools than its profile names (%s). A re-run records '
+                    'the same set and refuses the same way: fix the profile, or the tools the job records, on '
+                    'main, and release a new version (docs/ci-evidence.md#the-fresh-route).' % detail)
           else:
               print('::error::See docs/ci-evidence.md#the-fresh-route for what to do about %s.' % code)
           PYCURE

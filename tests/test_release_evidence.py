@@ -1419,6 +1419,22 @@ class AgentGate(AgentWorld):
                                  'on main, and release a new version (docs/ci-evidence.md#the-fresh-route).\n'
                                  % self.record['refusal']['detail'])
 
+    def test_a_ci_job_with_another_tool_set_refuses_with_the_change_on_main_help(self):
+        """#348: a tool set that is not the profile's is recorded by the job's own steps, so a re-run
+        records it again; the help says so, as for a tool that is not its pin."""
+        for job_key, change in (('check', lambda tools: tools.pop('npm')), ('contract', lambda tools: tools.update(extra='1'))):
+            with self.subTest(job=job_key):
+                self.data = self.world()
+                self.change_evidence('ci', job_key, lambda payload, change=change: change(payload['runtime']['tools']))
+                self.assertEqual(self.decide(), 'runtime-identity')
+                self.assertEqual(self.record['refusal']['detail'], '%s: tool set' % job_key)
+                self.assertNotIn('revalidation', self.record)
+                self.assertEqual(self.refusal_says(self.record),
+                                 '::error::A job recorded another set of tools than its profile names (%s: tool set). A '
+                                 're-run records the same set and refuses the same way: fix the profile, or the tools '
+                                 'the job records, on main, and release a new version '
+                                 '(docs/ci-evidence.md#the-fresh-route).\n' % job_key)
+
     def test_a_ci_job_on_another_os_release_refuses_and_is_never_revalidated(self):
         self.roll_the_ci_jobs()
         self.change_evidence('ci', 'go-race-b', lambda payload: payload['runtime']['runner'].update(os_release='d' * 64))

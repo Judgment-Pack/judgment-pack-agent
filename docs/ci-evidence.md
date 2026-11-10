@@ -576,7 +576,10 @@ dispatches or re-runs anything automatically.
    not the route for a tool that is not its pin (a `runtime-identity` refusal whose detail ends
    `pinned '<pin>'`): the job's own setup installed that tool, and a re-run installs it again. Fix
    the pin, or the toolchain the job sets up, on main and release a new version; the release run's
-   refusal help says so. When main still
+   refusal help says so. Nor is it the route for another set of tools than the job's profile names
+   (a detail ending `: tool set`, [#348](https://github.com/Judgment-Pack/judgment-pack-agent/issues/348)):
+   the job's own steps record the set, and a re-run records the same one, so fix the profile or the
+   tools the job records on main; the help says that too. When main still
    names the commit, a dispatch of `ci.yml` or `mutation.yml` on `main` is another. A re-run of a nightly
    run is not: it stays a schedule run. A re-run or a dispatch never reuses a pull request's checks: it
    runs the whole list.
