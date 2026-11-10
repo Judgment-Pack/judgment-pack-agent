@@ -151,11 +151,12 @@ gate keeps the one it holds. Each open's results keep their own marker, apart fr
 
 The run's first request then carries, after the request text, one line (`APPROVAL_CONTINUATION`,
 Go `runcontext.ApprovalContinuation`) and one data block under a marker drawn for it, from the tool
-the model called, whose data is `{callId, name, tool, approved, result, note}`
+the model called, whose data is `{callId, name, tool, approved, result, note, decidedAt}`
 (`checkpoint.json#/$defs/approvalContinuation`), and then a chat's bounded index of earlier results
 where the run has one: the shape ADR-0007 gives a delegation's continuation. The person's note is
-the person's words and reaches the model only inside the block, as data. Once that request is sent
-(the digest of its body recorded), the approval is written `answered`.
+the person's words and reaches the model only inside the block, as data. `decidedAt` is when the
+decision was taken; it makes the block that decision's own whatever the call's id (#309). Once that
+request is sent (the digest of its body recorded), the approval is written `answered`.
 
 A restored checkpoint continues from where it stood:
 
@@ -163,7 +164,18 @@ A restored checkpoint continues from where it stood:
 - `approved`, whose result was never written: the call may have run, so it is not run again; it is
   written `executed` with a result saying its outcome is unknown (`unknown`, outcome `unknown`), and
   the continuation carries that, as a restored operation that was running is read, not repeated.
-- `answered`: nothing more; the result is in the run's history.
+- `answered`: nothing more is written or run. On the durable agent wire (#309) the response's next
+  invocation still carries the block while the decision is the response's newest continuation, which
+  the durable book says by claim order: the decision's, or a delegation handoff's after it, whichever
+  a recovered invocation carried later (one no invocation carried yet is the newer). A recovered
+  invocation whose outcome is unknown is sent again as recorded only where it carries that newest
+  continuation (the block, matched by its text under any marker, or the handoff's answer); one that
+  ended at the pause, or at a handoff the response has gone on from, is not, and the next invocation
+  is a fresh request. A fresh request carries the block again, under a new marker, while the
+  decision is the newest: after a takeover before the continuing invocation was claimed, after it
+  finished with the response unfinished, and after a Plan pause it ended at. Once a handoff is newer,
+  the batch's answer is the continuation, as ADR-0007 has it. Under task steps a recovered invocation
+  that carries the newest continuation is refused `HostOutcomeUnknown`, as any re-send there is.
 
 ```
 model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host policy(call)
