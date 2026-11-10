@@ -3451,8 +3451,8 @@
   {
    "name": "the person's note reaches the model outside the continuation's data block",
    "file": "toolSources.ts",
-   "find": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }) }\n  return `${APPROVAL_CONTINUATION}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
-   "replace": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null }\n  return `${APPROVAL_CONTINUATION}${record.note === undefined ? '' : ` ${record.note}`}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "find": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }), ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }\n  return `${APPROVAL_CONTINUATION}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "replace": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }\n  return `${APPROVAL_CONTINUATION}${record.note === undefined ? '' : ` ${record.note}`}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
    "tests": [
     "certification/scenarios.test.ts",
     "toolSources.test.ts"
@@ -7481,7 +7481,7 @@
 {
   "name": "native Plan pause R4 distinct unknown without task budgets",
   "file": "storage/writer.ts",
-  "find": "  // A Plan decision exempts its exact claim, never another unknown in that scope.\n  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()\n",
+  "find": "  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope))){\n   if(!row.planPause&&this.endedBeforeContinuation(binding,row))return true\n   throw new HostOutcomeUnknown()\n  }\n",
   "replace": "",
   "tests": [
     "storage/nativePlanPause.test.ts"
@@ -16293,8 +16293,8 @@
   {
    "name": "approval A4 a later open withholds any decided approval's decision",
    "file": "execution/state.ts",
-   "find": " return execution.approval.callId===given.callId&&execution.approval.state!=='asked'?undefined:given\n",
-   "replace": " return execution.approval.state!=='asked'?undefined:given\n",
+   "find": " if(execution.approval!==undefined&&execution.approval.callId===given.callId&&execution.approval.state!=='asked')return undefined\n",
+   "replace": " if(execution.approval!==undefined&&execution.approval.state!=='asked')return undefined\n",
    "tests": [
     "approvalContinuation.test.ts"
    ],
@@ -16305,8 +16305,8 @@
   {
    "name": "approval A5 the first open is not given a decision already taken",
    "file": "execution/state.ts",
-   "find": " if(given===undefined||!opened||execution?.approval===undefined)return given\n",
-   "replace": " if(given===undefined||execution?.approval===undefined)return given\n",
+   "find": " if(given===undefined||!opened||execution===undefined)return given\n",
+   "replace": " if(given===undefined||execution===undefined)return given\n",
    "tests": [
     "approvalContinuation.test.ts"
    ],
@@ -16748,6 +16748,133 @@
    "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
   },
   {
+   "name": "continuation C1 a recovered invocation is sent again by the handoff's rule alone",
+   "file": "storage/writer.ts",
+   "find": "  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#309: the paused invocation is sent again in place of the decision's continuation, so the model is not told the result. Go twin (by hand): drop the approval branch of agentReplayLocked; caught at ^TestTheApprovedResultReachesTheModel in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C2 a recovered request carries the decision's block by its call id alone",
+   "file": "toolSources.ts",
+   "find": "  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {\n",
+   "replace": "  if (request.includes(JSON.stringify(`\"callId\":${JSON.stringify(record.callId)}`).slice(1, -1))) return true\n  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's LOW-1: the continuation of an earlier decision on the same call id is taken for this one's. Go twin (by hand): answer true where the request holds the call id; caught at ^TestARepeatedCallIDIsToldApart in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C3 a decided approval outranks a newer handoff",
+   "file": "storage/writer.ts",
+   "find": "  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "replace": "  if(approvalAt!==undefined)return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's HIGH-1: the continuation that delegated is sent again after the batch's answer, and its child runs twice. Go twin (by hand): drop the handoff comparison in agentReplayLocked; caught at ^TestATakeoverAfterTheBatchRunsTheChildOnce in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C4 an answered decision is not told again in a fresh request",
+   "file": "context/managed.ts",
+   "find": "   if(answered?.state==='answered'&&context.execution.state.unit==='provider-managed'&&binding&&binding.writer.approvalContinuationOwed(binding))ready.session.prompt=ready.session.prompt+'\\n\\n'+approvalContinuation(answered)\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's MEDIUM-2: a fresh request after the approval is answered (the Plan continuation after a Plan pause the approval's invocation ended at) carries no block. A takeover once the approval is answered sends the lost invocation again as recorded, which carries the block, so the TypeScript takeover case does not reach this branch. Go twin (by hand): drop the answered branch in ContextualSessionWithEnrollment; caught at ^TestATakeoverAfterTheAnswerStillTellsTheModel in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C5 a fresh request carries the decision past a newer handoff",
+   "file": "storage/writer.ts",
+   "find": "  return approvalAt!==undefined&&(!this.latest.handoff||approvalAt>this.handoffCarrier(binding))\n",
+   "replace": "  return approvalAt!==undefined\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#309: after the batch's answer the parent's next request carries the batch's answer only, as without a takeover. Go twin (by hand): drop the handoff comparison in ApprovalContinuationOwed; caught at ^TestATakeoverAfterTheBatchRunsTheChildOnce in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C6 an invocation that ended at a handoff after a Plan decision refuses the takeover",
+   "file": "storage/writer.ts",
+   "find": "   if(!row.planPause&&this.endedBeforeContinuation(binding,row))return true\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#317 and #312's MEDIUM-B: the native Plan exemption refuses the delegating invocation's, or the approval pause's, unknown row. Go twin (by hand): endedBeforeContinuationLocked answers false; caught at ^TestAPlanContinuationThatDelegatesGoesOn and ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C7 a later parent open is given a Plan decision already taken",
+   "file": "execution/state.ts",
+   "find": " if(plan&&plan.pending?.callId!==given.callId&&(plan.decisions??[]).some(row=>row.callId===given.callId))return undefined\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#317: the next parent open refuses the taken Plan decision as not waited on, and the response stalls. Go twin (by hand): drop the Plan clause of DecisionForParentOpen; caught at ^TestDecisionForParentOpen in ./context (Go's native Plan decision is consumed by PreparePlanDecision, so no Go drive reaches it)."
+  },
+  {
+   "name": "continuation C8 the decision's block does not say when it was taken",
+   "file": "toolSources.ts",
+   "find": ", ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt })",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's LOW-1: two decisions on one call id with one result give the same block. Go twin (by hand): drop decidedAt in ApprovalContinuationText; caught at ^TestARepeatedCallIDIsToldApart in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C9 a Plan decision after an approval refuses the approval pause's own invocation",
+   "file": "storage/writer.ts",
+   "find": "&&!(row.state==='unknown'&&!row.planPause&&this.endedBeforeContinuation(binding,row))",
+   "replace": "",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#312's MEDIUM-B: the Plan decision is refused HostOutcomeUnknown because the approval pause's invocation is still unknown. Go twin (by hand): skip the endedBeforeContinuationLocked clause of nativePlanDecisionLocked; caught at ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C10 a recovered request carries the decision's block only in the very text it was sent with",
+   "file": "toolSources.ts",
+   "find": "      if (canonicalJSON(JSON.parse(JSON.parse(`\"${request.slice(start, end)}\"`))) === want) return true\n",
+   "replace": "      if (JSON.parse(`\"${request.slice(start, end)}\"`) === parts[2]!.slice(1, closing) && want !== '') return true\n",
+   "tests": ["approvalContinuation.test.ts","toolSources.test.ts"],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "The block is built from the record as the run held it, and the restored record holds the result's members in the checkpoint's order: a continuation lost after it was sent is then sent fresh, not again as recorded, and under task steps not refused. Go twin (by hand): compare the data's text in carriesApprovalContinuation; caught at ^TestARecordedContinuationIsFoundByItsValue in ./context."
+  },
+  {
+   "name": "continuation C11 the Plan exemption passes over any unknown invocation once an approval or a handoff is held",
+   "file": "storage/writer.ts",
+   "find": "  return at>=0&&!this.agentReplay(binding,at)\n",
+   "replace": "  return at>=0&&(this.latest?.approval!==undefined||this.latest?.handoff!==undefined||!this.agentReplay(binding,at))\n",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "The safety side of the native Plan exemption: the Plan continuation lost after it was sent, which carries the newest continuation, is passed over and sent fresh, so the continuation runs twice. Go twin (by hand): return w.latest.Approval != nil || w.latest.Handoff != nil || !w.agentReplayLocked(binding, i) in endedBeforeContinuationLocked; caught at ^TestALostPlanContinuationAfter in ./adapter/continuationtests."
+  },
+  {
    "name": "#343 the writer records and answers a host result in the record guard's form",
    "file": "storage/writer.ts",
    "find": "    value=form(value)\n",
@@ -16806,6 +16933,518 @@
    "status": "caught",
    "origin": "agent#343",
    "note": "TypeScript only: Go reads the result's JSON text already."
+  },
+  {
+   "name": "#308 an enum past ENUM_MEMBERS leaves its source offered",
+   "file": "toolSources.ts",
+   "find": "words.members > ENUM_MEMBERS || ",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members, and the vector's 300. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum of exactly ENUM_MEMBERS makes its source a catalogue",
+   "file": "toolSources.ts",
+   "find": "words.members > ENUM_MEMBERS",
+   "replace": "words.members >= ENUM_MEMBERS",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of exactly 64 members is offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an object past NAMES_PER_OBJECT leaves its source offered",
+   "file": "toolSources.ts",
+   "find": " || words.names > NAMES_PER_OBJECT",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 property names, 65 required entries, 65 definitions. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an object of exactly NAMES_PER_OBJECT makes its source a catalogue",
+   "file": "toolSources.ts",
+   "find": "words.names > NAMES_PER_OBJECT",
+   "replace": "words.names >= NAMES_PER_OBJECT",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 64 property names, required entries and definitions are offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a bound one tool passes is forgotten at its source's next tool",
+   "file": "toolSources.ts",
+   "find": "size.over = size.over || ",
+   "replace": "size.over = ",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: one tool past a bound makes every tool of its source a catalogue entry. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words past VERBATIM_BYTES leave their source offered",
+   "file": "toolSources.ts",
+   "find": "if (!size.over && size.verbatim <= VERBATIM_BYTES) continue",
+   "replace": "if (!size.over) continue",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes across a source's two tools. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 exactly VERBATIM_BYTES makes the source a catalogue",
+   "file": "toolSources.ts",
+   "find": "size.verbatim <= VERBATIM_BYTES",
+   "replace": "size.verbatim < VERBATIM_BYTES",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,096 bytes are offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 VERBATIM_BYTES is held per tool, not per source",
+   "file": "toolSources.ts",
+   "find": "size.verbatim += words.bytes",
+   "replace": "size.verbatim = Math.max(size.verbatim, words.bytes)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes split across two tools of one source. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words are measured on the declared schema, not the one offered",
+   "file": "toolSources.ts",
+   "find": "const words = verbatimOf(schema)",
+   "replace": "const words = verbatimOf(tool.inputSchema)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members past depth sixteen is not offered, so not counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source made a catalogue by a bound stays in the budget's count",
+   "file": "toolSources.ts",
+   "find": "  for (const [id, size] of largest) {\n    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n",
+   "replace": "  for (const [id, size] of largest) {\n    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: out of offeredSchemas' count, and the budget holding the other sources. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source made a catalogue by a bound stays in the budget's bytes",
+   "file": "toolSources.ts",
+   "find": "    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n    bytes -= size.bytes\n",
+   "replace": "    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: out of offeredSchemaBytes' bytes. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the budget takes a source a bound made a catalogue off its count again",
+   "file": "toolSources.ts",
+   "find": "    if (catalogued.has(id)) continue\n    if (count <= bounds.offeredSchemas",
+   "replace": "    if (count <= bounds.offeredSchemas",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the schema budget passes over a source a bound made a catalogue and still holds the others to offeredSchemas. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum's members are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        for (const item of member) held.bytes += measure(item)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum member or const that is no string is counted by another text than its JSON",
+   "file": "toolSources.ts",
+   "find": "utf8Bytes(JSON.stringify(value) ?? ''))\n  const walk",
+   "replace": "utf8Bytes(String(value)))\n  const walk",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the 4,096 and 4,097 byte cases hold an enum member that is an object. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a const is not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        held.bytes += measure(member)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a $ref pointer is not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        held.bytes += utf8Bytes(member)\n      } else if (key === 'required'",
+   "replace": "      } else if (key === 'required'",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the required entries are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        for (const name of member) held.bytes += utf8Bytes(String(name))\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a required list is not held to NAMES_PER_OBJECT",
+   "file": "toolSources.ts",
+   "find": "        held.names = Math.max(held.names, member.length)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 required entries. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 property and definition names are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "          held.bytes += utf8Bytes(name)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a property map is not held to NAMES_PER_OBJECT",
+   "file": "toolSources.ts",
+   "find": "        held.names = Math.max(held.names, names.length)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 property names and 65 definitions. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below a property are not read",
+   "file": "toolSources.ts",
+   "find": "          walk(member[name])\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members under properties, items, anyOf and additionalProperties. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below items are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'items' || key === 'additionalProperties'",
+   "replace": "key === 'additionalProperties'",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below additionalProperties are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'items' || key === 'additionalProperties' || SCHEMA_LISTS.has(key)",
+   "replace": "key === 'items' || SCHEMA_LISTS.has(key)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below anyOf, oneOf and allOf are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'additionalProperties' || SCHEMA_LISTS.has(key)) {",
+   "replace": "key === 'additionalProperties') {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source a bound made a catalogue is not held to cataloguedTools and catalogueBytes",
+   "file": "toolSources.ts",
+   "find": "if (kept + 1 > bounds.cataloguedTools || keptBytes + size > bounds.catalogueBytes) {",
+   "replace": "if (!(sizes.get(entry.record.id)!.over || sizes.get(entry.record.id)!.verbatim > VERBATIM_BYTES) && (kept + 1 > bounds.cataloguedTools || keptBytes + size > bounds.catalogueBytes)) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the source an enum of 65 members made a catalogue, its tool coming when the catalogue is full, is withheld with the guardrail. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a tool withheld from the catalogue stays in the gate",
+   "file": "toolSources.ts",
+   "find": "entries.delete(tool.name)",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "the four hundred declared tools past the catalogue's bounds, and schema-bounds.json: what is offered is what the gate holds, the withheld tool out of it. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a missing required entry is named by the source's text",
+   "file": "sourceArguments.ts",
+   "find": "`a member the schema requires is missing from ${where(path)}: entry ${index} of its required list, counting from 0`",
+   "replace": "`${at(path, name)} is required and missing`",
+   "tests": [
+    "sourceArguments.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "the required entries whose text is an instruction, and the vector's refusal. Go twin (by hand, the same break in go/context/arguments.go): caught at go/context/arguments_test.go and go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a missing required entry is named one place off",
+   "file": "sourceArguments.ts",
+   "find": "entry ${index} of its required list",
+   "replace": "entry ${index + 1} of its required list",
+   "tests": [
+    "sourceArguments.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "entry 0 and entry 1, counting from 0, and the vector's refusal. Go twin (by hand, the same break in go/context/arguments.go): caught at go/context/arguments_test.go and go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words in a list of items are not read",
+   "file": "toolSources.ts",
+   "find": "if (Array.isArray(member)) member.forEach(walk)",
+   "replace": "if (Array.isArray(member)) { if (key !== 'items') member.forEach(walk) }",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members in a list of items. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a lone surrogate in an enum or const is offered",
+   "file": "toolSources.ts",
+   "find": "if (!scalarValue(value)) return false",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: a lone surrogate in an enum member and inside a const object, each dropped with its guardrail, and a well-formed U+FFFD kept. Go twin (by hand, the same break in go/context/sources.go; and, apart, the marking left out of go/context/json.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#315 L-3 the goal table decides a fenced command without checking its fence",
+   "file": "storage/goal.ts",
+   "find": "   this.checkFence(held.fence)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: drop the checkFence call): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 the goal table takes a current fence of another run",
+   "file": "storage/goal.ts",
+   "find": "   if(held.fence.resource!==c.resource)throw new LeaseRefused('resource-mismatch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: drop the resource compare): caught at TestGoalAFenceOfAnotherRunIsRefusedResourceMismatch and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 a goal table with no lease authority decides a fenced command unchecked",
+   "file": "storage/goal.ts",
+   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   this.checkFence(held.fence)\n",
+   "replace": "   this.checkFence?.(held.fence)\n",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: call checkFence only when set): caught at TestGoalTheTableReadsAndChecksATransitionsFence."
+  },
+  {
+   "name": "#315 L-3 the memory kind's goal table has no lease authority",
+   "file": "storage/run.ts",
+   "find": "this.goals=new GoalTable(()=>this.options.now?.()??new Date(),fence=>{this.leases.check(fence)})}",
+   "replace": "this.goals=new GoalTable(()=>this.options.now?.()??new Date())}",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_store.go NewMemoryRunStore: NewGoalTable(options.Now)): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 the transition reader drops a fence",
+   "file": "storage/goal.ts",
+   "find": " if(held.fence!==undefined){try{transition.fence=readLeaseFence(held.fence)}catch{return invalid()}}\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go ReadGoalTransition: skip the fence): caught at TestGoalCommandVectors and TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 the transition reader takes a malformed fence",
+   "file": "storage/goal.ts",
+   "find": "try{transition.fence=readLeaseFence(held.fence)}catch{return invalid()}",
+   "replace": "try{transition.fence=readLeaseFence(held.fence)}catch{transition.fence=held.fence as LeaseFence}",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go ReadGoalTransition: ignore ReadLeaseFence's error and keep the zero fence): caught at TestGoalCommandVectors and TestGoalTheTableReadsAndChecksATransitionsFence."
+  },
+  {
+   "name": "#315 L-3 goalCommand sends a worker's command without its view's fence",
+   "file": "storage/goalCommands.ts",
+   "find": "port.commandGoal({version:1,command,...found,...fenceOfView(input.store)},input.signal)",
+   "replace": "port.commandGoal({version:1,command,...found},input.signal)",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_commands.go RunGoalCommand: no Fence): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 abandonGoal sends a worker's abandon without its view's fence",
+   "file": "storage/goalCommands.ts",
+   "find": "port.commandGoal({version:1,command,...fenceOfView(input.store)},input.signal)",
+   "replace": "port.commandGoal({version:1,command},input.signal)",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_commands.go AbandonGoal: no Fence): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 the kit takes a displaced worker's command",
+   "file": "storage/goalConformance.ts",
+   "find": " await untouched('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')\n await untouched('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')\n check('goal.fence.stale',same(await store.readLease('run-f'),fLease))\n",
+   "replace": " void fLease\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_conformance.go: drop the two stale sends and the lease compare): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "#315 L-3 the kit takes a fence of another run",
+   "file": "storage/goalConformance.ts",
+   "find": " await untouched('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')\n",
+   "replace": " void g\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_conformance.go: drop the other run's send): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "#315 L-2 an abandon retried from a new process cancels under a new identity",
+   "file": "storage/job.ts",
+   "find": "   const operation=jobCancelOperation(input.command,job.job)\n",
+   "replace": "   const operation=jobCancelOperation(`${input.command}.${fence?.epoch}`,job.job)\n",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_job.go AbandonJobs: the operation of the command and the fence's epoch): caught at TestGoalAnAbandonRetriedFromANewProcessAfterACrashCancelsUnderTheSameOperation."
+  },
+  {
+   "name": "#315 (#321 L-3) a create goes over an unfinished abandon on an earlier abandon's delivery",
+   "file": "storage/goal.ts",
+   "find": "!row!.journal.some(entry=>entry.command===current.abandoned!.command&&entry.outcome==='delivered')",
+   "replace": "!row!.journal.some(entry=>entry.outcome==='delivered')",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go the create's abandon-unfinished gate: any delivered entry): caught at TestGoalTheFirstAbandonsDeliveryDoesNotLetACreateOverTheSecondThrough."
   },
   {
    "name": "#340 a successor is made once: making it again meets the one already made",

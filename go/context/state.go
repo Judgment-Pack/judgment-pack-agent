@@ -8,6 +8,7 @@ package runcontext
 import (
 	"encoding/json"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -856,13 +857,18 @@ func failedResult(err *failure.Error, outcome string) ToolResult {
 
 // DecisionForParentOpen is the decision a coordinator's parent open is given (#305). The response's first open takes the
 // host's decision and refuses it where it is stale, as any open does. A later open of the same response is given it only
-// where it is not the act call's decision that the checkpoint shows taken: a Plan decision, or one for another call, is
-// still given, and refused there if it is stale.
+// where the checkpoint does not show it taken: not the act call's decision past asked, and not a Plan decision that
+// planState.decisions holds while no Plan pause of that call id waits (#317). A decision for another call is still
+// given, and refused there as stale.
 func DecisionForParentOpen(given *contract.CheckpointApprovalDecision, execution *contract.Checkpoint, opened bool) *contract.CheckpointApprovalDecision {
-	if given == nil || !opened || execution == nil || execution.Approval == nil {
+	if given == nil || !opened || execution == nil {
 		return given
 	}
-	if execution.Approval.CallID == given.CallID && execution.Approval.State != "asked" {
+	if execution.Approval != nil && execution.Approval.CallID == given.CallID && execution.Approval.State != "asked" {
+		return nil
+	}
+	if plan := execution.PlanState; plan != nil && (plan.Pending == nil || plan.Pending.CallID != given.CallID) &&
+		slices.ContainsFunc(plan.Decisions, func(row contract.CheckpointPlanDecision) bool { return row.CallID == given.CallID }) {
 		return nil
 	}
 	return given

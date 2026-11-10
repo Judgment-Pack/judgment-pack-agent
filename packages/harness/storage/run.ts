@@ -80,7 +80,7 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
  private readonly journal:MemoryHistoryJournal
  private runs=new Map<string,HeldRun>()
  private tail:Promise<unknown>=Promise.resolve()
- constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date());this.jobs=new JobTable(()=>this.options.now?.()??new Date());this.goals=new GoalTable(()=>this.options.now?.()??new Date())}
+ constructor(private options:MemoryRunStoreOptions={},private acknowledge?:(checkpoint:Uint8Array,signal?:AbortSignal)=>Promise<void>){this.journal=new MemoryHistoryJournal(options.now);this.leases=new LeaseTable(()=>this.options.now?.()??new Date());this.waits=new WaitTable(()=>this.options.now?.()??new Date());this.jobs=new JobTable(()=>this.options.now?.()??new Date());this.goals=new GoalTable(()=>this.options.now?.()??new Date(),fence=>{this.leases.check(fence)})}
  private serial<T>(signal:AbortSignal|undefined,run:()=>T):Promise<T>{
   try{signal?.throwIfAborted()}catch(error){return Promise.reject(error)}
   const result=this.tail.then(()=>{signal?.throwIfAborted();return run()})
@@ -130,7 +130,8 @@ export class MemoryRunStore implements RunStore,LeaseRunStore,WaitRunStore,JobSt
   for(const job of this.jobs.started(input.resource))this.jobs.requestCancel({version:1,resource:input.resource,job:job.job,generation:1,by:'command',operation:jobCancelOperation(input.command,job.job),command:input.command},fence)
   return {...(lease?{lease}:{}),jobs:this.jobs.export(input.resource).jobs}
  })}
- // #230: a goal command reads the run's head, waits, jobs and lease in its own transaction.
+ // #230: a goal command reads the run's head, waits, jobs and lease in its own transaction; a fenced one (#315) has its fence
+ // checked by this store's leases in that transaction.
  commandGoal(input:GoalTransition,signal?:AbortSignal){return this.serial(signal,()=>this.goals.command(input,resource=>({...(this.runs.has(resource)?{head:this.runs.get(resource)!.head}:{}),waits:this.waits.export(resource).waits,jobs:this.jobs.export(resource).jobs,...(this.leases.read(resource)?{lease:this.leases.read(resource)!}:{})})))}
  inspectGoal(input:GoalInspect,signal?:AbortSignal){return this.serial(signal,()=>this.goals.inspect(input))}
  recordGoalDeliveries(input:GoalDeliveries,signal?:AbortSignal){return this.serial(signal,()=>this.goals.deliver(input))}

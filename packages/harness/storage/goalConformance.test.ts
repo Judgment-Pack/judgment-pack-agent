@@ -5,7 +5,7 @@ import {GoalRefused,type GoalLifetime} from './goal'
 import {checkpointBytesDigest} from './wait'
 import {runStoreGoalConformance,type GoalRunStore,type GoalStoreFactory} from './goalConformance'
 import type {JobLifetime} from './job'
-import type {LeaseLifetime} from './lease'
+import {LeaseRefused,type LeaseLifetime} from './lease'
 import {MemoryRunStore} from './run'
 import type {WaitLifetime} from './wait'
 
@@ -104,6 +104,10 @@ const FAULTS:[string,Fault][]=[
  ['goal.inspect.count',(store,{goals})=>wrap(store,'inspectGoal',original=>async(input,signal)=>{const row=rowOf(goals,input.resource);if(row)row.revision++;return original(input,signal)})],
  ['goal.journal.bound',(store,{goals})=>wrap(store,'commandGoal',original=>(input,signal)=>{const row=rowOf(goals,input.command.resource);if(row&&row.journal.length>=64){row.journal.shift();row.discarded=(row.discarded??0)+1}return original(input,signal)})],
  ['goal.exhausted',ahead(['create'],(input,goals)=>{const row=rowOf(goals,input.command.resource);if(row&&row.objectives.length>=8)row.objectives.shift()})],
+ // #315 L-3: a store that decides a fenced command whatever its fence, without the resource compare, and that refuses every fence.
+ ['goal.fence.stale',store=>wrap(store,'commandGoal',original=>(input,signal)=>{const {fence:_,...rest}=input;return original(rest,signal)})],
+ ['goal.fence.resource',(store,{leases})=>wrap(store,'commandGoal',original=>(input,signal)=>{if(!input.fence)return original(input,signal);leases.check(input.fence);const {fence:_,...rest}=input;return original(rest,signal)})],
+ ['goal.fence.current',store=>wrap(store,'commandGoal',original=>(input,signal)=>{if(input.fence)throw new LeaseRefused('stale-epoch');return original(input,signal)})],
  ['goal.owner',(store,{goals})=>wrap(store,'readGoal',original=>async(resource,signal)=>(await original(resource,signal))??(resource==='run-other'?structuredClone([...goals.rows.values()].at(-1)):undefined))],
 ]
 /** What a restart loses, each naming the property the kit must fail it on. */

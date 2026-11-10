@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto'
+import {readFileSync} from 'node:fs'
 import {canonicalJSON} from './context/chat'
 import {sha256} from './records'
 /**
@@ -19,6 +20,7 @@ import listDigests from '../../contract/vectors/tool-offer/tool-list-digest.json
 import declarations from '../../contract/vectors/tool-offer/source-declarations.json'
 import sourceOffer from '../../contract/vectors/tool-offer/source-offer.json'
 import sourceSchema from '../../contract/vectors/tool-offer/source-schema.json'
+import sourceSchemaBounds from '../../contract/vectors/tool-offer/source-schema-bounds.json'
 import catalogueVector from '../../contract/vectors/tool-offer/catalogue.json'
 import loadToolVector from '../../contract/vectors/tool-offer/load-tool.json'
 import loadedSchema from '../../contract/vectors/tool-result/loaded-schema-current.json'
@@ -53,8 +55,14 @@ import {approvalShownArguments,
   APPROVAL_DEFAULT,
   ApprovalHeld,
   approvalContinuation,
+  carriesApprovalContinuation,
   CATALOGUE_SCHEMA,
   describedSchema,
+  ENUM_MEMBER_BYTES,
+  ENUM_MEMBERS,
+  NAME_BYTES,
+  NAMES_PER_OBJECT,
+  VERBATIM_BYTES,
   type SchemaNote,
   HELD_NAMES,
   LOAD_TOOL,
@@ -318,6 +326,58 @@ describe('the declaration (ADR-0006)', () => {
     expect(guardrails[0]).toMatchObject({ tool: 'wide', action: 'refused', detail: expect.stringContaining('cataloguedTools') })
     expect(ready.values.hostTools.filter((tool) => tool.name.startsWith('wide__'))).toHaveLength(both.offer.hostTools.length)
     context.close()
+  })
+})
+
+// #308: the words an offered schema keeps as written cannot be framed where they stand, so they are
+// bounded, and a source past a bound is a catalogue whose schemas the model reads only in load_tool's data block.
+// go/context/schema_bounds_test.go holds the Go to the same files.
+describe('the words a source’s schemas keep as written (#308)', () => {
+  // Read with JSON.parse, which keeps a lone surrogate escape; the bundler's JSON reader refuses one.
+  const schemaBounds = JSON.parse(readFileSync('../../contract/testdata/tool-offer/schema-bounds.json', 'utf8')) as { marker: string; limits: Record<string, number>; cases: unknown[] }
+  /** What the model reads of each offered tool, byte for byte, and the taxonomy beside it. */
+  const shownOf = (tools: readonly HostTool[]) => tools.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: JSON.stringify(tool.inputSchema), taxonomy: tool.taxonomy }))
+  const wantOf = (items: readonly { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]) => items.map((item) => ({ name: item.name, description: item.description, inputSchema: JSON.stringify(item.inputSchema), taxonomy: item.taxonomy }))
+
+  it('holds the testdata to the package’s bounds', () => {
+    expect(schemaBounds.limits).toEqual({ enumMembers: ENUM_MEMBERS, namesPerObject: NAMES_PER_OBJECT, verbatimBytes: VERBATIM_BYTES, enumMemberBytes: ENUM_MEMBER_BYTES, nameBytes: NAME_BYTES })
+    expect(schemaBounds.cases.length).toBeGreaterThan(0)
+  })
+
+  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]; withheld: { tool: string; detail: string }[] }[]) {
+    it(`bounds them at the limit and one past: ${item.what}`, async () => {
+      const out = await declareSources(declared(pinnedLocal(item.declared)), [])
+      expect(out.withheld ?? []).toEqual([])
+      const offer = offerSources(out.hostTools, out.entries, { ...CONTEXT_DEFAULTS, ...(item.policy ?? {}) }, schemaBounds.marker)
+      expect(offer.catalogue).toBe(item.catalogue)
+      expect(shownOf(offer.hostTools)).toEqual(wantOf(item.offered))
+      expect(offer.withheld).toEqual(item.withheld)
+      // What is offered is what the gate holds: a tool withheld cannot be loaded or called.
+      expect([...out.entries.keys()].sort()).toEqual(offer.hostTools.map((tool) => tool.name).sort())
+    })
+  }
+
+  it('offers an adversarial schema past the bounds only as a catalogue entry, and the model reads it only in load_tool’s data block: the contract’s vector', async () => {
+    const out = await declareSources(declared(sourceSchemaBounds.declared), [])
+    const offer = offerSources(out.hostTools, out.entries, CONTEXT_DEFAULTS, sourceSchemaBounds.marker)
+    expect(offer.catalogue).toBe(true)
+    expect(shownOf(offer.hostTools)).toEqual(wantOf(sourceSchemaBounds.items))
+    expect(offer.withheld).toEqual(sourceSchemaBounds.withheld)
+    // None of the source's words outside its description's first line reaches the offer.
+    const offered = offer.hostTools[0]!.description + JSON.stringify(offer.hostTools[0]!.inputSchema)
+    for (const word of ['IGNORE_', 'write_file', 'SYSTEM:', 'END_RETRIEVED_DATA_', 'deepest']) expect(offered).not.toContain(word)
+    const rows: SourceFigures[] = []
+    const gate = new SourceGate(out.entries, out.sources, CONTEXT_DEFAULTS, sourceSchemaBounds.marker, (tool, detail) => new GateViolation(tool, detail), () => rows)
+    const answer = await gate.loadTool().execute({ name: 'shop__lookup' }, signal())
+    expect(gate.loadedSection()).toBe(sourceSchemaBounds.loadedSection)
+    // The answer holds the schema the gate checks arguments against, the marker kept.
+    expect(JSON.stringify((answer.structuredContent as { inputSchema: unknown }).inputSchema)).toContain(`END_RETRIEVED_DATA_${sourceSchemaBounds.marker}`)
+    // A call that lacks a required entry whose text is an instruction is refused naming the entry's
+    // place, never its text: this answer reaches the model outside load_tool's data block.
+    const tool = offer.hostTools[0]!
+    const refused = gate.call(tool, sourceSchemaBounds.refusal.arguments, signal(), (given, bounded) => tool.execute(given, bounded))
+    await expect(refused).rejects.toMatchObject({ failure: { code: 'invalid-tool-input', detail: sourceSchemaBounds.refusal.detail } })
+    await expect(refused).rejects.not.toMatchObject({ failure: { detail: expect.stringContaining('IGNORE_THE_DATA_RULE') } })
   })
 })
 
@@ -1242,6 +1302,17 @@ describe('the approval pause’s words, the contract’s vectors (ADR-0008)', ()
     const { gate } = await gateFor(tools, { offeredSchemas: 100, offeredSchemaBytes: 1_000_000 }, false, { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' })
     expect((await gate.decide('tracker__create_issue', {}, 'a')).answer).toBe('ask')
     expect((await gate.decide('tracker__create_issue', {}, 'b')).detail).toBe(pendingVector.detail)
+  })
+  it('finds the continuation a request carries from the record as the checkpoint restores it (#309)', () => {
+    const executed = continueApproved.items[1]!.checkpoint!.approval! as unknown as ApprovalRecord
+    const request = JSON.stringify({ prompt: `Write the note.\n\n${continueApproved.continuation}` })
+    // The checkpoint stores the record as canonical text: the result's members come back in another order than the block's.
+    const restored = { ...(JSON.parse(canonicalJSON(executed)) as ApprovalRecord), state: 'answered' as const }
+    expect(JSON.stringify(restored.result)).not.toBe(JSON.stringify(executed.result))
+    expect([carriesApprovalContinuation(request, executed), carriesApprovalContinuation(request, restored)]).toEqual([true, true])
+    // Another result, another decision time or another call id is another decision's block.
+    const other = [{ ...restored, result: { content: [{ type: 'text', text: 'Another issue.' }] } }, { ...restored, decidedAt: '2026-10-20T10:05:00.001Z' }, { ...restored, callId: 'call_2_2' }]
+    expect(other.map((record) => carriesApprovalContinuation(request, record as ApprovalRecord))).toEqual([false, false, false])
   })
 })
 

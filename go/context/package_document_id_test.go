@@ -43,13 +43,17 @@ func TestEveryHostDocumentIsHeldToTheRefusal(t *testing.T) {
 	}
 }
 
-// #305, narrowed after #312's review (MEDIUM-1): only the act call's decision that the checkpoint shows taken is withheld,
-// and only from a later open of the response; a Plan decision, a decision for another call and the first open's are given.
+// #305, narrowed after #312's review (MEDIUM-1): only a decision that the checkpoint shows taken is withheld (the act
+// call's, past asked; a Plan decision planState.decisions holds while no Plan pause of that call id waits, #317), and
+// only from a later open of the response; a decision for another call and the first open's are given.
 func TestDecisionForParentOpen(t *testing.T) {
 	act := &contract.CheckpointApprovalDecision{CallID: "act", Approved: true}
 	plan := &contract.CheckpointApprovalDecision{CallID: "plan", Approved: true}
 	taken := &contract.Checkpoint{Approval: &contract.CheckpointApproval{CallID: "act", State: "answered"}}
 	asked := &contract.Checkpoint{Approval: &contract.CheckpointApproval{CallID: "act", State: "asked"}}
+	// #317: the Plan decision taken (planState.decisions holds its call id), and a later Plan pause of that call id.
+	planTaken := &contract.Checkpoint{PlanState: &contract.CheckpointPlanState{Decisions: []contract.CheckpointPlanDecision{{CallID: "plan", Approved: true}}}}
+	planAgain := &contract.Checkpoint{PlanState: &contract.CheckpointPlanState{Decisions: []contract.CheckpointPlanDecision{{CallID: "plan", Approved: true}}, Pending: &contract.CheckpointPendingDeparture{CallID: "plan"}}}
 	for _, row := range []struct {
 		name      string
 		given     *contract.CheckpointApprovalDecision
@@ -64,6 +68,10 @@ func TestDecisionForParentOpen(t *testing.T) {
 		{"a later open, no approval record", act, &contract.Checkpoint{}, true, act},
 		{"a later open, no checkpoint", act, nil, true, act},
 		{"no decision", nil, taken, true, nil},
+		{"a later open, the Plan decision taken", plan, planTaken, true, nil},
+		{"the first open, the Plan decision taken: refused there if stale", plan, planTaken, false, plan},
+		{"a later open, another call's Plan decision taken", act, planTaken, true, act},
+		{"a later open, a Plan pause of that call id waits", plan, planAgain, true, plan},
 	} {
 		if got := DecisionForParentOpen(row.given, row.execution, row.opened); got != row.want {
 			t.Errorf("%s: %v, want %v", row.name, got, row.want)

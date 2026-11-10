@@ -54,6 +54,10 @@ type Value struct {
 	s    string
 	a    []*Value
 	o    []member
+	// unscalar is set only by parseMarkedJSON: the value's text, a member name inside it included,
+	// held a lone UTF-16 surrogate escape or bytes that are not UTF-8, which this reading holds as
+	// U+FFFD where JSON.parse would hold a string that is not well-formed (#308).
+	unscalar bool
 }
 
 type member struct {
@@ -91,10 +95,21 @@ func ObjectOf(pairs ...any) *Value {
 var errTrailing = errors.New("data after the JSON value")
 
 // ParseJSON reads one JSON text as JSON.parse does.
-func ParseJSON(data []byte) (*Value, error) {
+func ParseJSON(data []byte) (*Value, error) { return parseJSON(data, false) }
+
+// parseMarkedJSON is ParseJSON that also marks each value whose text holds a lone UTF-16 surrogate
+// escape or bytes that are not UTF-8 (unscalar; scalarValue in context/chat.ts): a source's declared
+// input schema is read so, and DescribedSchema keeps no such value in an enum or const (#308).
+func parseMarkedJSON(data []byte) (*Value, error) { return parseJSON(data, true) }
+
+func parseJSON(data []byte, mark bool) (*Value, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	value, err := readValue(decoder)
+	var raw []byte
+	if mark {
+		raw = data
+	}
+	value, err := readValue(decoder, raw)
 	if err != nil {
 		return nil, err
 	}
@@ -113,11 +128,16 @@ func MustParseJSON(text string) *Value {
 	return value
 }
 
-func readValue(decoder *json.Decoder) (*Value, error) {
+// readValue reads one value. Where raw is the text being read, a string whose text holds a lone
+// surrogate escape or bytes that are not UTF-8 is marked unscalar, and so is every array or object
+// holding one, or a member name that does.
+func readValue(decoder *json.Decoder, raw []byte) (*Value, error) {
+	start := decoder.InputOffset()
 	token, err := decoder.Token()
 	if err != nil {
 		return nil, err
 	}
+	unscalar := func() bool { return raw != nil && !validReportUnicode(raw[start:decoder.InputOffset()]) }
 	switch t := token.(type) {
 	case nil:
 		return Null(), nil
@@ -130,33 +150,43 @@ func readValue(decoder *json.Decoder) (*Value, error) {
 		}
 		return Number(f), nil
 	case string:
-		return String(t), nil
+		out := String(t)
+		out.unscalar = unscalar()
+		return out, nil
 	case json.Delim:
 		switch t {
 		case '[':
 			out := Array()
 			for decoder.More() {
-				item, err := readValue(decoder)
+				item, err := readValue(decoder, raw)
 				if err != nil {
 					return nil, err
 				}
 				out.a = append(out.a, item)
+				out.unscalar = out.unscalar || item.unscalar
 			}
 			_, err := decoder.Token()
 			return out, err
 		case '{':
 			out := Object()
 			for decoder.More() {
+				start = decoder.InputOffset()
 				keyToken, err := decoder.Token()
 				if err != nil {
 					return nil, err
 				}
+				out.unscalar = out.unscalar || unscalar()
 				key, _ := keyToken.(string)
-				item, err := readValue(decoder)
+				item, err := readValue(decoder, raw)
 				if err != nil {
 					return nil, err
 				}
 				out.Set(key, item)
+			}
+			// A repeated name keeps its last value, as JSON.parse keeps it: only the values kept count,
+			// and every name read does, for each stays a name in the object JSON.parse makes.
+			for _, kept := range out.o {
+				out.unscalar = out.unscalar || kept.val.unscalar
 			}
 			_, err := decoder.Token()
 			return out, err

@@ -18,9 +18,10 @@ import (
 // commands: no model call and no run commit. Each command carries its id, its actor and the record's expected
 // revision, and the store decides it in one transaction and journals it, accepted or refused. Paused is a
 // disposition, never a state. The package checks what only it can read (the head's accepted Plan and its
-// evidence) and the store checks that the head it read is still the head. The host owns scheduling, clocks,
-// notifications and who may issue a command. The TypeScript twin is packages/harness/storage/goal.ts with
-// goalCommands.ts.
+// evidence) and the store checks that the head it read is still the head. A command sent through a worker's
+// fenced view carries that view's fence, and the store decides it only while the fence is current (#315); the
+// command's actor is a label the host attests, never checked. The host owns scheduling, clocks, notifications and
+// who may issue a command. The TypeScript twin is packages/harness/storage/goal.ts with goalCommands.ts.
 
 const (
 	GoalRecordVersion = 1
@@ -770,9 +771,10 @@ func ReadGoalCommand(raw []byte) (GoalCommand, error) {
 
 // ReadGoalTransition reads what the store is handed. A bind carries its steps or what refused them, never both;
 // an achievement carries the revision its finding was read from (#313 H-1) and may carry a finding; nothing else
-// carries any of them.
+// carries any of them. Any command may carry the fence of the worker's view it came through (#315), read as the
+// lease reads a fence: a malformed one is an invalid transition, as any malformed member is.
 func ReadGoalTransition(raw []byte) (GoalTransition, error) {
-	g, err := goalShape(raw, []string{"version", "command"}, []string{"plan", "refused", "read"})
+	g, err := goalShape(raw, []string{"version", "command"}, []string{"plan", "refused", "read", "fence"})
 	if err != nil {
 		return GoalTransition{}, err
 	}
@@ -784,6 +786,13 @@ func ReadGoalTransition(raw []byte) (GoalTransition, error) {
 		return GoalTransition{}, err
 	}
 	t := GoalTransition{Version: GoalRecordVersion, Command: command}
+	if g.has("fence") {
+		fence, err := ReadLeaseFence(g.m["fence"])
+		if err != nil {
+			return GoalTransition{}, goalInvalid()
+		}
+		t.Fence = &fence
+	}
 	if g.has("read") != (command.Kind == "achieve") {
 		return GoalTransition{}, goalInvalid()
 	}
@@ -995,16 +1004,22 @@ func deepCloneGoal(goal RunGoal) RunGoal {
 // transactions, with the run's head, waits, jobs and lease as they are in that transaction; a host store kind
 // implements the same transitions.
 type GoalTable struct {
-	now  func() time.Time
-	rows map[string]*RunGoal
+	now        func() time.Time
+	checkFence func(LeaseFence) error
+	rows       map[string]*RunGoal
 }
 
-// NewGoalTable is a table over a store clock.
-func NewGoalTable(now func() time.Time) *GoalTable {
+// NewGoalTable is a table over a store clock. It has no lease authority, so it refuses every fenced transition
+// store-unsupported (#315), never decides one unchecked.
+func NewGoalTable(now func() time.Time) *GoalTable { return NewFencedGoalTable(now, nil) }
+
+// NewFencedGoalTable is a table over a store clock and the store's own lease authority (#315): check is called
+// inside the command's transaction and refuses (a *LeaseRefused) unless the fence is current.
+func NewFencedGoalTable(now func() time.Time, check func(LeaseFence) error) *GoalTable {
 	if now == nil {
 		now = time.Now
 	}
-	return &GoalTable{now: now, rows: map[string]*RunGoal{}}
+	return &GoalTable{now: now, checkFence: check, rows: map[string]*RunGoal{}}
 }
 func (t *GoalTable) stamp() string { return t.now().UTC().Format("2006-01-02T15:04:05.000Z") }
 
@@ -1053,6 +1068,20 @@ func (t *GoalTable) Command(input GoalTransition, context func(resource string) 
 		return GoalAnswer{}, err
 	}
 	c := held.Command
+	// #315 L-3: a command a worker's view sent is decided only while that worker's fence is current for this run,
+	// before anything is read or written: a stale holder is refused by the lease's own reason, and nothing is
+	// journaled, not even a repeat's answer.
+	if held.Fence != nil {
+		if held.Fence.Resource != c.Resource {
+			return GoalAnswer{}, &LeaseRefused{Reason: "resource-mismatch"}
+		}
+		if t.checkFence == nil {
+			return GoalAnswer{}, &GoalCapabilityRefused{Reason: "store-unsupported"}
+		}
+		if err := t.checkFence(*held.Fence); err != nil {
+			return GoalAnswer{}, err
+		}
+	}
 	row := t.rows[c.Resource]
 	digest, err := GoalCommandDigest(c)
 	if err != nil {
@@ -1328,7 +1357,12 @@ func (t *GoalTable) Deliver(input GoalDeliveries) (RunGoal, error) {
 // as the first did, with the record as it is now, while its entry is in the journal, and another command under it
 // is conflict. An achievement's finding is taken only from the record at the command's revision (Read). The store
 // trusts the transition it is handed: a direct caller of CommandGoal can claim any Read and any finding, so only the
-// package's RunGoalCommand composes them from what it read (#318 L-11). While the current objective is paused,
+// package's RunGoalCommand composes them from what it read (#318 L-11). A transition that carries a fence (#315) is
+// decided only while that fence is current for the command's run, checked against the store's leases in the same
+// transaction and before anything else: one of another run refuses *LeaseRefused resource-mismatch, and one that is
+// not current the lease's own reason (no-lease, stale-epoch, other-owner, principal-changed, released, expired),
+// with nothing journaled and nothing changed. A transition with no fence is the host's, decided as before. While
+// the current objective is paused,
 // AcquireLease and ResumeWait refuse objective-paused; once the run has a goal record an unfenced commit refuses
 // lease-required. The package checks none of this in a host store; CheckRunStoreGoalConformance
 // (run_goal_conformance.go) does.
@@ -1337,7 +1371,8 @@ type GoalStore interface {
 	// GoalLifetime is durable when the record survives the store's process, process when it ends with it.
 	GoalLifetime() string
 	// CommandGoal answers an accepted command with the record and its entry. Refused: GoalRefused, journaled where
-	// the run has a goal record.
+	// the run has a goal record; *LeaseRefused where the transition's fence is not current for its run, journaled
+	// nowhere (#315).
 	CommandGoal(ctx context.Context, input GoalTransition) (GoalAnswer, error)
 	// InspectGoal is the record, counting the inspection; nil, and nothing written, where the run has none.
 	InspectGoal(ctx context.Context, input GoalInspect) (*RunGoal, error)

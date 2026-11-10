@@ -691,6 +691,16 @@ with `run_goal_commands.go`. The host-facing contract is in `docs/design/storage
 - `inspect` is a counted read: a count and a last row, no revision moved. The journal holds at most 64 entries; past it the oldest
   refused entry goes first, then the oldest entry, and `discarded` counts them, so no command is ever refused for size (M12). A
   refusal on a run with no record is not written.
+- A command sent through a worker's fenced view presents that view's fence, and the store checks it against its leases in the
+  command's transaction before anything else (#315): a stale one is refused `LeaseRefused` by the lease's reason, a fence of another
+  run `resource-mismatch`, and nothing is journaled, seized, sent or changed. A command sent through the store itself presents none and
+  is the host's, as before. The fence is the one the worker's commits and dispatches already present, and no credential is added: what
+  it shuts out is a displaced holder, and who may command stays the host's. `actor` is a label the host attests; nothing checks it.
+  This changes the store's goal port: a host store kind checks `fence`, and the kit's `goal.fence.*` properties hold it to that.
+- An abandon retried from a new process after a crash between its sends and their journal hands `cancel` the operation the crashed
+  attempt did (#310 F-3), so an effect host whose admissions outlive its process admits it once; with the reference host, which forgets
+  on restart, a host's `cancel` idempotent by `operation` delivers it once (#315 L-2). A terminal objective's jobs are stopped with
+  `abandonJobs` under the host's own command: `abandonGoal` refuses `objective-terminal` (#315 L-6).
 
 **A held start and #277.** `shownDigest` on the decision is carried through a parked approval (`decisionFor`, and
 `resumeParked`'s answer; Go passes the decision whole), and a start's decision must carry it, text kept or not, at the

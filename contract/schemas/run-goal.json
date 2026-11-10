@@ -640,7 +640,7 @@
       "additionalProperties": false
     },
     "transition": {
-      "description": "What the store is handed: a bind carries its steps or what refused them, an achievement carries the revision it read and may carry a finding, and nothing else carries any of them.",
+      "description": "What the store is handed: a bind carries its steps or what refused them, an achievement carries the revision it read and may carry a finding, and nothing else carries any of them. A command through a worker's fenced view carries that view's fence (#315).",
       "type": "object",
       "required": [
         "version",
@@ -663,6 +663,10 @@
           "description": "An achievement's: the goal record's revision its finding was computed from. The store refuses revision-changed unless it is the command's expected revision, so a finding read before another command landed is never taken for the record that command made (#313 H-1).",
           "type": "integer",
           "minimum": 1
+        },
+        "fence": {
+          "$ref": "run-lease.json#/$defs/fence",
+          "description": "#315: the fence of the worker's view the command came through. The store decides the command only while the fence is current for the command's run, in the command's own transaction: a fence of another run is refused resource-mismatch, a stale one by the lease's reason, as LeaseRefused, with nothing journaled and nothing changed. Absent, the command is the host's, sent through the store itself. It is not part of the command's digest, and it authenticates nobody: the command's actor is a label."
         }
       },
       "additionalProperties": false

@@ -153,11 +153,11 @@
   "withheld": [
     {
       "tool": "mine__search_notes",
-      "detail": "in the input schema of mine__search_notes, at /properties/scope: its enum holds a string over 64 bytes or a line break, or is no list, and it is not offered; the host still validates the arguments it executes"
+      "detail": "in the input schema of mine__search_notes, at /properties/scope: its enum holds a string over 64 bytes, a line break or a lone surrogate, or is no list, and it is not offered; the host still validates the arguments it executes"
     },
     {
       "tool": "mine__search_notes",
-      "detail": "in the input schema of mine__search_notes, at /properties/kind: its enum holds a string over 64 bytes or a line break, or is no list, and it is not offered; the host still validates the arguments it executes"
+      "detail": "in the input schema of mine__search_notes, at /properties/kind: its enum holds a string over 64 bytes, a line break or a lone surrogate, or is no list, and it is not offered; the host still validates the arguments it executes"
     },
     {
       "tool": "mine__search_notes",

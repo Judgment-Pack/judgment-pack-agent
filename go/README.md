@@ -280,7 +280,8 @@ unless a host offers a job tool.
 `context/run_goal.go` and `context/run_goal_commands.go` are the Go twins of `storage/goal.ts` and `storage/goalCommands.ts`:
 `RunGoalCommand`, `AbandonGoal`, `InspectGoal`, `ReadGoal`, `GoalReportFor`, `AdmitGoals`, the readers and the `GoalStore` port,
 certified by `CheckRunStoreGoalConformance`. `verifyTaskEvidence` is the writer's history check of delegated evidence, which an
-achievement calls too. Nothing changes unless a host creates an objective.
+achievement calls too. A command sent through a worker's fenced view presents that view's fence, which the store checks in the
+command's transaction (`NewFencedGoalTable` in the memory kind; #315). Nothing changes unless a host creates an objective.
 
 ### Re-authorization waits (#226)
 

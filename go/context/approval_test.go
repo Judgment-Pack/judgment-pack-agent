@@ -317,6 +317,47 @@ func comparison(value any) string {
 	return string(raw)
 }
 
+// #309: a recovered request carries the decision's block when its data is the record's value, whatever the order of the
+// result's members: the block was built from the record as the run held it, and the restored record holds the result as
+// the checkpoint stores it. The other engine's block (the vector's text) is found too. Another result, decision time or
+// call id is another decision's block.
+func TestARecordedContinuationIsFoundByItsValue(t *testing.T) {
+	record := func(text string) contract.CheckpointApproval {
+		var out contract.CheckpointApproval
+		if err := json.Unmarshal([]byte(text), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	request := func(continuation string) string {
+		raw, _ := json.Marshal(map[string]string{"input": "Write the note.\n\n" + continuation})
+		return string(raw)
+	}
+	live := record(`{"callId":"call-a","name":"notes__write","tool":"write","state":"executed","decidedAt":"2026-10-20T10:05:00.000Z","result":{"content":[{"type":"text","text":"Written."}],"structuredContent":{"z":1,"a":{"y":2,"b":3}}}}`)
+	restored := record(`{"callId":"call-a","decidedAt":"2026-10-20T10:05:00.000Z","name":"notes__write","result":{"content":[{"text":"Written.","type":"text"}],"structuredContent":{"a":{"b":3,"y":2},"z":1}},"state":"answered","tool":"write"}`)
+	sent := request(ApprovalContinuationText(live, strings.Repeat("7", 32)))
+	if !carriesApprovalContinuation(sent, live) || !carriesApprovalContinuation(sent, restored) {
+		t.Fatalf("the block is not found from the restored record: %s", sent)
+	}
+	approved := readJSON(t, "contract/vectors/approval/continue-approved.json")
+	var vectored contract.CheckpointApproval
+	if err := json.Unmarshal(approved.Get("items").Items()[1].Get("checkpoint").Get("approval").JSON(), &vectored); err != nil {
+		t.Fatal(err)
+	}
+	if !carriesApprovalContinuation(request(approved.Get("continuation").Str()), vectored) {
+		t.Fatal("the other engine's block is not found")
+	}
+	for _, other := range []string{
+		`{"callId":"call-a","name":"notes__write","tool":"write","state":"answered","decidedAt":"2026-10-20T10:05:00.000Z","result":{"content":[{"type":"text","text":"Written."}],"structuredContent":{"z":1,"a":{"y":2,"b":4}}}}`,
+		`{"callId":"call-a","name":"notes__write","tool":"write","state":"answered","decidedAt":"2026-10-20T10:05:00.001Z","result":{"content":[{"type":"text","text":"Written."}],"structuredContent":{"z":1,"a":{"y":2,"b":3}}}}`,
+		`{"callId":"call-b","name":"notes__write","tool":"write","state":"answered","decidedAt":"2026-10-20T10:05:00.000Z","result":{"content":[{"type":"text","text":"Written."}],"structuredContent":{"z":1,"a":{"y":2,"b":3}}}}`,
+	} {
+		if carriesApprovalContinuation(sent, record(other)) {
+			t.Errorf("another decision's block is taken for this one: %s", other)
+		}
+	}
+}
+
 // The package's words are the vectors' (contract/vectors/approval): the continuation's line and
 // text, the refused result and the pending refusal.
 func TestTheApprovalPausesWordsAreTheVectors(t *testing.T) {

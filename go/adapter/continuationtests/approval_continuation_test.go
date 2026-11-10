@@ -34,6 +34,12 @@ type scene struct {
 	link       runcontext.ExecutionLink
 	// approving runs as the person is first asked, before the ask is saved; it must not take mu.
 	approving func()
+	// asks is how many calls the person is asked about (1 where unset); bare sends no current request; taskSteps runs
+	// under task steps; plan is an accepted plan the run holds; prepare turns the input before the run (a Plan decision).
+	asks            int
+	bare, taskSteps bool
+	plan            string
+	prepare         func(*runcontext.Input) *runcontext.Input
 }
 
 func (s *scene) tool() runcontext.HostTool {
@@ -42,7 +48,7 @@ func (s *scene) tool() runcontext.HostTool {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			s.asked++
-			if s.asked == 1 {
+			if s.asked <= max(s.asks, 1) {
 				if s.approving != nil {
 					s.approving()
 				}
@@ -91,7 +97,7 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 			parentHosts = offer.HostTools
 			return g.EnrollContext(offer.ID, offer.HostTools)
 		},
-		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "note"}, RunStore: &runcontext.DurableRunInput{Store: s.store, ID: "run-c", Resume: resume}, Approval: decision, Link: s.link},
+		Context: s.input(resume, decision),
 		Emit: func(event contract.RunEvent) {
 			s.mu.Lock()
 			s.events = append(s.events, event)
@@ -140,6 +146,23 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 	return implementation.Run(ctx, run)
 }
 
+func (s *scene) input(resume bool, decision *contract.CheckpointApprovalDecision) *runcontext.Input {
+	input := &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "note"}, RunStore: &runcontext.DurableRunInput{Store: s.store, ID: "run-c", Resume: resume}, Approval: decision, Link: s.link}
+	if s.bare {
+		input.CurrentRequest = nil
+	}
+	if s.taskSteps {
+		input.TaskSteps, input.TaskStepEnvelope = true, &runcontext.TaskStepEnvelope{ID: "host", Revision: "sha256:" + strings.Repeat("d", 64), Unit: "provider-invocations", Limit: 6}
+	}
+	if s.plan != "" {
+		input.Plan = runcontext.MustParseJSON(s.plan)
+	}
+	if s.prepare != nil {
+		input = s.prepare(input)
+	}
+	return input
+}
+
 func (s *scene) errors() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -171,7 +194,7 @@ func paused(t *testing.T, s *scene, delegating bool) *contract.CheckpointApprova
 	}
 	head, err := s.store.Load(context.Background(), "run-c")
 	if err != nil || head == nil {
-		t.Fatal(head, err)
+		t.Fatal(head, err, s.errors())
 	}
 	var saved contract.Checkpoint
 	if err := json.Unmarshal(head.Checkpoint, &saved); err != nil {
