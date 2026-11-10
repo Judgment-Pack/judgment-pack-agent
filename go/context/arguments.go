@@ -162,9 +162,11 @@ func argumentProblem(schema, value *Value, path string, depth int) string {
 	}
 	if value.IsObject() {
 		if required := schema.Get("required"); required.IsArray() {
-			for _, name := range required.Items() {
+			// #308: a missing entry is named by its place in the list, never by its text: the name is
+			// the source's, and this answer reaches the model outside load_tool's data block.
+			for at, name := range required.Items() {
 				if name.IsString() && !value.Has(name.Str()) {
-					return pointerAt(path, name.Str()) + " is required and missing"
+					return "a member the schema requires is missing from " + where(path) + ": entry " + itoa(at) + " of its required list, counting from 0"
 				}
 			}
 		}
