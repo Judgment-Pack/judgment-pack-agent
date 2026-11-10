@@ -1365,40 +1365,127 @@ func PrepareDurableRequest(binding *RunBinding, kind, source, tool string, reque
 }
 func (w *RunWriter) preparedLocked(binding *RunBinding, kind, source, tool string, request []byte, consume bool) ([]byte, error) {
 	if kind == "model" || kind == "agent" {
-		for i := len(w.book.Dispatches) - 1; i >= 0; i-- {
-			row := w.book.Dispatches[i]
-			if !w.recovered[row.ID] || row.Kind != kind || row.Scope != binding.Scope || row.State != "unknown" {
-				continue
+		at, err := w.replayedLocked(binding, kind)
+		if err != nil {
+			return nil, err
+		}
+		if at >= 0 {
+			row := w.book.Dispatches[at]
+			if w.taskSteps.Load() || w.taskSchedule != nil || kind == "model" && !row.Read {
+				return nil, &HostOutcomeUnknown{}
 			}
-			superseded, err := w.supersededNativeLocked(binding, row)
-			if err != nil {
-				return nil, err
+			if row.Source != source || row.Tool != tool {
+				return nil, &ContinuationIdentityChanged{}
 			}
-			if superseded {
-				continue
-			}
-			replay := true
-			if kind == "agent" && w.latest != nil && w.latest.Handoff != nil {
-				handoff := w.latest.Handoff
-				replay = handoff.State == "continued" && handoff.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*handoff.Continuation)))
-			}
-			if replay {
-				if w.taskSteps.Load() || w.taskSchedule != nil || kind == "model" && !row.Read {
-					return nil, &HostOutcomeUnknown{}
-				}
-				if row.Source != source || row.Tool != tool {
-					return nil, &ContinuationIdentityChanged{}
-				}
-				request = []byte(row.Request)
-				_ = consume
-			}
-			break
+			request = []byte(row.Request)
+			_ = consume
 		}
 	}
 	if err := safeDurableRequest(request); err != nil {
 		return nil, err
 	}
 	return append([]byte(nil), request...), nil
+}
+
+// replayedLocked is the index of the recovered row a model or agent request of this scope is sent again as, or -1 where
+// it is sent fresh. Only the newest recovered unknown row of the scope that no Plan decision or widened route supersedes
+// is a candidate, and an agent row only where it carries the newest continuation (agentReplayLocked). preparedLocked
+// and RecoveringDurableRequest both read it, so the coordinator counts the very row that is sent again (#312 LOW-6).
+func (w *RunWriter) replayedLocked(binding *RunBinding, kind string) (int, error) {
+	for i := len(w.book.Dispatches) - 1; i >= 0; i-- {
+		row := w.book.Dispatches[i]
+		if !w.recovered[row.ID] || row.Kind != kind || row.Scope != binding.Scope || row.State != "unknown" {
+			continue
+		}
+		superseded, err := w.supersededNativeLocked(binding, row)
+		if err != nil {
+			return -1, err
+		}
+		if superseded {
+			continue
+		}
+		if kind == "agent" && !w.agentReplayLocked(binding, i) {
+			return -1, nil
+		}
+		return i, nil
+	}
+	return -1, nil
+}
+
+// agentReplayLocked reports whether the recovered agent invocation at index at, whose outcome is unknown, is sent again
+// as recorded (#309): only where it carries the newest continuation the checkpoint holds. An invocation that ended at an
+// approval pause or at a delegation handoff carries none newer than its own end, so it is never sent again in place of
+// the request that carries the person's decision or the batch's answer; one lost after it was sent carries it, and is.
+//
+// The continuations are the decided approval's (ApprovalContinuationText, which its decidedAt makes the decision's own,
+// whatever its call id) and the handoff's (handoff.continuation). Which is newer is claim order: the one whose first
+// carrying row of this scope comes later, and one no row carries yet is newer than any that is carried. A handoff
+// released, or answered and not yet carried, is newer than any approval: the parent's invocation that delegated was
+// sent after the decision it carried. With neither, the row is sent again as before.
+func (w *RunWriter) agentReplayLocked(binding *RunBinding, at int) bool {
+	if w.latest == nil {
+		return true
+	}
+	row := w.book.Dispatches[at]
+	approvalAt, decided := w.approvalCarrierLocked(binding)
+	handoff := w.latest.Handoff
+	if decided && (handoff == nil || approvalAt > w.handoffCarrierLocked(binding)) {
+		return carriesApprovalContinuation(row.Request, *w.latest.Approval)
+	}
+	if handoff != nil {
+		return handoff.State == "continued" && handoff.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*handoff.Continuation)))
+	}
+	return true
+}
+
+// approvalCarrierLocked is the index of the first agent row of the parent's scope that carries the decided approval's
+// continuation, len(rows) where none does yet, and false where the checkpoint holds no decided approval or the scope is
+// not the one its continuation is sent in (a critic's, a child's or the reformat run's).
+func (w *RunWriter) approvalCarrierLocked(binding *RunBinding) (int, bool) {
+	approval := w.latest.Approval
+	if approval == nil || approval.State == "asked" || approval.State == "approved" || binding.Scope.Role != "author" || binding.Scope.Task != "" {
+		return 0, false
+	}
+	for i, row := range w.book.Dispatches {
+		if row.Kind == "agent" && row.Scope == binding.Scope && carriesApprovalContinuation(row.Request, *approval) {
+			return i, true
+		}
+	}
+	return len(w.book.Dispatches), true
+}
+
+// handoffCarrierLocked is the index of the first agent row of this scope that carries the handoff's continuation, and
+// len(rows) where none does: a handoff released, its children running or its answer not yet sent.
+func (w *RunWriter) handoffCarrierLocked(binding *RunBinding) int {
+	handoff := w.latest.Handoff
+	if handoff != nil && handoff.Continuation != nil {
+		text := string(mustJSONText(*handoff.Continuation))
+		for i, row := range w.book.Dispatches {
+			if row.Kind == "agent" && row.Scope == binding.Scope && strings.Contains(row.Request, text) {
+				return i
+			}
+		}
+	}
+	return len(w.book.Dispatches)
+}
+
+// ApprovalContinuationOwed reports whether a fresh request of this scope continues the decided approval the checkpoint
+// holds, so that it carries the decision's block (#309, #312's MEDIUM-2): the approval was answered, and no handoff the
+// response released since is newer. A takeover after the continuing invocation was claimed, or after it finished with
+// the response unfinished, sends a request with no step to take; without this it would carry no block, and the model
+// would never be told the result. A request that a recovered row replaces is sent as that row recorded it.
+func ApprovalContinuationOwed(binding *RunBinding) bool {
+	if binding == nil {
+		return false
+	}
+	w := binding.Writer
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.latest == nil || w.latest.Approval == nil || w.latest.Approval.State != "answered" {
+		return false
+	}
+	approvalAt, decided := w.approvalCarrierLocked(binding)
+	return decided && (w.latest.Handoff == nil || approvalAt > w.handoffCarrierLocked(binding))
 }
 func (c *SessionContext) ProviderStorageIdentity(role string) string {
 	id := c.Provider(role).Connection
@@ -1417,24 +1504,12 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 	w := binding.Writer
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	for _, row := range w.book.Dispatches {
-		if w.recovered[row.ID] && row.Kind == kind && row.Scope == binding.Scope && row.State == "unknown" {
-			superseded, err := w.supersededNativeLocked(binding, row)
-			if err != nil {
-				w.fatal = err
-				return true
-			}
-			if superseded {
-				continue
-			}
-			if kind != "agent" || w.latest == nil || w.latest.Handoff == nil {
-				return true
-			}
-			h := w.latest.Handoff
-			return h.State == "continued" && h.Continuation != nil && strings.Contains(row.Request, string(mustJSONText(*h.Continuation)))
-		}
+	at, err := w.replayedLocked(binding, kind)
+	if err != nil {
+		w.fatal = err
+		return true
 	}
-	return false
+	return at >= 0
 }
 
 // InvokeDurable is used only AFTER existing current offer/source/authority checks. Its execution

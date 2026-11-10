@@ -2188,6 +2188,11 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 			return nil, err
 		}
 		out.Prompt += "\n\n" + ApprovalContinuationText(*held.Execution.State().Approval, DataMarker())
+	} else if approval := held.Execution.State().Approval; approval != nil && approval.State == "answered" && held.Execution.State().Unit == "provider-managed" &&
+		ApprovalContinuationOwed(held.Persistence("author")) {
+		// #309: an answered decision whose continuation no recovered request is sent again as, and that no handoff since
+		// follows, is still the response's newest: the fresh request carries its block again, under a new marker.
+		out.Prompt += "\n\n" + ApprovalContinuationText(*approval, DataMarker())
 	}
 	// #229: a resumed job wait: one fixed line and one data block built from the job's record, and no checkpoint
 	// member.
