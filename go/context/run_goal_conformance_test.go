@@ -727,6 +727,17 @@ var goalFaults = map[string]func(*goalFault){
 			return s.durableGoalStore.CommandGoal(ctx, input)
 		}
 	},
+	// #368: a store whose goal transaction checks a fence by every rule of the lease but its principals.
+	"goal.fence.principal": func(f *goalFault) {
+		leases := f.MemoryRunStore.leases
+		f.MemoryRunStore.goals.checkFence = func(fence LeaseFence) error {
+			if row, ok := leases.rows[fence.Resource]; ok {
+				fence.Version, fence.Principal = row.Version, clonePrincipalBinding(row.Principal)
+			}
+			_, err := leases.Check(fence)
+			return err
+		}
+	},
 	"goal.fence.current": func(f *goalFault) {
 		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
 			if input.Fence != nil {
@@ -900,6 +911,25 @@ var goalStores = []struct {
 	{"a store that decides another owner's fence of the current epoch", "goal.fence.stale", goalFenceWithout("other-owner")},
 	{"a store that decides a released fence", "goal.fence.stale", goalFenceWithout("released")},
 	{"a store that decides an expired fence", "goal.fence.stale", goalFenceWithout("expired")},
+	// #368: a store that takes a fence as current wherever its owner holds the run's live lease, at any epoch; and one
+	// that checks the fence of every command but an abandon, the command a displaced worker's replay does most harm with.
+	{"a store that takes a fence as current wherever its owner holds the live lease", "goal.fence.stale", func(f *goalFault) {
+		leases := f.MemoryRunStore.leases
+		f.MemoryRunStore.goals.checkFence = func(fence LeaseFence) error {
+			now, err := leases.millis()
+			if err != nil {
+				return err
+			}
+			if row, ok := leases.rows[fence.Resource]; ok && row.Owner == fence.Owner && row.State == "held" {
+				if expiry, _ := leaseExpiryMillis(row.Expiry); now < expiry {
+					return nil
+				}
+			}
+			_, err = leases.Check(fence)
+			return err
+		}
+	}},
+	{"a store that decides a fenced abandon unchecked", "goal.fence.stale", goalUnfencedWhere(func(_ *goalFault, input GoalTransition) bool { return input.Command.Kind == "abandon" })},
 }
 
 func goalKitFails(t *testing.T, create GoalStoreFactory) string {

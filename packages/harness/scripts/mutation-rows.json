@@ -18249,6 +18249,42 @@
    "status": "caught",
    "origin": "agent#361",
    "note": "No Go twin: Go's checker is a func returning its error, so it cannot answer before its check is made."
+  },
+  {
+   "name": "#368 the goal kit never sends the same owner's earlier epoch",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fD}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the fD send dropped): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_takes_a_fence_as_current_wherever_its_owner_holds_the_live_lease."
+  },
+  {
+   "name": "#368 the goal kit never sends a fence whose principal is not the lease's",
+   "file": "storage/goalConformance.ts",
+   "find": "  for(const forged of [{...pr,principal:{...principal,rootActor:'b2'.repeat(16)}},{version:1,resource:pr.resource,owner:pr.owner,epoch:pr.epoch}] as LeaseFence[])await fenced('goal.fence.principal','run-pr',()=>send(prCreate,{fence:forged}),'principal-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the forged principal sends dropped): caught at TestGoalConformanceFailsEachBrokenStore/goal.fence.principal."
+  },
+  {
+   "name": "#368 the goal kit never sends the stale pause and abandon",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')\n await fenced('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the fPause and fAbandon sends under f.fence dropped): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_a_fenced_abandon_unchecked."
   }
  ]
 }
