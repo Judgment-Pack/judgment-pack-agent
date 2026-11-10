@@ -126,7 +126,8 @@ Each section of the [upgrade guide](upgrade/v0.14.0.md) names its own changes:
 - **Rehearsed evaluations** (#344). The critic and an author-test child read the Runtime's
   evaluation where they used to read the refusal.
 - **Question answers** (#340, #341). A claimed question wait's continuation and a successor run's
-  first request carry one fixed line, `QUESTION_ANSWERED`, and one data block with the answer.
+  first request carry one fixed line, which begins "QUESTION ANSWERED:", and one data block with
+  the answer.
 
 No live comparison has passed for this release, and no answer-quality, token-saving or
 monetary-cost result is claimed. Routing remains off by default.
