@@ -725,18 +725,31 @@ export function approvalContinuation(record: ApprovalRecord, marker = dataMarker
 }
 
 /**
- * Whether a durable request carries `record`'s continuation under any marker (#309): the text
- * approvalContinuation builds, each marker occurrence the same 32 lowercase hex digits, as the
- * request's JSON encodes a string. NUL stands for the marker while it is matched: no data block,
- * source or line holds one, since their JSON text escapes it.
+ * Whether a durable request carries `record`'s continuation under any marker (#309): the block
+ * approvalContinuation builds, its line and frame as the request's JSON encodes a string, each marker
+ * occurrence the same 32 lowercase hex digits, and its data the same value as the record's. The data
+ * is compared as a value, not as text: the block was built from the record as the run held it, and a
+ * restored record holds the same result with its members in the order the checkpoint stores them.
+ * NUL stands for the marker while it is matched: no data block, source or line holds one, since
+ * their JSON text escapes it.
  */
 export function carriesApprovalContinuation(request: string, record: ApprovalRecord): boolean {
   const parts = approvalContinuation(record, '\u0000').split('\u0000')
-  if (parts.length !== 4) return false
-  const [head, first, second, last] = parts.map(part => JSON.stringify(part).slice(1, -1)) as [string, string, string, string]
+  if (parts.length !== 4 || parts[3] !== '') return false
+  const closing = parts[2]!.lastIndexOf('\n')
+  if (!parts[2]!.startsWith('\n') || closing < 1) return false
+  const want = canonicalJSON(JSON.parse(parts[2]!.slice(1, closing)))
+  const [head, first, open, close] = [parts[0]!, parts[1]!, '\n', parts[2]!.slice(closing)].map(part => JSON.stringify(part).slice(1, -1)) as [string, string, string, string]
   for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {
     const from = at + head.length, marker = request.slice(from, from + 32)
-    if (/^[0-9a-f]{32}$/.test(marker) && request.startsWith(first + marker + second + marker + last, from + 32)) return true
+    if (!/^[0-9a-f]{32}$/.test(marker) || !request.startsWith(first + marker + open, from + 32)) continue
+    const start = from + 32 + first.length + marker.length + open.length, end = request.indexOf(close + marker, start)
+    if (end < 0) continue
+    try {
+      if (canonicalJSON(JSON.parse(JSON.parse(`"${request.slice(start, end)}"`))) === want) return true
+    } catch {
+      // Not one string's JSON text, or not one JSON value: not this block.
+    }
   }
   return false
 }

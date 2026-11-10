@@ -16577,6 +16577,16 @@
    "status": "caught",
    "origin": "agent#317",
    "note": "#312's MEDIUM-B: the Plan decision is refused HostOutcomeUnknown because the approval pause's invocation is still unknown. Go twin (by hand): skip the endedBeforeContinuationLocked clause of nativePlanDecisionLocked; caught at ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C10 a recovered request carries the decision's block only in the very text it was sent with",
+   "file": "toolSources.ts",
+   "find": "      if (canonicalJSON(JSON.parse(JSON.parse(`\"${request.slice(start, end)}\"`))) === want) return true\n",
+   "replace": "      if (JSON.parse(`\"${request.slice(start, end)}\"`) === parts[2]!.slice(1, closing) && want !== '') return true\n",
+   "tests": ["approvalContinuation.test.ts","toolSources.test.ts"],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "The block is built from the record as the run held it, and the restored record holds the result's members in the checkpoint's order: a continuation lost after it was sent is then sent fresh, not again as recorded, and under task steps not refused. Go twin (by hand): compare the data's text in carriesApprovalContinuation; caught at ^TestARecordedContinuationIsFoundByItsValue in ./context."
   }
  ]
 }

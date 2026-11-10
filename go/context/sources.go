@@ -174,26 +174,43 @@ func ApprovalContinuationText(record contract.CheckpointApproval, marker string)
 const approvalPlaceholder = "\x00"
 
 // carriesApprovalContinuation reports whether a durable request carries record's continuation
-// under any marker (#309): the text ApprovalContinuationText builds, each marker occurrence the
-// same 32 lowercase hex digits, as the request's JSON encodes a string.
+// under any marker (#309): the block ApprovalContinuationText builds, its line and frame as the
+// request's JSON encodes a string, each marker occurrence the same 32 lowercase hex digits, and its
+// data the same value as the record's. The data is compared as a value, not as text: the block was
+// built from the record as the run held it, and a restored record holds the same result with its
+// members in the order the checkpoint stores them.
 func carriesApprovalContinuation(request string, record contract.CheckpointApproval) bool {
 	parts := strings.Split(ApprovalContinuationText(record, approvalPlaceholder), approvalPlaceholder)
-	if len(parts) != 4 {
+	if len(parts) != 4 || parts[3] != "" || !strings.HasPrefix(parts[2], "\n") {
 		return false
 	}
-	for i, part := range parts {
-		parts[i] = string(mustJSONText(part))
+	closing := strings.LastIndex(parts[2], "\n")
+	if closing < 1 {
+		return false
 	}
+	held, err := ParseJSON([]byte(parts[2][1:closing]))
+	if err != nil {
+		return false
+	}
+	want := CanonicalJSON(held)
+	head, first, open, end := string(mustJSONText(parts[0])), string(mustJSONText(parts[1])), string(mustJSONText("\n")), string(mustJSONText(parts[2][closing:]))
 	for from := 0; ; {
-		at := strings.Index(request[from:], parts[0])
+		at := strings.Index(request[from:], head)
 		if at < 0 {
 			return false
 		}
-		rest := request[from+at+len(parts[0]):]
+		rest := request[from+at+len(head):]
 		if len(rest) >= 32 && approvalMarker.MatchString(rest[:32]) {
 			marker := rest[:32]
-			if strings.HasPrefix(rest[32:], parts[1]+marker+parts[2]+marker+parts[3]) {
-				return true
+			if body, ok := strings.CutPrefix(rest[32:], first+marker+open); ok {
+				if stop := strings.Index(body, end+marker); stop >= 0 {
+					var text string
+					if json.Unmarshal([]byte(`"`+body[:stop]+`"`), &text) == nil {
+						if value, err := ParseJSON([]byte(text)); err == nil && CanonicalJSON(value) == want {
+							return true
+						}
+					}
+				}
 			}
 		}
 		from += at + 1
