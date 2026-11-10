@@ -14,7 +14,8 @@
  *
  *   --list               print the table (name, file, status, tests) and stop
  *   --check              only check that every row's `find` text occurs exactly once in its
- *                        file, which is what a row needs to apply; no test is run
+ *                        file, which is what a row needs to apply, and that the file still parses
+ *                        with the row applied, as vitest's loader parses it; no test is run
  *   --row <text>         only the rows whose name contains the text (repeatable)
  *   --changed <git-ref>  only the rows whose file differs from the ref (`git diff --name-only`)
  *   --sample <n>         of the rows chosen, n of them, picked by --seed (default 0); the
@@ -43,8 +44,15 @@
  * so only a row that names it can be caught by it: its pages name source lines, so it fails for
  * any mutant that moves a line, whether or not anything holds the safeguard.
  *
+ * **A mutant that stops a test file from loading is BROKEN, not NOT CAUGHT (agent#320).** A test
+ * file that does not load runs no test, so nothing in it can fail: a row whose replacement no longer
+ * fits its `find` (a stray parenthesis) would read as a safeguard nothing holds. Where no test
+ * failed because of the mutant and a test file did not load under it, did load with no mutant, and
+ * does not load again in a run of its own under the mutant, the row is BROKEN and names the load
+ * error. A failure the mutant caused still makes the row caught.
+ *
  * Exit 0 when every row chosen is caught (retired rows are listed, not run); 1 on a row
- * nothing caught, one that did not apply, or one that could not be decided.
+ * nothing caught, one that is broken, one that did not apply, or one that could not be decided.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -153,14 +161,60 @@ function occurrences(text, find) {
   return count
 }
 
+/** A load error as one line of a table cell: no colour codes, no scratch path, no `|`, bounded. */
+function oneLine(message, scratch) {
+  let text = String(message ?? '').replace(/\x1b\[[0-9;]*m/g, '')
+  if (scratch) text = text.split(`${scratch}/`).join('')
+  const lines = text.split('\n').map((line) => line.trim()).filter((line) => /[A-Za-z0-9]/.test(line) && !/^[│╭╰─]/.test(line))
+  const at = text.match(/[\w./-]+:\d+:\d+/)
+  let shown = lines.slice(0, 2).join(' ')
+  if (at && !shown.includes(at[0])) shown += ` (at ${at[0]})`
+  shown = shown.replace(/\|/g, '/')
+  return shown.length > 300 ? `${shown.slice(0, 297)}...` : shown
+}
+
+/** Whether a file's text parses as the test run would load it: the error, or null. Files of other kinds are not asked. */
+let transform = null
+async function parseError(file, text) {
+  try {
+    if (/\.json$/.test(file)) JSON.parse(text)
+    else if (/\.[cm]?[jt]sx?$/.test(file)) {
+      transform ??= (await import('vite')).transformWithOxc
+      await transform(text, file)
+    }
+    return null
+  } catch (error) {
+    return oneLine(error?.message ?? error)
+  }
+}
+
 if (options.check) {
   let bad = 0
+  /** Each file's own parse error, asked once: a row is not blamed for a file that does not parse without it. */
+  const unmutated = new Map()
   for (const row of runnable) {
     const path = join(PACKAGE, row.file)
-    const count = existsSync(path) ? occurrences(readFileSync(path, 'utf8'), row.find) : 0
+    const text = existsSync(path) ? readFileSync(path, 'utf8') : null
+    const count = text === null ? 0 : occurrences(text, row.find)
     if (count !== 1) {
       bad++
       console.log(`DOES NOT APPLY (${count} matches in ${row.file}): ${row.name}`)
+    } else {
+      if (!unmutated.has(row.file)) {
+        const error = await parseError(row.file, text)
+        unmutated.set(row.file, error)
+        if (error !== null) {
+          bad++
+          console.log(`DOES NOT LOAD WITH NO MUTANT (${row.file}: ${error})`)
+        }
+      }
+      if (unmutated.get(row.file) === null) {
+        const error = await parseError(row.file, text.replace(row.find, () => row.replace))
+        if (error !== null) {
+          bad++
+          console.log(`BROKEN (${row.file} does not load under the mutant: ${error}): ${row.name}`)
+        }
+      }
     }
     for (const test of row.tests) if (!existsSync(join(PACKAGE, test))) {
       bad++
@@ -198,7 +252,8 @@ if (!existsSync(VITEST)) usage('vitest is not installed: run npm ci first')
 /**
  * One vitest run in the scratch copy: the files named, or the whole suite.
  * Resolves to the names of the tests that failed, [] where none did, or { undecided } where
- * the run timed out, ran nothing, or could not load the mutated file.
+ * the run timed out or ran nothing and no test file failed to load. The array's `unloaded` holds
+ * [file, error] for each test file that did not load: it ran no test, so it can fail none.
  */
 function run(files, report, excluded = []) {
   return new Promise((done) => {
@@ -227,15 +282,18 @@ function run(files, report, excluded = []) {
         return done({ undecided: 'the run wrote no report' })
       }
       const failed = []
+      const unloaded = []
       let ran = 0
       for (const file of parsed.testResults ?? []) {
+        const name = file.name.replace(/^.*\/packages\/harness\//, '')
+        if (file.status === 'failed' && (file.assertionResults ?? []).length === 0) unloaded.push([name, oneLine(file.message, scratch)])
         for (const test of file.assertionResults ?? []) {
           ran++
-          if (test.status === 'failed') failed.push(`${file.name.replace(/^.*\/packages\/harness\//, '')} > ${test.fullName}`)
+          if (test.status === 'failed') failed.push(`${name} > ${test.fullName}`)
         }
       }
-      if (failed.length > 0) return done(failed)
-      done(ran === 0 ? { undecided: 'the run ran no test: the mutated file did not load' } : [])
+      if (ran === 0 && failed.length === 0 && unloaded.length === 0) return done({ undecided: 'the run ran no test' })
+      done(Object.assign(failed, { unloaded }))
     })
   })
 }
@@ -253,12 +311,15 @@ if (options.noMutant) {
     process.exit(1)
   }
   for (const failure of answer) console.log(`fails with no mutant: ${failure}`)
-  console.log(`the whole suite with no mutant: ${answer.length} failed`)
-  process.exit(answer.length === 0 ? 0 : 1)
+  for (const [file, error] of answer.unloaded) console.log(`does not load with no mutant: ${file}: ${error}`)
+  console.log(`the whole suite with no mutant: ${answer.length} failed, ${answer.unloaded.length} test file${answer.unloaded.length === 1 ? '' : 's'} did not load`)
+  process.exit(answer.length === 0 && answer.unloaded.length === 0 ? 0 : 1)
 }
 
 /** What each test file fails with no mutant, from one run of it: a file is asked once. */
 const noMutant = new Map()
+/** The test files that do not load with no mutant, from the same runs. */
+const unloadedWithNoMutant = new Set()
 async function failingWithNoMutant(files) {
   const unknown = [...new Set(files)].filter((file) => !noMutant.has(file))
   if (unknown.length > 0) {
@@ -268,6 +329,10 @@ async function failingWithNoMutant(files) {
     for (const failure of answer) {
       noMutant.get(fileOf(failure))?.add(failure)
       console.error(`mutation-baseline fails with no mutant: ${failure}`)
+    }
+    for (const [file, error] of answer.unloaded) {
+      unloadedWithNoMutant.add(file)
+      console.error(`mutation-baseline does not load with no mutant: ${file}: ${error}`)
     }
   }
   return new Set(files.flatMap((file) => [...noMutant.get(file)]))
@@ -304,10 +369,36 @@ for (const row of runnable) {
       writeFileSync(path, original)
     }
   }
+  /** The test files that did not load under the mutant, by any run of the row: [file, error]. */
+  const unloaded = new Map()
+  const noteUnloaded = (answer) => {
+    if (Array.isArray(answer)) for (const [file, error] of answer.unloaded) if (!unloaded.has(file)) unloaded.set(file, error)
+  }
+  /**
+   * Where no failure of the mutant's caught the row: BROKEN when a test file that loads with no mutant
+   * did not load under it, and does not load again in a run of its own under the mutant; else the
+   * NOT CAUGHT this would have been. One file shows it, so the files are asked one at a time, the
+   * selection's first, and the first that shows it ends the search: a mutant of a module every test
+   * imports leaves nearly the whole suite unloaded, and asking all of it at once can take longer
+   * than a run's bound.
+   */
+  const notCaught = async (how, detail) => {
+    for (const file of unloaded.keys()) {
+      const clean = await failingWithNoMutant([file])
+      if (!(clean instanceof Set)) return results.push({ row, verdict: 'UNDECIDED', detail: `with no mutant: ${clean.undecided}` })
+      if (unloadedWithNoMutant.has(file)) continue
+      const again = await underMutant([file])
+      if (!Array.isArray(again)) return results.push({ row, verdict: 'UNDECIDED', detail: `in its own file: ${again.undecided}` })
+      const still = again.unloaded.find(([name]) => name === file)
+      if (still) return results.push({ row, verdict: 'BROKEN', detail: `${how}: no test failed, and the mutant stops ${file} from loading: ${still[1]}` })
+    }
+    results.push({ row, verdict: 'NOT CAUGHT', detail })
+  }
   const selection = !options.whole && row.tests.length > 0
   let decided = false
   if (selection) {
     const answer = await underMutant(row.tests)
+    noteUnloaded(answer)
     if (Array.isArray(answer) && answer.length > 0) {
       const counted = await beyondNoMutant(answer)
       if (Array.isArray(counted) && counted.length > 0) {
@@ -322,11 +413,12 @@ for (const row of runnable) {
   if (!decided) {
     const how = selection ? 'whole, after its selection decided nothing' : 'whole'
     const answer = await underMutant([], LINE_SENSITIVE)
+    noteUnloaded(answer)
     if (!Array.isArray(answer)) results.push({ row, verdict: 'UNDECIDED', detail: answer.undecided })
     else {
       const counted = answer.length > 0 ? await beyondNoMutant(answer) : []
       if (!Array.isArray(counted)) results.push({ row, verdict: 'UNDECIDED', detail: `with no mutant: ${counted.undecided}` })
-      else if (counted.length === 0) results.push({ row, verdict: 'NOT CAUGHT', detail: `${how}: no test failed beyond the failures with no mutant` })
+      else if (counted.length === 0) await notCaught(how, `${how}: no test failed beyond the failures with no mutant`)
       else {
         // Only the whole suite saw these: they must fail again without the rest of the suite beside them.
         const again = await underMutant([...new Set(counted.map(fileOf))])
@@ -334,7 +426,7 @@ for (const row of runnable) {
         else {
           const kept = counted.filter((failure) => again.includes(failure))
           if (kept.length > 0) results.push({ row, verdict: 'caught', detail: shown(how, kept) })
-          else results.push({ row, verdict: 'NOT CAUGHT', detail: `${how}: what failed did not fail again in its own file: ${counted[0]}` })
+          else await notCaught(how, `${how}: what failed did not fail again in its own file: ${counted[0]}`)
         }
       }
     }
@@ -347,5 +439,5 @@ console.log('| --- | --- | --- |')
 for (const { row, verdict, detail } of results) console.log(`| ${row.name} | ${row.file} | ${verdict}: ${detail} |`)
 for (const row of retired) console.log(`| ${row.name} | ${row.file} | retired: ${row.reason} |`)
 const count = (verdict) => results.filter((result) => result.verdict === verdict).length
-console.log(`\n${chosen.length} rows chosen: ${count('caught')} caught, ${count('NOT CAUGHT')} not caught, ${count('DID NOT APPLY')} did not apply, ${count('UNDECIDED')} undecided, ${retired.length} retired`)
+console.log(`\n${chosen.length} rows chosen: ${count('caught')} caught, ${count('NOT CAUGHT')} not caught, ${count('BROKEN')} broken, ${count('DID NOT APPLY')} did not apply, ${count('UNDECIDED')} undecided, ${retired.length} retired`)
 process.exit(count('caught') === runnable.length ? 0 : 1)
