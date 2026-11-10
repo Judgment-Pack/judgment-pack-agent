@@ -538,6 +538,23 @@ export class RunWriter {
  private jobRegistration?:JobRegistration
  /** #229: this run's jobs by their start's dispatch id, where the host offers job tools: what plan evidence is held to. */
  private jobRecords?:Map<string,RunJob>
+ /**
+  * agent#323 LOW-3: what this writer saw of each job itself, by its id: at attach, or in its start's acknowledged answer. The
+  * first handle seen stands, with its marker; the source and the tool are the job's at first sight. A cancel is sent only
+  * where the store's answer agrees with it, so a store that answers another job's record in both its read and its ask
+  * sends nothing.
+  */
+ private jobsSeen=new Map<string,{source:string;tool:string;handle?:string;handleDigested?:true}>()
+ private seeJob(job:RunJob):void{
+  const was=this.jobsSeen.get(job.job)??{source:job.source,tool:job.tool}
+  if(was.handle===undefined&&job.handle!==undefined){was.handle=job.handle;if(job.handleDigested)was.handleDigested=true}
+  this.jobsSeen.set(job.job,was)
+ }
+ /** agent#323 LOW-3: the job's record agrees with what this writer saw of it, where it saw it. */
+ private agreesWithSeen(job:RunJob):boolean{
+  const was=this.jobsSeen.get(job.job)
+  return !was||job.source===was.source&&job.tool===was.tool&&(was.handle===undefined||job.handle===was.handle&&job.handleDigested===was.handleDigested)
+ }
  /** #229: this run offers job tools. Nothing below is asked of a store otherwise. */
  /** This run's job as it reads now. */
  async readJobRecord(job:string,signal?:AbortSignal):Promise<RunJob|undefined>{const held=await jobPortOfView(this.store).store.readJob(this.id,job,signal);return held===undefined?undefined:readRunJob(structuredClone(held))}
@@ -562,7 +579,7 @@ export class RunWriter {
   const port=jobPortOfView(this.store),next=new Map<string,RunJob>()
   for(let after:string|null=null;;){
    const page:{jobs:RunJob[];next:string|null}=await port.store.listJobs(this.id,after,JOB_PAGE_LIMIT,signal)
-   for(const row of page.jobs){const job=readRunJob(structuredClone(row));if(job.resource===this.id)next.set(job.operation,job)}
+   for(const row of page.jobs){const job=readRunJob(structuredClone(row));if(job.resource===this.id){next.set(job.operation,job);this.seeJob(job)}}
    if(page.next===null||page.next===after)break
    after=page.next
   }
@@ -980,6 +997,9 @@ export class RunWriter {
      // F-2: what is sent is the record of the job asked for, and only that one. F-2b: a cancel moves no state, so the answer
      // holds the handle, its marker, the source and the tool the record held before it was asked.
      if(asked.resource!==this.id||asked.job!==jobCancel.job||!read||asked.handle!==read.handle||asked.handleDigested!==read.handleDigested||asked.source!==read.source||asked.tool!==read.tool)throw new JobRefused('invalid')
+     // agent#323 LOW-3: and it agrees with what this writer saw of the job, so a store that answers another job's record in its
+     // read and in its ask alike sends nothing.
+     if(!this.agreesWithSeen(asked))throw new JobRefused('invalid')
      jobCancel.held(asked,claim.id)
     }
     catch(error){if(!(error instanceof JobRefused))throw error;composed=await this.cancelAnswer(jobCancel.job,false) as T|undefined;throw jobCancelNotSent()}
@@ -1006,7 +1026,9 @@ export class RunWriter {
     const port=jobPortOfView(this.store)
     try{
     const answer=readJobStartAnswer(value)
-    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T
+    const answered=readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))
+    if(answered.job===jobId)this.seeJob(answered)
+    value=jobStartResult(answered) as T
     }catch{
      try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
      throw jobStartUnrecorded()
@@ -1023,11 +1045,13 @@ export class RunWriter {
    // refused input: a start's answer goes to its job and the model is answered from it, and either row holds its fixed failure.
    if(performed&&!dispatched&&jobStart&&composed===undefined){
     const port=jobPortOfView(this.store)
-    try{const answer=readJobStartAnswer(performed.value);await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)}catch{/* the job keeps what it had */}
+    try{const answer=readJobStartAnswer(performed.value),answered=readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)));if(answered.job===jobId)this.seeJob(answered)}catch{/* the job keeps what it had */}
     try{const held=await port.store.readJob(this.id,jobId!);if(held!==undefined)composed=jobStartResult(readRunJob(structuredClone(held))) as T}catch{composed=undefined}
     error=jobStartUnrecorded()
    }
-   if(performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()
+   // agent#323 LOW-1: the cancel's row is keyed on its hand-over (`sent`), not on `perform` returning: a host whose `cancel`
+   // throws after its request left, under an effect host that answers with its own refusal, still reads as maybe sent.
+   if(jobCancel&&(performed||jobCancel.sent===true)&&!dispatched)error=jobCancelUnrecorded()
    // F-1: where the cancel was never handed to the host, the answer says it was not sent, whatever the record asked.
    if(jobCancel&&!refused&&composed===undefined)composed=await this.cancelAnswer(jobCancel.job,jobCancel.sent===true) as T|undefined
    if(kind!=='model')finishRecovery()

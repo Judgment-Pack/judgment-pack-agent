@@ -13414,8 +13414,8 @@
   {
    "name": "job W19 a typed answer is lost when the call's signal ended",
    "file": "storage/writer.ts",
-   "find": "},port.fence)))) as T\n",
-   "replace": "},port.fence,signal)))) as T\n",
+   "find": "},port.fence)))\n    if(answered.job===jobId)",
+   "replace": "},port.fence,signal)))\n    if(answered.job===jobId)",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -13462,8 +13462,8 @@
   {
    "name": "job W22 the row keeps the host's answer",
    "file": "storage/writer.ts",
-   "find": "    value=jobStartResult(readRunJob(structuredClone(await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)))) as T\n",
-   "replace": "    await port.store.answerJob({version:1,resource:this.id,job:jobId!,generation:1,...(answer.started?{answer:'started' as const,handle:answer.handle,...(answer.handleDigested?{handleDigested:true as const}:{}),...(answer.receipt===undefined?{}:{receipt:answer.receipt})}:{answer:'not-started' as const})},port.fence)\n",
+   "find": "    value=jobStartResult(answered) as T\n",
+   "replace": "",
    "tests": [
     "storage/job.test.ts"
    ],
@@ -14711,14 +14711,74 @@
   {
    "name": "job B16 F-17 a host that refuses after a cancel left reads as not started",
    "file": "storage/writer.ts",
-   "find": "if(performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()",
-   "replace": "if(false&&performed&&!dispatched&&jobCancel)error=jobCancelUnrecorded()",
+   "find": "if(jobCancel&&(performed||jobCancel.sent===true)&&!dispatched)error=jobCancelUnrecorded()",
+   "replace": "if(false&&jobCancel&&(performed||jobCancel.sent===true)&&!dispatched)error=jobCancelUnrecorded()",
    "tests": [
     "storage/job.test.ts"
    ],
    "status": "caught",
    "origin": "agent#303",
    "note": "#303/#310. Go twin (by hand, in run_writer.go): caught at TestJobsACancelWhoseHostRefusesAfterPerformMayHaveBeenSent."
+  },
+  {
+   "name": "job B16b agent#323 LOW-1 a cancel whose host throws after it was handed over reads as not started",
+   "file": "storage/writer.ts",
+   "find": "(performed||jobCancel.sent===true)",
+   "replace": "performed",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#323",
+   "note": "agent#323 LOW-1: the row keyed on `perform` returning rather than on the hand-over. Go twin (by hand, in run_writer.go: the cancel's case keyed on `performed` again): caught at TestJobsACancelWhoseHostThrowsAfterItWasHandedOverMayHaveBeenSent."
+  },
+  {
+   "name": "job B24 agent#323 LOW-3 a cancel is not held to what the writer saw of its job",
+   "file": "storage/writer.ts",
+   "find": "if(!this.agreesWithSeen(asked))throw new JobRefused('invalid')",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#323",
+   "note": "agent#323 LOW-3: a store that alters its read and its ask alike gets another job's handle sent. Go twin (by hand, in run_job.go: the agreesWithSeen check removed from jobCancelRequest): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay and TestJobsAWriterThatStartedAJobHoldsItsStartsAnswer."
+  },
+  {
+   "name": "job B25 agent#323 LOW-3 the writer keeps nothing of a job it saw at attach",
+   "file": "storage/writer.ts",
+   "find": "next.set(job.operation,job);this.seeJob(job)",
+   "replace": "next.set(job.operation,job)",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#323",
+   "note": "agent#323 LOW-3. Go twin (by hand, in run_job.go: seeJob not called in RefreshJobs): caught at TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay."
+  },
+  {
+   "name": "job B26 agent#323 LOW-3 the writer keeps nothing of its start's acknowledged answer",
+   "file": "storage/writer.ts",
+   "find": "    if(answered.job===jobId)this.seeJob(answered)\n",
+   "replace": "",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#323",
+   "note": "agent#323 LOW-3. Go twin (by hand, in run_job.go: seeJob not called in finishJobStart, which the R-4 path also runs): caught at TestJobsAWriterThatStartedAJobHoldsItsStartsAnswer."
+  },
+  {
+   "name": "job B27 agent#323 LOW-3 the writer keeps nothing of its start's answer under R-4",
+   "file": "storage/writer.ts",
+   "find": ";if(answered.job===jobId)this.seeJob(answered)}catch",
+   "replace": "}catch",
+   "tests": [
+    "storage/job.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#323",
+   "note": "agent#323 LOW-3. Go twin: B26's, since Go's R-4 path records the start's answer through finishJobStart."
   },
   {
    "name": "job B17 R-4 an error after the dispatch returned is read as a refusal after perform",
@@ -16746,6 +16806,66 @@
    "status": "caught",
    "origin": "agent#342",
    "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
+  },
+  {
+   "name": "pause P5 agent#349 a Runtime action's ask that could not be saved is the call's own failure on vercel",
+   "file": "engines/vercel/loop.ts",
+   "find": "if(context.unsavedAsk!==undefined){fatal??=context.unsavedAsk;inputPause.abort()}",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349: the next request's checkpoint then reports storage/storage/not-started. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P6 agent#349 vercel keeps the unsaved ask's failure and reports nothing",
+   "file": "engines/vercel/loop.ts",
+   "find": "if (!isCancelled(kept.cause) && !gate.signal.aborted) await channel.push(failureEvent(kept.cause, 'storage'))",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P7 agent#349 a Runtime action's ask that could not be saved is the call's own failure on deepagents",
+   "file": "engines/deepagents/loop.ts",
+   "find": "if(context.unsavedAsk!==undefined){fatal??=context.unsavedAsk;inputPause.abort()}",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349: the run then reports unknown/model/unknown. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P8 agent#349 deepagents keeps the unsaved ask's failure and reports nothing",
+   "file": "engines/deepagents/loop.ts",
+   "find": "if (!isCancelled(kept.cause) && !gate.signal.aborted) await channel.push(failureEvent(kept.cause, 'storage'))",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P9 agent#349 a Runtime action's unsaved ask is not kept for the model engines",
+   "file": "context/runtimeActions.ts",
+   "find": "context.unsavedAsk??={cause:error};",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
   },
   {
    "name": "continuation C1 a recovered invocation is sent again by the handoff's rule alone",

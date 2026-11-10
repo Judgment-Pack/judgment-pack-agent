@@ -2292,11 +2292,53 @@ func (w *RunWriter) jobCancelRequest(ctx context.Context, held *jobCancelDispatc
 	if !sameJobOptional(record.Handle, before.Handle) || (record.HandleDigested != nil) != (before.HandleDigested != nil) || record.Source != before.Source || record.Tool != before.Tool {
 		return jobInvalid()
 	}
+	// agent#323 LOW-3: and it agrees with what this writer saw of the job, so a store that answers another job's record in
+	// its read and in its ask alike sends nothing.
+	if !w.agreesWithSeen(record) {
+		return jobInvalid()
+	}
 	held.record, held.operation = &record, operation
 	return nil
 }
 
 func sameJobOptional(a, b *string) bool { return (a == nil) == (b == nil) && (a == nil || *a == *b) }
+
+// jobSeen (agent#323 LOW-3) is what this writer saw of one job itself: at attach, or in its start's acknowledged answer.
+// The first handle seen stands, with its marker; the source and the tool are the job's at first sight. A cancel is sent
+// only where the store's answer agrees with it.
+type jobSeen struct {
+	source, tool   string
+	handle         *string
+	handleDigested bool
+}
+
+func (w *RunWriter) seeJob(job RunJob) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.jobsSeen == nil {
+		w.jobsSeen = map[string]jobSeen{}
+	}
+	was, ok := w.jobsSeen[job.Job]
+	if !ok {
+		was = jobSeen{source: job.Source, tool: job.Tool}
+	}
+	if was.handle == nil && job.Handle != nil {
+		handle := *job.Handle
+		was.handle, was.handleDigested = &handle, job.HandleDigested != nil
+	}
+	w.jobsSeen[job.Job] = was
+}
+
+// agreesWithSeen reports whether the job's record agrees with what this writer saw of it, where it saw it.
+func (w *RunWriter) agreesWithSeen(job RunJob) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	was, ok := w.jobsSeen[job.Job]
+	if !ok {
+		return true
+	}
+	return job.Source == was.source && job.Tool == was.tool && (was.handle == nil || sameJobOptional(job.Handle, was.handle) && (job.HandleDigested != nil) == was.handleDigested)
+}
 
 // jobLastAnswers is what a read tool last told the model of each job.
 type jobLastAnswers struct {
@@ -2348,6 +2390,7 @@ func (w *RunWriter) finishJobStart(ctx context.Context, held *jobStartDispatch) 
 	if err != nil {
 		return ToolResult{}, err
 	}
+	w.seeJob(record)
 	return JobStartResult(record), nil
 }
 
@@ -2410,6 +2453,7 @@ func (w *RunWriter) RefreshJobs(ctx context.Context) error {
 				return err
 			}
 			next[job.Operation] = job
+			w.seeJob(job)
 		}
 		if page.Next == "" || page.Next == after {
 			break

@@ -156,6 +156,9 @@ type options struct {
 	decision     *contract.CheckpointApprovalDecision
 	continuation *runcontext.RunJob
 	plan         *runcontext.Value
+	// args, where set, is what each call's arguments are at the moment it is made (agent#323 LOW-3: a job the same run
+	// started).
+	args func(jobCall) string
 }
 
 // laterTurn (#330): a finished run is resumed by no plain resume, and a job continuation only where a claimed wait bears
@@ -223,6 +226,12 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 		}
 		return call.tool
 	}
+	argsOf := func(call jobCall) string {
+		if with.args != nil {
+			return with.args(call)
+		}
+		return call.args
+	}
 	var implementation adapter.Adapter
 	if engine == "native" {
 		implementation = native.New()
@@ -241,7 +250,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 						name = held.Name
 					}
 				}
-				answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: fmt.Sprintf("native-call-%d", i), Name: name, Arguments: json.RawMessage(call.args)})
+				answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: fmt.Sprintf("native-call-%d", i), Name: name, Arguments: json.RawMessage(argsOf(call))})
 				raw, _ := json.Marshal(answer)
 				mu.Lock()
 				out.bodies = append(out.bodies, string(raw))
@@ -262,7 +271,7 @@ func drive(t *testing.T, store runcontext.RunStore, engine string, tools []runco
 			out.asks.Add(1)
 			seen++
 			if seen <= len(calls) {
-				return modelCall(wireOf(calls[seen-1]), fmt.Sprintf("model-call-%d-%d", time.Now().UnixNano(), seen), calls[seen-1].args), nil
+				return modelCall(wireOf(calls[seen-1]), fmt.Sprintf("model-call-%d-%d", time.Now().UnixNano(), seen), argsOf(calls[seen-1])), nil
 			}
 			return modelFinal(), nil
 		}
@@ -2175,6 +2184,48 @@ func TestJobsACancelWhoseHostRefusesAfterPerformMayHaveBeenSent(t *testing.T) {
 	}
 }
 
+// refusingOnError is an effect host that answers any failure of its dispatch with its own LeaseRefused, once on.
+type refusingOnError struct {
+	inner *runcontext.ReferenceEffectHost
+	on    *atomic.Bool
+}
+
+func (h refusingOnError) EffectFencing() string { return h.inner.EffectFencing() }
+func (h refusingOnError) Dispatch(ctx context.Context, admission runcontext.EffectAdmission, perform func(context.Context) error) error {
+	err := h.inner.Dispatch(ctx, admission, perform)
+	if err != nil && h.on.Load() {
+		return &runcontext.LeaseRefused{Reason: "stale-epoch"}
+	}
+	return err
+}
+
+// agent#323 LOW-1: the host's cancel fails after its request left, so the execute never returns, and the effect host
+// answers with its own LeaseRefused. The cancel was handed over: its row is keyed on that, not on the execute returning.
+func TestJobsACancelWhoseHostThrowsAfterItWasHandedOverMayHaveBeenSent(t *testing.T) {
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			p := pairOf(t, "runner", nil, func(context.Context, runcontext.JobCancelInput) error {
+				return errors.New("the request left; its answer did not come back")
+			}, "allow", jobKey)
+			l, on := newLeased(t, nil), &atomic.Bool{}
+			view := certifiedView(t, l, func(inner *runcontext.ReferenceEffectHost) runcontext.EffectHost {
+				return refusingOnError{inner: inner, on: on}
+			})
+			drive(t, view, engine, p.tools(), []jobCall{{"runner__start_job", jobArgs}}, options{})
+			job := onlyJob(t, l.store)
+			on.Store(true)
+			result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(job.Job)}}, options{resume: true})
+			rows := cancelRows(t, l.store)
+			if p.sent.Load() != 1 || len(rows) != 1 || rows[0].State != "unknown" || !strings.HasPrefix(failureDetail(rows[0]), "JobCancelUnrecorded:") {
+				t.Fatal(p.sent.Load(), rows)
+			}
+			if answer := lastToolResult(t, result); strings.Contains(answer, "this cancel was not sent") || !strings.Contains(answer, "cancel requested") {
+				t.Fatal(answer)
+			}
+		})
+	}
+}
+
 // F-20: an effect host that refuses with LeaseRefused before anything was handed over: the cancel was not sent.
 func TestJobsACancelWhoseHostRefusesBeforePerformWasNotSent(t *testing.T) {
 	for _, engine := range engines {
@@ -2210,41 +2261,114 @@ func (s answersAltered) RequestJobCancel(ctx context.Context, ask runcontext.Job
 	return held, err
 }
 
-// F-2b: a store that answers the job asked for with another job's handle, or another source, sends nothing.
+// readsAltered (agent#323 LOW-3) also alters its read of one job (of every job where job is empty), as answersAltered
+// alters the ask; its list stays honest.
+type readsAltered struct {
+	answersAltered
+	job string
+}
+
+func (s readsAltered) ReadJob(ctx context.Context, resource, job string) (*runcontext.RunJob, error) {
+	held, err := s.answersAltered.ReadJob(ctx, resource, job)
+	if err == nil && held != nil && (s.job == "" || held.Job == s.job) {
+		(*s.alter)(held)
+	}
+	return held, err
+}
+
+// F-2b: a store that answers the job asked for with another job's handle, or another source, sends nothing. agent#323
+// LOW-3: a store that alters its read of the job as it alters its ask is held to what the writer saw of the job at attach.
 func TestJobsACancelSendsNothingTheRecordReadBeforeDoesNotSay(t *testing.T) {
+	for _, engine := range engines {
+		for _, both := range []bool{false, true} {
+			// read is what a store that also alters its read is answered with: a job read under another source or tool is
+			// not this pair's, and is refused before anything is asked (jobCancelRefusal); the others reach the ask.
+			for _, c := range []struct {
+				name, first, read string
+				alter             func(*runcontext.RunJob)
+			}{
+				{"another job's handle", "H-ONE", "this cancel was not sent", func(job *runcontext.RunJob) { other := "H-TWO"; job.Handle = &other }},
+				{"another source", "H-ONE", "JobRefused: no-job.", func(job *runcontext.RunJob) { job.Source = "other-source" }},
+				// A handle kept as its digest, answered without its marker, would go out as the reference.
+				{"its digest marker dropped", strings.Repeat("L", 300), "this cancel was not sent", func(job *runcontext.RunJob) { job.HandleDigested = nil }},
+				{"another tool", "H-ONE", "JobRefused: no-job.", func(job *runcontext.RunJob) { job.Tool = "other-tool" }},
+			} {
+				t.Run(fmt.Sprintf("%s/%s/read-altered=%t", engine, c.name, both), func(t *testing.T) {
+					p := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: c.first}, nil), nil, "allow", jobKey)
+					l := newLeased(t, nil)
+					drive(t, l.view, engine, p.tools(), []jobCall{{"runner__start_job", `{"name":"one"}`}}, options{})
+					second := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: "H-TWO"}, nil), nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
+					drive(t, l.view, engine, second.tools(), []jobCall{{"runner__start_job", `{"name":"two"}`}}, options{resume: true})
+					page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+					if len(page.Jobs) != 2 {
+						t.Fatalf("%+v", page.Jobs)
+					}
+					first := page.Jobs[0].Job
+					if page.Jobs[0].Handle != nil && *page.Jobs[0].Handle == "H-TWO" {
+						first = page.Jobs[1].Job
+					}
+					store := answersAltered{l.store, &c.alter}
+					view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+					if both {
+						store := readsAltered{store, first}
+						view, err = runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(first)}}, options{resume: true})
+					want := "this cancel was not sent"
+					if both {
+						want = c.read
+					}
+					if p.sent.Load() != 0 || second.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), want) {
+						t.Fatal(p.sent.Load(), second.sent.Load(), lastToolResult(t, result))
+					}
+				})
+			}
+		}
+	}
+}
+
+// agent#323 LOW-3: the writer that started a job holds what its start's acknowledged answer said, with no attach after it:
+// a store that then answers its read and its ask of the job alike with another record sends nothing.
+func TestJobsAWriterThatStartedAJobHoldsItsStartsAnswer(t *testing.T) {
 	for _, engine := range engines {
 		for _, c := range []struct {
 			name, first string
 			alter       func(*runcontext.RunJob)
 		}{
 			{"another job's handle", "H-ONE", func(job *runcontext.RunJob) { other := "H-TWO"; job.Handle = &other }},
-			{"another source", "H-ONE", func(job *runcontext.RunJob) { job.Source = "other-source" }},
-			// A handle kept as its digest, answered without its marker, would go out as the reference.
 			{"its digest marker dropped", strings.Repeat("L", 300), func(job *runcontext.RunJob) { job.HandleDigested = nil }},
-			{"another tool", "H-ONE", func(job *runcontext.RunJob) { job.Tool = "other-tool" }},
 		} {
 			t.Run(engine+"/"+c.name, func(t *testing.T) {
 				p := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: c.first}, nil), nil, "allow", jobKey)
-				l := newLeased(t, nil)
-				drive(t, l.view, engine, p.tools(), []jobCall{{"runner__start_job", `{"name":"one"}`}}, options{})
-				second := pairOf(t, "runner", answered(runcontext.JobStartAnswer{Started: true, Handle: "H-TWO"}, nil), nil, "allow", "job.key.0002.Hs8Pq3Lz6Wd1Rm9Tc4Vb7Nx2Ka5U")
-				drive(t, l.view, engine, second.tools(), []jobCall{{"runner__start_job", `{"name":"two"}`}}, options{resume: true})
-				page, _ := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
-				if len(page.Jobs) != 2 {
-					t.Fatalf("%+v", page.Jobs)
+				l, armed := newLeased(t, nil), &atomic.Bool{}
+				alter := func(job *runcontext.RunJob) {
+					if armed.Load() {
+						c.alter(job)
+					}
 				}
-				first := page.Jobs[0].Job
-				if page.Jobs[0].Handle != nil && *page.Jobs[0].Handle == "H-TWO" {
-					first = page.Jobs[1].Job
-				}
-				store := answersAltered{l.store, &c.alter}
+				store := readsAltered{answersAltered{l.store, &alter}, ""}
 				view, err := runcontext.UnattendedRunStore(store, l.fence, runcontext.NewReferenceEffectHost(store))
 				if err != nil {
 					t.Fatal(err)
 				}
-				result := drive(t, view, engine, p.tools(), []jobCall{{"runner__cancel_job", cancelArgs(first)}}, options{resume: true})
-				if p.sent.Load() != 0 || second.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
-					t.Fatal(p.sent.Load(), second.sent.Load(), lastToolResult(t, result))
+				// The cancel's arguments are the job the start made, read from the honest store; from then on the store lies.
+				args := func(call jobCall) string {
+					if call.args != "the job started" {
+						return call.args
+					}
+					page, err := runcontext.ListJobs(context.Background(), l.store, jobRun, "", 10)
+					if err != nil || len(page.Jobs) != 1 {
+						return "{}"
+					}
+					armed.Store(true)
+					return cancelArgs(page.Jobs[0].Job)
+				}
+				result := drive(t, view, engine, p.tools(), []jobCall{{"runner__start_job", jobArgs}, {"runner__cancel_job", "the job started"}}, options{args: args})
+				if !armed.Load() || p.sent.Load() != 0 || !strings.Contains(lastToolResult(t, result), "this cancel was not sent") {
+					t.Fatal(armed.Load(), p.sent.Load(), lastToolResult(t, result))
 				}
 			})
 		}

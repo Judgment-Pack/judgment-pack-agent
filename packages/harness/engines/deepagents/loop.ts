@@ -394,6 +394,8 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
   let turnTimer: ReturnType<typeof setTimeout> | undefined
   const executionSignal = AbortSignal.any([gate.signal, inputPause.signal, turnClock.signal])
   let awaitingInput = false
+  /** A failure the run ends with, whatever the model does next (agent#349): a Runtime action's ask that could not be saved. */
+  let fatal: { cause: unknown } | undefined
   /**
    * Images a result carried (agent#5): a model whose record says `vision` is shown each result's images
    * after the results they belong to; any other is shown the host's rendering inside the result.
@@ -456,7 +458,11 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
       const refusal = await rejectToolStep(name, args)
       if (refusal) return bare(refusal)
       const correlation = { ...(session.interactive||context.runtimeNeedsApproval(name) ? { callId: crypto.randomUUID() } : {}), ...(origin === undefined ? {} : { origin }) }
-      const runtime=await context.prepareRuntimeCall(name,args,correlation.callId??crypto.randomUUID())
+      // agent#349: a Runtime action's ask that could not be saved (withdrawn, so nothing is shown and the call is not run)
+      // ends the run with that failure, source storage: the writer cannot tell whether the save landed. Any other refusal is
+      // the call's own.
+      let runtime:Awaited<ReturnType<typeof context.prepareRuntimeCall>>
+      try{runtime=await context.prepareRuntimeCall(name,args,correlation.callId??crypto.randomUUID())}catch(cause){if(context.unsavedAsk!==undefined){fatal??=context.unsavedAsk;inputPause.abort()}throw cause}
       if(runtime?.requested){await deliver(runtime.requested);return bare({content:[{type:'text',text:APPROVAL_HELD}],isError:true})}
       if(runtime)args=runtime.args
       await deliver({ type: 'tool_call', ...correlation, name, args:runtime?.args??args })
@@ -1115,7 +1121,12 @@ export function runDeepAgentsLoop(session: RequestAssistantSession, id: Assistan
   }
 
   const open = (): AsyncGenerator<AssistantEvent> => {
-    const loop = drive().catch(async (thrown: unknown) => {
+    /** agent#349: the kept failure, whatever the drive ended with, unless the run was stopped. */
+    const endedFatal = async (kept: { cause: unknown }) => {
+      if (!isCancelled(kept.cause) && !gate.signal.aborted) await channel.push(failureEvent(kept.cause, 'storage'))
+    }
+    const loop = drive().then(async () => { if (fatal) await endedFatal(fatal) }, async (thrown: unknown) => {
+      if (fatal) return endedFatal(fatal)
       const cause = unwrapped(thrown)
       if (isCancelled(cause) || gate.signal.aborted) return
       if (cause instanceof ExecutionPaused) {
