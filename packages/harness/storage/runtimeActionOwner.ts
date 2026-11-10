@@ -49,11 +49,11 @@ export function registerRuntimeRehearsal(call:Call,rehearse:Call):void {
  if(rehearsals.has(call))throw fail()
  rehearsals.set(call,rehearse)
 }
-/** `wrapper` calls `inner` behind `admit`; its rehearsal does too. Without a channel on `inner` none is registered, and a rehearsal through `wrapper` is refused. */
-export function forwardRuntimeRehearsal(wrapper:Call,inner:Call,admit:(name:string)=>void):void {
+/** `wrapper` calls `inner` behind `admit`, where it has one; its rehearsal does too. Without a channel on `inner` none is registered, and a rehearsal through `wrapper` is refused. */
+export function forwardRuntimeRehearsal(wrapper:Call,inner:Call,admit?:(name:string)=>void):void {
  const held=rehearsals.get(inner)
  if(!held||rehearsals.has(wrapper))return
- rehearsals.set(wrapper,async(name,args)=>{admit(name);return held(name,args)})
+ rehearsals.set(wrapper,async(name,args)=>{admit?.(name);return held(name,args)})
 }
 /** The rehearsal channel of a session's callTool, where its connection owner registered one. */
 export function runtimeRehearsal(call:Call):Call|undefined {return rehearsals.get(call)}

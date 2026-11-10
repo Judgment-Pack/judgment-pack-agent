@@ -16546,8 +16546,8 @@
   {
    "name": "rehearsal #344 R11 a rehearsal is confirmed whatever its rehearsal member holds",
    "file": "toolGate.ts",
-   "find": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined",
-   "replace": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) ? args : undefined",
+   "find": "  if (!isRecord(args) || !Object.hasOwn(args, REHEARSAL_MEMBER) || args[REHEARSAL_MEMBER] !== true) return undefined",
+   "replace": "  if (!isRecord(args) || !Object.hasOwn(args, REHEARSAL_MEMBER)) return undefined",
    "tests": [
     "criticRehearsal.test.ts"
    ],
@@ -16558,8 +16558,8 @@
   {
    "name": "rehearsal #344 R12 a rehearsal is confirmed on an inherited rehearsal member",
    "file": "toolGate.ts",
-   "find": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined",
-   "replace": "  return isRecord(args) && args[REHEARSAL_MEMBER] === true ? args : undefined",
+   "find": "  if (!isRecord(args) || !Object.hasOwn(args, REHEARSAL_MEMBER) || args[REHEARSAL_MEMBER] !== true) return undefined",
+   "replace": "  if (!isRecord(args) || args[REHEARSAL_MEMBER] !== true) return undefined",
    "tests": [
     "criticRehearsal.test.ts"
    ],
@@ -16630,7 +16630,7 @@
   {
    "name": "rehearsal #344 R18 a forwarded rehearsal skips the wrapper's check",
    "file": "storage/runtimeActionOwner.ts",
-   "find": " rehearsals.set(wrapper,async(name,args)=>{admit(name);return held(name,args)})",
+   "find": " rehearsals.set(wrapper,async(name,args)=>{admit?.(name);return held(name,args)})",
    "replace": " rehearsals.set(wrapper,async(name,args)=>held(name,args))",
    "tests": [
     "criticRehearsal.test.ts"
@@ -16662,6 +16662,42 @@
    "status": "caught",
    "origin": "agent#344",
    "note": "#344. Go twin: none needed; Go has no rehearsal channel registry."
+  },
+  {
+   "name": "rehearsal #344 R21 a rehearsal is confirmed beside a case-folded twin of rehearsal",
+   "file": "toolGate.ts",
+   "find": "  return Object.keys(args).some((key) => key !== REHEARSAL_MEMBER && equalFold(key, REHEARSAL_MEMBER)) ? undefined : args\n",
+   "replace": "  return args\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344 review M1. Go twin (by hand): Rehearsed's strings.EqualFold loop in go/gate/gate.go, caught at TestARehearsalWithACaseFoldedTwinIsRefused and TestRehearsedConfirmsTheRewriteOnTheFrame (a case-folded twin)."
+  },
+  {
+   "name": "rehearsal #344 R22 equalFold misses a fold only upper casing finds",
+   "file": "toolGate.ts",
+   "find": " || c.toUpperCase() === d.toUpperCase()\n",
+   "replace": "\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344 review M1. Go twin: none needed; Go uses strings.EqualFold itself (TestARehearsalWithACaseFoldedTwinIsRefused pins rehearſal)."
+  },
+  {
+   "name": "rehearsal #344 R23 an evaluation served as a read is taken for a rehearsal",
+   "file": "context/runtimeActions.ts",
+   "find": "REHEARSAL_TOOL&&acting(name)&&session.context?.phase",
+   "replace": "REHEARSAL_TOOL&&session.context?.phase",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344 review L1. Go twin (by hand): runtimeRehearsal's && c.runtimeActing(name) in go/context/runtime_actions.go, caught at TestOnlyACriticsOrAChildsEvaluationIsARehearsal (served as a read rows)."
   }
  ]
 }

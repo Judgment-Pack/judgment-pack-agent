@@ -15,7 +15,7 @@ import {withDelegation} from './delegation'
 import {MemoryRunStore,type RunStore} from './storage/run'
 import {contextualSession} from './context/session'
 import {REFUTATION_MARKER,type CriticCase} from './refutation'
-import {inspectOutboundFrame,rehearsalArguments,allowedTools} from './toolGate'
+import {inspectOutboundFrame,rehearsalArguments,allowedTools,equalFold} from './toolGate'
 import {runtimeRehearsal,registerRuntimeRehearsal,forwardRuntimeRehearsal} from './storage/runtimeActionOwner'
 import {AIFailureError,authoredFailure} from './failures'
 import {installRuntimeActions} from './context/runtimeActions'
@@ -276,8 +276,43 @@ describe('#344 every other acting call keeps the approved path',()=>{
    frame({name:'experimental_evaluate',arguments:{rehearsal:'true'}}),
    frame({name:'experimental_evaluate',arguments:Object.create({rehearsal:true})}),
    frame({name:'validate',arguments:{rehearsal:true}}),
-   {verdict:'send' as const,notice:null,frame:{jsonrpc:'2.0',id:1,method:'tools/list',params:{name:'experimental_evaluate',arguments:{rehearsal:true}}} as unknown as JSONRPCMessage}
+   {verdict:'send' as const,notice:null,frame:{jsonrpc:'2.0',id:1,method:'tools/list',params:{name:'experimental_evaluate',arguments:{rehearsal:true}}} as unknown as JSONRPCMessage},
+   frame({name:'experimental_evaluate',arguments:{rehearsal:true,Rehearsal:false}}),
+   frame({name:'experimental_evaluate',arguments:{REHEARSAL:false,rehearsal:true}}),
+   frame({name:'experimental_evaluate',arguments:{'rehearſal':false,rehearsal:true}})
   ])expect(rehearsalArguments(verdict)).toBeUndefined()
+  // ʀ (U+0280) does not fold to r: no twin.
+  expect(rehearsalArguments(frame({name:'experimental_evaluate',arguments:{'ʀehearsal':false,rehearsal:true}}))).toEqual({'ʀehearsal':false,rehearsal:true})
+ })
+
+ it('equalFold is Go’s strings.EqualFold on the names it is asked about',()=>{
+  expect(['REHEARSAL','Rehearsal','rehearſal','rehearsal','ʀehearsal','rehearsa','rehearsals','reheaßal'].map(key=>equalFold(key,'rehearsal'))).toEqual([true,true,true,true,false,false,false,false])
+ })
+
+ it('the connection refuses a rehearsal whose arguments carry a case-folded twin of rehearsal, in the act’s words, and sends nothing',async()=>{
+  const r=await runtime()
+  try{
+   const rehearse=runtimeRehearsal(r.callTool)!
+   for(const args of [{value:7,Rehearsal:false},{REHEARSAL:false,rehearsal:true},{'rehearſal':false}]){
+    const refused=await rehearse('experimental_evaluate',args).catch(e=>e)
+    expect(refused).toBeInstanceOf(AIFailureError)
+    expect(refused.failure).toEqual(authoredFailure('permission',ACTING,'tool').failure)
+   }
+   expect(r.calls).toEqual([])
+   expect(guardrails(r)).toEqual([])
+  }finally{await r.close()}
+ })
+
+ it('an evaluation the Runtime serves as a read is no rehearsal: the critic’s and a child’s go to the session as before',async()=>{
+  for(const [storageRole,sessionContext] of [['critic',{}],['author',{objective:'Run the tests.'}]] as const){
+   const sent:unknown[]=[]
+   const context={storageRole,execution:{state:{}}} as unknown as SessionContext
+   const callTool=async(name:string,args:Record<string,unknown>):Promise<McpToolResult>=>{sent.push([name,args]);return {content:[{type:'text',text:'evaluated'}]}}
+   installRuntimeActions(context,{tools:[{...evaluate(),_meta:{operation:'evaluate',effect:'read',experimental:true}}],context:sessionContext,callTool} as unknown as EngineSession,()=>({}) as never)
+   expect(context.runtimeNeedsApproval('experimental_evaluate')).toBe(false)
+   expect(await context.runtimeCall!('experimental_evaluate',{value:7})).toEqual({content:[{type:'text',text:'evaluated'}]})
+   expect(sent).toEqual([['experimental_evaluate',{value:7}]])
+  }
  })
 })
 

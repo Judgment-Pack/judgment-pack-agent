@@ -27,6 +27,8 @@ func TestOnlyACriticsOrAChildsEvaluationIsARehearsal(t *testing.T) {
 		{"another acting tool, the critic's", "other_action", "act", func(c *SessionContext) { c.CriticReading = true }, true},
 		{"another acting tool, a child's", "other_action", "act", func(c *SessionContext) { c.objective = "Run the tests." }, true},
 		{"a pure evaluation", "experimental_evaluate", "pure", func(*SessionContext) {}, false},
+		{"the critic's evaluation served as a read", "experimental_evaluate", "read", func(c *SessionContext) { c.CriticReading = true }, false},
+		{"a child's evaluation served as a read", "experimental_evaluate", "read", func(c *SessionContext) { c.objective = "Run the tests." }, false},
 	} {
 		t.Run(row.label, func(t *testing.T) {
 			execution := &ExecutionController{}

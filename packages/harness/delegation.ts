@@ -728,10 +728,9 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
       const provider=shared.context?.provider(shared.context.delegatedRole(profile.id))
       const fallback=shared.context?.resolvedPolicy[`models.${shared.context.delegatedRole(profile.id)}.fallback`]?.value as string[]|undefined
-      const offeredRuntime=(name:string)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.')}
-      const childCall=async(name:string,args:Record<string,unknown>)=>{offeredRuntime(name);return session.callTool(name,args)}
-      // #344: a rehearsal through the child's session is held to the Runtime tools its profile was offered, as its other calls are.
-      forwardRuntimeRehearsal(childCall,session.callTool,offeredRuntime)
+      const childCall=async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)}
+      // #344: the child's rehearsal channel; its binding (bind's admitCall) holds the offer, test-call and budget checks.
+      forwardRuntimeRehearsal(childCall,session.callTool)
       const base = {...session,
         // ADR-0021: a child has its own empty host-input queue; it cannot drain the parent's steer.
         input:[],

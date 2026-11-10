@@ -135,6 +135,34 @@ func TestARehearsalWhoseRewriteIsNotConfirmedIsRefused(t *testing.T) {
 	}
 }
 
+// A member whose name equals rehearsal ignoring case (strings.EqualFold) could be read in its place by a
+// Runtime that reads arguments case-insensitively: the rehearsal is refused as an act, and nothing is sent.
+func TestARehearsalWithACaseFoldedTwinIsRefused(t *testing.T) {
+	for _, args := range []string{`{"value":7,"Rehearsal":false}`, `{"REHEARSAL":false,"rehearsal":true}`, `{"rehearſal":false}`} {
+		t.Run(args, func(t *testing.T) {
+			g, w := rehearsalGate(t)
+			g.Calls().BeginCritic()
+			result, err := g.CallTool(context.Background(), RehearsalTool, json.RawMessage(args))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Text != actingRefusal || !result.IsError || len(w.sent) != 0 {
+				t.Fatalf("a case-folded twin was sent: %q, %d frames sent", result.Text, len(w.sent))
+			}
+			if got := w.guardrails(); len(got) != 1 || got[0] != "refused: Runtime action requires an exact approved attempt. Nothing was sent." {
+				t.Fatalf("guardrails %q", got)
+			}
+		})
+	}
+	// ʀ (U+0280) does not fold to r: that member is no twin, and the rehearsal is sent.
+	g, w := rehearsalGate(t)
+	g.Calls().BeginCritic()
+	result, err := g.CallTool(context.Background(), RehearsalTool, json.RawMessage(`{"ʀehearsal":false}`))
+	if err != nil || result.Text != "evaluated" || len(w.sent) != 1 {
+		t.Fatalf("not sent: %q, %v, %d frames sent", result.Text, err, len(w.sent))
+	}
+}
+
 func TestRehearsedConfirmsTheRewriteOnTheFrame(t *testing.T) {
 	inspected := Inspect([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"experimental_evaluate","arguments":{"value":7}}}`), Ceiling, DefaultBounds)
 	if !inspected.Send || !Rehearsed(inspected) {
@@ -150,6 +178,7 @@ func TestRehearsedConfirmsTheRewriteOnTheFrame(t *testing.T) {
 		"a later false":         {Send: true, Frame: json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"experimental_evaluate","arguments":{"rehearsal":true,"rehearsal":false}}}`)},
 		"refused with a frame":  {Send: false, Frame: json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"experimental_evaluate","arguments":{"rehearsal":true}}}`)},
 		"a name not evaluation": {Send: true, Frame: json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"experimental_test_cases","arguments":{"rehearsal":true}}}`)},
+		"a case-folded twin":    {Send: true, Frame: json.RawMessage(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"experimental_evaluate","arguments":{"rehearsal":true,"Rehearsal":false}}}`)},
 	} {
 		if Rehearsed(verdict) {
 			t.Errorf("%s was confirmed as a rehearsal", label)

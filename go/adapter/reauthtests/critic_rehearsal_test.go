@@ -286,10 +286,10 @@ func TestACriticRehearsesASavedCaseOnAnActingEvaluate(t *testing.T) {
 }
 
 // childRun is a parent that delegates one task to profile, whose child calls experimental_evaluate
-// (and, where act is set, an acting tool other than it) and reports.
-func childRun(t *testing.T, engine, profile string, extra []contract.ToolOfferRuntimeTool, also string) (*rehearsalRuntime, []contract.RunEvent, runcontext.RunStore, []string) {
+// and reports.
+func childRun(t *testing.T, engine, profile string) (*rehearsalRuntime, []contract.RunEvent, runcontext.RunStore, []string) {
 	t.Helper()
-	r := &rehearsalRuntime{tools: append([]contract.ToolOfferRuntimeTool{runtimeActionTool()}, extra...)}
+	r := &rehearsalRuntime{tools: []contract.ToolOfferRuntimeTool{runtimeActionTool()}}
 	g := r.gate(t, nil, func(e contract.RunEvent) { r.events = append(r.events, e) })
 	offer, err := g.Open(context.Background(), nil)
 	if err != nil {
@@ -328,15 +328,13 @@ func childRun(t *testing.T, engine, profile string, extra []contract.ToolOfferRu
 				defer cb.ProviderRelease.Acknowledge(cb.ProviderRelease.Invocation)
 			}
 			if request.Delegated || isChild(request.Prompt) && !strings.Contains(request.Prompt, turn.DelegationInstructions) {
-				for _, name := range []string{"experimental_evaluate", also} {
-					for _, tool := range request.Tools {
-						if name != "" && strings.HasPrefix(tool.Description, name+": ") {
-							answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "child-" + name, Name: tool.Name, Arguments: rehearsalCall()})
-							if err != nil {
-								return err
-							}
-							answers = append(answers, answer.Text)
+				for _, tool := range request.Tools {
+					if strings.HasPrefix(tool.Description, "experimental_evaluate: ") {
+						answer, err := cb.Tool(ctx, adapter.AgentToolCall{ID: "child-experimental_evaluate", Name: tool.Name, Arguments: rehearsalCall()})
+						if err != nil {
+							return err
 						}
+						answers = append(answers, answer.Text)
 					}
 				}
 				return cb.Event(ctx, adapter.AgentEvent{Type: "message", ID: "child", Text: "The case holds.", Phase: "final"})
@@ -358,15 +356,11 @@ func childRun(t *testing.T, engine, profile string, extra []contract.ToolOfferRu
 			body := string(request.Body)
 			if strings.Contains(body, "Rehearse the saved case and say whether it holds.") && !strings.Contains(body, turn.DelegationInstructions) {
 				done := strings.Count(body, `"role":"tool"`)
-				calls := []string{"experimental_evaluate"}
-				if also != "" {
-					calls = append(calls, also)
-				}
 				if done > 0 {
 					answers = append(answers, body)
 				}
-				if done < len(calls) {
-					return sseTool(calls[done], rehearsalCall()), nil
+				if done == 0 {
+					return sseTool("experimental_evaluate", rehearsalCall()), nil
 				}
 				return sseText("The case holds."), nil
 			}
@@ -385,7 +379,7 @@ func childRun(t *testing.T, engine, profile string, extra []contract.ToolOfferRu
 func TestAnAuthorTestChildRehearsesOnAnActingEvaluate(t *testing.T) {
 	for _, engine := range []string{"eino", "native"} {
 		t.Run(engine, func(t *testing.T) {
-			r, events, store, answers := childRun(t, engine, "author-test", nil, "")
+			r, events, store, answers := childRun(t, engine, "author-test")
 			wire, _ := json.Marshal(map[string]any{"name": "experimental_evaluate", "arguments": map[string]any{"pack": rehearsalDocument, "facts": rehearsalFacts, "rehearsal": true}})
 			rehearsalChecks(t, r, events, store, "child-rehearsal", wire)
 			rewroteOnce(t, r.events)

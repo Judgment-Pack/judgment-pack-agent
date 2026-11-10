@@ -253,8 +253,10 @@ func Inspect(message []byte, allowed []string, bounds Bounds) Verdict {
 }
 
 // Rehearsed is whether a verdict sends experimental_evaluate with its rehearsal rewrite applied: a
-// tools/call frame of that name whose arguments carry an own rehearsal: true (#344). A verdict that
-// refuses, or a frame it cannot read so, is not.
+// tools/call frame of that name whose arguments carry an own rehearsal: true and no other member
+// whose name equals rehearsal ignoring case (strings.EqualFold), which a Runtime reading arguments
+// case-insensitively could take in its place (#344). A verdict that refuses, or a frame it cannot
+// read so, is not.
 func Rehearsed(decided Verdict) bool {
 	if !decided.Send {
 		return false
@@ -270,8 +272,17 @@ func Rehearsed(decided Verdict) bool {
 	if name := params.get("name"); name == nil || name.kind != jstring || name.s != RehearsalTool {
 		return false
 	}
-	held := params.get("arguments").get(RehearsalMember)
-	return held != nil && held.kind == jbool && held.b
+	args := params.get("arguments")
+	held := args.get(RehearsalMember)
+	if held == nil || held.kind != jbool || !held.b {
+		return false
+	}
+	for _, member := range args.o {
+		if member.key != RehearsalMember && strings.EqualFold(member.key, RehearsalMember) {
+			return false
+		}
+	}
+	return true
 }
 
 // jsTrim is String.prototype.trim: it removes JavaScript's white space and line terminators.

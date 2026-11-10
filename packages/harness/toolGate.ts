@@ -388,15 +388,31 @@ export function inspectOutboundFrame(
 
 /**
  * #344: the arguments a verdict sends `experimental_evaluate` with, where its rehearsal rewrite was
- * applied: a `tools/call` frame of that name whose arguments carry an own `rehearsal: true`.
- * Undefined for any other verdict, so a caller refuses what it cannot confirm.
+ * applied: a `tools/call` frame of that name whose arguments carry an own `rehearsal: true` and no
+ * other own member whose name equals `rehearsal` ignoring case (`equalFold`, Go's strings.EqualFold),
+ * which a Runtime reading arguments case-insensitively could take in its place. Undefined for any
+ * other verdict, so a caller refuses what it cannot confirm.
  */
 export function rehearsalArguments(decided: FrameVerdict): Record<string, unknown> | undefined {
   if (decided.verdict !== 'send') return undefined
   const frame = decided.frame as unknown
   if (!isRecord(frame) || frame.method !== TOOLS_CALL || !isRecord(frame.params) || frame.params.name !== REHEARSAL_TOOL) return undefined
   const args = frame.params.arguments
-  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined
+  if (!isRecord(args) || !Object.hasOwn(args, REHEARSAL_MEMBER) || args[REHEARSAL_MEMBER] !== true) return undefined
+  return Object.keys(args).some((key) => key !== REHEARSAL_MEMBER && equalFold(key, REHEARSAL_MEMBER)) ? undefined : args
+}
+
+/**
+ * Go's strings.EqualFold, code point by code point: equal where each pair is the same, or the same
+ * under lower or upper casing of one code point (so `REHEARSAL` and `rehearſal` equal `rehearsal`,
+ * and `ʀehearsal` does not).
+ */
+export function equalFold(a: string, b: string): boolean {
+  const left = [...a], right = [...b]
+  return left.length === right.length && left.every((c, i) => {
+    const d = right[i]!
+    return c === d || c.toLowerCase() === d.toLowerCase() || c.toUpperCase() === d.toUpperCase()
+  })
 }
 
 /**
