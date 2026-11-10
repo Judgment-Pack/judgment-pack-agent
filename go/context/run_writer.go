@@ -340,6 +340,7 @@ type RunWriter struct {
 	// their start's dispatch id, where the host offers job tools.
 	jobRegistration        *JobRegistration
 	jobRecords             map[string]RunJob
+	jobsSeen               map[string]jobSeen // agent#323 LOW-3: what this writer saw of each job itself (run_job.go)
 	repeatTools            *contract.CheckpointRepeatTools
 	repeatScopes           map[string]repeatDispatchSource
 	restoredTaskHead       bool
@@ -1936,14 +1937,14 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 	// R-4, F-17: the execute returned and the effect host refused afterwards. The start ran and the cancel left, so nothing
 	// reads as refused input: a start's answer goes to its job and the model is answered from it, and either row holds its
 	// fixed failure.
-	if performed && runErr != nil {
-		switch {
-		case jobStart != nil:
-			_, _ = w.finishJobStart(ctx, jobStart)
-			runErr, answeredFromJob = jobStartUnrecorded(), w.jobStartAsRecorded(ctx, jobStart.job)
-		case jobCancel != nil:
-			runErr = jobCancelUnrecorded()
-		}
+	if performed && runErr != nil && jobStart != nil {
+		_, _ = w.finishJobStart(ctx, jobStart)
+		runErr, answeredFromJob = jobStartUnrecorded(), w.jobStartAsRecorded(ctx, jobStart.job)
+	}
+	// agent#323 LOW-1: the cancel's row is keyed on its hand-over (sent), not on the execute returning: a host whose cancel
+	// fails after its request left, under an effect host that answers with its own refusal, still reads as maybe sent.
+	if jobCancel != nil && (performed || jobCancel.sent) && runErr != nil {
+		runErr = jobCancelUnrecorded()
 	}
 	if jobCancel != nil && runErr == nil {
 		if answer := w.jobCancelAnswer(ctx, jobCancel.job, true); answer != nil {
