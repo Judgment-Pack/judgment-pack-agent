@@ -1543,8 +1543,9 @@ func (w *RunWriter) RecordedResult(result ToolResult) (ToolResult, bool, error) 
 
 // recordedFailureLocked is f in the form a durable row holds it (#352): what the storage pass leaves of its
 // detail alone, then cut to the thousand UTF-16 code units a detail may hold, and whether that differs. The
-// guard reads whole: the detail the failure was authored with, before Authored cut it (failure.TakeWhole),
-// so that a match the cut would split is still found. A guard refusal is returned with no failure.
+// guard reads whole: the detail the failure was authored with, before Authored cut it, as far as
+// failure.WholeDetailMargin past the cut (failure.WholeDetail), so that a match the cut would split is still
+// found. A guard refusal is returned with no failure.
 func (w *RunWriter) recordedFailureLocked(f contract.Failure, whole *string) (contract.Failure, bool, error) {
 	if f.Detail == nil {
 		return f, false, nil
@@ -2129,7 +2130,7 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 				// #352: the failure is recorded in the form the record guard leaves of its detail, read whole
 				// before the cut, and the call fails with that same form, so the record and what the model is
 				// given agree. A guard refusal is an unknown outcome, and nothing of the failure is stored.
-				held, changed, guardErr := w.recordedFailureLocked(failure.TakeWhole(runErr, "tool", time.Now()))
+				held, changed, guardErr := w.recordedFailureLocked(failure.WholeDetail(runErr, "tool", time.Now()))
 				if guardErr != nil {
 					w.fatal = &StorageOutcomeUnknown{cause: guardErr}
 					return zero, w.fatal

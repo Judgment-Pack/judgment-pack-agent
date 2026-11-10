@@ -60,7 +60,7 @@ func finishDurableModel(ctx context.Context, binding *RunBinding, handle *modelC
 	// the cut; a guard refusal is an unknown outcome, and nothing of the failure is stored. No model is given it.
 	var recorded *contract.Failure
 	if outcome != nil {
-		held, _, err := w.recordedFailureLocked(failure.TakeWhole(outcome, "model", time.Now()))
+		held, _, err := w.recordedFailureLocked(failure.WholeDetail(outcome, "model", time.Now()))
 		if err != nil {
 			w.fatal = &StorageOutcomeUnknown{cause: err}
 			return w.fatal

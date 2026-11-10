@@ -224,9 +224,10 @@ func TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut(t *testing.T) {
 			if "{\"failure\":"+CanonicalJSON(row.Get("failure"))+"}" != want || strings.Contains(stored, "PRIVATE KEY-----\\n") || strings.Contains(stored, "QQQQQQQQ") || strings.Contains(stored, wholeKeyBody) {
 				t.Fatalf("recorded %s", row.Text())
 			}
-			// The whole detail is dropped once the recorded form is made.
-			if _, held := failure.TakeWhole(cause, "tool", time.Now()); *held != cut {
-				t.Fatalf("the error still holds %d bytes", len(*held))
+			// The error keeps its whole detail once the recorded form is made, so a later use is guarded alike
+			// (#367).
+			if _, held := failure.WholeDetail(cause, "tool", time.Now()); *held != c.raw {
+				t.Fatalf("the error holds %d bytes of %d", len(*held), len(c.raw))
 			}
 		})
 	}
@@ -273,5 +274,184 @@ func TestAnAuthoredDetailIsCutWithoutSplittingAPair(t *testing.T) {
 	got := failure.Authored("tool-failed", strings.Repeat("a", 999)+"\U0001F600tail", "tool").Error()
 	if got != strings.Repeat("a", 999) {
 		t.Fatalf("cut to %d units", len(utf16.Encode([]rune(got))))
+	}
+}
+
+// recordedRows is the stored run's rows, and the stored checkpoint's text.
+func recordedRows(t *testing.T, store RunStore, id string) ([]*Value, string) {
+	t.Helper()
+	head, err := store.Load(context.Background(), id)
+	if err != nil || head == nil {
+		t.Fatalf("no stored run: %v", err)
+	}
+	return MustParseJSON(string(head.Checkpoint)).Get("durable").Get("dispatches").Items(), string(head.Checkpoint)
+}
+
+// #367: the same error used twice is guarded whole both times: the error keeps its whole detail once it is
+// read, so the second use is not guarded as the cut. recordedFailures.test.ts holds the TypeScript.
+func TestTheSameFailureUsedTwiceIsGuardedWholeBothTimes(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range wholeCases() {
+		t.Run(c.name, func(t *testing.T) {
+			t.Run("a tool's, twice on one writer", func(t *testing.T) {
+				cause := failure.Authored("tool-failed", c.raw, "tool")
+				store := NewMemoryRunStore(MemoryRunStoreOptions{})
+				binding, _ := recordedWriter(t, store, "twice", false, RecordDefaults, nil)
+				for n := 1; n <= 2; n++ {
+					calls := 0
+					_, err := InvokeDurable(ctx, binding, "host", "source", "evaluate", []byte(fmt.Sprintf(`{"n":%d}`, n)), false, failingCall(cause, &calls), nil, nil)
+					if err == nil || err.Error() != c.want || !errors.Is(err, cause) {
+						t.Fatalf("use %d failed with %v", n, err)
+					}
+				}
+				rows, stored := recordedRows(t, store, "twice")
+				if len(rows) != 2 || strings.Contains(stored, wholeKeyBody) || strings.Contains(stored, "QQQQQQQQ") {
+					t.Fatalf("recorded %d rows: %s", len(rows), stored)
+				}
+				for _, row := range rows {
+					if row.Get("failure").Get("detail").Str() != c.want {
+						t.Fatalf("recorded %s", row.Text())
+					}
+				}
+			})
+			t.Run("a tool's, on a second writer", func(t *testing.T) {
+				cause := failure.Authored("tool-failed", c.raw, "tool")
+				for _, id := range []string{"first", "second"} {
+					store := NewMemoryRunStore(MemoryRunStoreOptions{})
+					binding, _ := recordedWriter(t, store, id, false, RecordDefaults, nil)
+					calls := 0
+					_, err := InvokeDurable(ctx, binding, "host", "source", "evaluate", []byte(`{}`), false, failingCall(cause, &calls), nil, nil)
+					if err == nil || err.Error() != c.want {
+						t.Fatalf("the %s writer failed with %v", id, err)
+					}
+					if row, stored := recordedRow(t, store, id); row.Get("failure").Get("detail").Str() != c.want || strings.Contains(stored, wholeKeyBody) {
+						t.Fatalf("the %s writer recorded %s", id, row.Text())
+					}
+				}
+			})
+			// A model's failure ends its run's dispatch, so its second use is on a second run.
+			t.Run("a model's, twice", func(t *testing.T) {
+				cause := failure.Authored("unavailable", c.raw, "model")
+				for _, id := range []string{"model-first", "model-second"} {
+					store := NewMemoryRunStore(MemoryRunStoreOptions{})
+					binding, _ := recordedWriter(t, store, id, false, RecordDefaults, nil)
+					handle, err := beginDurableModel(ctx, binding, "source", "fixture", []byte(`{}`))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := finishDurableModel(ctx, binding, handle, cause, false); err != nil {
+						t.Fatal(err)
+					}
+					if row, stored := recordedRow(t, store, id); row.Get("failure").Get("detail").Str() != c.want || strings.Contains(stored, wholeKeyBody) || strings.Contains(stored, "QQQQQQQQ") {
+						t.Fatalf("the %s run recorded %s", id, row.Text())
+					}
+				}
+			})
+		})
+	}
+}
+
+// #367: a second writer whose guard holds a pattern the first's does not finds a match the cut would split:
+// it reads the same whole detail the first did.
+func TestASecondWritersGuardReadsTheWholeDetail(t *testing.T) {
+	ticket := "TICKET-" + strings.Repeat("7", 40)
+	filler := strings.Repeat("f", 975-len("Rejected ")-len(wholeRedaction)-len(" then "))
+	raw := "Rejected " + wholeRSAKey + " then " + filler + ticket + " (end)"
+	first := "Rejected " + wholeRedaction + " then " + filler + ticket[:25]
+	second := "Rejected " + wholeRedaction + " then " + filler + "[redacted: ticket] (end)"
+	if len(first) != 1000 || len(second) != 999 {
+		t.Fatalf("the fixture is %d and %d units", len(first), len(second))
+	}
+	cause := failure.Authored("tool-failed", raw, "tool")
+	for _, w := range []struct {
+		id      string
+		members PolicyMembers
+		want    string
+	}{
+		{"first", nil, first},
+		{"second", PolicyMembers{"outputPatterns": {Value: []any{map[string]any{"name": "ticket", "pattern": "TICKET-[0-9]{40}"}}}}, second},
+	} {
+		store := NewMemoryRunStore(MemoryRunStoreOptions{})
+		binding, _ := recordedWriter(t, store, w.id, false, RecordDefaults, w.members)
+		calls := 0
+		_, err := InvokeDurable(context.Background(), binding, "host", "source", "evaluate", []byte(`{}`), false, failingCall(cause, &calls), nil, nil)
+		if err == nil || err.Error() != w.want {
+			t.Fatalf("the %s writer failed with %v", w.id, err)
+		}
+		if row, _ := recordedRow(t, store, w.id); row.Get("failure").Get("detail").Str() != w.want {
+			t.Fatalf("the %s writer recorded %s", w.id, row.Text())
+		}
+	}
+}
+
+// #367: the guard reads the cut and WholeDetailMargin past it, the same 16384 UTF-16 code units as
+// authoredFailure's WHOLE_DETAIL_MARGIN, never half a pair.
+func TestAWholeDetailIsKeptAsFarAsTheMargin(t *testing.T) {
+	if failure.WholeDetailMargin != 16384 {
+		t.Fatalf("the margin is %d", failure.WholeDetailMargin)
+	}
+	bound := 1000 + failure.WholeDetailMargin
+	units := func(s string) int { return len(utf16.Encode([]rune(s))) }
+	for _, c := range []struct{ name, raw, want string }{
+		{"a long detail", strings.Repeat("y", 3*bound), strings.Repeat("y", bound)},
+		// A pair the bound would split is left out whole.
+		{"a pair across the bound", strings.Repeat("y", bound-1) + "\U0001F600tail", strings.Repeat("y", bound-1)},
+		{"a pair within the bound", strings.Repeat("y", bound-2) + "\U0001F600tail", strings.Repeat("y", bound-2) + "\U0001F600"},
+	} {
+		_, whole := failure.WholeDetail(failure.Authored("tool-failed", c.raw, "tool"), "tool", time.Now())
+		if *whole != c.want {
+			t.Fatalf("%s: kept %d units", c.name, units(*whole))
+		}
+	}
+}
+
+// #367: a very long detail is guarded as far as the margin, within the guard's work bound: the call ends as
+// an ordinary stored failure, with exactly the cut's bytes, not an unknown storage outcome.
+func TestAVeryLongFailureDetailIsAnOrdinaryStoredFailure(t *testing.T) {
+	for _, shape := range []string{"x", "a b/"} {
+		raw := strings.Repeat(shape, 300_000/len(shape))
+		cut := raw[:1000]
+		store := NewMemoryRunStore(MemoryRunStoreOptions{})
+		binding, _ := recordedWriter(t, store, "long", false, RecordDefaults, nil)
+		cause := failure.Authored("tool-failed", raw, "tool")
+		calls := 0
+		_, err := InvokeDurable(context.Background(), binding, "host", "source", "evaluate", []byte(`{}`), false, failingCall(cause, &calls), nil, nil)
+		if err != error(cause) || binding.Writer.Failed() {
+			t.Fatalf("%q: failed with %v (%v)", shape, err, binding.Writer.Failed())
+		}
+		row, _ := recordedRow(t, store, "long")
+		want := `{"code":"tool-failed","detail":"` + cut + `","outcome":"unknown","source":"tool","version":1}`
+		if row.Get("state").Str() != "unknown" || CanonicalJSON(row.Get("failure")) != want {
+			t.Fatalf("%q: recorded %.200s", shape, row.Text())
+		}
+	}
+}
+
+// #367: a private key the cut would split is found where its END marker ends within the margin; where it
+// ends past it, the pattern, which needs both markers, does not match, and the detail is stored as cut
+// (ADR-0018 says so).
+func TestAKeyWhoseEndLiesPastTheMarginIsStoredAsCut(t *testing.T) {
+	head := "Rejected key after " + strings.Repeat("x", 800) + ": "
+	begin, end := "-----BEGIN RSA PRIVATE KEY-----\n", "\n-----END RSA PRIVATE KEY-----"
+	within := 1000 + failure.WholeDetailMargin - len(head) - len(begin) - len(end)
+	for _, c := range []struct {
+		name string
+		body int
+		want func(raw string) string
+	}{
+		{"its END marker ends at the margin", within, func(string) string { return head + wholeRedaction }},
+		{"its END marker ends one unit past it", within + 1, func(raw string) string { return raw[:1000] }},
+	} {
+		raw := head + begin + strings.Repeat("Q", c.body) + end + " (bad padding)"
+		store := NewMemoryRunStore(MemoryRunStoreOptions{})
+		binding, _ := recordedWriter(t, store, "margin", false, RecordDefaults, nil)
+		calls := 0
+		_, err := InvokeDurable(context.Background(), binding, "host", "source", "evaluate", []byte(`{}`), false, failingCall(failure.Authored("tool-failed", raw, "tool"), &calls), nil, nil)
+		if err == nil || err.Error() != c.want(raw) {
+			t.Fatalf("%s: failed with %.120v", c.name, err)
+		}
+		if row, _ := recordedRow(t, store, "margin"); row.Get("failure").Get("detail").Str() != c.want(raw) {
+			t.Fatalf("%s: recorded %.200s", c.name, row.Text())
+		}
 	}
 }
