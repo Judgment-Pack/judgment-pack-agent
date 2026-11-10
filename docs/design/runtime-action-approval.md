@@ -69,6 +69,47 @@ Current Runtime-only checkpoints project report 2 without usage totals unless an
 actual usage journal is present. Recording and history observations are descriptive
 and cannot recreate a private acting attempt.
 
+## Rehearsals in the critic's reading and a delegated child
+
+Agent issue #344 admits one acting Runtime call without a person decision. In the
+critic's reading, and in a delegated child (not a declared sub-agent) whose profile
+offers `experimental_evaluate` (the author-test profile by default; a host-declared
+profile that offers it gets the same), `experimental_evaluate` served with effect
+`act` is sent as a rehearsal, outside Plan mode and the reformat run. The admission
+follows the offered capability, not the profile's name. It asks no person and prepares no attempt:
+no checkpoint approval and no `runtime` dispatch record are written. It takes the
+path a Runtime read takes through the context ledger, never the original writer's
+effect path.
+
+It is sent only once the gate's rewrite to an own `rehearsal: true` is applied and
+confirmed on the frame the gate writes (`rehearsalArguments` in TypeScript,
+`gate.Rehearsed` in Go). The confirmation also refuses arguments that carry another
+member whose name equals `rehearsal` ignoring case (Go's `strings.EqualFold`), which
+a Runtime reading arguments case-insensitively could take in its place. A frame the
+gate refuses keeps that refusal. A frame it cannot confirm, and a call with no
+confirming owner, is refused with "Runtime action requires an exact approved
+attempt. Nothing was sent." Under a delegation (ADR-0029) the rehearsal is admitted
+as the act its tool is served as: source `runtime`, effect `act`, read once and
+counted when it is admitted. In both languages that count comes before the
+binding's budget check (and, in TypeScript, its offer check) and before the gate's
+checks, so a rehearsal those checks then refuse is still counted; the count errs on
+the cautious side.
+
+In TypeScript the actual connector registers a rehearsal channel on its call
+function, and a delegation's binding forwards it behind the same offer, test-call
+and budget checks its other calls pass. In Go the gate's `CallTool` sends it in the
+critic's phase and in a child's phase that offers the tool, and the adapter's
+per-call budget check runs before it as before.
+
+Every other acting call from the critic and a child stays refused there, with the
+existing message ("Runtime action requires an exact approved attempt. Nothing was
+sent."). Elsewhere acting calls keep the approval path above, and the main loop's
+acting evaluation still asks. The
+critic's prompt and offer are unchanged. The model now reads the Runtime's
+evaluation where it read the refusal, after the gate's existing `rewrote` notice
+where its call lacked `rehearsal: true`. The harness's own comparison of saved cases
+takes the same path, so those cases are compared instead of left not compared.
+
 ## Validation scope
 
 The paired acceptance tests enter the exported TypeScript model/native adapters

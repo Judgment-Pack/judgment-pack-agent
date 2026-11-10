@@ -38,6 +38,25 @@ export function registerRuntimeConnector(call:Call,connector:Connector):void {
  // Retain the observation function, and detach host-owned mutable declaration data.
  connectors.set(call,{...connector,initialTools:runtimeJSON(connector.initialTools),port:{...connector.port,owner:runtimeJSON(connector.port.owner)}})
 }
+/**
+ * #344: the connection owner's rehearsal channel for its callTool: experimental_evaluate sent only once
+ * its rewrite to an own rehearsal: true is confirmed on the frame the gate writes, never an act. A
+ * wrapper of that callTool (a delegation's binding) forwards to it behind its own checks.
+ */
+const rehearsals=new WeakMap<Call,Call>()
+/** Called only by the actual connection owner, never by an engine adapter. */
+export function registerRuntimeRehearsal(call:Call,rehearse:Call):void {
+ if(rehearsals.has(call))throw fail()
+ rehearsals.set(call,rehearse)
+}
+/** `wrapper` calls `inner` behind `admit`, where it has one; its rehearsal does too. Without a channel on `inner` none is registered, and a rehearsal through `wrapper` is refused. */
+export function forwardRuntimeRehearsal(wrapper:Call,inner:Call,admit?:(name:string)=>void):void {
+ const held=rehearsals.get(inner)
+ if(!held||rehearsals.has(wrapper))return
+ rehearsals.set(wrapper,async(name,args)=>{admit?.(name);return held(name,args)})
+}
+/** The rehearsal channel of a session's callTool, where its connection owner registered one. */
+export function runtimeRehearsal(call:Call):Call|undefined {return rehearsals.get(call)}
 export interface RuntimeAttempt {
  readonly request:RuntimeApprovalRequest
  /** The exact request descriptor passed to the original durable writer. */

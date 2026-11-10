@@ -560,6 +560,8 @@ this.storedBinding=session.context?.[durableOwner];this.storedChat=session.conte
  runApproved?:(signal:AbortSignal)=>Promise<{result:McpToolResult;ran:boolean}>
  runtimeNeedsApproval:(name:string)=>boolean=()=>false
  prepareRuntimeCall:(name:string,args:Record<string,unknown>,callId:string)=>Promise<RuntimeCall|undefined>=async()=>undefined
+ /** #344: a Runtime call that needs no approval, as `installRuntimeActions` dispatches it: a critic's or a child's rehearsal through the connection owner's rehearsal channel, any other through the session. */
+ runtimeCall?:(name:string,args:Record<string,unknown>)=>Promise<McpToolResult>
  runtimeAdmission(offer:unknown,task?:string){return {execution:this.execution.state.id,turn:this.turn?.number??0,role:this.storageRole,...(task?{task}:{}),phase:this.execution.state.phase,effectivePermissions:{policy:this.resolvedPolicy,child:this.memoryChild},finalRuntimeOffer:offer}}
 
  /**
@@ -1218,7 +1220,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
   }
  }}:undefined
  context.output.declaredNames=new Set([...session.tools,...hostTools].map(tool=>tool.name))
- const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{if(context.runtimeNeedsApproval(name))throw context.refuse(name,'Runtime action requires an exact approved attempt. Nothing was sent.','approval refused');context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
+ const prepared={...session,...(model?{model}:{}),...(agent?{agent}:{}),hostTools,callTool:async(name:string,args:Record<string,unknown>)=>{if(context.runtimeNeedsApproval(name))throw context.refuse(name,'Runtime action requires an exact approved attempt. Nothing was sent.','approval refused');context.admit(name,'runtime',args);await session.context?.authorize?.(session.signal);args=context.output.value(args,'tool argument');context.claimTestCall(name);const call=()=>context.execution.wrapRead(name,a=>context.runtimeCall?context.runtimeCall(name,a):session.callTool(name,a),runtimeToolContextPolicy(name),runtimeToolContextPolicy(name).immutable===true,{runtime:true,offered:session.tools.some(t=>t.name===name)})(args);return context.sources?context.sources.runtime(call):call()}} as T
  context.requestValues=new RequestValues(context.resolvedPolicy,role=>context.connection(role))
  const resolved=requestSession(prepared,context.resolvedPolicy,context)
  if(context.turnRoute)await context.turnRoute.initialize(resolved)
