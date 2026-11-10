@@ -6,6 +6,7 @@ import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
 import {storageId,STORAGE_PAGE_LIMIT} from './common'
+import {successorHeld} from './successor'
 import {sameBinding} from '../principal'
 import {LeaseRefused,attachReauthorizedDispatch,fenceOf,validConnectionReference,readLeaseFence,readRunLease,reauthDispositionOf,trustedReauthorization,unattendedRunStore,useReauthorization,validLeaseEpoch,type EffectHost,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease,type ReauthDisposition,type ReauthorizationRequired} from './lease'
 import {ReauthorizationRefused,permitted,readReauthDisposition,readReauthorized,reauthorize,type Reauthorized} from './reauth'
@@ -126,6 +127,10 @@ function answer(prompt:UserQuestion|undefined,v:unknown):QuestionDraft{
 }
 /** A real answer: a chosen option or non-blank free text. An empty draft is not an answer. */
 const realAnswer=(draft:QuestionDraft)=>draft.selected.length>0||!blank(draft.text)
+/** #340: a real answer to this question, as a wake's answer is read, or undefined where it is not one. */
+export function readQuestionAnswer(prompt:UserQuestion,v:unknown):QuestionDraft|undefined{
+ try{const held=answer(prompt,v);return realAnswer(held)?held:undefined}catch(error){if(error instanceof WaitRefused)return undefined;throw error}
+}
 
 function readEventCondition(v:unknown):EventCondition{const held=shape(v,['kind','subject']);return {kind:id(held.kind),subject:id(held.subject)}}
 export function readWaitCondition(v:unknown):WaitCondition{
@@ -722,7 +727,7 @@ export interface ParkInput {
  reauthorization?:ReauthorizationRequired
  chat?:{store:ChatStore;id:string};retainUntil?:string;signal?:AbortSignal
 }
-async function retainedQuestion(store:RunStore,run:string,event:string,signal?:AbortSignal):Promise<UserQuestion|undefined>{
+export async function retainedQuestion(store:RunStore,run:string,event:string,signal?:AbortSignal):Promise<UserQuestion|undefined>{
  let after:string|null=null,found:UserQuestion|undefined,last:string|undefined
  for(;;){
   const page=await store.readEvents(run,after,STORAGE_PAGE_LIMIT,signal)
@@ -786,6 +791,8 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
   if(input.question===undefined)throw new WaitRefused('nothing-pending')
   const prompt=await retainedQuestion(store,fence.resource,id(input.question),input.signal)
   if(!prompt)throw new WaitRefused('nothing-pending')
+  // #340: a question that has its successor run is answered there, and is not parked as well.
+  if(await successorHeld(store,fence.resource,input.question,input.signal))throw new WaitRefused('nothing-pending')
   pending={kind:'question',event:input.question,questionDigest:questionDigest(prompt),question:prompt}
  }
  if(!approval&&limits?.approvalTtlMs!==undefined){const {approvalTtlMs:_,...rest}=limits;limits=Object.keys(rest).length?rest:undefined}

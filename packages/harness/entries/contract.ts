@@ -44,6 +44,8 @@ export {MemoryChatStore} from '../storage/chat'
 export type {ChatEntry,ChatListRequest,ChatPage,StoredChat,ChatPatch} from '../storage/chat'
 export type {DurableRunInput,DurableScope,ArtifactObservation,DurableObservation} from '../storage/writer'
 export {ContinuationNotRecoverable,ContinuationIdentityChanged,RunComplete,RUN_COMPLETE,DurableRequestConflict,DurableRequestUnrecordable,HostOutcomeUnknown,StorageAcknowledgementInvalid,StorageOutcomeUnknown} from '../storage/writer'
+export {SuccessorRefused,successorRunId,QUESTION_ANSWERED,questionAnswerText} from '../storage/successor'
+export type {RunSuccessor,SuccessorRefusalReason,QuestionAnswer} from '../storage/successor'
 
 export * from '../planning/references'
 export type {ChatPlan,PlanReference,CurrentPlanReference,LegacyPlanReference} from '../planning/model'
