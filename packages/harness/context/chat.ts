@@ -388,6 +388,8 @@ export class ChatContext {
 export class ChatTurn implements LedgerStore {
  /** What this run retained or read: kept from eviction while the run is open. */
  readonly referenced=new Set<string>()
+ /** In a durable run, the record guard's form of each entry this run referenced that the guard changes (#352): this run reads it and its checkpoint carries it; the chat's entry is unchanged. */
+ private readonly recorded=new Map<string,Entry>()
  constructor(private readonly context:ChatContext,readonly number:number,private readonly visible?:Set<string>){}
  get chat(){return this}
  get scope(){return this.context.scope}
@@ -395,19 +397,30 @@ export class ChatTurn implements LedgerStore {
  get size(){return this.context.size}
  room(bytes:number,bound:number){this.context.room(bytes,bound)}
  add(entry:Entry){this.context.add(entry,this);this.visible?.add(entry.id)}
- use(id:string):Entry|undefined{if(this.visible&&!this.visible.has(id))return undefined;const entry=this.context.entries.get(id);if(entry)this.context.touch(id,this);return entry}
+ use(id:string):Entry|undefined{if(this.visible&&!this.visible.has(id))return undefined;const entry=this.context.entries.get(id);if(!entry)return undefined;this.context.touch(id,this);return this.recorded.get(id)??entry}
+ /** #352: the entry under `id` this turn may read, neither touched nor made the run's, and whether this run already reads it in its recorded form; undefined where `use` would answer undefined. */
+ look(id:string):{entry:Entry;recorded:boolean}|undefined{if(this.visible&&!this.visible.has(id))return undefined;const entry=this.context.entries.get(id);return entry&&{entry,recorded:this.recorded.has(id)}}
+ /** #352: `use`, this run reading `held`, the record guard's form of the entry under `id`, in its place; undefined where `use` would answer undefined. */
+ useRecorded(id:string,held:Entry):Entry|undefined{if(!this.use(id))return undefined;this.recorded.set(id,held);return held}
+ /**
+  * #352: the entry under `id` is no longer this run's: the record guard refuses the entry a restored checkpoint
+  * referenced, so the run neither reads it nor carries it.
+  */
+ withhold(id:string){this.referenced.delete(id);this.recorded.delete(id)}
  /**
   * An entry the chat holds that this run retained itself with the same content: a child's turn is
   * given it. Never a way to read an entry by id: the caller produced the bytes.
   */
  adopt(id:string):Entry|undefined{if(!this.visible)return this.use(id);if(!this.context.entries.has(id))return undefined;this.visible.add(id);return this.use(id)}
  /** What this run's checkpoint carries: the entries it retained or read that the chat still holds. */
- held():Entry[]{return [...this.referenced].flatMap(id=>{const entry=this.context.entries.get(id);return entry?[entry]:[]})}
+ held():Entry[]{return [...this.referenced].flatMap(id=>{const entry=this.context.entries.get(id);return entry?[this.recorded.get(id)??entry]:[]})}
  missing(id:string){return this.visible&&!this.visible.has(id)?NOT_REFERENCED:this.context.wasEvicted(id)?EVICTED:undefined}
  /** Clears the chat's whole ledger; a child's turn clears nothing. A run's end calls `release`, not this. */
  clear(){if(!this.visible)this.context.clear()}
  /** The run ended: its turn closes and what it referenced may be evicted. The chat keeps it all. */
  release(){this.context.close(this)}
+ /** #352: the entry the read cache holds under `key`, not served: neither touched nor revealed to this run, so it is not the run's. `cached` serves it. */
+ peek(key:string):McpToolResult|undefined{const id=this.context.cachedEntry(key),entry=id===undefined?undefined:this.context.entries.get(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}
  /** An immutable read's result, served from the chat's read cache, or undefined. A child's turn is given the entry it was served. */
  cached(key:string):McpToolResult|undefined{
   const id=this.context.cachedEntry(key)

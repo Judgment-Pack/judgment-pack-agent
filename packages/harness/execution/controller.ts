@@ -78,6 +78,8 @@ export class ExecutionController {
  private usageSources=new Map<string,{calls:number;milliseconds:number;bytes:number}>()
  private readonly recordPolicy:RecordsPolicy
  recordGuard?:()=>RecordGuard|undefined
+ /** #352: the durable run's writer's recorded form of a result, or nothing outside one. */
+ recordedRead?:(result:McpToolResult)=>McpToolResult
  constructor(private session:EngineSession,private ledger:ContextLedger,members?:import('../policy').PolicyMembers){this.recordPolicy=recordsPolicy(members??{})}
  get storagePolicy(){return this.recordPolicy}
  get storageGuard(){return this.recordGuard?.()}
@@ -347,10 +349,15 @@ export class ExecutionController {
    const cacheable=immutable&&scalarValue(args)&&exactArguments(args)
    const chatKey=chat&&cacheable?await readCacheKey(name,args,kept!.runtime||policy.runtime===true,this.session.context?.runtime):undefined
    // The cache serves only a name the run's session offers: an unoffered name goes on to the inner offer check and the gate, and a served entry never joins a child's visible set.
-   if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey);if(held)return held}
+   // #352: a durable run is served an entry another run kept (one that records nothing, or one a stored chat brought back) only where its record guard leaves the entry as it is. One the guard would change is not served nor made this run's: the read runs as on a miss, and its result, in the recorded form, is kept in its place. One the guard refuses is the call's refusal (thrown), and nothing is served or run.
+   if(chatKey!==undefined&&kept!.offered!==false){
+    const peeked=this.recordedRead?chat!.peek(chatKey):undefined
+    if(!peeked||this.recordedRead!(peeked)===peeked){const held=chat!.cached(chatKey);if(held)return held}
+   }
    const key=name+':'+JSON.stringify(args)
    if(chatKey===undefined&&cacheable&&this.cache.has(key))return structuredClone(this.cache.get(key)!)
-   const result=await execute(args)
+   // #352: in a durable run a read that is no dispatch of its own (a Runtime read through callTool) is answered, retained and cached in the form the record guard leaves of it, as a dispatch's result is (#343). A dispatch's result already has that form, and keeps it.
+   const executed=await execute(args),result=this.recordedRead?this.recordedRead(executed):executed
    await admission?.admit(result)
    if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)
    if(chatKey===undefined&&cacheable&&!result.isError)this.cache.set(key,structuredClone(result))

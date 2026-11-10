@@ -99,3 +99,8 @@ The store-side guard exempts only exact labels emitted by that guard during the 
 stored, and the model is given that redacted form, so such a result's payload is no longer exempt from
 redaction. The redaction is the storage pass's: it is not counted under this ADR's `output_guarded`
 figures and makes no `output_guarded` event.
+
+**2026-11-10 (#352).** A Runtime read in a durable run, which has no dispatch row, is also given the record
+guard's form (ADR-0018) before the model sees it. A native agent used to get it as the Runtime gave it,
+and the API engines could not record their next request. As for #343, these redactions are not counted
+in `output_guarded` and make no event.

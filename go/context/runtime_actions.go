@@ -286,13 +286,27 @@ func (c *SessionContext) resumeRuntimeCall(ctx context.Context, record contract.
 	}
 	// As an approved call of a source: a refusal is the call's result, and the run continues with it.
 	result, err := c.resumeAdmittedRuntimeCall(ctx, record)
-	var refused *runtimeDelegationRefused
-	if errors.As(err, &refused) {
-		text, structured := failure.ToolFailure(refused.error)
-		value, _ := ParseJSON(structured)
-		return ResultOf([]Content{TextContent(text)}, value).WithIsError(true), nil
+	if answer, ok := delegationRefusalAnswer(err); ok {
+		return answer, nil
 	}
 	return result, err
+}
+
+// delegationRefusalAnswer is the result an approved call answers a delegation refusal with, or false: in the
+// form its durable dispatch recorded, where it recorded one (#352).
+func delegationRefusalAnswer(err error) (ToolResult, bool) {
+	var refused *runtimeDelegationRefused
+	if !errors.As(err, &refused) {
+		return ToolResult{}, false
+	}
+	answered := refused.error
+	var recorded *failure.RecordedError
+	if errors.As(err, &recorded) {
+		answered = recorded
+	}
+	text, structured := failure.ToolFailure(answered)
+	value, _ := ParseJSON(structured)
+	return ResultOf([]Content{TextContent(text)}, value).WithIsError(true), true
 }
 func (c *SessionContext) resumeAdmittedRuntimeCall(ctx context.Context, record contract.CheckpointApproval) (ToolResult, error) {
 	if err := c.runtimeDelegated(ctx, record.Name, false); err != nil {

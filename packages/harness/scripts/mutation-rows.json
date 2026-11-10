@@ -3021,8 +3021,8 @@
   {
    "name": "the chat's read cache serves a name the run's session does not offer",
    "file": "execution/controller.ts",
-   "find": "if(chatKey!==undefined&&kept!.offered!==false){const held=chat!.cached(chatKey)",
-   "replace": "if(chatKey!==undefined){const held=chat!.cached(chatKey)",
+   "find": "if(chatKey!==undefined&&kept!.offered!==false){\n",
+   "replace": "if(chatKey!==undefined){\n",
    "tests": [
     "delegation.test.ts",
     "context/chat.test.ts"
@@ -18249,6 +18249,438 @@
    "status": "caught",
    "origin": "agent#361",
    "note": "No Go twin: Go's checker is a func returning its error, so it cannot answer before its check is made."
+  },
+  {
+   "name": "#352 a durable run's Runtime read is answered and kept in the form its writer records",
+   "file": "execution/controller.ts",
+   "find": "const executed=await execute(args),result=this.recordedRead?this.recordedRead(executed):executed\n",
+   "replace": "const executed=await execute(args),result=executed\n",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: no recordedRead of the executed result): caught at TestADurableRunsRuntimeReadIsAnsweredAndKeptInTheRecordedForm, TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun and TestADurableRunsRuntimeReadIsWhatTheModelIsGiven (api and native)."
+  },
+  {
+   "name": "#352 a durable run is served a cached entry the record guard would change",
+   "file": "execution/controller.ts",
+   "find": "if(!peeked||this.recordedRead!(peeked)===peeked){",
+   "replace": "if(!peeked||(this.recordedRead!(peeked),true)){",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: served whether or not changed): caught at TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun."
+  },
+  {
+   "name": "#352 a cached entry a refusing guard withholds is read again",
+   "file": "execution/controller.ts",
+   "find": "if(!peeked||this.recordedRead!(peeked)===peeked){",
+   "replace": "if(!peeked||(()=>{try{return this.recordedRead!(peeked)===peeked}catch{return false}})()){",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, controller.go WrapRead: the peeked entry's refusal ignored): caught at TestAChatsCachedReadARefusingGuardWithholdsIsNotServed."
+  },
+  {
+   "name": "#352 a durable run's reads are not bound to its writer's recorded form",
+   "file": "context/session.ts",
+   "find": "  context.execution.recordedRead=result=>persistence.writer.recordedResult(result)\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, session.go: held.Execution.recordedRead not set): caught at TestAChatsCachedReadARefusingGuardWithholdsIsNotServed and the other recorded_reads_test.go tests."
+  },
+  {
+   "name": "#352 a peeked cache entry is made the run's",
+   "file": "context/chat.ts",
+   "find": "entry=id===undefined?undefined:this.context.entries.get(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}",
+   "replace": "entry=id===undefined?undefined:this.use(id);return entry===undefined?undefined:structuredClone(entry.value) as McpToolResult}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go Peek: t.use(id)): caught at TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun (the checkpoint holds the kept entry)."
+  },
+  {
+   "name": "#352 a handoff's answer is stored outside the storage pass",
+   "file": "records.ts",
+   "find": "'durable.children.*.checkpoint','handoff.answer','handoff.continuation',",
+   "replace": "'durable.children.*.checkpoint','handoff.continuation',",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, records.go recordTextPaths without handoff.answer): caught at TestRecordsKeepAHandoffsAnswerInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run reads the chat's entries by id as the chat keeps them",
+   "file": "context/ledger.ts",
+   "find": "  if(!this.recorded||!turn)return this.store.use(id)\n",
+   "replace": "  return this.store.use(id)\n",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go use: l.store.Use(id) alone): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm and TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm (api and native)."
+  },
+  {
+   "name": "#352 a durable run's checkpoint carries the chat's entry, not the one it read",
+   "file": "context/chat.ts",
+   "find": "return entry?[this.recorded.get(id)??entry]:[]",
+   "replace": "return entry?[entry]:[]",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go Held without the overlay): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm."
+  },
+  {
+   "name": "#352 a chat entry the record guard refuses is read by id as it is",
+   "file": "context/ledger.ts",
+   "find": "const value=this.recorded!(entry.value)",
+   "replace": "const value=(()=>{try{return this.recorded!(entry.value)}catch{return entry.value}})()",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go use: the refusal taken as unchanged): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#352 the entries a restored checkpoint referenced keep the chat's form",
+   "file": "context/ledger.ts",
+   "find": "  if(turn)for(const id of [...turn.referenced])try{this.use(id)}catch(error){turn.withhold(id);throw error}\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go RecordWith without the loop): caught at TestARestoredChatEntryIsCarriedInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run's reads by id are not bound to its writer's recorded form",
+   "file": "context/session.ts",
+   "find": "  context.ledger.recordWith(value=>persistence.writer.recordedResult(value))\n",
+   "replace": "",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, session.go without held.Ledger.RecordWith): caught at TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm (api and native)."
+  },
+  {
+   "name": "#352 a durable run reads the chat's entry, not the one its checkpoint carries",
+   "file": "context/chat.ts",
+   "find": "this.context.touch(id,this);return this.recorded.get(id)??entry}",
+   "replace": "this.context.touch(id,this);return entry}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, chat.go ChatTurn.use without the overlay): caught at TestARestoredChatEntryIsCarriedInTheRecordedForm (its ReadItem)."
+  },
+  {
+   "name": "#352 read_context reads a chat entry by id as the chat keeps it",
+   "file": "context/ledger.ts",
+   "find": "const request=readArguments(args),e=this.use(request.id)",
+   "replace": "const request=readArguments(args),e=this.store.use(request.id)",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go readItemHeld: l.store.Use): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm/read_context."
+  },
+  {
+   "name": "#352 a window read takes a chat entry by id as the chat keeps it",
+   "file": "context/ledger.ts",
+   "find": "const e=typeof id==='string'?this.use(id):undefined",
+   "replace": "const e=typeof id==='string'?this.store.use(id):undefined",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go entry: l.store.Use): caught at TestADurableRunsReadByIDOfAChatEntryIsCarriedInTheRecordedForm and TestADurableRunsReadByIDOfAChatEntryIsStoredInTheRecordedForm."
+  },
+  {
+   "name": "#352 a durable run's read is answered in the recorded form but kept in the chat raw",
+   "file": "execution/controller.ts",
+   "find": "if(!result.isError&&chat)await chat.keep(this.ledger,name,args,result,chatKey)",
+   "replace": "if(!result.isError&&chat)await chat.keep(this.ledger,name,args,executed,chatKey)",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "The clean room's M3. Go twin (by hand, controller.go WrapRead keeping the executed result): caught at TestADurableRunsRuntimeReadIsAnsweredAndKeptInTheRecordedForm and TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun."
+  },
+  {
+   "name": "#352 a restored entry the record guard refuses stays the run's",
+   "file": "context/ledger.ts",
+   "find": "try{this.use(id)}catch(error){turn.withhold(id);throw error}",
+   "replace": "try{this.use(id)}catch(error){throw error}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go RecordWith without turn.withhold): caught at TestARestoredChatEntryTheRecordGuardRefusesIsNotCarried."
+  },
+  {
+   "name": "#352 a durable call fails with its failure as it was, not the recorded form",
+   "file": "storage/writer.ts",
+   "find": "if(recorded!==failed&&from)restateFailure(from,recorded);",
+   "replace": "",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: runErr not wrapped in failure.RecordedError): caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a durable call's row stores its failure as it was",
+   "file": "storage/writer.ts",
+   "find": "claim.failure=recorded;",
+   "replace": "claim.failure=failed;",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: the row given the failure Normalize read): caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a failure's detail the record guard refuses is stored as it is",
+   "file": "storage/writer.ts",
+   "find": "recorded=this.recordedFailure(classified);",
+   "replace": "recorded=(()=>{try{return this.recordedFailure(classified)}catch{return failed}})();",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: the guard's refusal taken as unchanged): caught at TestADurableCallsFailureARefusingGuardWithholdsIsUnknown."
+  },
+  {
+   "name": "#352 a redacted failure's detail is not cut to what a detail may hold",
+   "file": "storage/writer.ts",
+   "find": "const detail=cutDetail(recordedForm(whole,this.policy,this.guard?.()))",
+   "replace": "const detail=recordedForm(whole,this.policy,this.guard?.())",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go recordedFailureLocked without failure.CutDetail): caught at TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a failure's detail is cut through a surrogate pair",
+   "file": "failures.ts",
+   "find": "detail.slice(0,/[\\uD800-\\uDBFF]/.test(detail[999]!)?999:1000)",
+   "replace": "detail.slice(0,1000)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "No Go twin: Go's cutUTF16 counts runes and never splits a pair (TestARecordedFailureDetailIsCutWithoutSplittingAPair pins it)."
+  },
+  {
+   "name": "#352 the error a failure was read from is not named",
+   "file": "failures.ts",
+   "find": "if(held){read.set(held,value);return held}",
+   "replace": "if(held)return held",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: none needed; Go wraps the call's error (failure.RecordedError), which Normalize reads before what it wraps (by hand, Normalize without that check: caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedDelegationRefusalIsAnsweredInTheRecordedForm)."
+  },
+  {
+   "name": "#352 a restated failure keeps its message",
+   "file": "failures.ts",
+   "find": ";(error as {failure:AIFailure}).failure=safe;error.message=failureMessage(safe)",
+   "replace": ";(error as {failure:AIFailure}).failure=safe",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: failure.RecordedError.Error() is its failure's message; caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm (err.Error())."
+  },
+  {
+   "name": "#352 a model's failure is stored as it was",
+   "file": "storage/writer.ts",
+   "find": "if(failed)held.claim.failure=failed",
+   "replace": "if(failed)held.claim.failure=normalizeFailure((outcome as {error:unknown}).error,'model')",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go: the row given the failure Normalize read): caught at TestADurableModelsFailureIsStoredInTheRecordedForm/redacted."
+  },
+  {
+   "name": "#352 a model's failure the record guard refuses is stored as it is",
+   "file": "storage/writer.ts",
+   "find": "catch(cause){throw new StorageOutcomeUnknown(cause)}\n   held.claim.state=",
+   "replace": "catch{failed=normalizeFailure((outcome as {error:unknown}).error,'model')}\n   held.claim.state=",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go: the guard's refusal taken as the failure as it was): caught at TestADurableModelsFailureIsStoredInTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#352 a failure's detail is guarded as cut, not whole",
+   "file": "storage/writer.ts",
+   "find": "const whole=(from&&takeWholeDetail(from))??f.detail",
+   "replace": "const whole=f.detail",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go recordedFailureLocked guarding f.Detail, not whole): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 a durable call's failure is guarded without the error it was read from",
+   "file": "storage/writer.ts",
+   "find": "recorded=this.recordedFailure(classified);",
+   "replace": "recorded=this.recordedFailure({failure:failed});",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go dispatch given failure.Normalize and no whole detail): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 a model's failure detail is guarded as cut, not whole",
+   "file": "storage/writer.ts",
+   "find": "this.recordedFailure(classifyFailure(outcome.error,'model'))",
+   "replace": "this.recordedFailure({failure:normalizeFailure(outcome.error,'model')})",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go given failure.Normalize and no whole detail): caught at TestADurableModelsFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 an authored failure keeps no whole detail",
+   "file": "failures.ts",
+   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "replace": "",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, Authored without authored.whole): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 an authored failure's whole detail is a member of the error",
+   "file": "failures.ts",
+   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "replace": "if(cut!==detail){wholeDetails.set(authored,detail);(authored as unknown as {whole:string}).whole=detail}",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, Error() printing the whole detail): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (the error's own detail, its encoding and printing)."
+  },
+  {
+   "name": "#352 a whole detail is kept once it is read",
+   "file": "failures.ts",
+   "find": "const whole=wholeDetails.get(error);wholeDetails.delete(error)",
+   "replace": "const whole=wholeDetails.get(error)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, TakeWhole without from.whole = nil): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (TakeWhole after the call)."
+  },
+  {
+   "name": "#352 a whole detail is read for a failure it was not cut to",
+   "file": "failures.ts",
+   "find": "return whole!==undefined&&cutDetail(whole)===error.failure.detail?whole:error.failure.detail",
+   "replace": "return whole??error.failure.detail",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, TakeWhole without the cut check): caught at TestAWholeDetailIsReadOnlyForTheDetailItWasCutTo."
+  },
+  {
+   "name": "#352 an authored failure's detail is cut through a surrogate pair",
+   "file": "failures.ts",
+   "find": "const cut=cutDetail(detail),authored=",
+   "replace": "const cut=detail.slice(0,1000),authored=",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: none; Go's Authored counts runes and never splits a pair (TestAnAuthoredDetailIsCutWithoutSplittingAPair pins the same bytes)."
+  },
+  {
+   "name": "#352 a durable run's search of every item matches the chat's entries as the chat keeps them",
+   "file": "context/ledger.ts",
+   "find": ".filter(e=>request.scope==='all'||this.attached.has(e.id)).map(e=>this.look(e))",
+   "replace": ".filter(e=>request.scope==='all'||this.attached.has(e.id))",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go searchHeld scoping e, not l.look(e)): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_durable_run."
+  },
+  {
+   "name": "#352 a durable run's search makes the entries it matches the run's",
+   "file": "context/ledger.ts",
+   "find": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}",
+   "replace": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.use(e.id)??e:e}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go look answering l.use(e.ID)): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_durable_run."
+  },
+  {
+   "name": "#352 a chat entry the record guard refuses is searched as it is",
+   "file": "context/ledger.ts",
+   "find": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}",
+   "replace": "private look(e:Entry):Entry{try{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}catch{return e}}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go searchHeld taking e on a refusal): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_refusing_guard."
   }
  ]
 }

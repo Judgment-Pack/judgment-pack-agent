@@ -149,13 +149,25 @@ call's result is recorded in the form the record guard (ADR-0018) leaves of it, 
 answered with that same form, an external read's checked result included, so the record and what
 the model is given agree and the call settles (#343). A job's start or cancel is answered from its
 job record and keeps the earlier rule. A durable handoff's parent is given the continuation its
-record holds. A guard refusal, or a result whose
+record holds. A Runtime read, which has no row, gets the same form (#352). A durable run
+is served an entry of the chat's read cache only where the record guard leaves the entry unchanged. If the
+guard would change it, the read runs again and its recorded form replaces the entry. If the guard refuses
+it, that refusal is the call's error. A chat entry a durable run reads by id, or that its restored
+checkpoint referenced, is read and carried by its checkpoint in the recorded form, and the chat keeps its
+own; a refusal is the read's error. A search of every item, or of the attachments, matches each chat entry
+in that form, without making it the run's; a refusal of any entry is the search's error. A read a durable run kept stays in the recorded form, so a later run
+on the chat that records nothing is served that form. A durable row's failure is stored with the record
+guard's form of its detail, read whole before an authored detail's cut and then cut to 1000 UTF-16 code
+units, and a call whose failure reaches a model fails with that same form; a guard refusal of the detail is `StorageOutcomeUnknown`. A guard refusal of a call's result, or a result whose
 commit was not acknowledged, surfaces `StorageOutcomeUnknown`; it never claims the effect did not
 happen. Two limits remain. A request's text is guarded as text, so a result that matches only once
 JSON escapes are added (`C:\Users"x` written inside a request) makes the next model or agent request
 unrecordable: the run stops with `ContinuationNotRecoverable`, and nothing runs again. An immutable
 external read served from its cache is checked again against its receipt over the recorded, redacted
-text, so a cached read whose result held a match is withheld on a cache hit. The redactions made
+text, so a cached read whose result held a match is withheld on a cache hit. A chat's index shows later runs the first
+line of each result kept earlier. If a run that records nothing kept a result whose first line holds a
+match, a durable run on that chat cannot record its first request and stops there with
+`ContinuationNotRecoverable` (#352). The redactions made
 before a result is stored are not counted in `records.redactions`, and no `output_guarded` event is
 made of them. Checkpoints
 remain at most 4 MiB, with at most 400 dispatches, 400 observations and 32 children. Structural
@@ -1107,7 +1119,7 @@ package receives digests, labels and bounded references only, and the wait recor
 host's check error, a tool's plain error or a wrapped one with no typed failure inside, a refusal with any other
 member and an undigested principal reach no checkpoint, event, wait, attention event, export, report, prompt or
 error. Two things the host writes itself do. A typed failure with an authored detail, plain or wrapped, from a tool
-or a certified host, reaches the checkpoint, the events and the prompt, unless it has the never-admitted shape. And the readers cannot
+or a certified host, reaches the checkpoint, the events and the prompt, unless it has the never-admitted shape. In a durable run the checkpoint holds the form the record guard leaves of the detail, read whole before the cut, and a call is answered with that form (#352). And the readers cannot
 recognize a secret that fits a pattern: a connection, an `actor` or a label that holds one reaches the wait
 and its attention event. Keeping credentials out of both is the host's. The store's obligations are certified by the wait conformance
 kit's `reauth.*` properties: the fence (owner and epoch) and each way a head can fail to hold the dispatch

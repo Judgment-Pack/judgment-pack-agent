@@ -148,6 +148,25 @@ func TestRecordsRefusalContinuesBoundary(t *testing.T) {
 	}
 }
 
+// #352: a handoff's answer is kept in the form the storage pass leaves of it, as its continuation is (#343).
+// records.test.ts holds the TypeScript.
+func TestRecordsKeepAHandoffsAnswerInTheRecordedForm(t *testing.T) {
+	guard, err := NewOutputGuard(PolicyMembers{}, func() map[string]int64 { return map[string]int64{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := "Read https://packs.example/tmp/evaluation-pack"
+	handoff := ObjectOf("state", String("answered"), "answer", ObjectOf("tasks", Array(ObjectOf("id", String("t"), "result", String(raw))), "note", String("Read them.")), "continuation", String(raw))
+	record, err := WriteRecord(CheckpointSchema, ObjectOf("handoff", handoff), RecordDefaults, guard, time.Now(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"answer":{"note":"Read them.","tasks":[{"id":"t","result":"Read https://packs.example[redacted: local-temp-path]"}]},"continuation":"Read https://packs.example[redacted: local-temp-path]","state":"answered"}`
+	if got := string(CanonicalJSON(record.Get("handoff"))); got != want {
+		t.Fatalf("the record keeps the handoff %s", got)
+	}
+}
+
 func TestRecordsPreserveGuardLabelsInKeysAndText(t *testing.T) {
 	counts := map[string]int64{}
 	guard, err := NewOutputGuard(PolicyMembers{"outputPatterns": {Value: []OutputPattern{{Name: "label-word", Pattern: "redacted"}}}}, func() map[string]int64 { return counts })

@@ -5,6 +5,7 @@ import {READ_DESCRIPTION,READ_TOOL,readArguments,readInputSchema,readUnits,reada
 import {SEARCH_DESCRIPTION,SEARCH_TOOL,search,searchArguments,searchInputSchema,type SearchResult} from './search'
 import {decodedBytes,readImagePart,resolveImage,type HeldImage} from '../images'
 import {canonicalJSON,type ChatTurn} from './chat'
+import {sha256} from '../records'
 export interface ContextDocument {id:string;kind:'history'|'artifact'|'request'|'tool';label:string;value:unknown;revision?:string}
 export interface Entry extends ContextDocument {bytes:number;digest:string}
 const snapshot=(value:unknown):unknown=>{const text=JSON.stringify(value);return JSON.parse(text)}
@@ -87,10 +88,41 @@ export class ContextLedger {
  set scope(scope:string){if(!(this.store instanceof EntryStore))throw Error('A chat-scoped ledger keeps the chat\u2019s scope.');this.store.scope=scope}
  /** The chat's turn this ledger reads and writes, or undefined for a ledger of the run's own. */
  get chat():ChatTurn|undefined{return this.store.chat}
+ /** In a durable run, the form its writer records a value in, the value itself where it is unchanged (#352): what this run reads of the chat's entries by id takes it. */
+ private recorded?:(value:unknown)=>unknown
+ /**
+  * #352: the chat's entries this durable run reads by id take `form`, the form its writer records a value in: an entry the record
+  * guard changes is read, and carried by the run's checkpoint, in that form, and the chat keeps its own. The entries the run already
+  * references (a restored checkpoint's) are given it now. A guard refusal is thrown, and the entry it refuses is not, or no longer, the run's.
+  */
+ recordWith(form:(value:unknown)=>unknown){
+  this.recorded=form
+  const turn=this.store.chat
+  // The refused entry is no longer the run's: no checkpoint of it carries the entry.
+  if(turn)for(const id of [...turn.referenced])try{this.use(id)}catch(error){turn.withhold(id);throw error}
+ }
+ /** The store's `use`; in a durable run on a chat, the entry in the form its writer records (#352). */
+ private use(id:string):Entry|undefined{
+  const turn=this.store.chat
+  if(!this.recorded||!turn)return this.store.use(id)
+  const looked=turn.look(id)
+  if(!looked||looked.recorded)return turn.use(id)
+  const held=this.recordedEntryOf(looked.entry)
+  return held===looked.entry?turn.use(id):turn.useRecorded(id,held)
+ }
+ /** #352: `e`, an entry of the store, as this run reads it, neither touched nor made the run's: in a durable run on a chat, the form its writer records. A guard refusal is thrown. */
+ private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}
+ /** #352: `entry` in the form this durable run's writer records it, `entry` itself where that is unchanged. A guard refusal is thrown. */
+ private recordedEntryOf(entry:Entry):Entry{
+  const value=this.recorded!(entry.value)
+  if(value===entry.value)return entry
+  const {valueJSON:_,...rest}=entry as Entry&{valueJSON?:string},text=JSON.stringify(value)
+  return {...rest,value,bytes:utf8Bytes(text),digest:sha256(text)}
+ }
  private entry(id:unknown):Entry{
   const draft=this.drafts?.().find(d=>d.id===id)
   if(draft)return {...draft,kind:'artifact',bytes:utf8Bytes(draft.value),digest:''} as Entry
-  const e=typeof id==='string'?this.store.use(id):undefined
+  const e=typeof id==='string'?this.use(id):undefined
   if(!e)throw toolInputFailure((typeof id==='string'?this.store.missing(id):undefined)??UNAVAILABLE)
   return e
  }
@@ -187,7 +219,7 @@ export class ContextLedger {
   * window (agent#5).
   */
  readItem(args:Record<string,unknown>):McpToolResult {
-  const request=readArguments(args),e=this.store.use(request.id)
+  const request=readArguments(args),e=this.use(request.id)
   const held=e?resolveImage(e.value,reference=>this.image(reference)):null
   if(!e||held===null)return answer(this.readUnits(args))
   if('line' in held){
@@ -200,9 +232,12 @@ export class ContextLedger {
  }
  /** A retained image by the reference a result or the model names: its ledger id, or the id the host gave the document. */
  image(reference:string):HeldImage|null {
-  const e=this.store.use(reference)??[...this.store.entries.values()].find(entry=>entry.id===this.scope+':'+reference+':'+entry.digest.slice(0,16))
-  if(e)this.store.use(e.id)
-  return e?heldImage(e.value):null
+  // #352: an image the record guard refuses is not shown, and not made the run's.
+  try{
+   const found=this.use(reference)??[...this.store.entries.values()].find(entry=>entry.id===this.scope+':'+reference+':'+entry.digest.slice(0,16))
+   const e=found&&this.use(found.id)
+   return e?heldImage(e.value):null
+  }catch{return null}
  }
  /** One search over one item, every item, or the attachments (`search.ts`). Images are passed over. */
  search(args:Record<string,unknown>):SearchResult {
@@ -210,7 +245,8 @@ export class ContextLedger {
   let scoped:Entry[]
   if(request.id!==undefined){
    scoped=[this.entry(request.id)]
-  }else scoped=[...this.store.entries.values()].filter(e=>request.scope==='all'||this.attached.has(e.id))
+  // #352: a durable run searches each chat entry in the form it reads it by id, without making it the run's; a guard refusal is thrown.
+  }else scoped=[...this.store.entries.values()].filter(e=>request.scope==='all'||this.attached.has(e.id)).map(e=>this.look(e))
   // An image is not searched as text; one that cannot be shown is reported with its line, never passed in silence.
   if(request.id===undefined&&request.scope==='all')scoped.push(...(this.drafts?.()??[]).map(d=>({...d,kind:'artifact' as const,bytes:utf8Bytes(d.value),digest:''})))
   const images=new Map(scoped.map(e=>[e.id,resolveImage(e.value,reference=>this.image(reference))]))
@@ -236,7 +272,7 @@ export class ContextLedger {
   if(!this.store.chat&&this.store.entries.size)throw toolInputFailure('Cannot restore over active retained context.')
   const checked:Entry[]=[];let size=0
   for(const e of saved.entries){const restored=retainedRepresentation(e);if(await contextDigest(restored.text)!==e.digest||utf8Bytes(restored.text)!==e.bytes||!e.id.startsWith(saved.scope+':'))throw toolInputFailure('Saved context no longer matches its recorded digest. Start with current objects.');size+=e.bytes;const {valueJSON:_,...entry}=e as Entry&{valueJSON?:string};checked.push(structuredClone({...entry,value:restored.value}))}
-  if(chat){for(const e of checked)if(!this.store.use(e.id)){this.store.room(e.bytes,this.policy.retainedBytes);this.store.add(e)}return}
+  if(chat){for(const e of checked)if(!this.use(e.id)){this.store.room(e.bytes,this.policy.retainedBytes);this.store.add(e)}return}
   if(size>this.policy.retainedBytes)throw new ContextBudgetError()
   this.store.release()
   const own=new EntryStore(saved.scope);for(const e of checked)own.add(e)

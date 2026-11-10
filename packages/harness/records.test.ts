@@ -36,6 +36,10 @@ describe('records (ADR #101)',()=>{
   const record=writeRecord(CHECKPOINT_SCHEMA,{approval:{args:{p:localHomePath},request:`{ "p" : "${localHomePath}" }`}},policy,guard,now)
   expect(JSON.stringify(record)).not.toContain(localHomePath)
  })
+ it('keeps a handoff’s answer in the form the storage pass leaves of it, as its continuation (#352)',()=>{
+  const record=writeRecord(CHECKPOINT_SCHEMA,{handoff:{state:'answered',answer:{tasks:[{id:'t',result:`Read ${localHomePath}`}],note:'Read them.'},continuation:`Read ${localHomePath}`}},policy,guard,now)
+  expect(JSON.stringify(record.handoff)).toBe('{"state":"answered","answer":{"tasks":[{"id":"t","result":"Read [redacted: local-home-path]"}],"note":"Read them."},"continuation":"Read [redacted: local-home-path]"}')
+ })
  it('carries schema, version, digest and lifetime and applies the output guard on store',()=>{
   const record=writeRecord(CRITIQUE_SCHEMA,{type:'critique',refuted:false,checks:[],text:`Read ${localHomePath}`},policy,guard,now)
   expect(record).toMatchObject({schema:CRITIQUE_SCHEMA,version:1,retainUntil:'2027-01-19T12:00:00.000Z',text:'Read [redacted: local-home-path]'})

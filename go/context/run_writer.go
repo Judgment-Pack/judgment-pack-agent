@@ -1528,6 +1528,98 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 	return at >= 0
 }
 
+// RecordedResult is result in the form this writer records a call's result (#343), and whether that form
+// differs from it, for a read its run serves without a dispatch of its own: a Runtime read, or a chat's
+// cached entry (#352). A guard refusal is returned with no result.
+func (w *RunWriter) RecordedResult(result ToolResult) (ToolResult, bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	recorded, err := w.recordedResultLocked(result)
+	if err != nil {
+		return ToolResult{}, false, err
+	}
+	return recorded, !bytes.Equal(recorded.JSON(), result.JSON()), nil
+}
+
+// recordedFailureLocked is f in the form a durable row holds it (#352): what the storage pass leaves of its
+// detail alone, then cut to the thousand UTF-16 code units a detail may hold, and whether that differs. The
+// guard reads whole: the detail the failure was authored with, before Authored cut it (failure.TakeWhole),
+// so that a match the cut would split is still found. A guard refusal is returned with no failure.
+func (w *RunWriter) recordedFailureLocked(f contract.Failure, whole *string) (contract.Failure, bool, error) {
+	if f.Detail == nil {
+		return f, false, nil
+	}
+	if whole == nil {
+		whole = f.Detail
+	}
+	var guard RecordGuard
+	if w.guard != nil {
+		guard = w.guard()
+	}
+	raw, err := json.Marshal(*whole)
+	if err != nil {
+		return contract.Failure{}, false, err
+	}
+	clean, changed, err := recordedForm(w.policy, guard, raw)
+	if err != nil {
+		return contract.Failure{}, false, err
+	}
+	var detail string
+	if !changed {
+		return f, false, nil
+	}
+	if err := json.Unmarshal(clean, &detail); err != nil {
+		return contract.Failure{}, false, err
+	}
+	if detail = failure.CutDetail(detail); detail == *f.Detail {
+		return f, false, nil
+	}
+	f.Detail = &detail
+	return f, true, nil
+}
+
+// RecordedValueForm is the form this writer records a value in and whether it differs (#352), as the
+// writer is bound now. The function takes no lock of the writer's: a ledger calls it under its own, and a
+// commit holds the writer's lock while it reads the ledger.
+func (w *RunWriter) RecordedValueForm() func(*Value) (*Value, bool, error) {
+	w.mu.Lock()
+	policy, guard := w.policy, w.guard
+	w.mu.Unlock()
+	return recordedValueForm(policy, guard)
+}
+
+// recordedValueForm is what the storage pass leaves of a value under policy and guard, its members in their
+// order as a recorded result's are (the TypeScript's recordedForm), and whether it differs (#352).
+func recordedValueForm(policy RecordsPolicy, guard func() RecordGuard) func(*Value) (*Value, bool, error) {
+	return func(value *Value) (*Value, bool, error) {
+		var held RecordGuard
+		if guard != nil {
+			held = guard()
+		}
+		clean, changed, err := recordedForm(policy, held, value.JSON())
+		if err != nil {
+			return nil, false, err
+		}
+		if !changed {
+			return value, false, nil
+		}
+		parsed, err := ParseJSON(clean)
+		if err != nil {
+			return nil, false, err
+		}
+		rename := func(key string) string {
+			raw, _ := json.Marshal(key)
+			clean, _, err := recordedForm(policy, held, raw)
+			name := key
+			if err != nil || json.Unmarshal(clean, &name) != nil {
+				return key
+			}
+			return name
+		}
+		return inOrderOf(value, parsed, rename), true, nil
+	}
+}
+
 // recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
 // leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
 // With nothing redacted it is result itself. A guard refusal is returned with no result.
@@ -2034,11 +2126,21 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		if row.ID == claim.ID {
 			updated := row
 			if runErr != nil {
+				// #352: the failure is recorded in the form the record guard leaves of its detail, read whole
+				// before the cut, and the call fails with that same form, so the record and what the model is
+				// given agree. A guard refusal is an unknown outcome, and nothing of the failure is stored.
+				held, changed, guardErr := w.recordedFailureLocked(failure.TakeWhole(runErr, "tool", time.Now()))
+				if guardErr != nil {
+					w.fatal = &StorageOutcomeUnknown{cause: guardErr}
+					return zero, w.fatal
+				}
+				if changed {
+					runErr = &failure.RecordedError{Failure: held, Cause: runErr}
+				}
 				updated.State = "unknown"
 				if w.budget != nil && (kind == "model" || kind == "agent") && !(kind == "agent" && admitted && ctx.Err() == nil) {
 					w.budget.unknown(claim.ID)
 				}
-				held := failure.Normalize(runErr, "tool", time.Now())
 				updated.Failure = &held
 			} else {
 				updated.State = "result"
