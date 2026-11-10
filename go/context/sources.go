@@ -179,6 +179,11 @@ const approvalPlaceholder = "\x00"
 // data the same value as the record's. The data is compared as a value, not as text: the block was
 // built from the record as the run held it, and a restored record holds the same result with its
 // members in the order the checkpoint stores them.
+//
+// A copy of the block's text inside another frame (a result that quotes it, say) matches too. That is harmless: a match
+// only marks the row as one that carries the decision, and no request before the decision's own continuation can hold
+// the block, whose data (the call's result and decidedAt) exists only once the decision is taken, so the first carrying
+// row's index (approvalCarrierLocked) cannot move earlier.
 func carriesApprovalContinuation(request string, record contract.CheckpointApproval) bool {
 	parts := strings.Split(ApprovalContinuationText(record, approvalPlaceholder), approvalPlaceholder)
 	if len(parts) != 4 || parts[3] != "" || !strings.HasPrefix(parts[2], "\n") {
