@@ -112,3 +112,11 @@ them, as before. A read a durable run kept is in the recorded form, though, so a
 chat that records nothing is served that form from the cache.
 `handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an
 answer is present and gives the parent the continuation, so nothing is delivered from the answer itself.
+A durable row's failure (`durable.dispatches.*.failure`) is stored with the form this pass leaves of its
+`detail` alone, cut to the thousand UTF-16 code units a detail may hold without splitting a surrogate
+pair; its other members are the catalogue's and stay as they are. Where a host or Runtime call's failure
+reaches a model, the call fails with that same form. In Go the call's error is wrapped in
+`failure.RecordedError`, which `failure.Normalize` reads before anything it wraps. In TypeScript the
+`AIFailureError` the failure was read from is given the form in place, with its message, so a check of
+the error's identity still holds. A model's own failure is only stored in that form. If the guard
+refuses the detail, the call ends as `StorageOutcomeUnknown` and nothing of the failure is stored.

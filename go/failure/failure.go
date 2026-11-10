@@ -113,6 +113,20 @@ func NewError(f contract.Failure) *Error {
 
 func (e *Error) Error() string { return Message(e.Failure) }
 
+// RecordedError is a failure in the form a durable run's record holds it (#352): its detail is what the
+// record guard leaves of the cause's. Normalize reads it before anything it wraps, so the model, the run's
+// events and the record agree, while errors.Is and errors.As still reach the cause.
+type RecordedError struct {
+	Failure contract.Failure
+	Cause   error
+}
+
+func (e *RecordedError) Error() string { return Message(e.Failure) }
+func (e *RecordedError) Unwrap() error { return e.Cause }
+
+// CutDetail is a failure's detail cut to the thousand UTF-16 code units it may hold, never half a pair.
+func CutDetail(detail string) string { return cutUTF16(detail, 1000) }
+
 // Err is failureError: a failure of a class as an error.
 func Err(code, source, outcome string) *Error { return NewError(New(code, source, outcome)) }
 
@@ -264,6 +278,11 @@ func Normalize(cause error, source string, now time.Time) contract.Failure {
 	classify = func(err error, depth int) contract.Failure {
 		if err == nil || depth > 4 {
 			return New("unknown", source, "unknown")
+		}
+		if held, ok := err.(*RecordedError); ok {
+			if f, ok := Read(held.Failure); ok {
+				return f
+			}
 		}
 		if held, ok := err.(*Error); ok {
 			if f, ok := Read(held.Failure); ok {

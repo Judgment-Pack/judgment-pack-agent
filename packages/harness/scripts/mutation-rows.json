@@ -17757,6 +17757,114 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, ledger.go RecordWith without turn.withhold): caught at TestARestoredChatEntryTheRecordGuardRefusesIsNotCarried."
+  },
+  {
+   "name": "#352 a durable call fails with its failure as it was, not the recorded form",
+   "file": "storage/writer.ts",
+   "find": "if(recorded!==failed&&from)restateFailure(from,recorded);",
+   "replace": "",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: runErr not wrapped in failure.RecordedError): caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a durable call's row stores its failure as it was",
+   "file": "storage/writer.ts",
+   "find": "claim.failure=recorded;",
+   "replace": "claim.failure=failed;",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: the row given the failure Normalize read): caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a failure's detail the record guard refuses is stored as it is",
+   "file": "storage/writer.ts",
+   "find": "recorded=this.recordedFailure(failed);",
+   "replace": "recorded=(()=>{try{return this.recordedFailure(failed)}catch{return failed}})();",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go: the guard's refusal taken as unchanged): caught at TestADurableCallsFailureARefusingGuardWithholdsIsUnknown."
+  },
+  {
+   "name": "#352 a redacted failure's detail is not cut to what a detail may hold",
+   "file": "storage/writer.ts",
+   "find": "const detail=cutDetail(recordedForm(f.detail,this.policy,this.guard?.()))",
+   "replace": "const detail=recordedForm(f.detail,this.policy,this.guard?.())",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go recordedFailureLocked without failure.CutDetail): caught at TestARecordedFailureDetailIsCutWithoutSplittingAPair."
+  },
+  {
+   "name": "#352 a failure's detail is cut through a surrogate pair",
+   "file": "failures.ts",
+   "find": "detail.slice(0,/[\\uD800-\\uDBFF]/.test(detail[999]!)?999:1000)",
+   "replace": "detail.slice(0,1000)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "No Go twin: Go's cutUTF16 counts runes and never splits a pair (TestARecordedFailureDetailIsCutWithoutSplittingAPair pins it)."
+  },
+  {
+   "name": "#352 the error a failure was read from is not named",
+   "file": "failures.ts",
+   "find": "if(held){read.set(held,value);return held}",
+   "replace": "if(held)return held",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: none needed; Go wraps the call's error (failure.RecordedError), which Normalize reads before what it wraps (by hand, Normalize without that check: caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm and TestARecordedDelegationRefusalIsAnsweredInTheRecordedForm)."
+  },
+  {
+   "name": "#352 a restated failure keeps its message",
+   "file": "failures.ts",
+   "find": ";(error as {failure:AIFailure}).failure=safe;error.message=failureMessage(safe)",
+   "replace": ";(error as {failure:AIFailure}).failure=safe",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: failure.RecordedError.Error() is its failure's message; caught at TestADurableCallsFailureIsRecordedAndDeliveredInTheRecordedForm (err.Error())."
+  },
+  {
+   "name": "#352 a model's failure is stored as it was",
+   "file": "storage/writer.ts",
+   "find": "if(failed)held.claim.failure=failed",
+   "replace": "if(failed)held.claim.failure=normalizeFailure((outcome as {error:unknown}).error,'model')",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go: the row given the failure Normalize read): caught at TestADurableModelsFailureIsStoredInTheRecordedForm/redacted."
+  },
+  {
+   "name": "#352 a model's failure the record guard refuses is stored as it is",
+   "file": "storage/writer.ts",
+   "find": "catch(cause){throw new StorageOutcomeUnknown(cause)}\n   held.claim.state=",
+   "replace": "catch{failed=normalizeFailure((outcome as {error:unknown}).error,'model')}\n   held.claim.state=",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go: the guard's refusal taken as the failure as it was): caught at TestADurableModelsFailureIsStoredInTheRecordedForm/a_refusing_guard."
   }
  ]
 }

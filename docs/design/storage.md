@@ -155,7 +155,9 @@ guard would change it, the read runs again and its recorded form replaces the en
 it, that refusal is the call's error. A chat entry a durable run reads by id, or that its restored
 checkpoint referenced, is read and carried by its checkpoint in the recorded form, and the chat keeps its
 own; a refusal is the read's error. A read a durable run kept stays in the recorded form, so a later run
-on the chat that records nothing is served that form. A guard refusal of a call's result, or a result whose
+on the chat that records nothing is served that form. A durable row's failure is stored with the record
+guard's form of its detail, cut to 1000 UTF-16 code units, and a call whose failure reaches a model fails
+with that same form; a guard refusal of the detail is `StorageOutcomeUnknown`. A guard refusal of a call's result, or a result whose
 commit was not acknowledged, surfaces `StorageOutcomeUnknown`; it never claims the effect did not
 happen. Two limits remain. A request's text is guarded as text, so a result that matches only once
 JSON escapes are added (`C:\Users"x` written inside a request) makes the next model or agent request
@@ -1108,7 +1110,7 @@ package receives digests, labels and bounded references only, and the wait recor
 host's check error, a tool's plain error or a wrapped one with no typed failure inside, a refusal with any other
 member and an undigested principal reach no checkpoint, event, wait, attention event, export, report, prompt or
 error. Two things the host writes itself do. A typed failure with an authored detail, plain or wrapped, from a tool
-or a certified host, reaches the checkpoint, the events and the prompt, unless it has the never-admitted shape. And the readers cannot
+or a certified host, reaches the checkpoint, the events and the prompt, unless it has the never-admitted shape; in a durable run, in the form the record guard leaves of the detail (#352). And the readers cannot
 recognize a secret that fits a pattern: a connection, an `actor` or a label that holds one reaches the wait
 and its attention event. Keeping credentials out of both is the host's. The store's obligations are certified by the wait conformance
 kit's `reauth.*` properties: the fence (owner and epoch) and each way a head can fail to hold the dispatch
