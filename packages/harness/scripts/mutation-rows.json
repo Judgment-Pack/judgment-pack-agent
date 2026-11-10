@@ -18073,8 +18073,8 @@
   {
    "name": "#355 a store that holds deadlines and cannot read them back is taken as holding one",
    "file": "storage/successor.ts",
-   "find": "return typeof held.limitRun==='function'",
-   "replace": "return false",
+   "find": "if(typeof held.limitRun==='function')return true",
+   "replace": "if(typeof held.limitRun==='function')return false",
    "tests": [
     "storage/successor.test.ts"
    ],
@@ -18093,6 +18093,54 @@
    "status": "caught",
    "origin": "agent#355",
    "note": "Go twin (by hand, run_wait.go WaitTable.Deadline): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#362 a store value with neither deadline port that does not declare itself unleased is read as holding no deadline",
+   "file": "storage/successor.ts",
+   "find": "if(declaredUnleased(store))return false\n throw new SuccessorRefused('invalid')",
+   "replace": "return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go predecessorDeadlined: return false, nil where the store has neither port): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_lease_port_and_no_deadline_reader."
+  },
+  {
+   "name": "#362 a store value with no wait export that does not declare itself unleased is read as holding no wait",
+   "file": "storage/successor.ts",
+   "find": "if(held===undefined){if(declaredUnleased(baseOf(store)))return false;throw new SuccessorRefused('invalid')}",
+   "replace": "if(held===undefined)return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go questionWaitHeld: return false, nil without the wait export): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_lease_port_and_no_wait_export."
+  },
+  {
+   "name": "#362 a store value with no lease port that does not declare itself unleased makes its successor unheld",
+   "file": "storage/successor.ts",
+   "find": "{if(declaredUnleased(baseOf(store)))return async()=>{};throw new SuccessorRefused('invalid')}",
+   "replace": "return async()=>{}",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go holdPredecessor: a no-op release without the lease port): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_deadline_reader_and_the_wait_export,_and_no_lease_port."
+  },
+  {
+   "name": "#362 a declaration beside a lease method is read as an unleased store",
+   "file": "storage/successor.ts",
+   "find": "held.unleased===true&&typeof held.acquireLease!=='function'&&typeof held.releaseLease!=='function'",
+   "replace": "held.unleased===true",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go declaredUnleased: drop the lease-method checks): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/a_declaration_beside_the_lease_port."
   }
  ]
 }

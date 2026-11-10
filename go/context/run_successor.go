@@ -44,8 +44,9 @@ const successorPrefix = "successor-"
 const successorLeaseMs = 60_000
 
 // SuccessorRefused (#340) refuses a successor run by name before any model request or tool call. invalid: the input is
-// not one this package reads, or the open does not name its request (PrepareDurableInput; a session and
-// PrepareDurableInputFor name it). unbound: the run id is not the one SuccessorRunID derives, a "successor-" id is
+// not one this package reads, the open does not name its request (PrepareDurableInput; a session and
+// PrepareDurableInputFor name it), or the store value has no lease port, wait export or deadline reader and does not
+// declare itself unleased (#362, UnleasedRunStore). unbound: the run id is not the one SuccessorRunID derives, a "successor-" id is
 // opened without a successor, the question is not the predecessor's last user_question, or the answer is not a real
 // answer to it. budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry.
 // deadlined (#355): the predecessor has a run deadline (LimitRun), which a successor does not carry, or its store holds
@@ -104,12 +105,36 @@ type waitExporter interface {
 	ExportWaits(context.Context, string) (WaitExport, error)
 }
 
+// UnleasedRunStore (#362) is the declaration a store with no lease port makes: Unleased true says it holds no leases,
+// and so no waits or run deadlines, which need the lease port. A successor reads the lease port, the wait export and
+// the deadline reader of the store it is opened through; a store value without one of them is refused invalid unless
+// it declares this. A value that wraps a store and exposes fewer of its ports declares nothing, so it is refused, never
+// read as a store that holds none. A store with a lease method is leased, whatever it declares.
+type UnleasedRunStore interface{ Unleased() bool }
+
+// declaredUnleased (#362): a store value with no lease method that declares itself unleased.
+func declaredUnleased(store RunStore) bool {
+	_, acquires := store.(interface {
+		AcquireLease(context.Context, LeaseAcquire) (RunLease, error)
+	})
+	_, releases := store.(interface {
+		ReleaseLease(context.Context, LeaseFence) (RunLease, error)
+	})
+	declared, ok := store.(UnleasedRunStore)
+	return ok && declared.Unleased() && !acquires && !releases
+}
+
 // questionWaitHeld: the run holds a wait, in any state, on this question. Such a question is answered through its
-// wait, and never by a successor as well. A read error refuses; it is never taken for none.
+// wait, and never by a successor as well. A read error refuses; it is never taken for none, and neither is a store
+// with no wait export that does not declare itself unleased (#362).
 func questionWaitHeld(ctx context.Context, store RunStore, run, event string) (bool, error) {
-	waits, ok := completeHeadBase(store).(waitExporter)
+	base := completeHeadBase(store)
+	waits, ok := base.(waitExporter)
 	if !ok {
-		return false, nil
+		if declaredUnleased(base) {
+			return false, nil
+		}
+		return false, successorRefused("invalid")
 	}
 	held, err := waits.ExportWaits(ctx, run)
 	if err != nil {
@@ -298,17 +323,23 @@ type RunDeadlineReader interface {
 	ReadRunDeadline(ctx context.Context, resource string) (*RunLimit, error)
 }
 
-// predecessorDeadlined: the run has a deadline. A store without the wait port holds none; one with it that cannot read
-// it is taken as holding one, never as holding none.
+// predecessorDeadlined: the run has a deadline. A store with the wait port that cannot read it is taken as holding
+// one, never as holding none. #362: a store with neither holds none only where it declares itself unleased; any other
+// is refused invalid.
 func predecessorDeadlined(ctx context.Context, store RunStore, run string) (bool, error) {
 	if reader, ok := store.(RunDeadlineReader); ok {
 		held, err := reader.ReadRunDeadline(ctx, run)
 		return held != nil, err
 	}
-	_, limits := store.(interface {
+	if _, limits := store.(interface {
 		LimitRun(context.Context, RunLimit) (RunLimit, error)
-	})
-	return limits, nil
+	}); limits {
+		return true, nil
+	}
+	if declaredUnleased(store) {
+		return false, nil
+	}
+	return false, successorRefused("invalid")
 }
 
 // successorVersion is the version of the members the successor carries: a principal keeps checkpoint 4; a kept
@@ -405,11 +436,16 @@ func makeSuccessor(ctx context.Context, store RunStore, input *Input, requestCap
 // revision read (revision-changed), and while it leases the run to no one: closed, past its deadline, or holding a wait
 // not yet claimed. The lease's new epoch fences out every earlier holder's commits, so an admitted continuation that
 // lost its lease spends nothing more of the allowance. The release is always made; the lease expires on its own
-// otherwise.
+// otherwise. #362: a store with no lease port is held by nothing only where it declares itself unleased; any other is
+// refused invalid.
 func holdPredecessor(ctx context.Context, store RunStore, id string, asked RunSuccessor, head *RunHead, principal *contract.RunPrincipal) (func(), error) {
-	leases, ok := completeHeadBase(store).(LeaseStore)
+	base := completeHeadBase(store)
+	leases, ok := base.(LeaseStore)
 	if !ok {
-		return func() {}, nil
+		if declaredUnleased(base) {
+			return func() {}, nil
+		}
+		return nil, successorRefused("invalid")
 	}
 	var binding *PrincipalBinding
 	if principal != nil {

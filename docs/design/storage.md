@@ -1168,15 +1168,29 @@ that passes the chat as the input's own chat, with no run-store context and no u
 The run's deadline is not carried, so a predecessor with one has no successor, before or past it (`deadlined`,
 #355). The package reads it through the store's `readRunDeadline` (Go `RunDeadlineReader.ReadRunDeadline`; the
 memory stores have it): a store that holds deadlines (`limitRun`) and does not read them back is taken as holding
-one, a failed read refuses as itself, and a store with no wait port holds none. A host that wants the successor
-bounded sets its deadline with `limitRun` after the create.
+one, and a failed read refuses as itself. A host that wants the successor bounded sets its deadline with `limitRun`
+after the create.
+
+**The store value a successor is opened through (#362).** A successor reads three ports of that store (under a fenced
+view, of the view's store): the lease port, to hold the predecessor; the wait export (`exportWaits`), to read the
+question's waits; and the deadline reader. A store value without one of them is refused `invalid`, by the first of
+those reads it cannot make and before anything is written, unless it has no lease method (`acquireLease`,
+`releaseLease`) and declares itself unleased: `unleased: true` (`UnleasedRunStore`; Go `UnleasedRunStore`, `Unleased()`
+answering true). Such a store holds no leases, and so no waits and no run deadlines, which need the lease port; its
+successor is made under no lease, with no wait or deadline read. A value that wraps a store and exposes fewer of its
+ports declares nothing, so it is refused rather than read as a store that holds none: without this, a successor opened
+through it would be made beside the predecessor's live continuation, unheld, or past the predecessor's deadline. A
+store with the lease port and no waits answers `exportWaits` with no waits and the deadline reader with none. A
+store that holds deadlines and has no reader is still `deadlined`. The memory stores have every port and declare
+nothing.
 
 **Refusals.** `SuccessorRefused` (`configuration` for `invalid`, `unbound`, `budgeted` and `deadlined`, `stale-state` otherwise, from
 `context`, `not-started`), before any model request or tool call:
 
 - `invalid`: `successor` is not a record whose `predecessor` and `question` are storage ids; it sits beside an
   execution, a job or question continuation, a usage budget or a chat context; the store is one writer's
-  checkpoint callback, which cannot create once; or the open does not name its request (Go
+  checkpoint callback, which cannot create once; the store value has no lease port, wait export or deadline reader
+  and does not declare itself unleased (#362); or the open does not name its request (Go
   `PrepareDurableInput`, which makes no successor: a create through it is `invalid`, while a successor that exists
   opens through either it or `PrepareDurableInputFor`).
 - `unbound`: the run id is not the derived one, the question is not the predecessor's latest
