@@ -17053,6 +17053,368 @@
    "status": "caught",
    "origin": "agent#343",
    "note": "TypeScript only: Go reads the result's JSON text already."
+  },
+  {
+   "name": "#308 an enum past ENUM_MEMBERS leaves its source offered",
+   "file": "toolSources.ts",
+   "find": "words.members > ENUM_MEMBERS || ",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members, and the vector's 300. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum of exactly ENUM_MEMBERS makes its source a catalogue",
+   "file": "toolSources.ts",
+   "find": "words.members > ENUM_MEMBERS",
+   "replace": "words.members >= ENUM_MEMBERS",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of exactly 64 members is offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an object past NAMES_PER_OBJECT leaves its source offered",
+   "file": "toolSources.ts",
+   "find": " || words.names > NAMES_PER_OBJECT",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 property names, 65 required entries, 65 definitions. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an object of exactly NAMES_PER_OBJECT makes its source a catalogue",
+   "file": "toolSources.ts",
+   "find": "words.names > NAMES_PER_OBJECT",
+   "replace": "words.names >= NAMES_PER_OBJECT",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 64 property names, required entries and definitions are offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a bound one tool passes is forgotten at its source's next tool",
+   "file": "toolSources.ts",
+   "find": "size.over = size.over || ",
+   "replace": "size.over = ",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: one tool past a bound makes every tool of its source a catalogue entry. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words past VERBATIM_BYTES leave their source offered",
+   "file": "toolSources.ts",
+   "find": "if (!size.over && size.verbatim <= VERBATIM_BYTES) continue",
+   "replace": "if (!size.over) continue",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes across a source's two tools. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 exactly VERBATIM_BYTES makes the source a catalogue",
+   "file": "toolSources.ts",
+   "find": "size.verbatim <= VERBATIM_BYTES",
+   "replace": "size.verbatim < VERBATIM_BYTES",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,096 bytes are offered. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 VERBATIM_BYTES is held per tool, not per source",
+   "file": "toolSources.ts",
+   "find": "size.verbatim += words.bytes",
+   "replace": "size.verbatim = Math.max(size.verbatim, words.bytes)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes split across two tools of one source. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words are measured on the declared schema, not the one offered",
+   "file": "toolSources.ts",
+   "find": "const words = verbatimOf(schema)",
+   "replace": "const words = verbatimOf(tool.inputSchema)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members past depth sixteen is not offered, so not counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source made a catalogue by a bound stays in the budget's count",
+   "file": "toolSources.ts",
+   "find": "  for (const [id, size] of largest) {\n    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n",
+   "replace": "  for (const [id, size] of largest) {\n    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: out of offeredSchemas' count, and the budget holding the other sources. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source made a catalogue by a bound stays in the budget's bytes",
+   "file": "toolSources.ts",
+   "find": "    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n    bytes -= size.bytes\n",
+   "replace": "    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue\n    catalogued.add(id)\n    count -= size.count\n",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: out of offeredSchemaBytes' bytes. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the budget takes a source a bound made a catalogue off its count again",
+   "file": "toolSources.ts",
+   "find": "    if (catalogued.has(id)) continue\n    if (count <= bounds.offeredSchemas",
+   "replace": "    if (count <= bounds.offeredSchemas",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the schema budget passes over a source a bound made a catalogue and still holds the others to offeredSchemas. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum's members are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        for (const item of member) held.bytes += measure(item)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 an enum member or const that is no string is counted by another text than its JSON",
+   "file": "toolSources.ts",
+   "find": "utf8Bytes(JSON.stringify(value) ?? ''))\n  const walk",
+   "replace": "utf8Bytes(String(value)))\n  const walk",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the 4,096 and 4,097 byte cases hold an enum member that is an object. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a const is not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        held.bytes += measure(member)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a $ref pointer is not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        held.bytes += utf8Bytes(member)\n      } else if (key === 'required'",
+   "replace": "      } else if (key === 'required'",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the required entries are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "        for (const name of member) held.bytes += utf8Bytes(String(name))\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a required list is not held to NAMES_PER_OBJECT",
+   "file": "toolSources.ts",
+   "find": "        held.names = Math.max(held.names, member.length)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 required entries. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 property and definition names are not counted in VERBATIM_BYTES",
+   "file": "toolSources.ts",
+   "find": "          held.bytes += utf8Bytes(name)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 4,097 bytes, every kind counted. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a property map is not held to NAMES_PER_OBJECT",
+   "file": "toolSources.ts",
+   "find": "        held.names = Math.max(held.names, names.length)\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: 65 property names and 65 definitions. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below a property are not read",
+   "file": "toolSources.ts",
+   "find": "          walk(member[name])\n",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members under properties, items, anyOf and additionalProperties. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below items are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'items' || key === 'additionalProperties'",
+   "replace": "key === 'additionalProperties'",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below additionalProperties are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'items' || key === 'additionalProperties' || SCHEMA_LISTS.has(key)",
+   "replace": "key === 'items' || SCHEMA_LISTS.has(key)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words below anyOf, oneOf and allOf are not read",
+   "file": "toolSources.ts",
+   "find": "key === 'additionalProperties' || SCHEMA_LISTS.has(key)) {",
+   "replace": "key === 'additionalProperties') {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the nested enum. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a source a bound made a catalogue is not held to cataloguedTools and catalogueBytes",
+   "file": "toolSources.ts",
+   "find": "if (kept + 1 > bounds.cataloguedTools || keptBytes + size > bounds.catalogueBytes) {",
+   "replace": "if (!(sizes.get(entry.record.id)!.over || sizes.get(entry.record.id)!.verbatim > VERBATIM_BYTES) && (kept + 1 > bounds.cataloguedTools || keptBytes + size > bounds.catalogueBytes)) {",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: the source an enum of 65 members made a catalogue, its tool coming when the catalogue is full, is withheld with the guardrail. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a tool withheld from the catalogue stays in the gate",
+   "file": "toolSources.ts",
+   "find": "entries.delete(tool.name)",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "the four hundred declared tools past the catalogue's bounds, and schema-bounds.json: what is offered is what the gate holds, the withheld tool out of it. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a missing required entry is named by the source's text",
+   "file": "sourceArguments.ts",
+   "find": "`a member the schema requires is missing from ${where(path)}: entry ${index} of its required list, counting from 0`",
+   "replace": "`${at(path, name)} is required and missing`",
+   "tests": [
+    "sourceArguments.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "the required entries whose text is an instruction, and the vector's refusal. Go twin (by hand, the same break in go/context/arguments.go): caught at go/context/arguments_test.go and go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a missing required entry is named one place off",
+   "file": "sourceArguments.ts",
+   "find": "entry ${index} of its required list",
+   "replace": "entry ${index + 1} of its required list",
+   "tests": [
+    "sourceArguments.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "entry 0 and entry 1, counting from 0, and the vector's refusal. Go twin (by hand, the same break in go/context/arguments.go): caught at go/context/arguments_test.go and go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 the words in a list of items are not read",
+   "file": "toolSources.ts",
+   "find": "if (Array.isArray(member)) member.forEach(walk)",
+   "replace": "if (Array.isArray(member)) { if (key !== 'items') member.forEach(walk) }",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: an enum of 65 members in a list of items. Go twin (by hand, the same break in go/context/sources.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#308 a lone surrogate in an enum or const is offered",
+   "file": "toolSources.ts",
+   "find": "if (!scalarValue(value)) return false",
+   "replace": "",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#308",
+   "note": "schema-bounds.json: a lone surrogate in an enum member and inside a const object, each dropped with its guardrail, and a well-formed U+FFFD kept. Go twin (by hand, the same break in go/context/sources.go; and, apart, the marking left out of go/context/json.go): caught at go/context/schema_bounds_test.go."
   }
  ]
 }

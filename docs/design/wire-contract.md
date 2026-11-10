@@ -322,8 +322,11 @@ What the contract states, and where:
   retrieved data with the run's marker and beginning `runs as: <label>`, the schema with the text its source wrote in it treated the
   same way (an allowlist: each `description` cut and framed, only the structural keywords offered,
   every other keyword not; a name or `required` entry over 64 bytes or with white space, and an
-  `enum` or `const` with a string over 64 bytes or a line break, or an `enum` that is no list,
-  dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`), and narrowed on the Gemini family's wire,
+  `enum` or `const` with a string over 64 bytes, a line break or a lone surrogate, or an `enum` that
+  is no list, dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`; a source
+whose schemas keep more words as written than 64 `enum` members, 64 names or `required` entries per
+object or 4,096 bytes allow is a catalogue, held to the catalogue's bounds below like any other, the
+vector `tool-offer/source-schema-bounds.json`), and narrowed on the Gemini family's wire,
   the record with `tool`, the effect class and approval with their defaults (`act`, approval
   `required`, unless the host declares a read or a proposal), and `effect` set from the class, so
   Plan mode and a child, which admit reads only, never offer an act.
@@ -338,7 +341,8 @@ What the contract states, and where:
   the offer and of `load_tool`, with one `guardrail` `refused` for each source. A catalogued tool
   not yet loaded is refused (`invalid-tool-input`), and so is one whose arguments do not match the
   schema it loaded (`invalid-tool-input`, checked by the package against the subset of JSON Schema
-  `sourceArguments.ts` and `go/context/arguments.go` read; the host validates the rest).
+  `sourceArguments.ts` and `go/context/arguments.go` read, the refusal naming a missing `required`
+  entry by its place in the list, never its text; the host validates the rest).
 - **Each call**, after the phase admits the name: refused (a `guardrail` and a `permission` failure)
   where the source's served descriptors changed (`currentDescriptorSnapshot()` in snapshot mode,
   the legacy `currentDigest()` otherwise, checked before each `mcp` call and approval continuation), or its identity changed (the host's `currentIdentity()`, where supplied); once either
