@@ -943,7 +943,8 @@ under the same serialization as its commits, with the record surviving the store
 - From `create` on, an unfenced commit of the run refuses `lease-required`, through `commit` and `commitHistory` alike, and after the
   objective has ended too: an objective's run is leased. An objective that ends paused keeps no pause.
 - `inspectGoal(input)`: the record, with the inspection counted and its last row kept; no revision moves, and a repeat of the last id
-  is not counted again (M12). Nothing is written for a run with no record.
+  is not counted again (M12). Nothing is written for a run with no record. It carries no fence: an inspection sent through a
+  worker's view, a displaced one too, is counted as the host's, since it changes only the count (#361).
 - `recordGoalDeliveries(input)`: journals an abandon's deliveries on the objective that command abandoned (`invalid` otherwise).
 - `readGoal(resource)`: the record, or nothing.
 - The journal holds at most 64 entries. Past it the oldest refused entry goes first, then the oldest entry, and `discarded` counts
@@ -955,7 +956,10 @@ restart at the end. It names the first property broken: `goal.create.*`, `goal.r
 `goal.unfenced`, `goal.pause.*`, `goal.resume.*`, `goal.block*`, `goal.unblock*`, `goal.bind.*`, `goal.achieve.*`, `goal.terminal`,
 `goal.abandon.left`, `goal.deliveries*`, `goal.none`, `goal.inspect.*`, `goal.journal.bound`, `goal.exhausted`, `goal.owner`,
 `goal.fence.*` (#315: a fenced command is decided while the fence is current, refused stale with nothing changed, and refused for a
-fence of another run) and `goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+fence of another run; #361: a stale fence is a takeover's earlier epoch, another owner's fence of the current epoch, a released one
+and an expired one, and is refused before a repeat of a command the store accepted from it is answered and on a run with no record,
+with no record made; each refusal must be a `LeaseRefused` by class, never a `GoalRefused` of the lease's reason) and
+`goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
 
 **Abandoning.** `abandonGoal({store, effectHost, command, durationMs, cancel})` abandons the objective in one goal transaction, which
 records the run's waits not resumed or ended and its jobs not settled, then runs `abandonJobs` under the same command id and journals
@@ -1168,15 +1172,29 @@ that passes the chat as the input's own chat, with no run-store context and no u
 The run's deadline is not carried, so a predecessor with one has no successor, before or past it (`deadlined`,
 #355). The package reads it through the store's `readRunDeadline` (Go `RunDeadlineReader.ReadRunDeadline`; the
 memory stores have it): a store that holds deadlines (`limitRun`) and does not read them back is taken as holding
-one, a failed read refuses as itself, and a store with no wait port holds none. A host that wants the successor
-bounded sets its deadline with `limitRun` after the create.
+one, and a failed read refuses as itself. A host that wants the successor bounded sets its deadline with `limitRun`
+after the create.
+
+**The store value a successor is opened through (#362).** A successor reads three ports of that store (under a fenced
+view, of the view's store): the lease port, to hold the predecessor; the wait export (`exportWaits`), to read the
+question's waits; and the deadline reader. A store value without one of them is refused `invalid`, by the first of
+those reads it cannot make and before anything is written, unless it has no lease method (`acquireLease`,
+`releaseLease`) and declares itself unleased: `unleased: true` (`UnleasedRunStore`; Go `UnleasedRunStore`, `Unleased()`
+answering true). Such a store holds no leases, and so no waits and no run deadlines, which need the lease port; its
+successor is made under no lease, with no wait or deadline read. A value that wraps a store and exposes fewer of its
+ports declares nothing, so it is refused rather than read as a store that holds none: without this, a successor opened
+through it would be made beside the predecessor's live continuation, unheld, or past the predecessor's deadline. A
+store with the lease port and no waits answers `exportWaits` with no waits and the deadline reader with none. A
+store that holds deadlines and has no reader is still `deadlined`. The memory stores have every port and declare
+nothing.
 
 **Refusals.** `SuccessorRefused` (`configuration` for `invalid`, `unbound`, `budgeted` and `deadlined`, `stale-state` otherwise, from
 `context`, `not-started`), before any model request or tool call:
 
 - `invalid`: `successor` is not a record whose `predecessor` and `question` are storage ids; it sits beside an
   execution, a job or question continuation, a usage budget or a chat context; the store is one writer's
-  checkpoint callback, which cannot create once; or the open does not name its request (Go
+  checkpoint callback, which cannot create once; the store value has no lease port, wait export or deadline reader
+  and does not declare itself unleased (#362); or the open does not name its request (Go
   `PrepareDurableInput`, which makes no successor: a create through it is `invalid`, while a successor that exists
   opens through either it or `PrepareDurableInputFor`).
 - `unbound`: the run id is not the derived one, the question is not the predecessor's latest
@@ -1219,8 +1237,8 @@ reads each again where it can, and every order of what the package admits fails 
   successor's lease is a new epoch, so the continuation's commits are `stale-epoch`, and an open of it after the
   create is `succeeded`. A commit of the predecessor made outside the package during the create refuses the
   successor `moved`; one after the re-read is not seen, since it is no continuation the package admitted.
-- Two successors at once: under the predecessor's lease the later is `LeaseRefused` `held`; on a store with no
-  lease port the store's create admits one, and the other is `succeeded`, having written nothing.
+- Two successors at once: under the predecessor's lease the later is `LeaseRefused` `held`; on a store that declares
+  itself unleased the store's create admits one, and the other is `succeeded`, having written nothing.
 - A park that commits before the successor's first read: the successor is `parked` and writes nothing.
 - A park that commits after that read and before the successor reads the waits again after its create: the successor's head
   exists, the successor is refused `parked` on this open and every later one, and once the wait is claimed its
@@ -1231,4 +1249,14 @@ reads each again where it can, and every order of what the package admits fails 
 - A successor made before the park reads it: the park is `nothing-pending`.
 
 A crash while the successor is made leaves it written or not: if not, the host makes it again; if so, making
-it again is `succeeded` and the host continues it with `resume` true.
+it again is `succeeded` and the host continues it with `resume` true. A crash between the successor's lease of
+the predecessor and its release leaves that lease to expire on its own: until then, up to the successor lease's
+60 seconds, the predecessor is leased by no one else, so a claim, a park, and making the successor again where
+the crash left it unwritten, are `LeaseRefused` `held` (#362).
+
+What fails closed and is not recovered (#362): a claimed continuation whose claim's lease lapses before the
+continuation's first commit cannot be opened again, since an expired lease does not renew, a new lease's epoch is
+not the claim's, and the wait is already claimed: that job or question's result reaches no request, and the host
+starts a new run for its work. A run deadline set on the predecessor after its successor exists refuses every
+later open of the successor `deadlined`, as it refuses a successor of a predecessor with one; the host sets the
+successor's own deadline instead, with `limitRun` on the successor.

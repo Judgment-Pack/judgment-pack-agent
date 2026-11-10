@@ -43,6 +43,10 @@ const swallows=(reason:string):Fault=>(store,{goals})=>wrap(store,'commandGoal',
 const reading=(kinds:string[],edit:(context:Held,goals:Held,input:Held)=>Held):Fault=>(_,{goals})=>{const original=goals.command.bind(goals);goals.command=(input:Held,context:(resource:string)=>Held)=>original(input,kinds.includes(input.command?.kind)?(resource:string)=>edit(context(resource),goals,input):context)}
 /** A store that reads a woken wait as resolved. */
 const withoutWoken=(context:Held)=>({...context,waits:context.waits.map((wait:Held)=>wait.state==='woken'?{...wait,state:'resumed'}:wait)})
+/** #361: a store whose goal transaction checks a command's fence as the lease does, less one rule. */
+const fenceWithout=(rule:'other-owner'|'released'|'expired'):Fault=>(_,{goals,leases})=>{goals.checkFence=(fence:Held)=>{const row=leases.rows.get(fence.resource);if(!row)throw new LeaseRefused('no-lease');if(row.epoch!==fence.epoch)throw new LeaseRefused('stale-epoch');if(rule!=='other-owner'&&row.owner!==fence.owner)throw new LeaseRefused('other-owner');if(rule!=='released'&&row.state==='released')throw new LeaseRefused('released');if(rule!=='expired'&&leases.now()>=Date.parse(row.expiry))throw new LeaseRefused('expired')}}
+/** #361: a store that decides a fenced command as the host's where `unfenced` says so, and checks the fence otherwise. */
+const unfencedWhere=(unfenced:(input:Held,goals:Held)=>boolean):Fault=>(store,{goals})=>wrap(store,'commandGoal',original=>(input,signal)=>{if(!input.fence||!unfenced(input,goals))return original(input,signal);const {fence:_,...rest}=input;return original(rest,signal)})
 /** For each property of the kit, a store that breaks exactly it. */
 const FAULTS:[string,Fault][]=[
  // #318: M-4, a create over an abandon whose deliveries were never journaled; L-8, a create over an achieved objective.
@@ -130,6 +134,15 @@ const STORES:[string,string,Fault][]=[
  ['A store that refuses for size','goal.journal.bound',(store,{goals})=>wrap(store,'commandGoal',original=>(input,signal)=>{if((rowOf(goals,input.command.resource)?.journal.length??0)>=64)throw new GoalRefused('invalid');return original(input,signal)})],
  ['A store whose pause also stops a held lease from committing','goal.pause.held',(store,{goals})=>wrap(store,'commitFenced',original=>(input,fence,signal)=>{if(currentOf(goals,input.runId)?.paused)throw new GoalRefused('objective-paused');return original(input,fence,signal)})],
  ['A store that answers a refusal of the head','goal.bind.head',swallows('head-changed')],
+ // #361: stores that check a command's fence too little, or refuse it as something else.
+ ['A store that answers a repeat before it checks the fence','goal.fence.stale',unfencedWhere((input,goals)=>!!rowOf(goals,input.command.resource)?.journal.some((entry:Held)=>entry.command===input.command.command))],
+ ['A store that checks a fence only where the run has a record','goal.fence.stale',unfencedWhere((input,goals)=>!rowOf(goals,input.command.resource))],
+ ['A store that checks a fence by its epoch only','goal.fence.stale',(store,{leases})=>wrap(store,'commandGoal',original=>(input,signal)=>{if(!input.fence)return original(input,signal);if(input.fence.resource!==input.command.resource)throw new LeaseRefused('resource-mismatch');const row=leases.rows.get(input.fence.resource);if(!row)throw new LeaseRefused('no-lease');if(row.epoch!==input.fence.epoch)throw new LeaseRefused('stale-epoch');const {fence:_,...rest}=input;return original(rest,signal)})],
+ ['A store that refuses a stale fence as a goal refusal of the same reason','goal.fence.stale',store=>wrap(store,'commandGoal',original=>async(input,signal)=>{try{return await original(input,signal)}catch(error){if(error instanceof LeaseRefused)throw new GoalRefused(error.reason as never);throw error}})],
+ ['A store that refuses a resource mismatch as a goal refusal of the same reason','goal.fence.resource',store=>wrap(store,'commandGoal',original=>async(input,signal)=>{try{return await original(input,signal)}catch(error){if(error instanceof LeaseRefused&&error.reason==='resource-mismatch')throw new GoalRefused(error.reason as never);throw error}})],
+ ['A store that decides another owner\'s fence of the current epoch','goal.fence.stale',fenceWithout('other-owner')],
+ ['A store that decides a released fence','goal.fence.stale',fenceWithout('released')],
+ ['A store that decides an expired fence','goal.fence.stale',fenceWithout('expired')],
 ]
 const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
 describe('the goal conformance kit (#230)',()=>{

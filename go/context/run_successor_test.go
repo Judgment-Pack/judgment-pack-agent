@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -597,8 +598,11 @@ func TestAQuestionParkedWhileItsSuccessorIsMadeIsRefused(t *testing.T) {
 	}
 }
 
-// plainStore is a store with no lease or wait port, as a host's single store kind may be: nothing leases its runs.
+// plainStore is a store with no lease or wait port, as a host's single store kind may be: nothing leases its runs, and
+// it declares so (#362).
 type plainStore struct{ RunStore }
+
+func (plainStore) Unleased() bool { return true }
 
 func TestTwoSuccessorsOfOneQuestionAtOnceAreOneRun(t *testing.T) {
 	ctx := context.Background()
@@ -872,6 +876,14 @@ func TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance(t *testin
 	if head, err := s.store.Load(ctx, id); err != nil || head != nil {
 		t.Fatalf("a successor was made beside a live continuation: %v", err)
 	}
+	// #362: nor through a value that wraps the same store and exposes only the run store: it is refused before anything
+	// is written, never made unheld while that lease is live.
+	if _, err := prepare(ctx, s.input(hidingStore{s.store}, "question-1", false)); successorRefusal(t, err) != successorFailure("invalid") || err.Error() != "SuccessorRefused: invalid." {
+		t.Fatal(err)
+	}
+	if head, err := s.store.Load(ctx, id); err != nil || head != nil {
+		t.Fatalf("a successor was made unheld beside a live continuation: %v", err)
+	}
 	// Once its lease has lapsed, another lease of the head, the claim's owner's at a new epoch or another owner's, is not
 	// the claim's, and admits nothing either.
 	s.clock.advance(leaseMinute)
@@ -951,9 +963,76 @@ func TestASuccessorIsNotMadeOfARunWithADeadline(t *testing.T) {
 	if head, err := s.store.Load(ctx, id); err != nil || head != nil {
 		t.Fatalf("a successor of a run with a deadline was written: %v", err)
 	}
-	// A store with no wait port holds no deadline: the successor is made.
+	// A store with no lease port that declares itself unleased holds no deadline: the successor is made.
 	if _, err := prepare(ctx, s.input(plainStore{s.store}, "question-1", false)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// hidingStore (#362) wraps the store and exposes the run store alone, as a decorator may: it declares nothing of the
+// ports it hides.
+type hidingStore struct{ RunStore }
+
+// Each of these exposes the run store and only the ports it names.
+type (
+	readsDeadlines struct {
+		RunStore
+		RunDeadlineReader
+	}
+	readsWaits struct {
+		RunStore
+		RunDeadlineReader
+		waitExporter
+	}
+	leasesUnread struct {
+		LeaseRunStore
+		waitExporter
+	}
+	leasesUnwaited struct {
+		LeaseRunStore
+		RunDeadlineReader
+	}
+	// declaresBesideLease declares itself unleased and has the lease port.
+	declaresBesideLease struct {
+		plainStore
+		LeaseStore
+	}
+	// declaresLeased answers the declaration false.
+	declaresLeased struct{ RunStore }
+)
+
+func (declaresLeased) Unleased() bool { return false }
+
+// #362: a successor reads the lease port, the wait export and the deadline reader of the store value it is opened
+// through. A value that hides one of them and does not declare itself unleased is refused invalid, by the first read it
+// cannot make, and nothing is written; it is never read as a store that holds none. A declaration is read only where
+// the value has no lease method.
+func TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort(t *testing.T) {
+	ctx := context.Background()
+	id := SuccessorRunID(successorPredecessor, "question-1")
+	for name, wrap := range map[string]func(durableWaitStore) RunStore{
+		"the run store alone":                                        func(s durableWaitStore) RunStore { return hidingStore{s} },
+		"the deadline reader and no wait export":                     func(s durableWaitStore) RunStore { return readsDeadlines{s, s} },
+		"the deadline reader and the wait export, and no lease port": func(s durableWaitStore) RunStore { return readsWaits{s, s, s} },
+		"the lease port and no deadline reader":                      func(s durableWaitStore) RunStore { return leasesUnread{s, s} },
+		"the lease port and no wait export":                          func(s durableWaitStore) RunStore { return leasesUnwaited{s, s} },
+		"a declaration beside the lease port":                        func(s durableWaitStore) RunStore { return declaresBesideLease{plainStore{s}, s} },
+		"a declaration answered false":                               func(s durableWaitStore) RunStore { return declaresLeased{s} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := successorStore(t, nil)
+			before, _ := s.store.ReadLease(ctx, successorPredecessor)
+			_, err := prepare(ctx, s.input(wrap(s.store), "question-1", false))
+			if successorRefusal(t, err) != successorFailure("invalid") || err.Error() != "SuccessorRefused: invalid." {
+				t.Fatal(err)
+			}
+			if head, err := s.store.Load(ctx, id); err != nil || head != nil {
+				t.Fatalf("a successor was made through a store value that hides a port: %v", err)
+			}
+			if after, _ := s.store.ReadLease(ctx, successorPredecessor); !reflect.DeepEqual(after, before) {
+				t.Fatalf("the predecessor's lease moved: %+v", after)
+			}
+		})
 	}
 }
 
