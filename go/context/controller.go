@@ -479,21 +479,7 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 	if err := c.configureRequestCap(requestCap, false); err != nil {
 		return err
 	}
-	var request *Value
-	if c.session.Context != nil && c.session.Context.CurrentRequest != nil {
-		request = c.session.Context.CurrentRequest.Value()
-	} else {
-		request = String(c.session.Prompt)
-	}
-	phase := "work"
-	if c.session.Context != nil && c.session.Context.Phase != "" {
-		phase = c.session.Context.Phase
-	}
-	purpose := Null()
-	if c.session.Purpose != "" {
-		purpose = String(c.session.Purpose)
-	}
-	requestKey := ContextDigest(ObjectOf("request", request, "phase", String(phase), "purpose", purpose).Text())
+	requestKey, phase := requestIdentity(c.session.Context, c.session.Prompt, c.session.Purpose)
 	var saved *contract.Checkpoint
 	if c.session.Context != nil && c.session.Context.Execution != nil {
 		raw, err := json.Marshal(c.session.Context.Execution)
@@ -525,7 +511,7 @@ func (c *ExecutionController) Initialize(contexts ...context.Context) error {
 			}
 		}
 		if saved.RequestKey != requestKey || saved.Phase != phase {
-			return failure.ToolInput("The request or execution phase changed. Start a new response with the current context.")
+			return requestChanged()
 		}
 		if err := validateOriginalPlan(ctx, saved, c.session.Context, false); err != nil {
 			return err

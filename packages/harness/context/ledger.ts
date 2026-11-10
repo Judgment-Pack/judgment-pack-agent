@@ -14,6 +14,13 @@ export async function contextDigest(text:string):Promise<string>{
  const digest=await crypto.subtle.digest('SHA-256',bytes)
  return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')
 }
+/** The request key and phase the controller holds a run's checkpoint to: the digest of the request (the current request,
+ * or the prompt), the phase (work where none) and the purpose (null where none). A successor (#340) is held to them before
+ * its first checkpoint is written. */
+export async function requestIdentity(currentRequest:unknown,prompt:unknown,phase:string|undefined,purpose:string|undefined):Promise<{requestKey:string;phase:string}>{
+ const held=phase??'work'
+ return {requestKey:await contextDigest(JSON.stringify({request:currentRequest??prompt,phase:held,purpose:purpose??null})),phase:held}
+}
 /**
  * Where a ledger keeps its entries (agent#8). A run's own store (`EntryStore`, the default) lives as
  * long as the run and is cleared when it ends. A chat's (`ChatTurn`, `context/chat.ts`) is the

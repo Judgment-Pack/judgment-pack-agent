@@ -469,6 +469,14 @@ export function admitUnattended(input:{store:RunStore;effectHost?:EffectHost;cha
 export function unattendedRunStore(input:{store:RunStore;fence:LeaseFence;effectHost:EffectHost}):RunStore{admitUnattended(input);return fencedRunStore(input.store,input.fence,input.effectHost)}
 /** @internal The store and fence behind a fenced view; undefined for any other store. */
 export function leasedViewOf(store:RunStore):{fence:LeaseFence;store:RunStore}|undefined{const lease=leased.get(store);return lease?{fence:lease.fence,store:lease.store}:undefined}
+/** @internal #355: a claimed wait's continuation is the claim's own, opened through a fenced view of this run whose fence is
+ * the owner and epoch the claim recorded, as a re-authorization claim's is. Each of its commits is then fenced by the
+ * claim's lease, so a later lease of the run (a successor's create, a takeover) stops it; through any other store it
+ * resumes nothing. */
+export function claimedThrough(store:RunStore,resource:string,resumed:{owner?:unknown;epoch?:unknown}|undefined):boolean{
+ const fence=leased.get(store)?.fence
+ return !!fence&&!!resumed&&fence.resource===resource&&fence.owner===resumed.owner&&fence.epoch===resumed.epoch
+}
 /** @internal The store and effect host behind a fenced view, as admitUnattended takes them. */
 export function leasedAdmission(store:RunStore):{store:RunStore;effectHost?:EffectHost}|undefined{const lease=leased.get(store);return lease?{store:lease.store,...(lease.effectHost?{effectHost:lease.effectHost}:{})}:undefined}
 /** @internal ADR-0029: a fenced store's lease holds the run's principals: a lease of others, a delegated run's without

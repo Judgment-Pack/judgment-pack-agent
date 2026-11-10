@@ -19,7 +19,7 @@ import {readHistoryHead,readHistoryEntry,copyCorpusManifestEnvelope} from '../hi
 import type {TurnRoute} from '../turnRoute'
 import {retainedRepresentation} from '../context/ledger'
 import {ProviderReleaseUnknown} from './release'
-import {fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,leasedViewOf,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
+import {claimedThrough,fencedEffect,holdLeasePrincipal,isNeverAdmittedFailure,leasedViewOf,reauthorizedDispatchOpen,reauthorizedGrant,takeFreshReauthorization,takeReauthorizedDispatch} from './lease'
 import {JOB_PAGE_LIMIT,JobCapabilityRefused,JobRefused,admitJobView,heldStartNotShown,jobCancelNotSent,jobCancelResult,jobCancelUnrecorded,jobIdentity,jobSeamOf,jobPortOfView,jobStartResult,jobStartUnrecorded,readJobStartAnswer,readRunJob,type JobRegistration,type JobStartSeam,type RunJob} from './job'
 import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
@@ -35,12 +35,14 @@ import {receiptAdmission} from '../toolSources'
 import type {AssistantEvent,EngineSession,McpToolResult,HostTool} from '../engine'
 import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
+import {SuccessorRefused,claimedQuestionWait,holdPredecessor,makeSuccessor,predecessorUnmoved,questionWaitHeld,readPredecessor,readSuccessorInput,succeededHead,type QuestionAnswer} from './successor'
+import {WaitRefused} from './wait'
 export interface DurableScope {execution:string;role:string;task?:string}
 export interface ArtifactObservation {kind:'artifact'|'dialect';id:string;digest:string;access?:'read'|'produced'}
 export interface DurableDispatch {planPause?:import('../execution/plan').NativePlanPause;id:string;scope:DurableScope;kind:'model'|'agent'|'host'|'runtime';source:string;tool:string;fingerprint:string;request:string;requestDigest:string;state:'claimed'|'result'|'unknown';read:boolean;result?:unknown;repeatResultJson?:string;failure?:import('../failures').AIFailure;artifacts?:ArtifactObservation[]}
 export interface DurableObservation {id:string;scope:DurableScope;kind:'operation'|'artifact-read'|'artifact-produced';source:string;dispatchId:string;commitId:string;artifact?:ArtifactObservation}
 export interface DurableBook {dispatches:DurableDispatch[];observations:DurableObservation[];children:{scope:DurableScope;checkpoint:ExecutionCheckpoint}[];pendingHandoff?:{callId:string;request:import('../delegationContract').DelegationRequest}}
-export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean;context?:StoredChatScope}
+export interface DurableRunInput {store:RunStore;id:string;/** Explicit host action. load/get/reload never resume. */resume?:boolean;context?:StoredChatScope;/** #340: makes (`resume` false) or continues (`resume` true) the successor run of a complete run's last question; `id` is then `successorRunId(successor.predecessor, successor.question)`. */successor?:import('./successor').RunSuccessor}
 export class ContinuationNotRecoverable extends AIFailureError {constructor(){super({...failure('storage','storage','not-started'),detail:'ContinuationNotRecoverable: exact safe continuation bytes cannot be retained.'});this.name='ContinuationNotRecoverable'}}
 export class StorageOutcomeUnknown extends AIFailureError {constructor(cause?:unknown){super({...failure('storage','storage','unknown'),detail:'StorageOutcomeUnknown: the dispatched operation result was not acknowledged.'});this.name='StorageOutcomeUnknown';if(cause!==undefined)Object.defineProperty(this,'cause',{value:cause})}}
 export class StorageAcknowledgementInvalid extends AIFailureError {constructor(){super({...failure('storage','storage','unknown'),detail:'StorageAcknowledgementInvalid: the host did not acknowledge this exact transaction.'});this.name='StorageAcknowledgementInvalid'}}
@@ -66,7 +68,7 @@ export const RUN_COMPLETE='RunComplete: the run is complete, and a finished run 
  * #328: a resume of a run whose run-store head is `complete` is refused by name, before anything of the run is bound: no model
  * request, no tool call and no record write. A finished run asked again would make new requests and could act again. Three
  * resumes of a complete head are kept, each borne out by the store: a job wait's continuation (`resumeParked`, then
- * `context.jobContinuation`) where the store holds that wait claimed at this head, a re-authorization claim's view
+ * `context.jobContinuation`) where the store holds that wait claimed at this head, opened through the claim's own view (#355), a re-authorization claim's view
  * (`reauthorizedRunStore`) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution the host holds itself, with no
  * run store, is the host's own record and is not refused.
  */
@@ -79,12 +81,13 @@ const reauthorizedContinuation=(store:RunStore,execution:ExecutionCheckpoint)=>{
 }
 const record=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 /** #330 HIGH-1: a job continuation resumes a complete head only where the store bears it out: this run's wait on that job,
- * claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head that has moved. */
+ * claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head that has moved.
+ * #355: and only through the claim's own view (claimedThrough), so its commits are fenced by the claim's lease. */
 async function claimedJobWait(store:RunStore,id:string,job:unknown,revision:string,signal?:AbortSignal):Promise<boolean>{
  const base=(leasedViewOf(store)?.store??store) as {exportWaits?:(resource:string,signal?:AbortSignal)=>Promise<unknown>}
  if(!record(job)||typeof job.job!=='string'||typeof base.exportWaits!=='function')return false
  const held=await base.exportWaits(id,signal),waits=record(held)&&Array.isArray(held.waits)?held.waits:[]
- return waits.some(wait=>record(wait)&&wait.resource===id&&wait.state==='resumed'&&record(wait.pending)&&wait.pending.kind==='job'&&wait.pending.job===job.job&&record(wait.checkpoint)&&wait.checkpoint.revision===revision)
+ return waits.some(wait=>record(wait)&&wait.resource===id&&wait.state==='resumed'&&record(wait.pending)&&wait.pending.kind==='job'&&wait.pending.job===job.job&&record(wait.checkpoint)&&wait.checkpoint.revision===revision&&claimedThrough(store,id,record(wait.resumed)?wait.resumed:undefined))
 }
 /** #330 MEDIUM-1: a later leg of an objective's run. A complete head resumes while the store's goal record for this run has an
  * active objective whose bound Plan still has a required step the head holds unfinished; a paused one is still active, and its
@@ -98,9 +101,10 @@ async function openObjective(store:RunStore,id:string,execution:ExecutionCheckpo
  if(!bound||!Array.isArray(bound.steps)||!accepted||accepted.id!==bound.id||accepted.revision!==bound.revision)return false
  return bound.steps.some(required=>record(required)&&execution.plan.some(row=>row.origin?.plan===accepted.id&&row.origin.revision===accepted.revision&&row.origin.index===required.index&&(row.status==='pending'||row.status==='in_progress')))
 }
-/** #328: a complete head resumes only as a job wait's continuation, a re-authorization claim's, or a leg of an open objective. */
-async function finished(store:RunStore,id:string,head:RunHead,execution:ExecutionCheckpoint|undefined,input:EngineSession['context'],signal?:AbortSignal):Promise<boolean>{
- if(execution?.status!=='complete'||reauthorizedContinuation(store,execution))return false
+/** #328: a complete head resumes only as a job wait's continuation, a claimed question wait's (#341), a re-authorization
+ * claim's, or a leg of an open objective. */
+async function finished(store:RunStore,id:string,head:RunHead,execution:ExecutionCheckpoint|undefined,input:EngineSession['context'],claimed:boolean,signal?:AbortSignal):Promise<boolean>{
+ if(execution?.status!=='complete'||reauthorizedContinuation(store,execution)||claimed)return false
  if(input?.jobContinuation!==undefined&&await claimedJobWait(store,id,input.jobContinuation,head.revision,signal))return false
  return !await openObjective(store,id,execution,signal)
 }
@@ -125,6 +129,9 @@ export function compareDurableRequests(recorded:string,request:string):'same'|'d
 export {exactlyHeld}
 const recordableRequest=(request:string)=>{try{readHistoryRequestJSON(request);return true}catch{return false}}
 export const durableOwner=Symbol('Agent durable writer')
+/** #340, #341: the answers durableSession read from the store for this open, a successor's own then a claimed question
+ * wait's, for the first request. Never a host member. */
+export const questionAnswers=Symbol('Agent question answers')
 /** Trusted coordinator accounting, before the root dispatch claim is frozen. */
 export const prepareProviderDispatch=Symbol('Agent coordinator provider preparation')
 interface NativeTaskEnvelopeSource {limit:number;childReserve:number;counts:()=>{execution:string;count:number}[];reserve:(scope:DurableScope)=>number}
@@ -506,6 +513,8 @@ export class RunWriter {
  historyCompaction(binding:DurableBinding,boundary:string,originals:HistoryObjectRef[],replacementJSON:string,mode:'index'|'summary',prior:HistoryObjectRef[],legacyDigest:string,signal?:AbortSignal){const held=structuredClone({originals,prior});return this.publishHistory(binding,scope=>prepareHistoryCompaction(scope,boundary,held.originals,replacementJSON,mode,held.prior,legacyDigest),signal)}
  /** @internal Explicit host resume claims both revisions before exposing an attached writer. */
  async claimContext(checkpoint:Uint8Array,signal?:AbortSignal){const receipt=await this.commitWithContext({runId:this.id,expectedRevision:this.revision,commitId:crypto.randomUUID(),checkpoint,events:[]},signal,false,this.latest?.context.scope);this.revision=receipt.revision}
+ /** @internal #340: the successor's first checkpoint, created once at its derived id before anything of the run is sent. */
+ async createSuccessor(signal?:AbortSignal){if(this.revision!==null||!this.latest)throw new ContinuationIdentityChanged();const receipt=await this.commitWithContext({runId:this.id,expectedRevision:null,commitId:crypto.randomUUID(),checkpoint:encoder.encode(canonicalJSON(this.latest)),events:[]},signal,false,this.latest.context.scope);this.revision=receipt.revision}
  private rootBinding(binding:DurableBinding){return binding.writer===this&&binding.root&&binding.scope.execution===this.id&&binding.scope.role==='author'&&binding.scope.task===undefined}
  /** Transfer returned parent snapshot ownership to its coordinator until the next root bind. */
  useAcknowledgedRoot(binding:DurableBinding){if(!this.rootBinding(binding)||!this.latest)throw new ContinuationIdentityChanged();this.root=undefined}
@@ -1133,9 +1142,13 @@ function callbackProfile<T extends EngineSession>(session:T,store:RunStore,id:st
 }
 /** Internal admission used once for a root, then explicitly inherited by trusted child bindings. */
 export async function durableSession<T extends EngineSession>(session:T):Promise<T>{
+ if(session.context?.[durableOwner])return session
+ // #340, #341: the answers a run is handed are only those this open reads from the store, never a value the host set.
+ if(session.context&&questionAnswers in session.context){const {[questionAnswers]:_,...rest}=session.context;session={...session,context:rest} as T}
  const input=session.context
- if(input?.[durableOwner])return session
  const config=input?.runStore
+ // #341: a question wait's continuation is a run store's, and only of a head the store holds.
+ if(input?.questionContinuation!==undefined&&!config)throw new WaitRefused('invalid')
  // ADR-0029: a durable root's delegation is refused, by name, before its store is touched, and a resume under other principals is refused by name before anything of it is bound.
  const delegation=config&&input?.principal?await openRunPrincipal(input.principal):undefined
  if(config)holdLeasePrincipal(config.store,delegation?.record)
@@ -1144,15 +1157,36 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
  if(config&&input?.checkpoint)throw new ContinuationIdentityChanged()
  const id=config?.id??input?.execution?.id??crypto.randomUUID();requireId(id)
+ const successor=config?readSuccessorInput(id,config.successor,{...input,context:config.context}):undefined
+ if(successor&&config!.store.durability==='single-writer-callback')throw new SuccessorRefused('invalid')
  const store=config?.store??checkpointCallbackRunStore(input!.checkpoint!,bytes=>readExecution(JSON.parse(new TextDecoder().decode(bytes)))!)
  const head=config?await store.load(id,session.signal):undefined
+ // #340: a question has one successor; making it again meets the one already made.
+ if(successor&&!config!.resume&&head)throw new SuccessorRefused('succeeded')
  if(config&&!!head!==!!config.resume)throw new StorageConflict(null,head?.revision??null)
+ if(!head&&input?.questionContinuation!==undefined)throw new WaitRefused('invalid')
  if(head&&!head.checkpoint)throw new ContinuationNotRecoverable()
- const execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
+ let execution=head?.checkpoint?readExecution(JSON.parse(new TextDecoder().decode(head.checkpoint))):input?.execution
  if(head&&input?.execution&&canonicalJSON(execution)!==canonicalJSON(input.execution))throw new ContinuationIdentityChanged()
+ const answers:QuestionAnswer[]=[]
+ // #340: a successor's head opens only while its predecessor holds it up, every time.
+ if(head&&successor)answers.push((await readPredecessor(store,successor,session.signal)).answered)
+ // #341: a claimed question wait's continuation hands on the wait's resolution, and only at the head the wait was parked at.
+ let claimed:QuestionAnswer|undefined
+ if(head&&input?.questionContinuation!==undefined){
+  if(input.jobContinuation!==undefined||!storageId(input.questionContinuation))throw new WaitRefused('invalid')
+  claimed=await claimedQuestionWait(store,id,input.questionContinuation,head.revision,session.signal)
+  if(!claimed&&execution?.status!=='complete')throw new WaitRefused('mismatch')
+ }
  // #328: decided as soon as the head is read, before anything of the run is bound, as in Go.
- if(head&&await finished(store,id,head,execution,input,session.signal))throw new RunComplete()
- if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
+ if(head&&await finished(store,id,head,execution,input,claimed!==undefined,session.signal))throw new RunComplete()
+ // #340: once the head's last question has its successor, the successor carries the allowance, and the head resumes no other way.
+ if(head&&execution?.status==='complete'&&await succeededHead(store,id,session.signal))throw new SuccessorRefused('succeeded')
+ if(claimed)answers.push(claimed)
+ let predecessor:RunHead|undefined
+ if(!head&&successor){const made=await makeSuccessor(store,id,successor,{currentRequest:input?.currentRequest,prompt:session.prompt,phase:input?.phase,purpose:session.purpose,requestCap:input?.requestCap},session.signal);execution=made.checkpoint;predecessor=made.head;answers.push(made.answered)}
+ // ADR-0029: a successor carries the predecessor's principal, and is made only under it.
+ if((head||successor)&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
  const held=execution?.approval,given=input?.approval===undefined?undefined:readApprovalDecision(input.approval),notShown=held?.state==='asked'&&given?.callId===held.callId?approvalNotShown(held,given)??heldStartNotShown(session.hostTools,held,given):undefined
  if(notShown!==undefined)throw authoredFailure('stale-state',notShown,'context')
@@ -1166,7 +1200,21 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  await writer.restoreNativePlanDecisions(binding,session.signal)
  if(session.record===true&&session.corpus&&(store as Partial<HistoryRunStore>).historyVersion===1)writer.enrollCapture(binding,session.corpus.manifest,session.corpus.sink)
  if(config?.context){writer.attachContext(config.context);if(head?.checkpoint)await writer.claimContext(head.checkpoint,session.signal)}
- return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,checkpoint:state=>writer.save(binding,state,session.signal)}}
+ // #340: the successor's first checkpoint is created once at its derived id, before anything of the run is sent, so a
+ // second successor made at the same time meets this one. It is made under the predecessor's lease, where the store has
+ // leases (HIGH-1): an admitted continuation of the predecessor holds that lease, or has lost it to this one's new epoch.
+ // The predecessor and its waits are read again after the create: a head that moved, or a question wait parked
+ // meanwhile, refuses the successor, and the wait's continuation is refused as well because the successor exists.
+ // Neither sends anything.
+ if(!head&&successor&&predecessor){
+  const release=await holdPredecessor(store,id,successor,predecessor,execution?.principal,session.signal)
+  try{
+   try{await writer.createSuccessor(session.signal)}catch(error){if(error instanceof StorageConflict)throw new SuccessorRefused('succeeded');throw error}
+   await predecessorUnmoved(store,successor,predecessor,session.signal)
+   if(await questionWaitHeld(store,successor.predecessor,successor.question,session.signal))throw new SuccessorRefused('parked')
+  }finally{await release()}
+ }
+ return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,[questionAnswers]:answers,checkpoint:state=>writer.save(binding,state,session.signal)}}
 }
 export function childDurability<T extends EngineSession>(session:T,parent:EngineSession,task:string):T{
  const binding=parent.context?.[durableOwner];if(!binding)return session

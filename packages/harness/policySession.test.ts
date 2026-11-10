@@ -119,6 +119,8 @@ function rawReasoningReads(harness:string,files:string[],snapshot:Snapshot):stri
    if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='principal')return
    // #229: a decision on a held start is refused by name there too, and only which tool is a job start is read.
    if(relative==='storage/writer.ts'&&fn==='durableSession'&&name==='hostTools')return
+   // #340, #341: a successor's request cap and a question wait's continuation are read there once, as in Go's prepareDurableInput.
+   if(relative==='storage/writer.ts'&&fn==='durableSession'&&['requestCap','questionContinuation'].includes(name))return
    const allowed=admission[relative]?.includes(fn)&&(!['effort','thinking','criticReasoning'].includes(name)||relative==='context/session.ts'&&['resolveSessionPolicy','requestSession'].includes(fn))
    if(!allowed)unexpected.push(`${relative}:${file.getLineAndCharacterOfPosition(node.getStart(file)).line+1}:${name}`)
   }

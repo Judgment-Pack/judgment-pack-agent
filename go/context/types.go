@@ -349,8 +349,11 @@ type Input struct {
 	TaskStepEnvelope  *TaskStepEnvelope
 	UsageBudget       *UsageBudgetInput
 	checkpointProfile bool
-	checkpointRunID   string
-	RunStore          *DurableRunInput
+	// questionAnswers are the answers PrepareDurableInput read from the store for this open (#340, #341): a
+	// successor's own, then a claimed question wait's.
+	questionAnswers []questionAnswer
+	checkpointRunID string
+	RunStore        *DurableRunInput
 	// Persistence is inherited only by the trusted coordinator, never decoded from a checkpoint.
 	Persistence *RunBinding
 
@@ -386,6 +389,10 @@ type Input struct {
 	// JobContinuation (#229) is the job a resumed job wait's run continues after (ResumedWait.Job), as its
 	// record says: one fixed line and one data block in the first request.
 	JobContinuation *RunJob
+	// QuestionContinuation (#341) is the wait id of a question wait ResumeParked claimed: the run continues the
+	// same response at the head the wait was parked at, a complete head included, with one fixed line and one data
+	// block of the question and the wait's resolution (QuestionAnswerText), read from the store.
+	QuestionContinuation string
 	// Steer is the host-owned in-flight input queue. Adapters drain it only at request boundaries.
 	Steer <-chan SteerInput
 }
