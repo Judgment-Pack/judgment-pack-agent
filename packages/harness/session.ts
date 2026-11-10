@@ -1,4 +1,4 @@
-import {registerRuntimeConnector,runtimeJSON} from './storage/runtimeActionOwner'
+import {registerRuntimeConnector,registerRuntimeRehearsal,runtimeJSON} from './storage/runtimeActionOwner'
 import type {RuntimeActionPort} from './runtimeActions'
 import {runtimeTaxonomyProblem,taxonomyAnnotations} from './toolTaxonomy'
 import {authoredFailure,failureError} from './failures'
@@ -39,7 +39,7 @@ import {
   sessionEnded,
   whenSessionEnds
 } from './host'
-import { allowedTools, gateTransport, inspectOutboundFrame, type GuardrailNotice } from './toolGate'
+import { allowedTools, gateTransport, inspectOutboundFrame, rehearsalArguments, type GuardrailNotice } from './toolGate'
 import type { EndpointKind } from './host'
 import type {
   AssistantEvent,
@@ -589,6 +589,17 @@ export function openAssistantConnection(options: {
         if(acting.has(name)||actionPort&&name==='experimental_evaluate'&&(await listRuntime()).find(t=>t.name===name)?._meta?.effect==='act')throw authoredFailure('permission','Runtime action requires an exact approved attempt. Nothing was sent.','tool')
         return dispatch(name,args)
       }
+      // #344: a critic's or a delegated child's rehearsal, whatever effect the Runtime serves the tool with: sent only
+      // once the frame the gate writes is confirmed to be experimental_evaluate's, carrying an own rehearsal: true; no
+      // approval, no attempt.
+      registerRuntimeRehearsal(guarded,async(name,args)=>{
+        const decided=inspectOutboundFrame({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}},allowed)
+        if(decided.verdict==='refused'){notify(decided.notice);throw decided.violation}
+        const confirmed=rehearsalArguments(decided)
+        if(!confirmed)throw authoredFailure('permission','Runtime action requires an exact approved attempt. Nothing was sent.','tool')
+        if(decided.notice)notify(decided.notice)
+        return dispatch(name,confirmed)
+      })
       if(actionPort)registerRuntimeConnector(guarded,{
         port:actionPort,
         initialTools:listed,

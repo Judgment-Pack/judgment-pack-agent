@@ -3,7 +3,8 @@ import type {SessionContext} from './session'
 import type {EngineSession,McpToolResult,AssistantEvent} from '../engine'
 import {canonicalJSON} from './chat'
 import {durableOwner,scopeFor,hostSucceeded} from '../storage/writer'
-import {prepareRuntimeAttempt,claimRuntimeAttempt,executeRuntimeAttempt,runtimePolicy,runtimeJSON,type RuntimeAttempt} from '../storage/runtimeActionOwner'
+import {prepareRuntimeAttempt,claimRuntimeAttempt,executeRuntimeAttempt,runtimePolicy,runtimeJSON,runtimeRehearsal,type RuntimeAttempt} from '../storage/runtimeActionOwner'
+import {REHEARSAL_TOOL} from '../toolGate'
 import type {ApprovalRecord} from '../execution/state'
 import {sha256} from '../records'
 import type {RuntimeAdmission} from '../storage/runtimeActionOwner'
@@ -47,9 +48,18 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
   const call=()=>context.execution.wrapRead(name,invoke,{},false,{runtime:true,offered:true})(runtimeJSON(args))
   return context.sources?context.sources.runtime(call):call()
  }
- context.runtimeNeedsApproval=acting
+ // #344: the acting experimental_evaluate, from the critic's reading or a delegated child (not a declared sub-agent), outside Plan mode and the reformat run, is a rehearsal: no approval is asked and no attempt prepared, and it is kept as a read, never as an effect. The connection owner's rehearsal channel sends it only once its rewrite to an own rehearsal: true is confirmed; without one it is refused. It is admitted under the run's delegation as the act it is served as, counted, immediately before the call. Every other acting call still takes the approved path.
+ const rehearsing=(name:string)=>name===REHEARSAL_TOOL&&acting(name)&&session.context?.phase!=='plan'&&(context.storageRole==='critic'||context.storageRole==='author'&&!!session.context?.objective&&!session.childDefinition)
+ context.runtimeNeedsApproval=name=>acting(name)&&!rehearsing(name)
+ context.runtimeCall=async(name,args)=>{
+  if(!rehearsing(name))return session.callTool(name,args)
+  const rehearse=runtimeRehearsal(session.callTool)
+  if(!rehearse)throw context.refuse(name,'Runtime action requires an exact approved attempt. Nothing was sent.','approval refused')
+  await delegated(name,true,session.signal)
+  return rehearse(name,args)
+ }
  context.prepareRuntimeCall=async(name,args,callId)=>{
-  if(!acting(name))return
+  if(!context.runtimeNeedsApproval(name))return
   const release=context.beginApproval(name)
   try {
    check(name,args)
