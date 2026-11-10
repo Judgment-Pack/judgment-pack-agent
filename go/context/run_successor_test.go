@@ -116,7 +116,7 @@ func successorRefusal(t *testing.T, err error) string {
 
 func successorFailure(reason string) string {
 	code := "stale-state"
-	if reason == "invalid" || reason == "unbound" || reason == "exceeds" {
+	if reason == "invalid" || reason == "unbound" {
 		code = "configuration"
 	}
 	return `{"code":"` + code + `","detail":"SuccessorRefused: ` + reason + `.","outcome":"not-started","source":"context","version":1}`
@@ -144,7 +144,7 @@ func TestASuccessorRunIDIsDerivedFromThePredecessorAndItsQuestion(t *testing.T) 
 	if err := json.Unmarshal(raw, &vector); err != nil {
 		t.Fatal(err)
 	}
-	if len(vector.Derivations) != 4 || len(vector.Reasons) != 6 || len(vector.Items) != 7 {
+	if len(vector.Derivations) != 4 || len(vector.Reasons) != 5 || len(vector.Items) != 6 {
 		t.Fatal("the vector is short")
 	}
 	// A storage id holds no control character, so the NUL-separated derivation is one id per pair.
@@ -266,14 +266,6 @@ func TestASuccessorIsRefusedByName(t *testing.T) {
 			return in
 		}},
 		{"a predecessor still running", "not-complete", func(c map[string]any) { c["status"] = "running" }, func(s *successorScene) *Input { return s.input(s.store, "question-1", false) }},
-		{"more requests than it held", "exceeds", func(c map[string]any) {
-			c["used"], c["limit"], c["requestCap"], c["grants"] = 3, 5, 5, []any{}
-		}, func(s *successorScene) *Input {
-			in := s.input(s.store, "question-1", false)
-			cap := 6
-			in.RequestCap = &cap
-			return in
-		}},
 		{"a question with its own wait", "parked", nil, func(s *successorScene) *Input {
 			s.park(t)
 			return s.input(s.store, "question-1", false)
@@ -441,5 +433,59 @@ func TestASuccessorAndAQuestionWaitAtOnceBothFailClosed(t *testing.T) {
 	s.claim(t)
 	if _, err := PrepareDurableInput(ctx, &Input{RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}, QuestionContinuation: "wait-q"}); successorRefusal(t, err) != successorFailure("succeeded") {
 		t.Fatal(err)
+	}
+}
+
+// A delegated predecessor's successor carries its principal (checkpoint 4), and is not made under another principal or
+// none.
+func TestASuccessorIsMadeOnlyUnderThePredecessorsRequestCap(t *testing.T) {
+	ctx := context.Background()
+	capped := func(c map[string]any) { c["used"], c["limit"], c["requestCap"], c["grants"] = 3, 5, 5, []any{} }
+	for _, c := range []struct {
+		name  string
+		edit  func(map[string]any)
+		cap   *int
+		taken bool
+	}{{"none for none", nil, nil, true}, {"the same cap", capped, capOf(5), true}, {"a cap where none was", nil, capOf(5), false}, {"none where one was", capped, nil, false}, {"a higher cap", capped, capOf(6), false}, {"a lower cap", capped, capOf(4), false}} {
+		t.Run(c.name, func(t *testing.T) {
+			s := successorStore(t, c.edit)
+			in := s.input(s.store, "question-1", false)
+			in.RequestCap = c.cap
+			_, err := PrepareDurableInput(ctx, in)
+			head, _ := s.store.Load(ctx, in.RunStore.ID)
+			if c.taken != (err == nil) || c.taken != (head != nil) {
+				t.Fatalf("%v, written %v", err, head != nil)
+			}
+			if !c.taken && err.Error() != "The fixed request cap must match the admitted API execution and cannot change after initialization." {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func capOf(v int) *int { return &v }
+
+func TestASuccessorIsMadeOnlyUnderThePredecessorsPrincipal(t *testing.T) {
+	ctx := context.Background()
+	raw, err := os.ReadFile("../../contract/vectors/checkpoint/members.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var members struct{ Items []map[string]any }
+	if err := json.Unmarshal(raw, &members); err != nil {
+		t.Fatal(err)
+	}
+	principal := members.Items[0]["principal"]
+	s := successorStore(t, func(c map[string]any) { c["version"], c["principal"] = 4, principal })
+	made, _, err := makeSuccessor(ctx, s.store, SuccessorRunID(successorPredecessor, "question-1"), *s.input(s.store, "question-1", false).RunStore.Successor, nil)
+	if err != nil || made.Version != 4 || made.Principal == nil || made.Principal.RootActor != "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1" {
+		t.Fatalf("%+v %v", made, err)
+	}
+	in := s.input(s.store, "question-1", false)
+	if _, err := PrepareDurableInput(ctx, in); err == nil || err.Error() != "The run continues under another principal than it began under (principal-changed). Nothing was sent." {
+		t.Fatal(err)
+	}
+	if head, err := s.store.Load(ctx, in.RunStore.ID); err != nil || head != nil {
+		t.Fatalf("a successor under another principal was written: %v", err)
 	}
 }

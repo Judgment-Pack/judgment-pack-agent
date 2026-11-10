@@ -37,13 +37,14 @@ func SuccessorRunID(predecessor, question string) string {
 // predecessor's last user_question, or the answer is not a real answer to it. succeeded: the question already has its
 // successor, or the head's last question has one and the head is asked to resume another way. not-complete: the
 // predecessor's head is missing or not complete. parked: the question has a wait of its own, and is answered through
-// it. exceeds: the successor asks for more requests than the predecessor held.
+// it. A request cap other than the predecessor's is the request cap's own refusal (stale-state), before anything is
+// written.
 type SuccessorRefused struct{ Reason string }
 
 func (e *SuccessorRefused) Error() string { return "SuccessorRefused: " + e.Reason + "." }
 func (e *SuccessorRefused) Unwrap() error {
 	code := "stale-state"
-	if e.Reason == "invalid" || e.Reason == "unbound" || e.Reason == "exceeds" {
+	if e.Reason == "invalid" || e.Reason == "unbound" {
 		code = "configuration"
 	}
 	return storageNamedFailure(code, "context", "not-started", e.Error())
@@ -261,8 +262,9 @@ func makeSuccessor(ctx context.Context, store RunStore, id string, asked RunSucc
 	if err != nil {
 		return nil, nil, err
 	}
-	if requestCap != nil && int64(*requestCap) > saved.Limit {
-		return nil, nil, successorRefused("exceeds")
+	// The restore holds the request cap to the saved one; a successor is held to it before its checkpoint is written.
+	if (saved.RequestCap == nil) != (requestCap == nil) || saved.RequestCap != nil && *saved.RequestCap != int64(*requestCap) {
+		return nil, nil, requestCapRefusal("stale-state")
 	}
 	grants := append([]contract.CheckpointGrant{}, saved.Grants...)
 	out := &contract.Checkpoint{Version: successorVersion(saved.Version), ID: id, RequestKey: saved.RequestKey, Phase: saved.Phase, Status: "running",

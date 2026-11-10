@@ -39,8 +39,7 @@
     "unbound",
     "succeeded",
     "not-complete",
-    "parked",
-    "exceeds"
+    "parked"
   ],
   "answer": {
     "marker": "0123456789abcdef0123456789abcdef",
@@ -135,18 +134,6 @@
         "source": "context",
         "outcome": "not-started",
         "detail": "SuccessorRefused: parked."
-      }
-    },
-    {
-      "version": 1,
-      "type": "error",
-      "message": "SuccessorRefused: exceeds.",
-      "failure": {
-        "version": 1,
-        "code": "configuration",
-        "source": "context",
-        "outcome": "not-started",
-        "detail": "SuccessorRefused: exceeds."
       }
     },
     {

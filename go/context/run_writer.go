@@ -2119,8 +2119,8 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		return nil, waitInvalid()
 	}
 	// ADR-0029: a durable root's delegation is refused, by name, before its store is touched.
+	var record *PrincipalRecord
 	if input.RunStore != nil {
-		var record *PrincipalRecord
 		if input.Principal != nil {
 			opened, err := OpenRunPrincipal(input.Principal, nil)
 			if err != nil {
@@ -2276,6 +2276,10 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 			var answered *questionAnswer
 			if copy.Execution, answered, err = makeSuccessor(ctx, store, id, *copy.RunStore.Successor, copy.RequestCap); err != nil {
 				return nil, err
+			}
+			// ADR-0029: the successor carries the predecessor's principal, and is made only under it.
+			if PrincipalsChanged(copy.Execution.Principal, record) {
+				return nil, failure.Authored("stale-state", "The run continues under another principal than it began under (principal-changed). Nothing was sent.", "context")
 			}
 			copy.questionAnswers = []questionAnswer{*answered}
 			successorFirst = true
