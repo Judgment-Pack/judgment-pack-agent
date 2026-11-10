@@ -417,6 +417,7 @@ $pkg/storage/goalCommands.ts
 $pkg/storage/goalRecords.test.ts
 $pkg/storage/goalConformance.ts
 $pkg/storage/goalConformance.test.ts
+$pkg/storage/goalFence.test.ts
 $pkg/storage/startRefusal.test.ts
 EOF
 }
