@@ -170,6 +170,50 @@ func TestTheWordsASchemaKeepsAsWrittenAreBoundedAtTheLimitAndOnePast(t *testing.
 			if loads := slices.ContainsFunc(declarations, func(tool contract.ToolOfferHostTool) bool { return tool.Name == LoadTool }); loads != item.Get("catalogue").Truth() {
 				t.Errorf("OfferedHostTools offers load_tool: %v", loads)
 			}
+			// #357: load_tool's answer and the gate's check of a catalogued tool read the declared schema
+			// as the offer does, a lone surrogate escape marked.
+			loaded, accepts, approved := item.Get("loaded"), item.Get("accepts"), item.Get("approved")
+			if loaded == nil && accepts == nil && approved == nil {
+				return
+			}
+			rows := []contract.ProvenanceSourceFigures{}
+			policy := boundsPolicy(t, item.Get("policy"))
+			gate := NewSourceGate(out, &policy, marker, "json-schema", func() *[]contract.ProvenanceSourceFigures { return &rows }, nil)
+			if loaded != nil {
+				load := gate.LoadToolHost()
+				answer, err := load.Execute(context.Background(), json.RawMessage(ObjectOf("name", loaded.Get("tool")).JSON()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := answer.StructuredContent.Get("inputSchema").Text(); got != loaded.Get("inputSchema").Text() {
+					t.Errorf("load_tool loaded\n%s\nnot\n%s", got, loaded.Get("inputSchema").Text())
+				}
+			}
+			if accepts != nil {
+				at := slices.IndexFunc(shown, func(tool HostTool) bool { return tool.Name == accepts.Get("tool").Str() })
+				if at < 0 {
+					t.Fatalf("%s is not offered", accepts.Get("tool").Str())
+				}
+				result, err := gate.Call(context.Background(), shown[at].Name, json.RawMessage(accepts.Get("arguments").JSON()), shown[at].Execute)
+				if err != nil || textOf(result) != "ran" {
+					t.Errorf("the call was answered %q, %v", textOf(result), err)
+				}
+			}
+			if approved != nil {
+				entry := out.Entries[approved.Get("tool").Str()]
+				if entry == nil {
+					t.Fatalf("%s is not held", approved.Get("tool").Str())
+				}
+				args := map[string]json.RawMessage{}
+				for _, key := range approved.Get("arguments").Keys() {
+					args[key] = json.RawMessage(approved.Get("arguments").Get(key).JSON())
+				}
+				record := contract.CheckpointApproval{CallID: "approved", Name: approved.Get("tool").Str(), Tool: *entry.Record.Tool, Source: entry.Record, Args: args, State: "approved"}
+				result, ran, err := gate.Approved(context.Background(), record, entry.Declared.Execute)
+				if err != nil || !ran || textOf(result) != "ran" {
+					t.Errorf("the approved call was answered %q, ran %t, %v", textOf(result), ran, err)
+				}
+			}
 		})
 	}
 }
