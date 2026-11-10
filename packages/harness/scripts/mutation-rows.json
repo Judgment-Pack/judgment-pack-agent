@@ -17567,6 +17567,42 @@
    "note": "Go twin (by hand, in run_goal.go the create's abandon-unfinished gate: any delivered entry): caught at TestGoalTheFirstAbandonsDeliveryDoesNotLetACreateOverTheSecondThrough."
   },
   {
+   "name": "#358 a checkpoint header without its schema is read as one",
+   "file": "records.ts",
+   "find": "return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?",
+   "replace": "return (schema===CHECKPOINT_SCHEMA?",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#358",
+   "note": "Go twins (by hand, in records.go ValidRecordHeader: read schema with Str instead of planText, which panics on a missing member; and drop the schema compare): both caught at TestRecordHeaderMissingMemberRefuses."
+  },
+  {
+   "name": "#357 an approved catalogued call is checked against its declared schema with lone surrogates made U+FFFD",
+   "file": "toolSources.ts",
+   "find": "argumentProblem(describedSchema(entry.declared.inputSchema, this.bounds.toolDescriptionBytes), args)",
+   "replace": "argumentProblem(describedSchema(JSON.parse(JSON.stringify(entry.declared.inputSchema).replace(/\\\\ud[89a-f][0-9a-f]{2}/g, '\\\\ufffd')), this.bounds.toolDescriptionBytes), args)",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#357",
+   "note": "Go twin (by hand, sources.go Approved: the declared schema read with ParseJSON, not parseMarkedJSON): caught at TestTheWordsASchemaKeepsAsWrittenAreBoundedAtTheLimitAndOnePast (the act-tool case's approved call)."
+  },
+  {
+   "name": "#357 load_tool answers the declared schema with lone surrogates made U+FFFD",
+   "file": "toolSources.ts",
+   "find": "inputSchema: describedSchema(entry.declared.inputSchema, this.bounds.toolDescriptionBytes) })",
+   "replace": "inputSchema: describedSchema(JSON.parse(JSON.stringify(entry.declared.inputSchema).replace(/\\\\ud[89a-f][0-9a-f]{2}/g, '\\\\ufffd')), this.bounds.toolDescriptionBytes) })",
+   "tests": [
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#357",
+   "note": "Go twin (by hand, sources.go load_tool's answer: the declared schema read with ParseJSON, not parseMarkedJSON): caught at TestTheWordsASchemaKeepsAsWrittenAreBoundedAtTheLimitAndOnePast (the catalogued case's loaded and accepts)."
+  },
+  {
    "name": "#352 a durable run's Runtime read is answered and kept in the form its writer records",
    "file": "execution/controller.ts",
    "find": "const executed=await execute(args),result=this.recordedRead?this.recordedRead(executed):executed\n",

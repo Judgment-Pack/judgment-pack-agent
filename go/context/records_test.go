@@ -233,3 +233,35 @@ func TestRecordsScanAcrossUntrustedLabels(t *testing.T) {
 		t.Fatalf("split untrusted label: %s", record.Text())
 	}
 }
+
+// #358: a checkpoint holding one record header member but not another is refused with the
+// reader's malformed-record refusal, never a panic. Exact bytes, written by hand.
+func TestRecordHeaderMissingMemberRefuses(t *testing.T) {
+	const body = `"version":1,"id":"11111111-1111-4111-8111-111111111111","requestKey":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","phase":"work","status":"paused","unit":"model-requests","used":1,"limit":20,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"records-18","entries":[]},"reason":"interrupted","records":{"redactions":{}}`
+	const schema = `"schema":"https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",`
+	const digest = `"digest":"sha256:15eb1da3c933fd34b096b3b6834f332a4bc602beef214e11c239be3c0ea31c5c",`
+	const until = `"retainUntil":"2027-01-19T12:00:00.000Z",`
+	for name, text := range map[string]string{
+		"no schema":        `{` + digest + until + body + `}`,
+		"retainUntil only": `{` + until + body + `}`,
+		"no digest":        `{` + schema + until + body + `}`,
+		"no retainUntil":   `{` + schema + digest + body + `}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			saved, err := ReadExecution(MustParseJSON(text))
+			if saved != nil || err != errSavedExecution {
+				t.Fatalf("got %v, %v; want the malformed-record refusal", saved, err)
+			}
+		})
+	}
+	for name, text := range map[string]string{
+		"empty object":         `{}`,
+		"version 2, no schema": `{"version":2,` + digest + until + `"id":"x"}`,
+	} {
+		t.Run("export "+name, func(t *testing.T) {
+			if _, _, _, err := ExportRecords([]json.RawMessage{json.RawMessage(text)}, RecordDefaults, "test", time.Now()); err == nil || err.Error() != "the host supplied an invalid record for export" {
+				t.Fatalf("got %v; want the invalid-record refusal", err)
+			}
+		})
+	}
+}

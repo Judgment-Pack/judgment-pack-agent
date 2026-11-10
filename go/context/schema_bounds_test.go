@@ -170,6 +170,50 @@ func TestTheWordsASchemaKeepsAsWrittenAreBoundedAtTheLimitAndOnePast(t *testing.
 			if loads := slices.ContainsFunc(declarations, func(tool contract.ToolOfferHostTool) bool { return tool.Name == LoadTool }); loads != item.Get("catalogue").Truth() {
 				t.Errorf("OfferedHostTools offers load_tool: %v", loads)
 			}
+			// #357: load_tool's answer and the gate's check of a catalogued tool read the declared schema
+			// as the offer does, a lone surrogate escape marked.
+			loaded, accepts, approved := item.Get("loaded"), item.Get("accepts"), item.Get("approved")
+			if loaded == nil && accepts == nil && approved == nil {
+				return
+			}
+			rows := []contract.ProvenanceSourceFigures{}
+			policy := boundsPolicy(t, item.Get("policy"))
+			gate := NewSourceGate(out, &policy, marker, "json-schema", func() *[]contract.ProvenanceSourceFigures { return &rows }, nil)
+			if loaded != nil {
+				load := gate.LoadToolHost()
+				answer, err := load.Execute(context.Background(), json.RawMessage(ObjectOf("name", loaded.Get("tool")).JSON()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := answer.StructuredContent.Get("inputSchema").Text(); got != loaded.Get("inputSchema").Text() {
+					t.Errorf("load_tool loaded\n%s\nnot\n%s", got, loaded.Get("inputSchema").Text())
+				}
+			}
+			if accepts != nil {
+				at := slices.IndexFunc(shown, func(tool HostTool) bool { return tool.Name == accepts.Get("tool").Str() })
+				if at < 0 {
+					t.Fatalf("%s is not offered", accepts.Get("tool").Str())
+				}
+				result, err := gate.Call(context.Background(), shown[at].Name, json.RawMessage(accepts.Get("arguments").JSON()), shown[at].Execute)
+				if err != nil || textOf(result) != "ran" {
+					t.Errorf("the call was answered %q, %v", textOf(result), err)
+				}
+			}
+			if approved != nil {
+				entry := out.Entries[approved.Get("tool").Str()]
+				if entry == nil {
+					t.Fatalf("%s is not held", approved.Get("tool").Str())
+				}
+				args := map[string]json.RawMessage{}
+				for _, key := range approved.Get("arguments").Keys() {
+					args[key] = json.RawMessage(approved.Get("arguments").Get(key).JSON())
+				}
+				record := contract.CheckpointApproval{CallID: "approved", Name: approved.Get("tool").Str(), Tool: *entry.Record.Tool, Source: entry.Record, Args: args, State: "approved"}
+				result, ran, err := gate.Approved(context.Background(), record, entry.Declared.Execute)
+				if err != nil || !ran || textOf(result) != "ran" {
+					t.Errorf("the approved call was answered %q, ran %t, %v", textOf(result), ran, err)
+				}
+			}
 		})
 	}
 }
@@ -220,4 +264,27 @@ func TestASchemaPastTheBoundsReachesTheModelOnlyInADataBlock(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "IGNORE_THE_DATA_RULE") {
 		t.Errorf("the refusal echoes the source's text: %v", err)
 	}
+}
+
+// Bytes that are not UTF-8 in a Go host's schema are read as U+FFFD and kept, as the TypeScript
+// keeps the U+FFFD its host decoded them to: an enum member and a const of them are offered, with
+// no guardrail, and only a lone surrogate escape is left out (#357). The bytes are written here, as
+// a JSON file cannot hold them.
+func TestASchemaHoldingBytesThatAreNotUTF8OffersThemAsUFFFD(t *testing.T) {
+	const marker = "6f1c0d2e9a8b47c3b5d4e2f1a0c9b8d7"
+	tools := declaredTools(t, []*Value{MustParseJSON(`{"name":"pick","description":"Pick a byte.","taxonomy":{"operation":"read","effect":"read"},"source":{"kind":"custom","id":"odd","trust":"person","version":"1"},"effectClass":"read"}`)})
+	tools[0].InputSchema = json.RawMessage("{\"type\":\"object\",\"properties\":{\"word\":{\"type\":\"string\",\"enum\":[\"a\",\"b\xff\"]},\"mark\":{\"const\":\"\xfe\"},\"odd\":{\"const\":\"\\ud800\"}}}")
+	out, err := DeclareSources(pinLocalFixture(tools), nil)
+	if err != nil || len(out.Withheld) != 0 {
+		t.Fatalf("%v %+v", err, out.Withheld)
+	}
+	shown, catalogue, withheld := OfferSources(out.HostTools, out.Entries, Defaults, marker)
+	if catalogue {
+		t.Fatal("the source is a catalogue")
+	}
+	want := MustParseJSON(`{"type":"object","properties":{"word":{"type":"string","enum":["a","b\ufffd"]},"mark":{"const":"\ufffd"},"odd":{}}}`).Text()
+	if len(shown) != 1 || string(shown[0].InputSchema) != want {
+		t.Fatalf("offered %+v, not %s", shown, want)
+	}
+	withheldAre(t, withheld, []*Value{MustParseJSON(`{"tool":"odd__pick","detail":"in the input schema of odd__pick, at /properties/odd: its const holds a string over 64 bytes, a line break or a lone surrogate, or is no list, and it is not offered; the host still validates the arguments it executes"}`)})
 }
