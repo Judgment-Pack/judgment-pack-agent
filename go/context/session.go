@@ -1357,6 +1357,32 @@ func (c *SessionContext) Approval(ctx context.Context, name string, args json.Ra
 	return ApprovalRequested(*c.Execution.State().Approval)
 }
 
+// SaveAsked saves the run's checkpoint paused, on a durable run, once Approval answered an asked
+// approval and before the adapter shows it or stops its provider's run (agent#342), as
+// PrepareRuntimeCall saves a Runtime action's ask: the stop cannot then leave the stored run running
+// with the ask unsaved. Where the save fails, the approval is withdrawn and the error returned, so
+// nothing is shown to the person and the call is not run. The writer refuses the save once ctx is
+// done, and closes the run's dispatch where ctx ends during it, so an ask the caller stopped is not
+// shown either.
+func (c *SessionContext) SaveAsked(ctx context.Context) error {
+	persistence := c.Persistence("author")
+	if persistence == nil {
+		return nil
+	}
+	err := c.Execution.MutateCheckpoint(CheckpointPatch{"Status": "paused"})
+	var state contract.Checkpoint
+	if err == nil {
+		state, err = c.Execution.Snapshot("paused")
+	}
+	if err == nil {
+		err = persistence.Writer.Save(ctx, *persistence, state)
+	}
+	if err != nil {
+		c.Execution.MutateCheckpoint(CheckpointPatch{"Approval": (*contract.CheckpointApproval)(nil), "Status": "stopped"})
+	}
+	return err
+}
+
 // ApprovalRequested is the approval_requested event of an asked approval (ADR-0008).
 func ApprovalRequested(asked contract.CheckpointApproval) *contract.RunEvent {
 	args := map[string]json.RawMessage{}

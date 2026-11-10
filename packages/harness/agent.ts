@@ -34,4 +34,10 @@ export interface AgentCallbacks {
   /** Harness-internal delivery seam: a failover event is written before the replacement dispatch. */
   connectionSwitched?: (event: {type:'connection_switched';role:string;from:string;to:string;reason:'unavailable'|'rate-limited'|'timeout'}) => Promise<void>
 }
+/**
+ * The host's provider-run function: one invocation. After `tool` rejects, it rejects with that error once the provider's run
+ * is stopped. Where `tool` paused the run (the person asked, or a delegation handed off), the engine aborted `signal` itself:
+ * a rejection with the signal's reason or another cancellation in place of the tool's error is read as that pause, never as
+ * a cancelled or failed invocation (agent#342). It rejects with a cancellation only where the caller's own signal ended the run.
+ */
 export type AgentRun = (request: AgentRequest, callbacks: AgentCallbacks) => Promise<void>

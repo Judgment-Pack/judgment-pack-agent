@@ -271,7 +271,7 @@ func (r *runState) invoke(ctx context.Context, prompt, instructions, phase strin
 					return markErr
 				}
 			}
-			if err == nil {
+			if err == nil || pausedBy(err, paused, invCtx, ctx) {
 				err = paused
 			}
 			return err
@@ -600,8 +600,22 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		// ADR-0008: an act call the host's policy asks about ends the invocation as a delegation
 		// handoff does: its approval_requested in place of the call, the call never run.
 		if held.host != nil {
-			// The pause is claimed before the approval is written asked (SessionContext.PauseClaim).
+			// The pause is claimed before the approval is written asked (SessionContext.PauseClaim),
+			// and the ask is saved paused before the provider is stopped or the person is shown it
+			// (agent#342), under the invocation's context as TypeScript saves it under the run's
+			// signal: the call's own deadline does not withdraw an ask. Where it could not be saved,
+			// the run ends with that error, delivered now as a Runtime action's unsaved ask ends, so
+			// both kinds of ask in both languages report the store's own failure: the person is shown
+			// nothing and the call is not run.
 			if asked := r.sc.Approval(ctx, held.name, args, call.ID); asked != nil {
+				if err := r.sc.SaveAsked(invCtx); err != nil {
+					r.held.Lock()
+					r.fatal = err
+					r.held.Unlock()
+					r.deliver(failure.Event(err, "storage"))
+					pause()
+					return adapter.AgentToolAnswer{}, err
+				}
 				r.deliver(*asked)
 				pause()
 				return adapter.AgentToolAnswer{}, errWaiting
@@ -808,6 +822,21 @@ func (r *runState) answer(ctx context.Context, call adapter.AgentToolCall, held 
 		return host.Execute(ctx, args)
 	})
 	return result, err == nil, err
+}
+
+// pausedBy is whether the host's error is the package's own pause (agent#342): the run claimed a
+// wait or a handoff (never a storage failure), the pause stopped the invocation's context, the
+// caller's context is live, and the host answered with that cancellation, its context's error, or
+// the Tool error the pause returned. The provider's row is then the pause, never a cancelled or
+// failed agent. A caller's own cancellation or any other error stays what it is.
+func pausedBy(err, paused error, invocation, caller context.Context) bool {
+	if !errors.Is(paused, errWaiting) && !errors.Is(paused, errHandoff) {
+		return false
+	}
+	if invocation.Err() == nil || caller.Err() != nil {
+		return false
+	}
+	return failure.IsCancelled(err) || errors.Is(err, paused)
 }
 
 // claimPause marks the run waiting, a handoff or a question; false where it already waits.

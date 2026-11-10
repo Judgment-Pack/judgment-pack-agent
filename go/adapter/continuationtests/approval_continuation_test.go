@@ -29,6 +29,11 @@ type scene struct {
 	parents    []string
 	children   int
 	events     []contract.RunEvent
+	extra      []runcontext.HostTool
+	seen       func(contract.RunEvent)
+	link       runcontext.ExecutionLink
+	// approving runs as the person is first asked, before the ask is saved; it must not take mu.
+	approving func()
 }
 
 func (s *scene) tool() runcontext.HostTool {
@@ -38,6 +43,9 @@ func (s *scene) tool() runcontext.HostTool {
 			defer s.mu.Unlock()
 			s.asked++
 			if s.asked == 1 {
+				if s.approving != nil {
+					s.approving()
+				}
 				return "ask"
 			}
 			return "allow"
@@ -75,7 +83,7 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 	var child *gate.Gate
 	var parentHosts []contract.ToolOfferHostTool
 	parents := 0
-	run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Gate: g.Calls(), Thinking: "off", Prompt: "Write the note.", AllowConversation: true, Interactive: true, Critic: "off", HostTools: []runcontext.HostTool{s.tool()},
+	run := &adapter.Run{Wire: "openai-compatible", ModelName: "fixture", Gate: g.Calls(), Thinking: "off", Prompt: "Write the note.", AllowConversation: true, Interactive: true, Critic: "off", HostTools: append([]runcontext.HostTool{s.tool()}, s.extra...),
 		EnrollContext: func(_ context.Context, offer adapter.ContextOffer) error {
 			if offer.Mode == gate.PhaseChild {
 				return child.EnrollContext(offer.ID, offer.HostTools)
@@ -83,11 +91,15 @@ func (s *scene) run(t *testing.T, ctx context.Context, resume bool, decision *co
 			parentHosts = offer.HostTools
 			return g.EnrollContext(offer.ID, offer.HostTools)
 		},
-		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "note"}, RunStore: &runcontext.DurableRunInput{Store: s.store, ID: "run-c", Resume: resume}, Approval: decision},
+		Context: &runcontext.Input{CurrentRequest: &runcontext.CurrentRequest{Message: "Write the note.", Input: "note"}, RunStore: &runcontext.DurableRunInput{Store: s.store, ID: "run-c", Resume: resume}, Approval: decision, Link: s.link},
 		Emit: func(event contract.RunEvent) {
 			s.mu.Lock()
 			s.events = append(s.events, event)
+			seen := s.seen
 			s.mu.Unlock()
+			if seen != nil {
+				seen(event)
+			}
 		},
 		Children: func(_ context.Context, profile contract.DelegatedTaskProfile, emit func(contract.RunEvent)) (*gate.Calls, []contract.ToolOfferRuntimeTool, error) {
 			child = gate.New(gate.Options{Granted: gate.Ceiling, Emit: emit})
