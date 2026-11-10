@@ -25216,12 +25216,16 @@ func (v ToolOfferAgentWireToolInputSchema) MarshalJSON() ([]byte, error) {
 // From tool-offer.json#/$defs/catalogueEntry. A tool with a source as the offer shows it where the
 // source was made a catalogue (ADR-0006): where the tools with a source pass offeredSchemas or
 // offeredSchemaBytes (budget.json), sources are made catalogues, the largest first (by its tools
-// offered, then by their bytes, then by id), until the rest fit. A catalogued tool is offered with
-// its wire name; the words "Catalogued tool: call load_tool with this name for its schema before
-// calling it.", then its description's first line, cut to 160 bytes and framed as retrieved text;
-// and an open schema, so the request's tools, and the stable prefix with them, never change during
-// the run. The model asks load_tool for the real schema ($defs/loadTool); a call of a catalogued
-// tool whose schema the run has not loaded is refused (invalid-tool-input) and never run.
+// offered, then by their bytes, then by id), until the rest fit. A source whose offered schemas
+// keep more words as written (enum members, const values, names, required entries, $ref pointers)
+// than 64 enum members, 64 names or required entries per object or 4,096 bytes allow is a
+// catalogue whatever the budget, and out of its count and bytes (agent#308). A catalogued tool is
+// offered with its wire name; the words "Catalogued tool: call load_tool with this name for its
+// schema before calling it.", then its description's first line, cut to 160 bytes and framed as
+// retrieved text; and an open schema, so the request's tools, and the stable prefix with them,
+// never change during the run. The model asks load_tool for the real schema ($defs/loadTool); a
+// call of a catalogued tool whose schema the run has not loaded is refused (invalid-tool-input)
+// and never run.
 type ToolOfferCatalogueEntry struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`

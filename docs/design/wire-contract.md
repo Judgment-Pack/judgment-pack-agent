@@ -323,7 +323,9 @@ What the contract states, and where:
   same way (an allowlist: each `description` cut and framed, only the structural keywords offered,
   every other keyword not; a name or `required` entry over 64 bytes or with white space, and an
   `enum` or `const` with a string over 64 bytes or a line break, or an `enum` that is no list,
-  dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`), and narrowed on the Gemini family's wire,
+  dropped, each with a `guardrail` naming where; the vector `tool-offer/source-schema.json`; a source
+whose schemas keep more words as written than 64 `enum` members, 64 names or `required` entries per
+object or 4,096 bytes allow is a catalogue, the vector `tool-offer/source-schema-bounds.json`), and narrowed on the Gemini family's wire,
   the record with `tool`, the effect class and approval with their defaults (`act`, approval
   `required`, unless the host declares a read or a proposal), and `effect` set from the class, so
   Plan mode and a child, which admit reads only, never offer an act.

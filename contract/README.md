@@ -247,7 +247,11 @@ files they were rendered from.
   names, descriptions framed with a fixed marker, effect classes and approvals filled in),
   `tool-offer/catalogue.json` (the same as catalogue entries), `tool-offer/source-schema.json` (a tool
   whose input schema carries text its source wrote: the property descriptions framed, every keyword
-  but the structural ones dropped, a long name and a long enum dropped, and the guardrails they earn) and `tool-offer/load-tool.json`;
+  but the structural ones dropped, a long name and a long enum dropped, and the guardrails they earn),
+`tool-offer/source-schema-bounds.json` (a schema past the bounds on the words it keeps as written: a
+300-member enum, an instruction-like const, a name with a line break and one with the marker, offered
+as a catalogue entry, and the exact data block `load_tool` adds; `testdata/tool-offer/schema-bounds.json`
+holds each bound at its limit and one past it) and `tool-offer/load-tool.json`;
   `tool-offer/source-names.json` (wire names, with the suffix where a character was replaced or the
   name was cut, a collision and the names a source may not bear) and `tool-offer/tool-list-digest.json`
   (two tool lists, their canonical JSON and the digest a host pins), each computed again by the
