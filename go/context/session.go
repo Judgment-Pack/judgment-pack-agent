@@ -1487,7 +1487,7 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 	}
 	var admissionErr error
-	session.Context, admissionErr = PrepareDurableInput(ctx, session.Context)
+	session.Context, admissionErr = prepareDurableInput(ctx, session.Context, &DurableRequest{Prompt: session.Prompt, Purpose: session.Purpose})
 	if admissionErr != nil {
 		return nil, admissionErr
 	}

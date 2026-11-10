@@ -6,7 +6,7 @@ import {readExecution} from '../execution/state'
 import {readUserQuestion,validQuestionDraft,type QuestionDraft,type UserQuestion} from '../questions'
 import {readStoredRunEvent} from './writer'
 import {storageId,STORAGE_PAGE_LIMIT} from './common'
-import {successorHeld} from './successor'
+import {SuccessorRefused,successorHeld} from './successor'
 import {sameBinding} from '../principal'
 import {LeaseRefused,attachReauthorizedDispatch,fenceOf,validConnectionReference,readLeaseFence,readRunLease,reauthDispositionOf,trustedReauthorization,unattendedRunStore,useReauthorization,validLeaseEpoch,type EffectHost,type LeaseAcquire,type LeaseFence,type LeaseRunStore,type LeaseTable,type RunLease,type ReauthDisposition,type ReauthorizationRequired} from './lease'
 import {ReauthorizationRefused,permitted,readReauthDisposition,readReauthorized,reauthorize,type Reauthorized} from './reauth'
@@ -804,6 +804,10 @@ export async function parkRun(input:ParkInput):Promise<{wait:RunWait;attention:A
   checkpoint:{revision:head.revision,digest:checkpointBytesDigest(head.checkpoint)},pins,...(chatBinding?{chat:chatBinding}:{}),wakeKeyDigest:input.wakeKeyDigest,release:input.release,...(input.retainUntil===undefined?{}:{retainUntil:input.retainUntil}),...(disposition?{reauthorization:disposition}:{})})
  const parked=await store.parkWait(park,fence,input.signal)
  if(input.reauthorization!==undefined)useReauthorization(input.reauthorization)
+ // #340 LOW-1: a successor made while the question was being parked is read again after the commit. The wait stands, and
+ // neither continues: the wait's continuation is refused because the successor exists, and the successor on every open
+ // because the question has a wait.
+ if(pending.kind==='question'&&await successorHeld(store,fence.resource,pending.event,input.signal))throw new SuccessorRefused('succeeded')
  return parked
 }
 /** Deliver host wake evidence to the store. A store error leaves the outcome unknown: read the wait to reconcile it. */

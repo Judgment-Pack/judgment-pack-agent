@@ -2538,6 +2538,18 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 	if err == nil && input.Reauthorization != nil {
 		input.Reauthorization.use()
 	}
+	// #340 LOW-1: a successor made while the question was being parked is read again after the commit. The wait stands,
+	// and neither continues: the wait's continuation is refused because the successor exists, and the successor on
+	// every open because the question has a wait.
+	if err == nil && park.Reason == "question" {
+		succeeded, e := successorHeld(ctx, store, input.Fence.Resource, input.Question)
+		if e != nil {
+			return RunWait{}, AttentionEvent{}, e
+		}
+		if succeeded {
+			return RunWait{}, AttentionEvent{}, successorRefused("succeeded")
+		}
+	}
 	return wait, attention, err
 }
 

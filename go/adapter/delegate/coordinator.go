@@ -29,7 +29,7 @@ type Options struct {
 // call's exact result (agent.go).
 func With(inner adapter.Adapter, options Options) adapter.Adapter {
 	return adapter.Func(func(ctx context.Context, run *adapter.Run) error {
-		prepared, err := runcontext.PrepareDurableInput(ctx, run.Context)
+		prepared, err := runcontext.PrepareDurableInputFor(ctx, run.Context, runcontext.DurableRequest{Prompt: run.Prompt, Purpose: run.Purpose})
 		if err != nil {
 			for _, event := range runcontext.FailedToOpen(err) {
 				run.Emit(event)

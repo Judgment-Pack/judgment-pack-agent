@@ -6,7 +6,7 @@ import {ExecutionProgressTracker} from './progress'
 import type {ContextToolPolicy} from '../context/toolPolicy'
 import {authoredFailure,toolInputFailure} from '../failures'
 import type {AssistantEvent,EngineSession,HostTool,McpToolResult} from '../engine'
-import {answer,contextDigest,type ContextLedger} from '../context/ledger'
+import {answer,contextDigest,requestIdentity,type ContextLedger} from '../context/ledger'
 import {exactArguments,readCacheKey,scalarValue,canonicalJSON as importCanonicalPlan} from '../context/chat'
 import {MAX_TURNS} from '../engines/contract'
 import {utf8Bytes} from '../context/policy'
@@ -86,7 +86,7 @@ export class ExecutionController {
   if(this.initialized&&(this.requestCap!==undefined||requestCap!==undefined))throw this.capRefusal()
   if(requestCap!==undefined&&(!validRequestCap(requestCap)||!('model'in this.session)))throw this.capRefusal()
   this.requestCap=requestCap;this.initialized=true
-  const requestKey=await contextDigest(JSON.stringify({request:this.session.context?.currentRequest??this.session.prompt,phase:this.session.context?.phase??'work',purpose:this.session.purpose??null}))
+  const {requestKey}=await requestIdentity(this.session.context?.currentRequest,this.session.prompt,this.session.context?.phase,this.session.purpose)
   const restored=readExecution(this.session.context?.execution)
   if(restored){
    if(restored.requestCap!==requestCap)throw this.capRefusal('stale-state')

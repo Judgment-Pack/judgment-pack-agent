@@ -34,7 +34,7 @@ import {receiptAdmission} from '../toolSources'
 import type {AssistantEvent,EngineSession,McpToolResult,HostTool} from '../engine'
 import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
-import {SuccessorRefused,claimedQuestionWait,makeSuccessor,questionWaitHeld,readPredecessor,readSuccessorInput,succeededHead,type QuestionAnswer} from './successor'
+import {SuccessorRefused,claimedQuestionWait,holdPredecessor,makeSuccessor,predecessorUnmoved,questionWaitHeld,readPredecessor,readSuccessorInput,succeededHead,type QuestionAnswer} from './successor'
 import {WaitRefused} from './wait'
 export interface DurableScope {execution:string;role:string;task?:string}
 export interface ArtifactObservation {kind:'artifact'|'dialect';id:string;digest:string;access?:'read'|'produced'}
@@ -1033,8 +1033,10 @@ function callbackProfile<T extends EngineSession>(session:T,store:RunStore,id:st
 }
 /** Internal admission used once for a root, then explicitly inherited by trusted child bindings. */
 export async function durableSession<T extends EngineSession>(session:T):Promise<T>{
+ if(session.context?.[durableOwner])return session
+ // #340, #341: the answers a run is handed are only those this open reads from the store, never a value the host set.
+ if(session.context&&questionAnswers in session.context){const {[questionAnswers]:_,...rest}=session.context;session={...session,context:rest} as T}
  const input=session.context
- if(input?.[durableOwner])return session
  const config=input?.runStore
  // #341: a question wait's continuation is a run store's, and only of a head the store holds.
  if(input?.questionContinuation!==undefined&&!config)throw new WaitRefused('invalid')
@@ -1046,7 +1048,7 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(!config&&!input?.checkpoint){if(input?.execution){checkRecordVersion('checkpoint',input.execution);if(input.execution.durable)throw new ContinuationNotRecoverable()};return session}
  if(config&&input?.checkpoint)throw new ContinuationIdentityChanged()
  const id=config?.id??input?.execution?.id??crypto.randomUUID();requireId(id)
- const successor=config?.successor===undefined?undefined:readSuccessorInput(id,config.successor,{...input,context:config.context})
+ const successor=config?readSuccessorInput(id,config.successor,{...input,context:config.context}):undefined
  if(successor&&config!.store.durability==='single-writer-callback')throw new SuccessorRefused('invalid')
  const store=config?.store??checkpointCallbackRunStore(input!.checkpoint!,bytes=>readExecution(JSON.parse(new TextDecoder().decode(bytes)))!)
  const head=config?await store.load(id,session.signal):undefined
@@ -1072,7 +1074,8 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  // #340: once the head's last question has its successor, the successor carries the allowance, and the head resumes no other way.
  if(head&&execution?.status==='complete'&&await succeededHead(store,id,session.signal))throw new SuccessorRefused('succeeded')
  if(claimed)answers.push(claimed)
- if(!head&&successor){const made=await makeSuccessor(store,id,successor,input?.requestCap,session.signal);execution=made.checkpoint;answers.push(made.answered)}
+ let predecessor:RunHead|undefined
+ if(!head&&successor){const made=await makeSuccessor(store,id,successor,{currentRequest:input?.currentRequest,prompt:session.prompt,phase:input?.phase,purpose:session.purpose,requestCap:input?.requestCap},session.signal);execution=made.checkpoint;predecessor=made.head;answers.push(made.answered)}
  // ADR-0029: a successor carries the predecessor's principal, and is made only under it.
  if((head||successor)&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')
  // #275: a decision that does not prove what the person was shown is refused by name here, before the writer opens.
@@ -1089,14 +1092,20 @@ export async function durableSession<T extends EngineSession>(session:T):Promise
  if(session.record===true&&session.corpus&&(store as Partial<HistoryRunStore>).historyVersion===1)writer.enrollCapture(binding,session.corpus.manifest,session.corpus.sink)
  if(config?.context){writer.attachContext(config.context);if(head?.checkpoint)await writer.claimContext(head.checkpoint,session.signal)}
  // #340: the successor's first checkpoint is created once at its derived id, before anything of the run is sent, so a
- // second successor made at the same time meets this one. A question wait parked while it was being made is read again
- // after the create: the successor is then refused, and the wait's continuation is refused as well because the successor
- // exists. Neither sends anything.
- if(!head&&successor){
-  try{await writer.createSuccessor(session.signal)}catch(error){if(error instanceof StorageConflict)throw new SuccessorRefused('succeeded');throw error}
-  if(await questionWaitHeld(store,successor.predecessor,successor.question,session.signal))throw new SuccessorRefused('parked')
+ // second successor made at the same time meets this one. It is made under the predecessor's lease, where the store has
+ // leases (HIGH-1): an admitted continuation of the predecessor holds that lease, or has lost it to this one's new epoch.
+ // The predecessor and its waits are read again after the create: a head that moved, or a question wait parked
+ // meanwhile, refuses the successor, and the wait's continuation is refused as well because the successor exists.
+ // Neither sends anything.
+ if(!head&&successor&&predecessor){
+  const release=await holdPredecessor(store,id,successor,predecessor,execution?.principal,session.signal)
+  try{
+   try{await writer.createSuccessor(session.signal)}catch(error){if(error instanceof StorageConflict)throw new SuccessorRefused('succeeded');throw error}
+   await predecessorUnmoved(store,successor,predecessor,session.signal)
+   if(await questionWaitHeld(store,successor.predecessor,successor.question,session.signal))throw new SuccessorRefused('parked')
+  }finally{await release()}
  }
- return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,...(answers.length?{[questionAnswers]:answers}:{}),checkpoint:state=>writer.save(binding,state,session.signal)}}
+ return {...session,context:{...input,...(config?.context?.ledgerScope?{chat:undefined}:{}),execution,[durableOwner]:binding,[questionAnswers]:answers,checkpoint:state=>writer.save(binding,state,session.signal)}}
 }
 export function childDurability<T extends EngineSession>(session:T,parent:EngineSession,task:string):T{
  const binding=parent.context?.[durableOwner];if(!binding)return session

@@ -2109,8 +2109,19 @@ func (w *RunWriter) closed() error {
 	return failure.Cancelled
 }
 
-// PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload.
+// PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload. It does not know
+// the request, so it makes no successor (#340); PrepareDurableInputFor does.
 func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
+	return prepareDurableInput(ctx, input, nil)
+}
+
+// PrepareDurableInputFor is PrepareDurableInput for an open that names its request, as a session does: a successor's
+// first checkpoint is written only for the request and phase its predecessor's holds.
+func PrepareDurableInputFor(ctx context.Context, input *Input, request DurableRequest) (*Input, error) {
+	return prepareDurableInput(ctx, input, &request)
+}
+
+func prepareDurableInput(ctx context.Context, input *Input, request *DurableRequest) (*Input, error) {
 	if input == nil || input.Persistence != nil {
 		return input, nil
 	}
@@ -2171,6 +2182,7 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	var head *RunHead
 	var err error
 	successorFirst := false
+	var predecessor *RunHead
 	if copy.Execution != nil {
 		id = copy.Execution.ID
 	}
@@ -2274,7 +2286,7 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 			}
 		} else if copy.RunStore.Successor != nil {
 			var answered *questionAnswer
-			if copy.Execution, answered, err = makeSuccessor(ctx, store, id, *copy.RunStore.Successor, copy.RequestCap); err != nil {
+			if copy.Execution, answered, predecessor, err = makeSuccessor(ctx, store, &copy, id, *copy.RunStore.Successor, request); err != nil {
 				return nil, err
 			}
 			// ADR-0029: the successor carries the predecessor's principal, and is made only under it.
@@ -2362,10 +2374,18 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 			}
 		}
 		// #340: the successor's first checkpoint is created once at its derived id, before anything of the run is sent,
-		// so a second successor made at the same time meets this one. A question wait parked while it was being made
-		// is read again after the create: the successor is then refused, and the wait's continuation is refused as well
-		// because the successor exists. Neither sends anything.
+		// so a second successor made at the same time meets this one. It is made under the predecessor's lease, where the
+		// store has leases (HIGH-1): an admitted continuation of the predecessor holds that lease, or has lost it to
+		// this one's new epoch. The predecessor and its waits are read again after the create: a head that moved, or a
+		// question wait parked meanwhile, refuses the successor, and the wait's continuation is refused as well because
+		// the successor exists. Neither sends anything.
 		if successorFirst {
+			asked := copy.RunStore.Successor
+			release, err := holdPredecessor(ctx, store, id, *asked, predecessor, copy.Execution.Principal)
+			if err != nil {
+				return nil, err
+			}
+			defer release()
 			raw, err := canonicalRaw(writer.latest)
 			if err == nil {
 				err = writer.commitLocked(ctx, newStorageIdentity(), *writer.latest, raw, [][]byte{})
@@ -2376,7 +2396,9 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 			if err != nil {
 				return nil, err
 			}
-			asked := copy.RunStore.Successor
+			if err := predecessorUnmoved(ctx, store, *asked, predecessor); err != nil {
+				return nil, err
+			}
 			parked, err := questionWaitHeld(ctx, store, asked.Predecessor, asked.Question)
 			if err != nil {
 				return nil, err
