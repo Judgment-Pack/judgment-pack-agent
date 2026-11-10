@@ -337,6 +337,9 @@ describe('a Plan decision\u2019s continuation goes on (#317, #312\u2019s MEDIUM-
   expect([s.ran,s.prompts.length,pending?.callId===undefined]).toEqual([1,2,false])
   s.events.length=0
   await drive(s,engine,s.store,true,{callId:pending.callId,approved:true})
-  expect([s.ran,errors(s),finished(s),s.prompts.length]).toEqual([1,[],true,3])
+  // The invocation that ended at the Plan pause carried the approval's block; the Plan continuation is a fresh request,
+  // and the decision is still the response's newest continuation, so that request carries its block again (#312's MEDIUM-2).
+  const {saved}=await head(s.store)
+  expect([s.ran,errors(s),finished(s),s.prompts.length,told(s.prompts[2],saved.approval)]).toEqual([1,[],true,3,true])
  },30_000)
 })

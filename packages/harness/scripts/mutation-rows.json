@@ -16517,7 +16517,7 @@
    ],
    "status": "caught",
    "origin": "agent#309",
-   "note": "#312's MEDIUM-2: a takeover once the approval is answered sends a request with no block. Go twin (by hand): drop the answered branch in ContextualSessionWithEnrollment; caught at ^TestATakeoverAfterTheAnswerStillTellsTheModel in ./adapter/continuationtests."
+   "note": "#312's MEDIUM-2: a fresh request after the approval is answered (the Plan continuation after a Plan pause the approval's invocation ended at) carries no block. A takeover once the approval is answered sends the lost invocation again as recorded, which carries the block, so the TypeScript takeover case does not reach this branch. Go twin (by hand): drop the answered branch in ContextualSessionWithEnrollment; caught at ^TestATakeoverAfterTheAnswerStillTellsTheModel in ./adapter/continuationtests."
   },
   {
    "name": "continuation C5 a fresh request carries the decision past a newer handoff",

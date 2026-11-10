@@ -103,8 +103,11 @@ func TestAPlanDecisionAfterAnApprovalGoesOn(t *testing.T) {
 			if err := s.run(t, context.Background(), true, nil, form.delegating); err != nil {
 				t.Fatal(err)
 			}
-			if s.ran != 1 || len(s.errors()) != 0 || !s.finished() || len(s.parents) != 3 {
-				t.Fatalf("the Plan continuation: ran %d, errors %v, finished %v, %d parents", s.ran, s.errors(), s.finished(), len(s.parents))
+			// The invocation that ended at the Plan pause carried the approval's block; the Plan continuation is a fresh
+			// request, and the decision is still the response's newest continuation, so it carries the block again.
+			approval := s.head(t).Approval
+			if s.ran != 1 || len(s.errors()) != 0 || !s.finished() || len(s.parents) != 3 || approval == nil || !told(s.parents[2], *approval) {
+				t.Fatalf("the Plan continuation: ran %d, errors %v, finished %v, %d parents, told %v", s.ran, s.errors(), s.finished(), len(s.parents), approval != nil && len(s.parents) > 2 && told(s.parents[2], *approval))
 			}
 		})
 	}
