@@ -2509,6 +2509,14 @@ func ParkRun(ctx context.Context, input ParkInput) (RunWait, AttentionEvent, err
 		if question == nil {
 			return RunWait{}, AttentionEvent{}, waitRefused("nothing-pending")
 		}
+		// #340: a question that has its successor run is answered there, and is not parked as well.
+		succeeded, err := successorHeld(ctx, store, input.Fence.Resource, input.Question)
+		if err != nil {
+			return RunWait{}, AttentionEvent{}, err
+		}
+		if succeeded {
+			return RunWait{}, AttentionEvent{}, waitRefused("nothing-pending")
+		}
 		park.Reason = "question"
 		park.Pending = contract.RunWaitPending{Question: &contract.RunWaitPendingQuestion{Kind: "question", Event: input.Question, QuestionDigest: WaitQuestionDigest(*question), Question: question}}
 	}

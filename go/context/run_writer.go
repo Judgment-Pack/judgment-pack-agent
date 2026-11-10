@@ -75,6 +75,9 @@ type DurableRunInput struct {
 	ID      string
 	Resume  bool
 	Context *StoredChatScope
+	// Successor (#340) makes (Resume false) or continues (Resume true) the successor run of a complete run's last
+	// question; ID is then SuccessorRunID(Successor.Predecessor, Successor.Question).
+	Successor *RunSuccessor
 }
 type RunBinding struct {
 	captureRoot *captureRootAuthority
@@ -2111,6 +2114,10 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	if input == nil || input.Persistence != nil {
 		return input, nil
 	}
+	// #341: a question wait's continuation is a run store's, and only of a head the store holds.
+	if input.QuestionContinuation != "" && input.RunStore == nil {
+		return nil, waitInvalid()
+	}
 	// ADR-0029: a durable root's delegation is refused, by name, before its store is touched.
 	if input.RunStore != nil {
 		var record *PrincipalRecord
@@ -2163,6 +2170,7 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	var store RunStore
 	var head *RunHead
 	var err error
+	successorFirst := false
 	if copy.Execution != nil {
 		id = copy.Execution.ID
 	}
@@ -2172,12 +2180,25 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		if !validStorageID(id) || store == nil {
 			return nil, &ContinuationIdentityChanged{}
 		}
+		if err = readSuccessorInput(&copy); err != nil {
+			return nil, err
+		}
+		if copy.RunStore.Successor != nil && store.Durability() == RunStoreSingleWriterCallback {
+			return nil, successorRefused("invalid")
+		}
 		head, err = store.Load(ctx, id)
 		if err != nil {
 			return nil, err
 		}
+		// #340: a question has one successor; making it again meets the one already made.
+		if copy.RunStore.Successor != nil && !copy.RunStore.Resume && head != nil {
+			return nil, successorRefused("succeeded")
+		}
 		if (head != nil) != copy.RunStore.Resume {
 			return nil, &StorageConflict{}
+		}
+		if head == nil && copy.QuestionContinuation != "" {
+			return nil, waitInvalid()
 		}
 		if head != nil {
 			if head.Checkpoint == nil {
@@ -2199,11 +2220,33 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				}
 			}
 			copy.Execution = saved
-			// #328: a complete head resumes only as a claimed job wait's continuation, a re-authorization claim's, or a
-			// leg of an open objective (#330).
-			if saved.Status == "complete" && !reauthorizedContinuation(store, head.Checkpoint) {
-				admitted := false
-				if copy.JobContinuation != nil {
+			// #340: a successor's head opens only while its predecessor holds it up, every time.
+			if copy.RunStore.Successor != nil {
+				_, _, answered, err := readPredecessor(ctx, store, *copy.RunStore.Successor)
+				if err != nil {
+					return nil, err
+				}
+				copy.questionAnswers = append(copy.questionAnswers, *answered)
+			}
+			// #341: a claimed question wait's continuation hands on the wait's resolution, and only at the head the
+			// wait was parked at.
+			var claimed *questionAnswer
+			if copy.QuestionContinuation != "" {
+				if copy.JobContinuation != nil || !validStorageID(copy.QuestionContinuation) {
+					return nil, waitInvalid()
+				}
+				if claimed, err = claimedQuestionWait(ctx, store, id, copy.QuestionContinuation, head.Revision); err != nil {
+					return nil, err
+				}
+				if claimed == nil && saved.Status != "complete" {
+					return nil, waitRefused("mismatch")
+				}
+			}
+			// #328: a complete head resumes only as a claimed job wait's continuation, a claimed question wait's (#341),
+			// a re-authorization claim's, or a leg of an open objective (#330).
+			if saved.Status == "complete" {
+				admitted := reauthorizedContinuation(store, head.Checkpoint) || claimed != nil
+				if !admitted && copy.JobContinuation != nil {
 					if admitted, err = claimedJobWait(ctx, store, id, copy.JobContinuation.Job, head.Revision); err != nil {
 						return nil, err
 					}
@@ -2216,7 +2259,26 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				if !admitted {
 					return nil, &RunComplete{}
 				}
+				// #340: once the head's last question has its successor, the successor carries the allowance, and the
+				// head resumes no other way.
+				succeeded, err := succeededHead(ctx, store, id)
+				if err != nil {
+					return nil, err
+				}
+				if succeeded {
+					return nil, successorRefused("succeeded")
+				}
 			}
+			if claimed != nil {
+				copy.questionAnswers = append(copy.questionAnswers, *claimed)
+			}
+		} else if copy.RunStore.Successor != nil {
+			var answered *questionAnswer
+			if copy.Execution, answered, err = makeSuccessor(ctx, store, id, *copy.RunStore.Successor, copy.RequestCap); err != nil {
+				return nil, err
+			}
+			copy.questionAnswers = []questionAnswer{*answered}
+			successorFirst = true
 		}
 	} else {
 		store = NewCheckpointCallbackRunStore(copy.Checkpoint, func(raw []byte) (contract.Checkpoint, error) {
@@ -2293,6 +2355,30 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		if writer.contextSource != nil && head != nil {
 			if err := writer.commitLocked(ctx, newStorageIdentity(), *writer.latest, head.Checkpoint, [][]byte{}); err != nil {
 				return nil, err
+			}
+		}
+		// #340: the successor's first checkpoint is created once at its derived id, before anything of the run is sent,
+		// so a second successor made at the same time meets this one. A question wait parked while it was being made
+		// is read again after the create: the successor is then refused, and the wait's continuation is refused as well
+		// because the successor exists. Neither sends anything.
+		if successorFirst {
+			raw, err := canonicalRaw(writer.latest)
+			if err == nil {
+				err = writer.commitLocked(ctx, newStorageIdentity(), *writer.latest, raw, [][]byte{})
+			}
+			if errors.As(err, new(*StorageConflict)) {
+				return nil, successorRefused("succeeded")
+			}
+			if err != nil {
+				return nil, err
+			}
+			asked := copy.RunStore.Successor
+			parked, err := questionWaitHeld(ctx, store, asked.Predecessor, asked.Question)
+			if err != nil {
+				return nil, err
+			}
+			if parked {
+				return nil, successorRefused("parked")
 			}
 		}
 	}

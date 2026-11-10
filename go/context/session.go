@@ -2206,6 +2206,18 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		out.Prompt += "\n\n" + text
 	}
+	// #340, #341: the person's answer to the question the run asked, as the store holds it: a successor's on every
+	// open, a claimed question wait's on its continuation.
+	if continued := held.session.Context; continued != nil {
+		for _, answered := range continued.questionAnswers {
+			text, err := QuestionAnswerText(answered.question, answered.answer, DataMarker())
+			if err != nil {
+				held.Close()
+				return nil, err
+			}
+			out.Prompt += "\n\n" + text
+		}
+	}
 	return &Run{Context: held, Session: out}, nil
 }
 
