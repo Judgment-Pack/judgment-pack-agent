@@ -101,6 +101,37 @@ All other implementation, privacy and security, regression, cross-language parit
 safeguard-removal, required CI, review and artifact-verification gates remain. This decision
 does not waive the comparison for later Agent releases.
 
+## v0.14.0 scope decision
+
+<!-- PENDING MAINTAINER DECISION: #169 -->
+
+The v0.13.2 deferral covers Agent v0.13.2 only; releases after it are not covered. Issue #169 is
+open on milestone v0.14.0.
+
+v0.14.0 changes model-visible text in the features below. Successor runs and question-wait
+continuations are new in this release; the other changes reach every host that uses those features.
+Each section of the [upgrade guide](upgrade/v0.14.0.md) names its own changes:
+
+- **The approved result on the durable agent wire** (#309, #317). The request after the person's
+  decision carries the approved call's result in the continuation's data block, which now ends with
+  `decidedAt`; before, the recorded request was sent again. A recovered invocation that does not
+  carry the response's newest continuation gets a fresh request instead of a re-send.
+- **Source schemas** (#308). A source past the bounds on the words its schemas keep as written is
+  offered as catalogue entries, and its schemas reach the model only in `load_tool`'s answer, framed
+  as data. An `enum` or `const` holding a lone surrogate is dropped with a guardrail, and the
+  refusal of a call missing a `required` member names the entry by its place, not its text.
+- **Redacted forms** (#343, #352, #367). Under redaction on store, a durable run gives the model the
+  form the record guard leaves of a host or Runtime call's result, a Runtime read, a chat entry read
+  by id, a search's matches, a handoff's answer and continuation, and a call's failure detail.
+- **Rehearsed evaluations** (#344). The critic and an author-test child read the Runtime's
+  evaluation where they used to read the refusal.
+- **Question answers** (#340, #341). A claimed question wait's continuation and a successor run's
+  first request carry one fixed line, which begins "QUESTION ANSWERED:", and one data block with
+  the answer.
+
+No live comparison has passed for this release, and no answer-quality, token-saving or
+monetary-cost result is claimed. Routing remains off by default.
+
 ## API runner and general release requirement
 
 Issue #169 adds a release-review tool separate from ADR-0022's deterministic offline

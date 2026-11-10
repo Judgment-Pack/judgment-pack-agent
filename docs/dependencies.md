@@ -450,7 +450,7 @@ Metadata records bind exact module/version/sum or npm location/version/integrity
 
 - `go/go.mod`: `a5e7847150e3d021ba92d575887e3fac069ca012d940bb0a207ddfb8241dff99`
 - `go/go.sum`: `90154d6afad1d1c9111dfc54d4ce606142976ef83bb43d3866e587777a2c902d`
-- `package-lock.json`: `91b8b9e90b2ca7ceda96d64b2e5f5ad7b812efe30ea4b992c72b976f719a6c60`
+- `package-lock.json`: `5a0bdf9d7e407c0780131b1e3a8a6fc00d17cd3ede4e03ffd0ea995ff9af8fa2`
 - `scripts/dependencies-config.json`: `02fbaac28ac926d8abe15484f60c9f8c2833a188bf8c375d149568dddcb56a9b`
 - `scripts/dependencies-metadata.json`: `8cd5e33339bd7ff1f64cb7cbdc11abb75369b3aa944783e92a07a0524f8186e1`
 
