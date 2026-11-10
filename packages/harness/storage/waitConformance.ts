@@ -4,6 +4,7 @@ import {StorageConformanceFailure} from './conformance'
 import {LeaseRefused,effectIdempotencyKey,fenceOf,type EffectOperation,type LeaseFence,type ReauthDisposition} from './lease'
 import {ResumeRefused,approvalBinding,pinsDigest,type ResumePins} from './resume'
 import {ReauthorizationRefused,type Reauthorized} from './reauth'
+import type {RunDeadlineReader} from './successor'
 import {WaitRefused,checkpointBytesDigest,readRunWait,wakeKeyDigest,type RunWait,type WaitClaim,type WaitPark,type WaitRunStore,type WakeEvidence} from './wait'
 /* #265 M6: the wait conformance kit, for a host store kind's wait port beside its lease port (desk #609 and #670), as
  * #223's kit is for its lease port. Every guarantee of durable waits lives in the store's own transitions, and the
@@ -160,6 +161,11 @@ async function waitProperties(create:WaitStoreFactory):Promise<void>{
  await restart('wait.restart.deadline')
  await refuses('wait.restart.closed',()=>store.acquireLease({resource:'wait-c',owner:'worker-b',expectedRevision:c.revision,durationMs:HOUR}),'closed')
  check('wait.restart.earliest',(await store.limitRun({version:1,resource:'wait-c',run:iso(T0+9*HOUR)})).run===iso(T0+5*HOUR+10*MINUTE))
+ // #362, #368: a store that reads a run's deadline (RunDeadlineReader, which a successor reads) reads the earliest one it
+ // holds, across a restart, and none for a run without one. A reader that reads none where one is held lets a successor
+ // be made past the predecessor's deadline.
+ const reader=store as Partial<RunDeadlineReader>
+ if(typeof reader.readRunDeadline==='function')check('wait.deadline.read',(await reader.readRunDeadline('wait-c'))?.run===iso(T0+5*HOUR+10*MINUTE)&&await reader.readRunDeadline('wait-b')===undefined)
  await refuses('wait.restart.key',()=>store.wakeWait(decision('wait-b',KEYS.a,'decision-x')),'unauthenticated')
 
  // ADR-0029: a store that declares it keeps a delegated run's principals with the wait and the lease, across a restart:

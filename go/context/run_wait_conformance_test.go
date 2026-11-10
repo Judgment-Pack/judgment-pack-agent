@@ -138,6 +138,11 @@ func (s leasesAnyRun) AcquireLease(ctx context.Context, request LeaseAcquire) (l
 }
 
 // anyKey is a store kind whose WakeWait takes whatever key it is shown.
+// readsNoDeadline reads no run deadline where the store holds one (#368).
+type readsNoDeadline struct{ durableWaitStore }
+
+func (readsNoDeadline) ReadRunDeadline(context.Context, string) (*RunLimit, error) { return nil, nil }
+
 type anyKey struct{ durableWaitStore }
 
 func (s anyKey) WakeWait(ctx context.Context, evidence WakeEvidence) (WakeDisposition, error) {
@@ -509,6 +514,7 @@ func TestWaitConformanceKitNamesTheGuaranteeAStoreLeavesOut(t *testing.T) {
 		{"a wake that takes any key", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return anyKey{durableWaitStore{store}} }), "wait.key.other-wait"},
 		{"a restart that loses the unsettled approval", memoryWaitKind(durableKind, "approvals"), "wait.restart.approval-ceiling"},
 		{"a restart that loses the run's deadline", memoryWaitKind(durableKind, "ceilings"), "wait.restart.earliest"},
+		{"#368: a deadline reader that reads none", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return readsNoDeadline{durableWaitStore{store}} }), "wait.deadline.read"},
 		{"a restart that loses the waits", memoryWaitKind(durableKind, "rows", "events"), "wait.restart.parked"},
 		{"a factory that fails", func(func() time.Time, WaitRunStore) WaitRunStore { panic("unavailable") }, "wait.operation"},
 		{"#226: a park that takes a proof minted under another lease", memoryWaitKind(func(store *MemoryRunStore) WaitRunStore { return anyLease{durableWaitStore{store}} }), "reauth.park.stale"},

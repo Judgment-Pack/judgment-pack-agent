@@ -18297,6 +18297,18 @@
    "status": "caught",
    "origin": "agent#368",
    "note": "Go twin (by hand, run_goal_conformance.go: the fPause and fAbandon sends under f.fence dropped): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_a_fenced_abandon_unchecked."
+  },
+  {
+   "name": "#368 the wait kit never reads the run's deadline through the deadline reader",
+   "file": "storage/waitConformance.ts",
+   "find": " if(typeof reader.readRunDeadline==='function')check('wait.deadline.read',(await reader.readRunDeadline('wait-c'))?.run===iso(T0+5*HOUR+10*MINUTE)&&await reader.readRunDeadline('wait-b')===undefined)\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_wait_conformance.go: the RunDeadlineReader block dropped): caught at TestWaitConformanceKitNamesTheGuaranteeAStoreLeavesOut (#368: a deadline reader that reads none)."
   }
  ]
 }

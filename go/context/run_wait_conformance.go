@@ -359,6 +359,14 @@ func waitConformance(ctx context.Context, create WaitStoreFactory) (err error) {
 	refuses("wait.restart.closed", err, "closed")
 	limited, err = store.LimitRun(ctx, RunLimit{Version: 1, Resource: "wait-c", Run: iso(9 * time.Hour)})
 	check("wait.restart.earliest", err == nil && limited.Run == iso(5*time.Hour+10*time.Minute))
+	// #362, #368: a store that reads a run's deadline (RunDeadlineReader, which a successor reads) reads the
+	// earliest one it holds, across a restart, and none for a run without one. A reader that reads none where one
+	// is held lets a successor be made past the predecessor's deadline.
+	if reader, ok := store.(RunDeadlineReader); ok {
+		held, err := reader.ReadRunDeadline(ctx, "wait-c")
+		none, noneErr := reader.ReadRunDeadline(ctx, "wait-b")
+		check("wait.deadline.read", err == nil && held != nil && held.Run == iso(5*time.Hour+10*time.Minute) && noneErr == nil && none == nil)
+	}
 	_, err = store.WakeWait(ctx, decision("wait-b", kitKeys["a"], "decision-x"))
 	refuses("wait.restart.key", err, "unauthenticated")
 
