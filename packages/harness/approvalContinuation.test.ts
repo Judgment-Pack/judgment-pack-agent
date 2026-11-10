@@ -341,5 +341,40 @@ describe('a Plan decision\u2019s continuation goes on (#317, #312\u2019s MEDIUM-
   // and the decision is still the response's newest continuation, so that request carries its block again (#312's MEDIUM-2).
   const {saved}=await head(s.store)
   expect([s.ran,errors(s),finished(s),s.prompts.length,told(s.prompts[2],saved.approval)]).toEqual([1,[],true,3,true])
- },30_000)
+ },30_000) // The safety side of the native Plan exemption: the Plan continuation lost after it was sent carries the response's newest
+ // continuation (the batch's answer, or the approval's block again), so its effect is unknown. The takeover refuses
+ // HostOutcomeUnknown and sends nothing, rather than passing over it and running the continuation twice.
+ it('one lost after it was sent, after a handoff earlier in the response, is refused and nothing is sent',async()=>{
+  const s=scene(),engine=withDelegation(codex);s.context={taskSteps:true,plan:structuredClone(accepted)}
+  await drive(s,engine,s.store,false,undefined,[delegateOnce,planPause(true)])
+  const pending=(await head(s.store)).saved.planState?.pending
+  expect([s.children,pending?.callId!==undefined,errors(s)]).toEqual([1,true,[]])
+  const dead=dying(s.store),abort=new AbortController();dead.held.abort=abort
+  s.events.length=0
+  const before=s.prompts.length
+  await drive(s,engine,dead.store,true,{callId:pending.callId,approved:true},[async()=>{dead.kill();throw Error('the process died here')}],abort).catch(()=>undefined)
+  expect([dead.held.dead,s.prompts.length]).toEqual([true,before+1])
+  dead.revive();s.events.length=0
+  const sent=s.prompts.length
+  await drive(s,engine,dead.store,true,undefined).catch(()=>undefined)
+  expect([s.prompts.length-sent,errors(s).length,String(errors(s)[0]).includes('HostOutcomeUnknown'),s.children]).toEqual([0,1,true,1])
+ },60_000)
+ for(const [label,engine,context] of [['plain, task steps',codex,{taskSteps:true,taskStepEnvelope:envelope}],['through the coordinator, task steps',withDelegation(codex),{taskSteps:true}]] as const)it(`one lost after it was sent, after an approval earlier in the response, is refused and nothing is sent: ${label}`,async()=>{
+  const s=scene();s.context={...context,plan:structuredClone(accepted)}
+  const decision=await paused(s,engine)
+  s.events.length=0
+  await drive(s,engine,s.store,true,decision,[planPause(true)])
+  const pending=(await head(s.store)).saved.planState?.pending
+  expect([s.ran,pending?.callId!==undefined]).toEqual([1,true])
+  const dead=dying(s.store),abort=new AbortController();dead.held.abort=abort
+  s.events.length=0
+  const before=s.prompts.length
+  await drive(s,engine,dead.store,true,{callId:pending.callId,approved:true},[async()=>{dead.kill();throw Error('the process died here')}],abort).catch(()=>undefined)
+  const {saved}=await head(s.store)
+  expect([dead.held.dead,s.prompts.length,told(s.prompts[before],saved.approval)]).toEqual([true,before+1,true])
+  dead.revive();s.events.length=0
+  const sent=s.prompts.length
+  await drive(s,engine,dead.store,true,undefined).catch(()=>undefined)
+  expect([s.prompts.length-sent,errors(s).length,String(errors(s)[0]).includes('HostOutcomeUnknown'),s.ran]).toEqual([0,1,true,1])
+ },60_000)
 })

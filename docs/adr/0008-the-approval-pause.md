@@ -179,6 +179,21 @@ A restored checkpoint continues from where it stood:
   recovered invocation that carries the newest continuation is refused `HostOutcomeUnknown`, as any
   re-send there is.
 
+  In a scope with a decided native Plan pause, an `unknown` agent invocation that does not carry the
+  newest continuation (it ended at the approval pause or at a handoff the response has gone on from)
+  does not refuse the Plan decision or its takeover (#317). Every other `unknown` invocation there
+  still refuses `HostOutcomeUnknown`. That exemption is safe because of one invariant: every parent
+  invocation sent after the newest continuation carries it again. So an invocation sent later, such
+  as the Plan continuation lost after it was sent, carries it, is not taken for one that ended
+  before it, and is refused rather than run twice. The invariant is kept in four places. The
+  handoff's answer is the continuation of the parent invocation after it (Go
+  `go/adapter/delegate/agent.go:624`, TypeScript `packages/harness/delegation.ts:1024`). The
+  decision's block is appended to a fresh request while the decision is the newest (Go
+  `go/context/session.go:2192`, TypeScript `packages/harness/context/managed.ts:163`). A change
+  that lets a later parent request go without the newest continuation breaks the exemption.
+  `TestALostPlanContinuationAfterAHandoffIsRefused`, `TestALostPlanContinuationAfterAnApprovalIsRefused`
+  and their TypeScript cases hold it.
+
 ```
 model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host policy(call)
                                                                   │

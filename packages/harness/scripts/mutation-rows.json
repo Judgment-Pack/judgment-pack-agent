@@ -16587,6 +16587,16 @@
    "status": "caught",
    "origin": "agent#309",
    "note": "The block is built from the record as the run held it, and the restored record holds the result's members in the checkpoint's order: a continuation lost after it was sent is then sent fresh, not again as recorded, and under task steps not refused. Go twin (by hand): compare the data's text in carriesApprovalContinuation; caught at ^TestARecordedContinuationIsFoundByItsValue in ./context."
+  },
+  {
+   "name": "continuation C11 the Plan exemption passes over any unknown invocation once an approval or a handoff is held",
+   "file": "storage/writer.ts",
+   "find": "  return at>=0&&!this.agentReplay(binding,at)\n",
+   "replace": "  return at>=0&&(this.latest?.approval!==undefined||this.latest?.handoff!==undefined||!this.agentReplay(binding,at))\n",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "The safety side of the native Plan exemption: the Plan continuation lost after it was sent, which carries the newest continuation, is passed over and sent fresh, so the continuation runs twice. Go twin (by hand): return w.latest.Approval != nil || w.latest.Handoff != nil || !w.agentReplayLocked(binding, i) in endedBeforeContinuationLocked; caught at ^TestALostPlanContinuationAfter in ./adapter/continuationtests."
   }
  ]
 }

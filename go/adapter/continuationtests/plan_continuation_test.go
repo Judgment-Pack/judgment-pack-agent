@@ -112,3 +112,82 @@ func TestAPlanDecisionAfterAnApprovalGoesOn(t *testing.T) {
 		})
 	}
 }
+
+// diesInFlight is a parent whose invocation is sent and then lost with the process: its outcome is unknown.
+func diesInFlight(store *dyingStore) step {
+	return func(context.Context, adapter.AgentRequest, adapter.AgentCallbacks, int) error {
+		store.kill()
+		return errDied
+	}
+}
+
+// The safety side of the native Plan exemption (#317): a handoff earlier in the response, then a Plan pause, and the Plan
+// continuation is lost after it was sent. That invocation carries the response's newest continuation (the batch's answer),
+// so its effect is unknown: the takeover refuses HostOutcomeUnknown and sends nothing, rather than passing over it and
+// running the continuation twice.
+func TestALostPlanContinuationAfterAHandoffIsRefused(t *testing.T) {
+	for _, taskSteps := range []bool{false, true} {
+		name := "through the coordinator"
+		if taskSteps {
+			name = "through the coordinator, task steps"
+		}
+		t.Run(name, func(t *testing.T) {
+			store := newDyingStore()
+			s := &scene{store: store, plan: acceptedPlan, taskSteps: taskSteps}
+			_ = s.run(t, context.Background(), false, nil, true, delegateOnce(t), planPause(t, taskSteps))
+			if s.children != 1 {
+				t.Fatalf("no batch before the Plan pause: children %d, %v", s.children, s.errors())
+			}
+			s.planDecided(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			store.cancel = cancel
+			s.events = nil
+			before := len(s.parents)
+			_ = s.run(t, ctx, true, nil, true, diesInFlight(store))
+			if !store.dead() || len(s.parents) != before+1 {
+				t.Fatalf("the Plan continuation was not lost in flight: dead %v, %d parents after %d, %v", store.dead(), len(s.parents), before, s.errors())
+			}
+			s.prepare = nil
+			store.revive()
+			s.events = nil
+			sent := len(s.parents)
+			_ = s.run(t, context.Background(), true, nil, true)
+			if errs := s.errors(); len(s.parents) != sent || len(errs) != 1 || !strings.Contains(errs[0], "HostOutcomeUnknown") || s.children != 1 {
+				t.Fatalf("the lost Plan continuation was passed over: %d new requests, children %d, errors %v", len(s.parents)-sent, s.children, errs)
+			}
+		})
+	}
+}
+
+// The same with an approval earlier in the response: the Plan continuation carries the approval's block again, so the lost
+// invocation is refused HostOutcomeUnknown, nothing is sent, and the act ran once.
+func TestALostPlanContinuationAfterAnApprovalIsRefused(t *testing.T) {
+	for _, form := range forms[:2] {
+		t.Run(form.name, func(t *testing.T) {
+			store := newDyingStore()
+			s := &scene{store: store, plan: acceptedPlan}
+			decision := paused(t, s, form.delegating)
+			_ = s.run(t, context.Background(), true, decision, form.delegating, planPause(t, false))
+			s.planDecided(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			store.cancel = cancel
+			s.events = nil
+			before := len(s.parents)
+			_ = s.run(t, ctx, true, nil, form.delegating, diesInFlight(store))
+			approval := s.head(t).Approval
+			if !store.dead() || len(s.parents) != before+1 || approval == nil || !told(s.parents[before], *approval) {
+				t.Fatalf("the Plan continuation was not lost in flight carrying the approval's block: %d parents after %d, %v", len(s.parents), before, s.errors())
+			}
+			s.prepare = nil
+			store.revive()
+			s.events = nil
+			sent := len(s.parents)
+			_ = s.run(t, context.Background(), true, nil, form.delegating)
+			if errs := s.errors(); len(s.parents) != sent || len(errs) != 1 || !strings.Contains(errs[0], "HostOutcomeUnknown") || s.ran != 1 {
+				t.Fatalf("the lost Plan continuation after an approval was passed over: %d new requests, ran %d, errors %v", len(s.parents)-sent, s.ran, errs)
+			}
+		})
+	}
+}
