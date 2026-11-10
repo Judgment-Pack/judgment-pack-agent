@@ -241,6 +241,61 @@ func goalOpenJobs(s *goalFault, resource string) []string {
 	return open
 }
 
+// goalFenceWithout (#361): a store whose goal transaction checks a command's fence as the lease does, less one rule.
+func goalFenceWithout(rule string) func(*goalFault) {
+	return func(f *goalFault) {
+		leases := f.MemoryRunStore.leases
+		f.MemoryRunStore.goals.checkFence = func(fence LeaseFence) error {
+			now, err := leases.millis()
+			if err != nil {
+				return err
+			}
+			row, ok := leases.rows[fence.Resource]
+			switch expiry, _ := leaseExpiryMillis(row.Expiry); {
+			case !ok:
+				return &LeaseRefused{Reason: "no-lease"}
+			case row.Epoch != fence.Epoch:
+				return &LeaseRefused{Reason: "stale-epoch"}
+			case rule != "other-owner" && row.Owner != fence.Owner:
+				return &LeaseRefused{Reason: "other-owner"}
+			case rule != "released" && row.State == "released":
+				return &LeaseRefused{Reason: "released"}
+			case rule != "expired" && now >= expiry:
+				return &LeaseRefused{Reason: "expired"}
+			}
+			return nil
+		}
+	}
+}
+
+// goalUnfencedWhere (#361): a store that decides a fenced command as the host's where unfenced says so, and checks
+// the fence otherwise.
+func goalUnfencedWhere(unfenced func(s *goalFault, input GoalTransition) bool) func(*goalFault) {
+	return func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			if input.Fence != nil && unfenced(s, input) {
+				input.Fence = nil
+			}
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	}
+}
+
+// goalLeaseRefusalAsGoal (#361): a store that refuses a fence as a goal refusal of the lease's reason, for the
+// reasons where says so.
+func goalLeaseRefusalAsGoal(where func(reason string) bool) func(*goalFault) {
+	return func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			answer, err := s.durableGoalStore.CommandGoal(ctx, input)
+			var lease *LeaseRefused
+			if errors.As(err, &lease) && where(lease.Reason) {
+				return answer, &GoalRefused{Reason: lease.Reason}
+			}
+			return answer, err
+		}
+	}
+}
+
 // goalFaults: for each property of the kit, a store that breaks exactly it.
 var goalFaults = map[string]func(*goalFault){
 	// #313's review: H-1, H-2 and the seven stores of M-2, with M-1.
@@ -812,6 +867,39 @@ var goalStores = []struct {
 			return answer, err
 		}
 	}},
+	// #361: stores that check a command's fence too little, or refuse it as something else.
+	{"a store that answers a repeat before it checks the fence", "goal.fence.stale", goalUnfencedWhere(func(s *goalFault, input GoalTransition) bool {
+		row := s.rowOf(input.Command.Resource)
+		return row != nil && slices.ContainsFunc(row.Journal, func(e GoalEntry) bool { return e.Command == input.Command.Command })
+	})},
+	{"a store that checks a fence only where the run has a record", "goal.fence.stale", goalUnfencedWhere(func(s *goalFault, input GoalTransition) bool {
+		return s.rowOf(input.Command.Resource) == nil
+	})},
+	{"a store that checks a fence by its epoch only", "goal.fence.stale", func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			if input.Fence != nil {
+				if input.Fence.Resource != input.Command.Resource {
+					return GoalAnswer{}, &LeaseRefused{Reason: "resource-mismatch"}
+				}
+				s.MemoryRunStore.mu.Lock()
+				row, ok := s.MemoryRunStore.leases.rows[input.Fence.Resource]
+				s.MemoryRunStore.mu.Unlock()
+				if !ok {
+					return GoalAnswer{}, &LeaseRefused{Reason: "no-lease"}
+				}
+				if row.Epoch != input.Fence.Epoch {
+					return GoalAnswer{}, &LeaseRefused{Reason: "stale-epoch"}
+				}
+				input.Fence = nil
+			}
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	}},
+	{"a store that refuses a stale fence as a goal refusal of the same reason", "goal.fence.stale", goalLeaseRefusalAsGoal(func(string) bool { return true })},
+	{"a store that refuses a resource mismatch as a goal refusal of the same reason", "goal.fence.resource", goalLeaseRefusalAsGoal(func(reason string) bool { return reason == "resource-mismatch" })},
+	{"a store that decides another owner's fence of the current epoch", "goal.fence.stale", goalFenceWithout("other-owner")},
+	{"a store that decides a released fence", "goal.fence.stale", goalFenceWithout("released")},
+	{"a store that decides an expired fence", "goal.fence.stale", goalFenceWithout("expired")},
 }
 
 func goalKitFails(t *testing.T, create GoalStoreFactory) string {

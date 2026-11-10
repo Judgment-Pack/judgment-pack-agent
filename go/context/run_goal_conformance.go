@@ -152,6 +152,18 @@ func (k *goalKit) untouched(property, run string, err func() error, reason strin
 	k.refuses(property, err(), reason)
 	k.check(property, goalKitSame(k.read(run), before))
 }
+
+// fenced (#361): a fence refusal writes nothing, a record or none, and is the lease's own refusal by class: a
+// *LeaseRefused of the lease's reason, as the store's fenced commits refuse, never a goal refusal that carries the same
+// reason.
+func (k *goalKit) fenced(property, run string, err func() error, reason string) {
+	before := k.read(run)
+	var lease *LeaseRefused
+	refused := err()
+	k.check(property, errors.As(refused, &lease) && lease.Reason == reason)
+	after := k.read(run)
+	k.check(property, before == nil && after == nil || before != nil && after != nil && goalKitSame(after, before))
+}
 func (k *goalKit) current(run string) GoalObjective {
 	held := k.read(run)
 	return held.Objectives[len(held.Objectives)-1]
@@ -605,22 +617,49 @@ func (k *goalKit) properties() {
 	// holder's is decided.
 	f := k.open("run-f")
 	g := k.open("run-g")
-	fCreated, err := k.sendFenced(goalKitWith(k.command("run-f", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-f") }), f.fence)
+	fCreate := goalKitWith(k.command("run-f", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-f") })
+	fCreated, err := k.sendFenced(fCreate, f.fence)
 	k.answers("goal.fence.current", err)
-	if _, err := k.store.ReleaseLease(k.ctx, f.fence); err != nil {
-		panic(err)
+	release := func(fence LeaseFence) {
+		if _, err := k.store.ReleaseLease(k.ctx, fence); err != nil {
+			panic(err)
+		}
 	}
-	fTaken, err := k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-f", Owner: "worker-b", ExpectedRevision: k.head("run-f").Revision, DurationMs: goalKitHour})
-	k.answers("goal.fence.current", err)
+	taken := func(run, owner string, durationMs int64) LeaseFence {
+		lease, err := k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: run, Owner: owner, ExpectedRevision: k.head(run).Revision, DurationMs: durationMs})
+		k.answers("goal.fence.current", err)
+		return FenceOf(lease)
+	}
+	release(f.fence)
+	fB := taken("run-f", "worker-b", goalKitHour)
 	fLease, _ := k.store.ReadLease(k.ctx, "run-f")
 	fPause := k.command("run-f", "pause", fCreated.Goal.Revision)
-	k.untouched("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, f.fence); return err }, "stale-epoch")
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, f.fence); return err }, "stale-epoch")
 	fAbandon := k.command("run-f", "abandon", fCreated.Goal.Revision)
-	k.untouched("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fAbandon, f.fence); return err }, "stale-epoch")
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fAbandon, f.fence); return err }, "stale-epoch")
+	// #361: the fence is checked before the record is read for a repeat: the displaced worker's retry of the create
+	// the store accepted from it is refused, not answered. On a run with no record, a displaced worker's create
+	// creates none.
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fCreate, f.fence); return err }, "stale-epoch")
+	n := k.open("run-n")
+	release(n.fence)
+	taken("run-n", "worker-b", goalKitHour)
+	nCreate := goalKitWith(k.command("run-n", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-n") })
+	k.fenced("goal.fence.stale", "run-n", func() error { _, err := k.sendFenced(nCreate, n.fence); return err }, "stale-epoch")
+	// #361: a fence of the current epoch is refused as the lease refuses it where it is another owner's, released or
+	// expired.
+	other := fB
+	other.Owner = "worker-x"
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, other); return err }, "other-owner")
 	fLeaseAfter, _ := k.store.ReadLease(k.ctx, "run-f")
 	k.check("goal.fence.stale", goalKitSame(fLeaseAfter, fLease))
-	k.untouched("goal.fence.resource", "run-f", func() error { _, err := k.sendFenced(fPause, g.fence); return err }, "resource-mismatch")
-	fPaused, err := k.sendFenced(fPause, FenceOf(fTaken))
+	k.fenced("goal.fence.resource", "run-f", func() error { _, err := k.sendFenced(fPause, g.fence); return err }, "resource-mismatch")
+	release(fB)
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, fB); return err }, "released")
+	fC := taken("run-f", "worker-c", goalKitMinute.Milliseconds())
+	k.at = k.at.Add(goalKitMinute)
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, fC); return err }, "expired")
+	fPaused, err := k.sendFenced(fPause, taken("run-f", "worker-d", goalKitHour))
 	k.answers("goal.fence.current", err)
 	k.check("goal.fence.current", fPaused.Goal.Revision == fCreated.Goal.Revision+1 && fPaused.Entry.Command == fPause.Command && len(fPaused.Goal.Objectives) > 0 && fPaused.Goal.Objectives[len(fPaused.Goal.Objectives)-1].Paused != nil)
 

@@ -955,7 +955,10 @@ restart at the end. It names the first property broken: `goal.create.*`, `goal.r
 `goal.unfenced`, `goal.pause.*`, `goal.resume.*`, `goal.block*`, `goal.unblock*`, `goal.bind.*`, `goal.achieve.*`, `goal.terminal`,
 `goal.abandon.left`, `goal.deliveries*`, `goal.none`, `goal.inspect.*`, `goal.journal.bound`, `goal.exhausted`, `goal.owner`,
 `goal.fence.*` (#315: a fenced command is decided while the fence is current, refused stale with nothing changed, and refused for a
-fence of another run) and `goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+fence of another run; #361: a stale fence is a takeover's earlier epoch, another owner's fence of the current epoch, a released one
+and an expired one, and is refused before a repeat of a command the store accepted from it is answered and on a run with no record,
+with no record made; each refusal must be a `LeaseRefused` by class, never a `GoalRefused` of the lease's reason) and
+`goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
 
 **Abandoning.** `abandonGoal({store, effectHost, command, durationMs, cancel})` abandons the objective in one goal transaction, which
 records the run's waits not resumed or ended and its jobs not settled, then runs `abandonJobs` under the same command id and journals
