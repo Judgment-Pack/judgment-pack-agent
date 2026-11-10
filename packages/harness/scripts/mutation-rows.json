@@ -17565,6 +17565,18 @@
    "status": "caught",
    "origin": "agent#315",
    "note": "Go twin (by hand, in run_goal.go the create's abandon-unfinished gate: any delivered entry): caught at TestGoalTheFirstAbandonsDeliveryDoesNotLetACreateOverTheSecondThrough."
+  },
+  {
+   "name": "#358 a checkpoint header without its schema is read as one",
+   "file": "records.ts",
+   "find": "return record.schema===schema&&(schema===CHECKPOINT_SCHEMA?",
+   "replace": "return (schema===CHECKPOINT_SCHEMA?",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#358",
+   "note": "Go twins (by hand, in records.go ValidRecordHeader: read schema with Str instead of planText, which panics on a missing member; and drop the schema compare): both caught at TestRecordHeaderMissingMemberRefuses."
   }
  ]
 }

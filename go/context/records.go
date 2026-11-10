@@ -223,14 +223,15 @@ func WriteCritique(critique *contract.RunEventCritique, policy RecordsPolicy, gu
 }
 
 func ValidRecord(value *Value) bool {
-	if !value.IsObject() || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(value.Get("digest").Str()) || value.Get("digest").Str() != RecordDigest(value) {
+	// #358: a header member may be missing, so each is read nil-safe and a missing one refuses.
+	if !value.IsObject() || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(planText(value.Get("digest"))) || planText(value.Get("digest")) != RecordDigest(value) {
 		return false
 	}
-	schema := value.Get("schema").Str()
+	schema := planText(value.Get("schema"))
 	if schema != CheckpointSchema && schema != ProvenanceSchema && schema != CritiqueSchema {
 		return false
 	}
-	until := value.Get("retainUntil").Str()
+	until := planText(value.Get("retainUntil"))
 	if len(until) == 0 || U16Length(until) > 40 {
 		return false
 	}
@@ -239,10 +240,11 @@ func ValidRecord(value *Value) bool {
 }
 
 func ValidRecordHeader(value *Value, schema string) bool {
-	if !value.IsObject() || value.Get("schema").Str() != schema || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(value.Get("digest").Str()) {
+	// #358: a header member may be missing, so each is read nil-safe and a missing one refuses.
+	if !value.IsObject() || planText(value.Get("schema")) != schema || !supportedRecordVersion(value) || !recordDigestPattern.MatchString(planText(value.Get("digest"))) {
 		return false
 	}
-	until := value.Get("retainUntil").Str()
+	until := planText(value.Get("retainUntil"))
 	if len(until) == 0 || U16Length(until) > 40 {
 		return false
 	}
@@ -283,7 +285,7 @@ func ExportRecords(records []json.RawMessage, policy RecordsPolicy, packageVersi
 	kept := make([]json.RawMessage, 0, len(records))
 	for _, raw := range records {
 		value, err := ParseJSON(raw)
-		if err == nil && value.Get("schema").Str() == CheckpointSchema {
+		if err == nil && planText(value.Get("schema")) == CheckpointSchema {
 			if e := contract.CheckRecord("checkpoint", raw); e != nil {
 				return RecordsExport{}, "", contract.RunEvent{}, e
 			}
@@ -321,7 +323,7 @@ func supportedRecordVersion(v *Value) bool {
 	if n == nil || n.Kind() != KindNumber {
 		return false
 	}
-	return n.Num() == 1 || v.Get("schema").Str() == CheckpointSchema && n.Num() >= 2 && n.Num() <= 6 && n.Num() == float64(int(n.Num()))
+	return n.Num() == 1 || planText(v.Get("schema")) == CheckpointSchema && n.Num() >= 2 && n.Num() <= 6 && n.Num() == float64(int(n.Num()))
 }
 
 func nativePlanRecordFields(value *Value) bool {
