@@ -56,11 +56,11 @@ func finishDurableModel(ctx context.Context, binding *RunBinding, handle *modelC
 	if w.dispatchClosed.Load() && outcome == nil {
 		outcome = failure.Cancelled
 	}
-	// #352: a model's failure is stored in the form the record guard leaves of its detail; a guard refusal is
-	// an unknown outcome, and nothing of the failure is stored. No model is given it.
+	// #352: a model's failure is stored in the form the record guard leaves of its detail, read whole before
+	// the cut; a guard refusal is an unknown outcome, and nothing of the failure is stored. No model is given it.
 	var recorded *contract.Failure
 	if outcome != nil {
-		held, _, err := w.recordedFailureLocked(failure.Normalize(outcome, "model", time.Now()))
+		held, _, err := w.recordedFailureLocked(failure.TakeWhole(outcome, "model", time.Now()))
 		if err != nil {
 			w.fatal = &StorageOutcomeUnknown{cause: err}
 			return w.fatal

@@ -18313,8 +18313,8 @@
   {
    "name": "#352 a failure's detail the record guard refuses is stored as it is",
    "file": "storage/writer.ts",
-   "find": "recorded=this.recordedFailure(failed);",
-   "replace": "recorded=(()=>{try{return this.recordedFailure(failed)}catch{return failed}})();",
+   "find": "recorded=this.recordedFailure(classified);",
+   "replace": "recorded=(()=>{try{return this.recordedFailure(classified)}catch{return failed}})();",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18325,8 +18325,8 @@
   {
    "name": "#352 a redacted failure's detail is not cut to what a detail may hold",
    "file": "storage/writer.ts",
-   "find": "const detail=cutDetail(recordedForm(f.detail,this.policy,this.guard?.()))",
-   "replace": "const detail=recordedForm(f.detail,this.policy,this.guard?.())",
+   "find": "const detail=cutDetail(recordedForm(whole,this.policy,this.guard?.()))",
+   "replace": "const detail=recordedForm(whole,this.policy,this.guard?.())",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18393,6 +18393,102 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, model_writer.go: the guard's refusal taken as the failure as it was): caught at TestADurableModelsFailureIsStoredInTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#352 a failure's detail is guarded as cut, not whole",
+   "file": "storage/writer.ts",
+   "find": "const whole=(from&&takeWholeDetail(from))??f.detail",
+   "replace": "const whole=f.detail",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go recordedFailureLocked guarding f.Detail, not whole): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 a durable call's failure is guarded without the error it was read from",
+   "file": "storage/writer.ts",
+   "find": "recorded=this.recordedFailure(classified);",
+   "replace": "recorded=this.recordedFailure({failure:failed});",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, run_writer.go dispatch given failure.Normalize and no whole detail): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 a model's failure detail is guarded as cut, not whole",
+   "file": "storage/writer.ts",
+   "find": "this.recordedFailure(classifyFailure(outcome.error,'model'))",
+   "replace": "this.recordedFailure({failure:normalizeFailure(outcome.error,'model')})",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, model_writer.go given failure.Normalize and no whole detail): caught at TestADurableModelsFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 an authored failure keeps no whole detail",
+   "file": "failures.ts",
+   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "replace": "",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, Authored without authored.whole): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut."
+  },
+  {
+   "name": "#352 an authored failure's whole detail is a member of the error",
+   "file": "failures.ts",
+   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "replace": "if(cut!==detail){wholeDetails.set(authored,detail);(authored as unknown as {whole:string}).whole=detail}",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, Error() printing the whole detail): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (the error's own detail, its encoding and printing)."
+  },
+  {
+   "name": "#352 a whole detail is kept once it is read",
+   "file": "failures.ts",
+   "find": "const whole=wholeDetails.get(error);wholeDetails.delete(error)",
+   "replace": "const whole=wholeDetails.get(error)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, TakeWhole without from.whole = nil): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (TakeWhole after the call)."
+  },
+  {
+   "name": "#352 a whole detail is read for a failure it was not cut to",
+   "file": "failures.ts",
+   "find": "return whole!==undefined&&cutDetail(whole)===error.failure.detail?whole:error.failure.detail",
+   "replace": "return whole??error.failure.detail",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, TakeWhole without the cut check): caught at TestAWholeDetailIsReadOnlyForTheDetailItWasCutTo."
+  },
+  {
+   "name": "#352 an authored failure's detail is cut through a surrogate pair",
+   "file": "failures.ts",
+   "find": "const cut=cutDetail(detail),authored=",
+   "replace": "const cut=detail.slice(0,1000),authored=",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin: none; Go's Authored counts runes and never splits a pair (TestAnAuthoredDetailIsCutWithoutSplittingAPair pins the same bytes)."
   }
  ]
 }

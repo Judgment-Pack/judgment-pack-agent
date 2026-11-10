@@ -25,7 +25,7 @@ import {readingTool} from '../framing'
 import {canonicalJSON,exactArgumentsText,exactlyHeld} from '../context/chat'
 import {PRINCIPAL_CHANGED,openRunPrincipal,principalsChanged} from '../principal'
 import {authoredFailure} from '../failures'
-import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,classifyFailure,cutDetail,failure,normalizeFailure,restateFailure,type AIFailure} from '../failures'
+import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,classifyFailure,cutDetail,failure,normalizeFailure,restateFailure,takeWholeDetail,type AIFailure} from '../failures'
 import {approvalNotShown,readApprovalDecision,readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {carriesApprovalContinuation} from '../toolSources'
 import {mutateCheckpoint} from '../execution/mutation'
@@ -470,12 +470,15 @@ export class RunWriter {
  /** #352: result in the form this writer records a call's result (#343), for a read its run serves without a dispatch of its own: a Runtime read, or a chat's cached entry. A guard refusal is thrown, never result. */
  recordedResult<V>(result:V):V{return recordedForm(result,this.policy,this.guard?.())}
  /**
-  * #352: a failure as a durable row holds it: what the storage pass leaves of its detail alone, cut to the thousand UTF-16 code
-  * units a detail may hold; the failure itself where that is its detail. A guard refusal is thrown.
+  * #352: a failure as a durable row holds it: what the storage pass leaves of its detail alone, then cut to the thousand UTF-16
+  * code units a detail may hold; the failure itself where that is its detail. The guard reads the detail whole, as the error it
+  * was read from was authored with before `authoredFailure` cut it (`takeWholeDetail`), so that a match the cut would split is
+  * still found. A guard refusal is thrown.
   */
- private recordedFailure(f:AIFailure):AIFailure{
+ private recordedFailure({failure:f,from}:{failure:AIFailure;from?:AIFailureError}):AIFailure{
   if(f.detail===undefined)return f
-  const detail=cutDetail(recordedForm(f.detail,this.policy,this.guard?.()))
+  const whole=(from&&takeWholeDetail(from))??f.detail
+  const detail=cutDetail(recordedForm(whole,this.policy,this.guard?.()))
   return detail===f.detail?f:{...f,detail}
  }
  private async commitWithContext(input:import('./run').RunCommit,signal?:AbortSignal,terminal=false,checkpointScope?:string,state=this.latest,scope:DurableScope={execution:this.id,role:'author'}){
@@ -890,7 +893,7 @@ export class RunWriter {
    // #352: a model's failure is stored in the form the record guard leaves of its detail; a guard refusal is an unknown
    // outcome, and nothing of the failure is stored. No model is given it.
    let failed:AIFailure|undefined
-   try{failed=outcome.ok?undefined:this.recordedFailure(normalizeFailure(outcome.error,'model'))}catch(cause){throw new StorageOutcomeUnknown(cause)}
+   try{failed=outcome.ok?undefined:this.recordedFailure(classifyFailure(outcome.error,'model'))}catch(cause){throw new StorageOutcomeUnknown(cause)}
    held.claim.state=outcome.ok||outcome.verifiedRefusal?'result':'unknown'
    if(this.budget&&!outcome.ok&&!outcome.verifiedRefusal)this.budget.unknown(held.claim.id)
    if(failed)held.claim.failure=failed
@@ -1074,7 +1077,7 @@ export class RunWriter {
    // #352: the failure is recorded in the form the record guard leaves of its detail, and the error the call fails with is
    // given that form in place, so the record and what the model is given agree. A guard refusal is an unknown outcome, and
    // nothing of the failure is stored.
-   try{await this.enqueue(async()=>{if(this.stopped)return;const {failure:failed,from}=classifyFailure(error,kind==='host'||kind==='runtime'?'tool':'agent'),recorded=this.recordedFailure(failed);if(recorded!==failed&&from)restateFailure(from,recorded);claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=recorded;if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
+   try{await this.enqueue(async()=>{if(this.stopped)return;const classified=classifyFailure(error,kind==='host'||kind==='runtime'?'tool':'agent'),{failure:failed,from}=classified,recorded=this.recordedFailure(classified);if(recorded!==failed&&from)restateFailure(from,recorded);claim.state='unknown';if(this.budget&&(kind==='model'||kind==='agent')&&!admitted)this.budget.unknown(claim.id);claim.failure=recorded;if(live?.aborted||this.dispatchClosed){this.dispatchClosed=true;return}const state=this.root?.()??this.latest;if(state&&nativePlanReceiptMatches(planAttempt,binding,claim,state)){claim.planPause=structuredClone(planAttempt!.pause!);mutateCheckpoint(state,{version:3});await this.publish(binding,state,{type:'execution_checkpoint',checkpoint:state,durable:true,version:2},undefined,live)}else await this.publish(binding,undefined,undefined,undefined,live)})}catch{throw new StorageOutcomeUnknown()}
    if(this.budget&&admitted)await this.observeUsage(binding,claim.id,{providerInvocations:1},digest(canonicalJSON({id:claim.id,kind:'agent',state:'unknown',callback:true})),signal)
    if(composed!==undefined)return composed
    if(kind==='model')this.dispatchClosed=true

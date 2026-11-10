@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -99,7 +100,13 @@ func Message(f contract.Failure) string {
 func Recovery(f contract.Failure) string { return Catalog[f.Code].Recovery }
 
 // Error is AIFailureError: a failure carried as a Go error, its message the failure's.
-type Error struct{ Failure contract.Failure }
+type Error struct {
+	Failure contract.Failure
+	// whole is the detail as it was authored, where Authored cut it to what a detail may hold (#352). Only a
+	// durable writer's record guard reads it (TakeWhole), so that a match the cut would split is still found.
+	// It is never encoded, printed or given to the model, and it is dropped once read.
+	whole *string
+}
 
 // NewError is a failure as an error. A failure the catalogue does not admit is a programming
 // error and panics, as AIFailureError's constructor throws.
@@ -114,8 +121,8 @@ func NewError(f contract.Failure) *Error {
 func (e *Error) Error() string { return Message(e.Failure) }
 
 // RecordedError is a failure in the form a durable run's record holds it (#352): its detail is what the
-// record guard leaves of the cause's. Normalize reads it before anything it wraps, so the model, the run's
-// events and the record agree, while errors.Is and errors.As still reach the cause.
+// record guard leaves of the cause's. Normalize reads it before anything it wraps, so what the model is given
+// of the failure and the record agree, while errors.Is and errors.As still reach the cause.
 type RecordedError struct {
 	Failure contract.Failure
 	Cause   error
@@ -130,8 +137,9 @@ func CutDetail(detail string) string { return cutUTF16(detail, 1000) }
 // Err is failureError: a failure of a class as an error.
 func Err(code, source, outcome string) *Error { return NewError(New(code, source, outcome)) }
 
-// Authored is authoredFailure: a host-authored failure with its detail, cut to a thousand
-// characters. Never provider prose or an arbitrary caught message.
+// Authored is authoredFailure: a host-authored failure with its detail, cut to a thousand UTF-16
+// code units, never half a pair; where it is cut, the error keeps the whole detail for a durable
+// writer's record guard alone (TakeWhole, #352). Never provider prose or an arbitrary caught message.
 func Authored(code, detail, source string) *Error {
 	if source == "" {
 		source = "desk"
@@ -139,7 +147,11 @@ func Authored(code, detail, source string) *Error {
 	f := New(code, source, "unknown")
 	cut := cutUTF16(detail, 1000)
 	f.Detail = &cut
-	return NewError(f)
+	authored := NewError(f)
+	if cut != detail {
+		authored.whole = &detail
+	}
+	return authored
 }
 
 // cutUTF16 is String.prototype.slice(0, n): at most n UTF-16 code units, never half a pair.
@@ -271,26 +283,54 @@ func RefusalCode(body string) string { return bodyCode(body) }
 // not be read is invalid-response; a deadline is a timeout; what wraps another is classified by
 // what it wraps, four levels down; anything else is unknown.
 func Normalize(cause error, source string, now time.Time) contract.Failure {
+	f, _ := normalize(cause, source, now)
+	return f
+}
+
+// wholeMu guards an *Error's whole detail while TakeWhole reads and drops it.
+var wholeMu sync.Mutex
+
+// TakeWhole is Normalize for a durable writer's record (#352), with the detail its record guard reads: the
+// whole one the failure was authored with, where Authored cut it, and otherwise the failure's own. The guard
+// reads it before the cut, so that a match the cut would split is still found. The whole detail is read
+// once: the error it was read from no longer holds it.
+func TakeWhole(cause error, source string, now time.Time) (contract.Failure, *string) {
+	f, from := normalize(cause, source, now)
+	detail := f.Detail
+	if from != nil {
+		wholeMu.Lock()
+		whole := from.whole
+		from.whole = nil
+		wholeMu.Unlock()
+		if whole != nil && detail != nil && cutUTF16(*whole, 1000) == *detail {
+			detail = whole
+		}
+	}
+	return f, detail
+}
+
+// normalize is Normalize, and the *Error it read the failure from, where it read one.
+func normalize(cause error, source string, now time.Time) (contract.Failure, *Error) {
 	if source == "" {
 		source = "desk"
 	}
-	var classify func(err error, depth int) contract.Failure
-	classify = func(err error, depth int) contract.Failure {
+	var classify func(err error, depth int) (contract.Failure, *Error)
+	classify = func(err error, depth int) (contract.Failure, *Error) {
 		if err == nil || depth > 4 {
-			return New("unknown", source, "unknown")
+			return New("unknown", source, "unknown"), nil
 		}
 		if held, ok := err.(*RecordedError); ok {
 			if f, ok := Read(held.Failure); ok {
-				return f
+				return f, nil
 			}
 		}
 		if held, ok := err.(*Error); ok {
 			if f, ok := Read(held.Failure); ok {
-				return f
+				return f, held
 			}
 		}
 		if err == Cancelled || err == context.Canceled {
-			return New("cancelled", source, "unknown")
+			return New("cancelled", source, "unknown"), nil
 		}
 		own := ""
 		if coded, ok := err.(Coded); ok && Known(coded.FailureCode()) {
@@ -329,15 +369,15 @@ func Normalize(cause error, source string, now time.Time) contract.Failure {
 				f.Status = &s
 			}
 			metadata(&f, header, now)
-			return f
+			return f, nil
 		}
 		var syntax *json.SyntaxError
 		var typed *json.UnmarshalTypeError
 		if errors.As(err, &syntax) || errors.As(err, &typed) || errors.Is(err, ErrInvalidResponse) {
-			return New("invalid-response", source, "unknown")
+			return New("invalid-response", source, "unknown"), nil
 		}
 		if err == context.DeadlineExceeded {
-			return New("timeout", source, "unknown")
+			return New("timeout", source, "unknown"), nil
 		}
 		var nested []error
 		switch wrapped := err.(type) {
@@ -350,11 +390,11 @@ func Normalize(cause error, source string, now time.Time) contract.Failure {
 			if inner == nil {
 				continue
 			}
-			if found := classify(inner, depth+1); found.Code != "unknown" || found.Detail != nil {
-				return found
+			if found, from := classify(inner, depth+1); found.Code != "unknown" || found.Detail != nil {
+				return found, from
 			}
 		}
-		return New("unknown", source, "unknown")
+		return New("unknown", source, "unknown"), nil
 	}
 	return classify(cause, 0)
 }

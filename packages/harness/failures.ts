@@ -109,8 +109,26 @@ export function canRetryRefusal(value:AIFailure,code?:string):boolean {
 }
 export function retryReady(value:AIFailure|undefined,now=Date.now()):boolean {return !value?.retryAt||Date.parse(value.retryAt)<=now}
 
-/** Host-authored validation only; never pass provider prose or arbitrary caught messages. */
-export function authoredFailure(code:FailureCode,detail:string,source:FailureSource='desk'):AIFailureError{return new AIFailureError({...failure(code,source),detail:detail.slice(0,1000)})}
+/**
+ * #352: the whole detail an authored failure was cut from, by its error. Only a durable writer's record guard reads it
+ * (`takeWholeDetail`), so that a match the cut would split is still found; it is no member of the error, so nothing
+ * encodes, prints or sends it, and it is dropped once read.
+ */
+const wholeDetails=new WeakMap<AIFailureError,string>()
+/** Host-authored validation only; never pass provider prose or arbitrary caught messages. The detail is cut to what a detail may hold (`cutDetail`). */
+export function authoredFailure(code:FailureCode,detail:string,source:FailureSource='desk'):AIFailureError{
+ const cut=cutDetail(detail),authored=new AIFailureError({...failure(code,source),detail:cut})
+ if(cut!==detail)wholeDetails.set(authored,detail)
+ return authored
+}
+/**
+ * #352: the detail a durable writer's record guard reads of `error`'s failure: the whole one it was authored with, where
+ * `authoredFailure` cut it, and otherwise its own. Read once: the error no longer holds it.
+ */
+export function takeWholeDetail(error:AIFailureError):string|undefined{
+ const whole=wholeDetails.get(error);wholeDetails.delete(error)
+ return whole!==undefined&&cutDetail(whole)===error.failure.detail?whole:error.failure.detail
+}
 
 /** A failed tool result is recoverable working data, not a failed assistant turn. */
 export function toolFailureResult(cause:unknown){

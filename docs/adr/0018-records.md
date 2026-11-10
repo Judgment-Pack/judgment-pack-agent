@@ -113,8 +113,13 @@ chat that records nothing is served that form from the cache.
 `handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an
 answer is present and gives the parent the continuation, so nothing is delivered from the answer itself.
 A durable row's failure (`durable.dispatches.*.failure`) is stored with the form this pass leaves of its
-`detail` alone, cut to the thousand UTF-16 code units a detail may hold without splitting a surrogate
-pair; its other members are the catalogue's and stay as they are. Where a host or Runtime call's failure
+`detail` alone, then cut to the thousand UTF-16 code units a detail may hold without splitting a
+surrogate pair; its other members are the catalogue's and stay as they are. The pass reads the detail
+whole, before the cut. An authored failure (`authoredFailure`, Go `failure.Authored`) is cut to that
+length when it is made, so its error keeps the whole detail for this pass alone: a module-private map in
+TypeScript, an unexported field in Go, never encoded, printed or sent, and dropped once read. A match the
+cut would split, such as a private key whose END marker lies past the cut, is therefore still found.
+Where no durable writer reads it, the failure is cut as before. Where a host or Runtime call's failure
 reaches a model, the call fails with that same form. In Go the call's error is wrapped in
 `failure.RecordedError`, which `failure.Normalize` reads before anything it wraps. In TypeScript the
 `AIFailureError` the failure was read from is given the form in place, with its message, so a check of

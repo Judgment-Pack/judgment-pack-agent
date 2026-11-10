@@ -1542,17 +1542,21 @@ func (w *RunWriter) RecordedResult(result ToolResult) (ToolResult, bool, error) 
 }
 
 // recordedFailureLocked is f in the form a durable row holds it (#352): what the storage pass leaves of its
-// detail alone, cut to the thousand UTF-16 code units a detail may hold, and whether that differs. A guard
-// refusal is returned with no failure.
-func (w *RunWriter) recordedFailureLocked(f contract.Failure) (contract.Failure, bool, error) {
+// detail alone, then cut to the thousand UTF-16 code units a detail may hold, and whether that differs. The
+// guard reads whole: the detail the failure was authored with, before Authored cut it (failure.TakeWhole),
+// so that a match the cut would split is still found. A guard refusal is returned with no failure.
+func (w *RunWriter) recordedFailureLocked(f contract.Failure, whole *string) (contract.Failure, bool, error) {
 	if f.Detail == nil {
 		return f, false, nil
+	}
+	if whole == nil {
+		whole = f.Detail
 	}
 	var guard RecordGuard
 	if w.guard != nil {
 		guard = w.guard()
 	}
-	raw, err := json.Marshal(*f.Detail)
+	raw, err := json.Marshal(*whole)
 	if err != nil {
 		return contract.Failure{}, false, err
 	}
@@ -1574,9 +1578,6 @@ func (w *RunWriter) recordedFailureLocked(f contract.Failure) (contract.Failure,
 	return f, true, nil
 }
 
-// recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
-// leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
-// With nothing redacted it is result itself. A guard refusal is returned with no result.
 // RecordedValueForm is the form this writer records a value in and whether it differs (#352), as the
 // writer is bound now. The function takes no lock of the writer's: a ledger calls it under its own, and a
 // commit holds the writer's lock while it reads the ledger.
@@ -1619,6 +1620,9 @@ func recordedValueForm(policy RecordsPolicy, guard func() RecordGuard) func(*Val
 	}
 }
 
+// recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
+// leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
+// With nothing redacted it is result itself. A guard refusal is returned with no result.
 func (w *RunWriter) recordedResultLocked(result ToolResult) (ToolResult, error) {
 	var guard RecordGuard
 	if w.guard != nil {
@@ -2122,10 +2126,10 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 		if row.ID == claim.ID {
 			updated := row
 			if runErr != nil {
-				// #352: the failure is recorded in the form the record guard leaves of its detail, and the call
-				// fails with that same form, so the record and what the model is given agree. A guard refusal
-				// is an unknown outcome, and nothing of the failure is stored.
-				held, changed, guardErr := w.recordedFailureLocked(failure.Normalize(runErr, "tool", time.Now()))
+				// #352: the failure is recorded in the form the record guard leaves of its detail, read whole
+				// before the cut, and the call fails with that same form, so the record and what the model is
+				// given agree. A guard refusal is an unknown outcome, and nothing of the failure is stored.
+				held, changed, guardErr := w.recordedFailureLocked(failure.TakeWhole(runErr, "tool", time.Now()))
 				if guardErr != nil {
 					w.fatal = &StorageOutcomeUnknown{cause: guardErr}
 					return zero, w.fatal
