@@ -75,7 +75,7 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
     if(context.claimApprovalPause&&!context.claimApprovalPause(callId))throw context.refuse(name,'The invocation did not claim this approval pause. Nothing was sent.','approval pending')
     const record:ApprovalRecord={...runtimeJSON(attempt.request),callId,state:'asked',marker:context.marker}
     context.execution.mutate({approval:record,version:3,status:'paused'})
-    try{await binding.writer.save(binding,context.execution.snapshot('paused'),session.signal)}catch(error){context.execution.mutate({approval:undefined,status:'stopped'});throw error}
+    try{await binding.writer.save(binding,context.execution.snapshot('paused'),session.signal)}catch(error){context.execution.mutate({approval:undefined,status:'stopped'});context.unsavedAsk??={cause:error};throw error}
     session.signal.throwIfAborted()
     return {args:runtimeJSON(attempt.request.args),requested:{type:'approval_requested',...runtimeJSON(attempt.request),callId},execute:async()=>{throw context.refuse(name,'The Runtime action waits for the person. Nothing was sent.','approval pending')}}
    }

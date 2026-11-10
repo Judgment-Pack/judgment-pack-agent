@@ -16748,6 +16748,66 @@
    "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
   },
   {
+   "name": "pause P5 agent#349 a Runtime action's ask that could not be saved is the call's own failure on vercel",
+   "file": "engines/vercel/loop.ts",
+   "find": "if(context.unsavedAsk!==undefined){fatal??=context.unsavedAsk;inputPause.abort()}",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349: the next request's checkpoint then reports storage/storage/not-started. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P6 agent#349 vercel keeps the unsaved ask's failure and reports nothing",
+   "file": "engines/vercel/loop.ts",
+   "find": "if (!isCancelled(kept.cause) && !gate.signal.aborted) await channel.push(failureEvent(kept.cause, 'storage'))",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P7 agent#349 a Runtime action's ask that could not be saved is the call's own failure on deepagents",
+   "file": "engines/deepagents/loop.ts",
+   "find": "if(context.unsavedAsk!==undefined){fatal??=context.unsavedAsk;inputPause.abort()}",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349: the run then reports unknown/model/unknown. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P8 agent#349 deepagents keeps the unsaved ask's failure and reports nothing",
+   "file": "engines/deepagents/loop.ts",
+   "find": "if (!isCancelled(kept.cause) && !gate.signal.aborted) await channel.push(failureEvent(kept.cause, 'storage'))",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
+   "name": "pause P9 agent#349 a Runtime action's unsaved ask is not kept for the model engines",
+   "file": "context/runtimeActions.ts",
+   "find": "context.unsavedAsk??={cause:error};",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#349",
+   "note": "agent#349. Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown (P4's note)."
+  },
+  {
    "name": "continuation C1 a recovered invocation is sent again by the handoff's rule alone",
    "file": "storage/writer.ts",
    "find": "  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)\n",
