@@ -1,4 +1,6 @@
-import {durableOwner,durableSession} from '../storage/writer'
+import {durableOwner,durableSession,questionAnswers} from '../storage/writer'
+import {questionAnswerText} from '../storage/successor'
+import {dataMarker} from '../framing'
 import {guardConnectionNotices} from '../session'
 import {OutputRefused,RecordsRefused,outputWhere} from '../outputGuard'
 import {PolicyRefusal} from '../policy'
@@ -164,6 +166,9 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
   }
   // #229: a resumed job wait: one fixed line and one data block built from the job's record, and no checkpoint member.
   if(session.context?.jobContinuation)ready.session.prompt=ready.session.prompt+'\n\n'+jobContinuation(session.context.jobContinuation)
+  // #340, #341: the person's answer to the question the run asked, as the store holds it: a successor's on every open, a
+  // claimed question wait's on its continuation.
+  for(const answered of session.context?.[questionAnswers]??[])ready.session.prompt=ready.session.prompt+'\n\n'+questionAnswerText(answered.question,answered.answer,dataMarker())
   for await (let event of routedEvents(ready.session,run,context)){
    // Output is held before host delivery; dispatch independently guards tool arguments.
    if(context.output.mode!=='off'&&(event.type==='message_progress'||event.type==='reasoning'&&!event.done))continue

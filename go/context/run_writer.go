@@ -75,6 +75,9 @@ type DurableRunInput struct {
 	ID      string
 	Resume  bool
 	Context *StoredChatScope
+	// Successor (#340) makes (Resume false) or continues (Resume true) the successor run of a complete run's last
+	// question; ID is then SuccessorRunID(Successor.Predecessor, Successor.Question).
+	Successor *RunSuccessor
 }
 type RunBinding struct {
 	captureRoot *captureRootAuthority
@@ -158,7 +161,8 @@ const RunCompleteDetail = "RunComplete: the run is complete, and a finished run 
 // RunComplete (#328): a resume of a run whose run-store head is complete is refused by name, before anything of the run
 // is bound: no model request, no tool call and no record write. A finished run asked again would make new requests and
 // could act again. Three resumes of a complete head are kept, each borne out by the store: a job wait's continuation
-// (ResumeParked, then Input.JobContinuation) where the store holds that wait claimed at this head, a re-authorization
+// (ResumeParked, then Input.JobContinuation) where the store holds that wait claimed at this head, opened through the
+// claim's own view (#355), a re-authorization
 // claim's view (ReauthorizedRunStore) while its grant is unspent, and a leg of the run's open objective (#330). A question's answer and a chat's next turn are new runs. An execution
 // the host holds itself, with no run store, is the host's own record and is not refused.
 type RunComplete struct{}
@@ -176,9 +180,19 @@ func completeHeadBase(store RunStore) RunStore {
 	return store
 }
 
+// claimedThrough (#355): a claimed wait's continuation is the claim's own, opened through the lease view of this run
+// whose fence is the owner and epoch the claim recorded, as a re-authorization claim's is. Its commits are then fenced:
+// once a later lease of the run (a successor's, or another claim's) takes a new epoch, they are refused. Through the
+// plain store, or a view of another lease, the claim admits nothing, since an unfenced commit passes every check a
+// lease makes.
+func claimedThrough(store RunStore, id string, resumed *contract.RunWaitActor) bool {
+	view := leaseViewOf(store)
+	return view != nil && resumed != nil && view.fence.Resource == id && view.fence.Owner == resumed.Owner && view.fence.Epoch == resumed.Epoch
+}
+
 // claimedJobWait (#330 HIGH-1): a job continuation resumes a complete head only where the store bears it out: this run's
-// wait on that job, claimed, and parked at this head's revision. A continuation delivered again after it ran meets a head
-// that has moved.
+// wait on that job, claimed, and parked at this head's revision, and only through the claim's own view (#355). A
+// continuation delivered again after it ran meets a head that has moved.
 func claimedJobWait(ctx context.Context, store RunStore, id, job, revision string) (bool, error) {
 	waits, ok := completeHeadBase(store).(interface {
 		ExportWaits(context.Context, string) (WaitExport, error)
@@ -191,7 +205,7 @@ func claimedJobWait(ctx context.Context, store RunStore, id, job, revision strin
 		return false, err
 	}
 	for _, wait := range held.Waits {
-		if wait.Resource == id && wait.State == "resumed" && wait.Pending.Job != nil && wait.Pending.Job.Job == job && wait.Checkpoint.Revision == revision {
+		if wait.Resource == id && wait.State == "resumed" && wait.Pending.Job != nil && wait.Pending.Job.Job == job && wait.Checkpoint.Revision == revision && claimedThrough(store, id, wait.Resumed) {
 			return true, nil
 		}
 	}
@@ -2182,14 +2196,30 @@ func (w *RunWriter) closed() error {
 	return failure.Cancelled
 }
 
-// PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload.
+// PrepareDurableInput loads only for an explicit host start/resume. It never resumes on GET/reload. It does not know
+// the request, so it makes no successor (#340): a successor's create through it is refused SuccessorRefused invalid,
+// and PrepareDurableInputFor makes it. A successor that exists opens through either.
 func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
+	return prepareDurableInput(ctx, input, nil)
+}
+
+// PrepareDurableInputFor is PrepareDurableInput for an open that names its request, as a session does: a successor's
+// first checkpoint is written only for the request and phase its predecessor's holds.
+func PrepareDurableInputFor(ctx context.Context, input *Input, request DurableRequest) (*Input, error) {
+	return prepareDurableInput(ctx, input, &request)
+}
+
+func prepareDurableInput(ctx context.Context, input *Input, request *DurableRequest) (*Input, error) {
 	if input == nil || input.Persistence != nil {
 		return input, nil
 	}
+	// #341: a question wait's continuation is a run store's, and only of a head the store holds.
+	if input.QuestionContinuation != "" && input.RunStore == nil {
+		return nil, waitInvalid()
+	}
 	// ADR-0029: a durable root's delegation is refused, by name, before its store is touched.
+	var record *PrincipalRecord
 	if input.RunStore != nil {
-		var record *PrincipalRecord
 		if input.Principal != nil {
 			opened, err := OpenRunPrincipal(input.Principal, nil)
 			if err != nil {
@@ -2239,6 +2269,8 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 	var store RunStore
 	var head *RunHead
 	var err error
+	successorFirst := false
+	var predecessor *RunHead
 	if copy.Execution != nil {
 		id = copy.Execution.ID
 	}
@@ -2248,12 +2280,25 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		if !validStorageID(id) || store == nil {
 			return nil, &ContinuationIdentityChanged{}
 		}
+		if err = readSuccessorInput(copy.RunStore, copy.Execution != nil || copy.JobContinuation != nil || copy.QuestionContinuation != "" || copy.UsageBudget != nil); err != nil {
+			return nil, err
+		}
+		if copy.RunStore.Successor != nil && store.Durability() == RunStoreSingleWriterCallback {
+			return nil, successorRefused("invalid")
+		}
 		head, err = store.Load(ctx, id)
 		if err != nil {
 			return nil, err
 		}
+		// #340: a question has one successor; making it again meets the one already made.
+		if copy.RunStore.Successor != nil && !copy.RunStore.Resume && head != nil {
+			return nil, successorRefused("succeeded")
+		}
 		if (head != nil) != copy.RunStore.Resume {
 			return nil, &StorageConflict{}
+		}
+		if head == nil && copy.QuestionContinuation != "" {
+			return nil, waitInvalid()
 		}
 		if head != nil {
 			if head.Checkpoint == nil {
@@ -2275,11 +2320,33 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				}
 			}
 			copy.Execution = saved
-			// #328: a complete head resumes only as a claimed job wait's continuation, a re-authorization claim's, or a
-			// leg of an open objective (#330).
-			if saved.Status == "complete" && !reauthorizedContinuation(store, head.Checkpoint) {
-				admitted := false
-				if copy.JobContinuation != nil {
+			// #340: a successor's head opens only while its predecessor holds it up, every time.
+			if copy.RunStore.Successor != nil {
+				_, _, answered, err := readPredecessor(ctx, store, *copy.RunStore.Successor)
+				if err != nil {
+					return nil, err
+				}
+				copy.questionAnswers = append(copy.questionAnswers, *answered)
+			}
+			// #341: a claimed question wait's continuation hands on the wait's resolution, and only at the head the
+			// wait was parked at.
+			var claimed *questionAnswer
+			if copy.QuestionContinuation != "" {
+				if copy.JobContinuation != nil || !validStorageID(copy.QuestionContinuation) {
+					return nil, waitInvalid()
+				}
+				if claimed, err = claimedQuestionWait(ctx, store, id, copy.QuestionContinuation, head.Revision); err != nil {
+					return nil, err
+				}
+				if claimed == nil && saved.Status != "complete" {
+					return nil, waitRefused("mismatch")
+				}
+			}
+			// #328: a complete head resumes only as a claimed job wait's continuation, a claimed question wait's (#341),
+			// a re-authorization claim's, or a leg of an open objective (#330).
+			if saved.Status == "complete" {
+				admitted := reauthorizedContinuation(store, head.Checkpoint) || claimed != nil
+				if !admitted && copy.JobContinuation != nil {
 					if admitted, err = claimedJobWait(ctx, store, id, copy.JobContinuation.Job, head.Revision); err != nil {
 						return nil, err
 					}
@@ -2292,7 +2359,30 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 				if !admitted {
 					return nil, &RunComplete{}
 				}
+				// #340: once the head's last question has its successor, the successor carries the allowance, and the
+				// head resumes no other way.
+				succeeded, err := succeededHead(ctx, store, id)
+				if err != nil {
+					return nil, err
+				}
+				if succeeded {
+					return nil, successorRefused("succeeded")
+				}
 			}
+			if claimed != nil {
+				copy.questionAnswers = append(copy.questionAnswers, *claimed)
+			}
+		} else if copy.RunStore.Successor != nil {
+			var answered *questionAnswer
+			if copy.Execution, answered, predecessor, err = makeSuccessor(ctx, store, &copy, copy.RequestCap, id, *copy.RunStore.Successor, request); err != nil {
+				return nil, err
+			}
+			// ADR-0029: the successor carries the predecessor's principal, and is made only under it.
+			if PrincipalsChanged(copy.Execution.Principal, record) {
+				return nil, failure.Authored("stale-state", "The run continues under another principal than it began under (principal-changed). Nothing was sent.", "context")
+			}
+			copy.questionAnswers = []questionAnswer{*answered}
+			successorFirst = true
 		}
 	} else {
 		store = NewCheckpointCallbackRunStore(copy.Checkpoint, func(raw []byte) (contract.Checkpoint, error) {
@@ -2369,6 +2459,40 @@ func PrepareDurableInput(ctx context.Context, input *Input) (*Input, error) {
 		if writer.contextSource != nil && head != nil {
 			if err := writer.commitLocked(ctx, newStorageIdentity(), *writer.latest, head.Checkpoint, [][]byte{}); err != nil {
 				return nil, err
+			}
+		}
+		// #340: the successor's first checkpoint is created once at its derived id, before anything of the run is sent,
+		// so a second successor made at the same time meets this one. It is made under the predecessor's lease, where the
+		// store has leases (HIGH-1): an admitted continuation of the predecessor holds that lease, or has lost it to
+		// this one's new epoch. The predecessor and its waits are read again after the create: a head that moved, or a
+		// question wait parked meanwhile, refuses the successor, and the wait's continuation is refused as well because
+		// the successor exists. Neither sends anything.
+		if successorFirst {
+			asked := copy.RunStore.Successor
+			release, err := holdPredecessor(ctx, store, id, *asked, predecessor, copy.Execution.Principal)
+			if err != nil {
+				return nil, err
+			}
+			defer release()
+			raw, err := canonicalRaw(writer.latest)
+			if err == nil {
+				err = writer.commitLocked(ctx, newStorageIdentity(), *writer.latest, raw, [][]byte{})
+			}
+			if errors.As(err, new(*StorageConflict)) {
+				return nil, successorRefused("succeeded")
+			}
+			if err != nil {
+				return nil, err
+			}
+			if err := predecessorUnmoved(ctx, store, *asked, predecessor); err != nil {
+				return nil, err
+			}
+			parked, err := questionWaitHeld(ctx, store, asked.Predecessor, asked.Question)
+			if err != nil {
+				return nil, err
+			}
+			if parked {
+				return nil, successorRefused("parked")
 			}
 		}
 	}

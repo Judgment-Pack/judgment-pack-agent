@@ -11403,7 +11403,7 @@
   {
    "name": "principal P51 a durable resume under other principals is not named",
    "file": "storage/writer.ts",
-   "find": " if(head&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')\n",
+   "find": " if((head||successor)&&principalsChanged(execution?.principal,delegation?.record))throw authoredFailure('stale-state',PRINCIPAL_CHANGED,'context')\n",
    "replace": " void [principalsChanged,delegation,PRINCIPAL_CHANGED,authoredFailure]\n",
    "tests": [
     "principalPaths.test.ts"
@@ -15266,7 +15266,7 @@
   {
    "name": "resume #328 a resume of a complete head is not refused",
    "file": "storage/writer.ts",
-   "find": " if(head&&await finished(store,id,head,execution,input,session.signal))throw new RunComplete()\n",
+   "find": " if(head&&await finished(store,id,head,execution,input,claimed!==undefined,session.signal))throw new RunComplete()\n",
    "replace": "",
    "tests": [
     "storage/startRefusal.test.ts"
@@ -15290,8 +15290,8 @@
   {
    "name": "resume #328 a re-authorization claim's continuation is refused at a complete head",
    "file": "storage/writer.ts",
-   "find": "||reauthorizedContinuation(store,execution))return false",
-   "replace": ")return false",
+   "find": "||reauthorizedContinuation(store,execution)||claimed)return false",
+   "replace": "||claimed)return false",
    "tests": [
     "storage/reauth.test.ts"
    ],
@@ -17601,6 +17601,498 @@
    "status": "caught",
    "origin": "agent#357",
    "note": "Go twin (by hand, sources.go load_tool's answer: the declared schema read with ParseJSON, not parseMarkedJSON): caught at TestTheWordsASchemaKeepsAsWrittenAreBoundedAtTheLimitAndOnePast (the catalogued case's loaded and accepts)."
+  },
+  {
+   "name": "#340 a successor is made once: making it again meets the one already made",
+   "file": "storage/writer.ts",
+   "find": " if(successor&&!config!.resume&&head)throw new SuccessorRefused('succeeded')\n",
+   "replace": " void 0\n",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the Successor && !Resume && head != nil refusal): caught at TestASuccessorCarriesThePredecessorsAllowanceAndNothingElse and TestASuccessorInterruptedWhileItIsMadeResumes."
+  },
+  {
+   "name": "#340 a create that meets a successor made meanwhile is refused succeeded",
+   "file": "storage/writer.ts",
+   "find": "if(error instanceof StorageConflict)throw new SuccessorRefused('succeeded');throw error}",
+   "replace": "throw error}",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the StorageConflict to succeeded mapping): caught at TestTwoSuccessorsOfOneQuestionAtOnceAreOneRun (its store with no lease port)."
+  },
+  {
+   "name": "#340 a question wait parked while the successor was made refuses it",
+   "file": "storage/writer.ts",
+   "find": "  if(await questionWaitHeld(store,successor.predecessor,successor.question,session.signal))throw new SuccessorRefused('parked')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the questionWaitHeld re-check after the create): caught at TestASuccessorAndAQuestionWaitAtOnceBothFailClosed."
+  },
+  {
+   "name": "#340 a complete head whose last question has its successor resumes no other way",
+   "file": "storage/writer.ts",
+   "find": " if(head&&execution?.status==='complete'&&await succeededHead(store,id,session.signal))throw new SuccessorRefused('succeeded')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the succeededHead refusal): caught at TestASuccessorAndAQuestionWaitAtOnceBothFailClosed (a claimed question wait's continuation) and TestAHeadWhoseQuestionHasItsSuccessorResumesNoOtherWay (a claimed job wait's continuation, a leg of an open objective)."
+  },
+  {
+   "name": "#340 a successor is made only under the predecessor's principal",
+   "file": "storage/writer.ts",
+   "find": "if((head||successor)&&principalsChanged(",
+   "replace": "if(head&&principalsChanged(",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the PrincipalsChanged check before successorFirst): caught at TestASuccessorIsMadeOnlyUnderThePredecessorsPrincipal."
+  },
+  {
+   "name": "#340 a successor is not made on one writer's callback store",
+   "file": "storage/writer.ts",
+   "find": " if(successor&&config!.store.durability==='single-writer-callback')throw new SuccessorRefused('invalid')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the RunStoreSingleWriterCallback refusal): caught at TestASuccessorIsRefusedByName/a_store_that_is_one_writer's_callback."
+  },
+  {
+   "name": "#341 a question continuation is a run store's",
+   "file": "storage/writer.ts",
+   "find": " if(input?.questionContinuation!==undefined&&!config)throw new WaitRefused('invalid')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#341",
+   "note": "Go twin (by hand, run_writer.go the QuestionContinuation without a RunStore refusal): caught at TestAClaimedQuestionWaitContinuesACompleteHead."
+  },
+  {
+   "name": "#341 a question continuation of a running head needs its claimed wait",
+   "file": "storage/writer.ts",
+   "find": "  if(!claimed&&execution?.status!=='complete')throw new WaitRefused('mismatch')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#341",
+   "note": "Go twin (by hand, run_writer.go claimed == nil && saved.Status != complete): caught at TestAQuestionContinuationOfARunningHeadNeedsItsClaimedWait."
+  },
+  {
+   "name": "#341 a question continuation names a storage id",
+   "file": "storage/writer.ts",
+   "find": "if(input.jobContinuation!==undefined||!storageId(input.questionContinuation))throw",
+   "replace": "if(input.jobContinuation!==undefined)throw",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#341",
+   "note": "Go twin (by hand, run_writer.go !validStorageID(copy.QuestionContinuation)): caught at TestAQuestionContinuationOfARunningHeadNeedsItsClaimedWait."
+  },
+  {
+   "name": "#340 a question that has its successor is not parked",
+   "file": "storage/wait.ts",
+   "find": "  if(await successorHeld(store,fence.resource,input.question,input.signal))throw new WaitRefused('nothing-pending')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_wait.go the successorHeld refusal in ParkRun): caught at TestASuccessorCarriesThePredecessorsAllowanceAndNothingElse."
+  },
+  {
+   "name": "#340 a successor's answer is a real answer",
+   "file": "storage/wait.ts",
+   "find": "return realAnswer(held)?held:undefined",
+   "replace": "return held",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go !realAnswer(answer)): caught at TestASuccessorIsRefusedByName/a_blank_answer."
+  },
+  {
+   "name": "#341 a question continuation resumes only at the head the wait was parked at",
+   "file": "storage/successor.ts",
+   "find": "||row.checkpoint.revision!==revision||",
+   "replace": "||",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#341",
+   "note": "Go twin (by hand, run_successor.go row.Checkpoint.Revision != revision): caught at TestAClaimedQuestionWaitContinuesACompleteHead."
+  },
+  {
+   "name": "#341 only a claimed question wait continues a complete head",
+   "file": "storage/successor.ts",
+   "find": "row.state!=='resumed'||",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#341",
+   "note": "Go twin (by hand, run_successor.go row.State != resumed): caught at TestAClaimedQuestionWaitContinuesACompleteHead."
+  },
+  {
+   "name": "#340 a successor is made only under the predecessor's request cap",
+   "file": "storage/successor.ts",
+   "find": " if(saved.requestCap!==request.requestCap)throw new RequestCapRefusal('stale-state')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the requestCapRefusal in makeSuccessor): caught at TestASuccessorIsMadeOnlyUnderThePredecessorsRequestCap."
+  },
+  {
+   "name": "#340 a successor's predecessor is complete",
+   "file": "storage/successor.ts",
+   "find": "if(saved?.status!=='complete'||saved.id!==asked.predecessor)",
+   "replace": "if(saved===undefined)",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go saved.Status != complete): caught at TestASuccessorIsRefusedByName/a_predecessor_still_running."
+  },
+  {
+   "name": "#340 a question answered through its own wait has no successor",
+   "file": "storage/successor.ts",
+   "find": " if(await questionWaitHeld(store,asked.predecessor,asked.question,signal))throw new SuccessorRefused('parked')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the parked refusal in readPredecessor): caught at TestASuccessorIsRefusedByName/a_question_with_its_own_wait."
+  },
+  {
+   "name": "#340 a successor's run id is the one derived",
+   "file": "storage/successor.ts",
+   "find": " if(id!==successorRunId(held.predecessor,held.question))throw new SuccessorRefused('unbound')\n",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the unbound refusal in readSuccessorInput): caught at TestASuccessorIsRefusedByName/an_id_not_derived."
+  },
+  {
+   "name": "#340 a successor opens without a usage budget or a chat context",
+   "file": "storage/successor.ts",
+   "find": "||input.usageBudget!==undefined||input.context!==undefined)",
+   "replace": ")",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go input.UsageBudget != nil || input.RunStore.Context != nil): caught at TestASuccessorIsRefusedByName/a_usage_budget_beside_it and /a_chat_context_beside_it."
+  },
+  {
+   "name": "#340 the successor carries the predecessor's grants",
+   "file": "storage/successor.ts",
+   "find": "grants:saved.grants.map(grant=>({...grant}))",
+   "replace": "grants:[]",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go Grants: grants): caught at TestASuccessorCarriesThePredecessorsAllowanceAndNothingElse and TestASuccessorRunContinuesUnderTheApprovedAllowance."
+  },
+  {
+   "name": "#340 the first request is handed the person's answer",
+   "file": "context/managed.ts",
+   "find": "for(const answered of session.context?.[questionAnswers]??[])",
+   "replace": "for(const answered of [] as {question:never;answer:never}[])",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, session.go the QuestionAnswerText append): caught at TestASuccessorRunContinuesUnderTheApprovedAllowance."
+  },
+  {
+   "name": "#340 a successor's id is opened only as a successor",
+   "file": "storage/successor.ts",
+   "find": "if(id.startsWith(SUCCESSOR_PREFIX))throw new SuccessorRefused('unbound');",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the successorPrefix refusal in readSuccessorInput): caught at TestASuccessorIDIsOpenedOnlyAsASuccessor."
+  },
+  {
+   "name": "#340 a successor is not made beside a job continuation",
+   "file": "storage/successor.ts",
+   "find": "||input.jobContinuation!==undefined||input.questionContinuation",
+   "replace": "||input.questionContinuation",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go input.JobContinuation != nil): caught at TestASuccessorIsRefusedByName/a_job_continuation_beside_it."
+  },
+  {
+   "name": "#340 a successor's predecessor head is its own",
+   "file": "storage/successor.ts",
+   "find": "||saved.id!==asked.predecessor)throw new SuccessorRefused('not-complete')",
+   "replace": ")throw new SuccessorRefused('not-complete')",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go saved.ID != asked.Predecessor): caught at TestASuccessorIsRefusedByName/a_predecessor_head_of_another_run."
+  },
+  {
+   "name": "#340 a budgeted predecessor has no successor",
+   "file": "storage/successor.ts",
+   "find": "if(saved.usageBudget!==undefined)throw new SuccessorRefused('budgeted')",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the budgeted refusal in readPredecessor): caught at TestASuccessorIsRefusedByName/a_budgeted_predecessor."
+  },
+  {
+   "name": "#340 an exhausted predecessor has no successor",
+   "file": "storage/successor.ts",
+   "find": "if(saved.used>=saved.limit)throw new SuccessorRefused('exhausted')",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the exhausted refusal in readPredecessor): caught at TestASuccessorIsRefusedByName/an_exhausted_predecessor and /an_exhausted_provider-managed_predecessor."
+  },
+  {
+   "name": "#340 expired records have no successor",
+   "file": "storage/successor.ts",
+   "find": "if(saved.retainUntil)refuseExpired(saved as {retainUntil:string})",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the RefuseExpired check in readPredecessor): caught at TestASuccessorKeepsThePredecessorsRetention."
+  },
+  {
+   "name": "#340 the successor keeps the predecessor's retention",
+   "file": "storage/successor.ts",
+   "find": "saved.retainUntil?writeRecord(CHECKPOINT_SCHEMA,first,RECORD_DEFAULTS,undefined,new Date(),saved.retainUntil):first",
+   "replace": "first",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the WriteRecord carry in makeSuccessor): caught at TestASuccessorKeepsThePredecessorsRetention."
+  },
+  {
+   "name": "#340 a successor is made only for the predecessor's request",
+   "file": "storage/successor.ts",
+   "find": "if(saved.requestKey!==held.requestKey||saved.phase!==held.phase)throw",
+   "replace": "if(false)throw",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go the requestChanged check in makeSuccessor): caught at TestASuccessorIsMadeOnlyForThePredecessorsRequest."
+  },
+  {
+   "name": "#340 a successor is written at the version of what it carries",
+   "file": "storage/successor.ts",
+   "find": "version===3||version===5?3:version===4||version===6?4:2",
+   "replace": "version===3?3:version===4?4:2",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go case 3, 5 and case 4, 6 in successorVersion): caught at TestASuccessorIsWrittenAtTheVersionOfWhatItCarries."
+  },
+  {
+   "name": "#340 a successor's first turn counts its own test calls",
+   "file": "storage/successor.ts",
+   "find": "phase:saved.phase,status:'running'",
+   "replace": "phase:saved.phase,...(saved.testCalls===undefined?{}:{testCalls:saved.testCalls}),status:'running'",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_successor.go TestCalls: saved.TestCalls added to the first checkpoint): caught at TestASuccessorIsWrittenAtTheVersionOfWhatItCarries."
+  },
+  {
+   "name": "#340 a successor is made under the predecessor's lease",
+   "file": "storage/writer.ts",
+   "find": "const release=await holdPredecessor(store,id,successor,predecessor,execution?.principal,session.signal)",
+   "replace": "const release=async()=>{}",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the holdPredecessor call): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance and TestTwoSuccessorsOfOneQuestionAtOnceAreOneRun."
+  },
+  {
+   "name": "#340 the predecessor's lease is released after the create",
+   "file": "storage/writer.ts",
+   "find": "}finally{await release()}",
+   "replace": "}finally{}",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go defer release()): caught at TestASuccessorCarriesThePredecessorsAllowanceAndNothingElse."
+  },
+  {
+   "name": "#340 the predecessor is read again after the successor's create",
+   "file": "storage/writer.ts",
+   "find": "await predecessorUnmoved(store,successor,predecessor,session.signal)",
+   "replace": "void 0",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_writer.go the predecessorUnmoved check): caught at TestASuccessorWhosePredecessorMovedWhileItWasMadeIsRefused."
+  },
+  {
+   "name": "#340 a park reads the successor again after its commit",
+   "file": "storage/wait.ts",
+   "find": "if(pending.kind==='question'&&await successorHeld(store,fence.resource,pending.event,input.signal))throw new SuccessorRefused('succeeded')",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "Go twin (by hand, run_wait.go the successorHeld re-read after ParkWait): caught at TestAQuestionParkedWhileItsSuccessorIsMadeIsRefused."
+  },
+  {
+   "name": "#340 a run is handed no answers a host set",
+   "file": "storage/writer.ts",
+   "find": "if(session.context&&questionAnswers in session.context){const {[questionAnswers]:_,...rest}=session.context;session={...session,context:rest} as T}",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#340",
+   "note": "No Go twin: Go's answers are an unexported member of the prepared input, which a host cannot set."
+  },
+  {
+   "name": "#355 a claimed job wait's continuation of a complete head is admitted only through the claim's own view",
+   "file": "storage/writer.ts",
+   "find": "&&claimedThrough(store,id,record(wait.resumed)?wait.resumed:undefined)",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_writer.go claimedJobWait's claimedThrough): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance."
+  },
+  {
+   "name": "#355 a claimed question wait's continuation is admitted only through the claim's own view",
+   "file": "storage/successor.ts",
+   "find": "||!claimedThrough(store,id,row.resumed))return undefined",
+   "replace": ")return undefined",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go claimedQuestionWait's claimedThrough): caught at TestAClaimedQuestionWaitContinuesACompleteHead."
+  },
+  {
+   "name": "#355 a claim's view is the claim's epoch, not a later lease of its owner",
+   "file": "storage/lease.ts",
+   "find": "&&fence.epoch===resumed.epoch",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_writer.go claimedThrough's epoch match): caught at TestAnAdmittedContinuationAndASuccessorDoNotBothSpendTheAllowance."
+  },
+  {
+   "name": "#355 a predecessor with a run deadline has no successor",
+   "file": "storage/successor.ts",
+   "find": "if(await predecessorDeadlined(base,asked.predecessor,signal))throw new SuccessorRefused('deadlined')",
+   "replace": "",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go readPredecessor's deadlined): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#355 a store that holds deadlines and cannot read them back is taken as holding one",
+   "file": "storage/successor.ts",
+   "find": "return typeof held.limitRun==='function'",
+   "replace": "return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_successor.go predecessorDeadlined's LimitRun port): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#355 the memory store reads back the run's deadline",
+   "file": "storage/wait.ts",
+   "find": "return held===undefined?undefined:{version:1,resource,run:new Date(held).toISOString()}",
+   "replace": "return undefined",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#355",
+   "note": "Go twin (by hand, run_wait.go WaitTable.Deadline): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
   }
  ]
 }
