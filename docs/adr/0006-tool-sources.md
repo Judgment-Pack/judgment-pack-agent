@@ -150,7 +150,9 @@ structural keywords are offered (`type` of the seven JSON types, `format` from a
 `const`); every other keyword, whatever its value (`title`, `$comment`, `default`, `examples`,
 `pattern`, an `x-` extension), is not offered. A property or definition name, or a `required` entry,
 over 64 bytes or holding white space is dropped (a name with its schema); an `enum` or `const` that
-holds a string over 64 bytes or a line break, or an `enum` that is no list, is dropped whole. Each
+holds a string over 64 bytes, a line break or a lone surrogate (in a Go host's schema bytes, a `\u`
+escape of half a pair alone, or bytes that are not UTF-8), or an `enum` that is no list, is dropped
+whole, since the two implementations would not offer it the same. Each
 such drop earns a `guardrail` naming where, at the start of the run, since the host still validates
 what it executes. A branch deeper than sixteen levels is offered empty. A schema `load_tool` loads is
 treated the same, its descriptions cut and unframed, for it rides inside a block framed as a whole.
@@ -164,7 +166,9 @@ an `enum` of more than 64 members, a `properties`, `$defs` or `definitions` map 
 or a `required` list of more than 64 entries, or more than 4,096 bytes of those words across its
 tools (each string's UTF-8 bytes, any other `enum` or `const` value as its JSON), is made a catalogue
 (§5) whatever the schema budget, so the model reads those words only inside `load_tool`'s data
-block. These bounds cut and drop nothing, and so raise no guardrail.
+block. These bounds cut and drop nothing, and raise no guardrail of their own; but a source they make
+a catalogue is held to `cataloguedTools` and `catalogueBytes` like any catalogued source (§5), so its
+tools past those are withheld, with §5's guardrail for the source.
 
 **Gateway snapshot pins (agent#168).** New MCP registrations supply the approved canonical UTF-8
 snapshot bytes as `source.descriptorSnapshot` (Go `DescriptorSnapshot`), their full SHA-256 as
@@ -227,7 +231,10 @@ schema it loaded: the package checks the arguments against that schema before th
 since nothing on the wire does (`sourceArguments.ts`, Go `ArgumentProblem`: `type`, `enum`, `const`,
 `required`, `properties`, `additionalProperties`, `items`, the numeric, length and item bounds,
 `allOf`, `anyOf` and `oneOf`; any other keyword, `$ref` and `pattern` among them, is the host's to
-hold). The host validates what it executes in any case.
+hold). The refusal names what does not match by its path in the arguments the model wrote, and a
+missing `required` entry, which the arguments do not hold, by its place in the list, not its text,
+for the refusal reaches the model outside `load_tool`'s data block (agent#308). The host validates
+what it executes in any case.
 
 ### 6. Per-source bounds
 
