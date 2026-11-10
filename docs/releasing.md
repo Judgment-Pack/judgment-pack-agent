@@ -77,7 +77,8 @@ rule.
    suite can exhaust Go's default 10-minute aggregate package timeout while an individual test is
    still making progress, and the adapter package needs about twice its usual time on slower
    hosted runners. The selected packages, assertions and race instrumentation remain the same.
-   Since #292 the step is two, and since #306 three, `go-race-a`, `go-race-b` and `go-race-c`, each with its own 3,000-second limit, each
+   Since #292 the step is two, since #306 three and since #364 four, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d`, each
+   with its own 3,000-second limit, each
    in a job of its own, and together over the same packages
    ([#292](ci-evidence.md#the-two-race-jobs-292)). The adapter's heaviest test clusters are test binaries
    of their own ([#254](ci-evidence.md#the-race-step-on-its-own-runner-254)).
@@ -142,7 +143,7 @@ Every job works on the commit the run was started for, by its digest, not on the
    run is refused: a `go/` tag never points anywhere but at a `v` release commit.
 2. **Verifies trusted exact-source CI evidence.** The devkit's
    [release evidence gate](ci-evidence.md) (v0.15.0, vendored as `scripts/dev/release_evidence.py`)
-   requires complete successful `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs and every full mutation shard of
+   requires complete successful `contract`, `check`, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d` jobs and every full mutation shard of
    trusted main runs at the exact release commit, with the inputs the commit holds: every job on a
    runner that reported the release runner's image name, platform and OS release, whatever its image
    version, with every tool it records at its profile's pin
@@ -187,7 +188,7 @@ fails: release a new version.
 The full mutation table runs nightly and by dispatch, not on a push to `main`; pull requests run a
 sample. The release takes every full shard, all 28, of a dispatch run on main at the commit
 ([step 5](#prepare-the-release)),
-with `contract`, `check`, `go-race-a`, `go-race-b` and `go-race-c`, through the [release evidence gate](ci-evidence.md). It selects the
+with `contract`, `check`, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d`, through the [release evidence gate](ci-evidence.md). It selects the
 newest dispatch attempt on main whatever its result; a newer failed, cancelled or running attempt
 (a nightly run included) refuses, and nothing searches back for an older green one. A nightly run, a
 pull request's sample and a partial re-run cannot qualify. What a nightly run does to a candidate is in
