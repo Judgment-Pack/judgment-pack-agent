@@ -16746,6 +16746,66 @@
    "status": "caught",
    "origin": "agent#342",
    "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
+  },
+  {
+   "name": "#343 the writer records and answers a host result in the record guard's form",
+   "file": "storage/writer.ts",
+   "find": "    value=form(value)\n",
+   "replace": "    void form\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, run_writer.go value = any(recorded).(T)): caught at TestARedactedResultIsRecordedAndAnsweredInTheSameForm and TestARedactedResultSettlesAndIsWhatTheModelIsGiven."
+  },
+  {
+   "name": "#343 an external read's checked result is given the recorded form",
+   "file": "storage/writer.ts",
+   "find": "    if(admission)await admission.deliver(form)\n",
+   "replace": "    void admission\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, run_writer.go held.deliver): caught at TestAnExternalReadsCheckedResultIsGivenTheRecordedForm and TestAnExternalReadThroughTheGateAnswersTheRecordedForm."
+  },
+  {
+   "name": "#343 the receipt admission answers with the form it is given",
+   "file": "toolSources.ts",
+   "find": "    this.checked = Promise.resolve({ ...held, shown })\n",
+   "replace": "    void shown\n",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, sources.go a.result = shown): caught at the same two tests."
+  },
+  {
+   "name": "#343 a handoff's parent is given the continuation its record holds",
+   "file": "delegation.ts",
+   "find": ";handoff.continuation=held.continuation}",
+   "replace": "}",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "Go twin (by hand, delegate/agent.go pending.continuation from the last checkpoint): caught at TestAHandoffsParentIsGivenTheContinuationItsRecordHolds."
+  },
+  {
+   "name": "#343 the recorded form reads the value's JSON form, so a Date is no change",
+   "file": "records.ts",
+   "find": "const clean=guardRecordMember(guard,JSON.parse(text) as T,{redactions:{}})",
+   "replace": "const clean=guardRecordMember(guard,value,{redactions:{}})",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "TypeScript only: Go reads the result's JSON text already."
   }
  ]
 }

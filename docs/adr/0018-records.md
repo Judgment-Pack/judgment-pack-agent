@@ -89,3 +89,9 @@ record: a host may delete earlier. Export signatures and repository review recor
 remain future or host-owned work.
 
 The store-side guard exempts only exact labels emitted by that guard during the run; label-shaped model text is scanned and counted like other text, and compaction summaries are guarded before projection and hashing so stored and resumed bytes agree.
+
+**2026-11-09 (#343).** A durable host or runtime call's result is no longer stored whole: the writer
+puts it in the form this storage pass leaves of it before it is stored, records that form and answers
+the call with it, so the record and what the model is given agree. Those redactions are not counted in
+`records.redactions`, which still counts only what the pass itself changes when a record is written,
+and no `output_guarded` event is made of them. A guard refusal still ends the call as an unknown outcome.

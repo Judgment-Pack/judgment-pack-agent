@@ -4,6 +4,7 @@ package runcontext
 // package deliberately owns no record store; callers hand ExportRecords every record to export.
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -127,7 +128,7 @@ func guardRecord(out *Value, guard RecordGuard, figures *RecordMarker) error {
 		if names, ok := guard.(interface{ DeclaredName(string) bool }); ok && (key == "name" || key == "tool" || key == "toolName") && names.DeclaredName(value.Str()) {
 			return nil
 		}
-		clean, err := guard.JSON(value.JSON(), "message", true, figures)
+		clean, err := guardRecordMember(guard, value.JSON(), figures)
 		if err != nil {
 			return err
 		}
@@ -144,6 +145,27 @@ func guardRecord(out *Value, guard RecordGuard, figures *RecordMarker) error {
 		}
 	}
 	return nil
+}
+
+// guardRecordMember is the storage pass over one selected member (ADR-0018): the guard's marked call on
+// the member's JSON text, its redactions counted in figures. Every caller that must agree with what the
+// pass leaves in a record calls this.
+func guardRecordMember(guard RecordGuard, raw json.RawMessage, figures *RecordMarker) (json.RawMessage, error) {
+	return guard.JSON(raw, "message", true, figures)
+}
+
+// recordedForm is what the storage pass leaves of one member's JSON text, its figures discarded (#343):
+// raw itself, the same bytes, where redaction on store is off, there is no guard or nothing matched, and
+// changed reports whether it differs. A guard refusal (refuse mode, work-bound) is returned, never raw.
+func recordedForm(policy RecordsPolicy, guard RecordGuard, raw json.RawMessage) (clean json.RawMessage, changed bool, err error) {
+	if !policy.RedactOnStore || guard == nil {
+		return raw, false, nil
+	}
+	clean, err = guardRecordMember(guard, raw, &RecordMarker{Redactions: map[string]int64{}})
+	if err != nil {
+		return nil, false, err
+	}
+	return clean, !bytes.Equal(clean, raw), nil
 }
 
 func WriteRecord(schema string, value *Value, policy RecordsPolicy, guard RecordGuard, now time.Time, keep string) (*Value, error) {

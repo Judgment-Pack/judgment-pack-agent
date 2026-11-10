@@ -94,3 +94,8 @@ write host files, change tool admission, or change a Runtime verdict. The host's
 policy controls and display of guarded counts remain host work.
 
 The store-side guard exempts only exact labels emitted by that guard during the run; label-shaped model text is scanned and counted like other text.
+
+**2026-11-09 (#343).** A durable call's result is redacted by the record guard (ADR-0018) before it is
+stored, and the model is given that redacted form, so such a result's payload is no longer exempt from
+redaction. The redaction is the storage pass's: it is not counted under this ADR's `output_guarded`
+figures and makes no `output_guarded` event.

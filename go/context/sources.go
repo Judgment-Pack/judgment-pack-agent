@@ -2274,6 +2274,24 @@ func (a *receiptAdmission) admit(result ToolResult) error {
 	return nil
 }
 
+// deliver gives the checked result, which the gate answers with, the form the durable writer recorded the
+// call's result in and answered with (#343), so no text the record redacted reaches the model this way. A
+// check that has not run or did not verify has nothing to give. A guard refusal is returned and the checked
+// result left as it was: the writer then answers the call as an unknown outcome, and the gate with that.
+func (a *receiptAdmission) deliver(form func(ToolResult) (ToolResult, error)) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.ran || !a.verified {
+		return nil
+	}
+	shown, err := form(a.result)
+	if err != nil {
+		return err
+	}
+	a.result = shown
+	return nil
+}
+
 // outcome is the checked result and whether it verified, once the check has run.
 func (a *receiptAdmission) outcome() (ToolResult, bool, bool) {
 	a.mu.Lock()

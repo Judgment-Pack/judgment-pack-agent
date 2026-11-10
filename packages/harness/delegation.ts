@@ -1055,7 +1055,11 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           const result=batchAnswer(tasks)
           handoff.answer=result.structuredContent as DurableHandoff['answer']
           handoff.continuation='\n\n'+CONTINUATION+'\n'+frameData(DELEGATE_TOOL,JSON.stringify(result.structuredContent??textOf(result)),dataMarker())
-          handoff.state='answered';await saveHandoff();continued=handoff.continuation;commitReuse()
+          handoff.state='answered';await saveHandoff()
+          // #343: the record guard (ADR-0018) keeps the continuation in the form it leaves of it, and a resumed run is given
+          // that form; so is this one, and its next request holds what the record can.
+          if(persistence){const held=parentCheckpoint?.handoff;if(held?.callId!==handoff.callId||held.state!=='answered'||typeof held.continuation!=='string')throw new ContinuationNotRecoverable();handoff.continuation=held.continuation}
+          continued=handoff.continuation;commitReuse()
           execution=parentCheckpoint
           restoredParent?.close();restoredParent=undefined;shared.closed()
         }

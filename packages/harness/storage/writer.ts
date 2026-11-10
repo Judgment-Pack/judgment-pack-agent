@@ -29,7 +29,8 @@ import {AIFailureError,DURABLE_REQUEST_UNRECORDABLE,failure,normalizeFailure} fr
 import {approvalNotShown,readApprovalDecision,readExecution,type ExecutionCheckpoint} from '../execution/state'
 import {mutateCheckpoint} from '../execution/mutation'
 import {writeRunEvent,checkRecord,checkRecordVersion,readRunEvent} from '../recordReader'
-import {CHECKPOINT_SCHEMA,recordDigest,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
+import {CHECKPOINT_SCHEMA,recordDigest,recordedForm,sha256,writeRecord,validRecord,type RecordGuard,type RecordsPolicy} from '../records'
+import {receiptAdmission} from '../toolSources'
 import type {AssistantEvent,EngineSession,McpToolResult,HostTool} from '../engine'
 import {checkpointCallbackRunStore,type RunStore,type RunHead} from './run'
 import {StorageConflict,requireId,storageId,STORAGE_RECORD_BYTES} from './common'
@@ -969,6 +970,16 @@ export class RunWriter {
   // Provider responses/transports/private reasoning are not stored. Exact tool results are guarded.
   try{await this.enqueue(async()=>{
    claim.state='result'
+   // #343: the result is recorded in the form the record guard leaves of it, and the call is answered with that same form,
+   // so the record and what the model is given agree and the claim settles. An external read's checked result, which the
+   // source gate answers with, is given the same form. A job's start or cancel is answered from its job's record
+   // (ADR-0025), so its row keeps today's rule: a redacted answer cannot be recorded.
+   if((kind==='host'||kind==='runtime')&&!jobStart&&!jobCancel){
+    const policy=this.policy,guard=this.guard?.(),form=<V>(given:V)=>recordedForm(given,policy,guard)
+    value=form(value)
+    const admission=admit&&signal?receiptAdmission(signal):undefined
+    if(admission)await admission.deliver(form)
+   }
    if(kind==='host'||kind==='runtime'){if(this.repeatTools?.executions.some(row=>row.execution===binding.scope.execution)){const text=JSON.stringify(value);if(typeof text!=='string'||encoder.encode(text).length>STORAGE_RECORD_BYTES)throw new ContinuationNotRecoverable();claim.repeatResultJson=text}claim.result=structuredClone(value)}
    const observed=successful(value)?artifacts(value):[]
    claim.artifacts=structuredClone(observed)
