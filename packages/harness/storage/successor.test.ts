@@ -10,7 +10,7 @@ import {canonicalJSON} from '../context/chat'
 import {questionTool,type QuestionDraft,type UserQuestion} from '../questions'
 import {recordDigest} from '../records'
 import {readExecution} from '../execution/state'
-import {MemoryRunStore,type RunCommit,type RunReceipt,type RunStore} from './run'
+import {MemoryRunStore,checkpointCallbackRunStore,type RunCommit,type RunReceipt,type RunStore} from './run'
 import type {RunHistoryCommit,RunHistoryReceipt} from './history'
 import {fenceOf,type LeaseFence,type LeaseLifetime} from './lease'
 import {parkRun,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
@@ -53,9 +53,13 @@ const logged=async(store:RunStore,run:string)=>(await store.readEvents(run,null,
 async function park(s:Scene){
  return parkRun({store:s.store,fence:s.fence,wait:'wait-q',continuation:'continue-q',condition:{event:{kind:'question-answer',subject:'question-1'}},timeoutAt:new Date(T0+2*HOUR).toISOString(),wakeKeyDigest:wakeKeyDigest(KEY),release:[],question:'question-1',model:{provider:'openai',model:'fixture'}})
 }
-async function claim(s:Scene){
+/** Delivers the person's answer to the question wait: answered, not yet claimed. */
+async function wake(s:Scene){
  s.clock.at+=MINUTE
  await wakeRun(s.store,{version:1,resource:PREDECESSOR,wait:'wait-q',evidence:'answer-1',kind:'event',event:{kind:'question-answer',subject:'question-1'},answer:s.answer,actor:'person-reviewer',key:KEY})
+}
+async function claim(s:Scene){
+ if((await s.store.readWait(PREDECESSOR,'wait-q'))?.state==='parked')await wake(s)
  const held=(await s.store.readWait(PREDECESSOR,'wait-q'))!,{model,...rest}=held.pins
  return resumeParked({store:s.store,resource:PREDECESSOR,wait:'wait-q',evidence:'answer-1',owner:'worker-b',durationMs:HOUR,current:{version:1,resource:PREDECESSOR,wait:'wait-q',...rest,model:{...model,status:'available'},policy:{digest:held.pins.policy}}})
 }
@@ -99,6 +103,7 @@ describe('a successor run (#340)',()=>{
   ['a question continuation beside it','invalid',undefined,s=>asSuccessor(s,s.store,false,{},{questionContinuation:'wait-q'})],
   ['a usage budget beside it','invalid',undefined,s=>asSuccessor(s,s.store,false,{},{usageBudget:{}})],
   ['a chat context beside it','invalid',undefined,s=>asSuccessor(s,s.store,false,{},{},{context:{}})],
+  ['a store that is one writer\'s callback','invalid',undefined,s=>asSuccessor(s,checkpointCallbackRunStore(async()=>{},()=>undefined))],
   ['an id not derived','unbound',undefined,s=>open({runStore:{store:s.store,id:'successor-chosen',successor:successorOf(s)}})],
   ['an earlier question','unbound',undefined,s=>asSuccessor(s,s.store,false,{question:'question-0'})],
   ['a blank answer','unbound',undefined,s=>{s.answer={selected:[],text:'  '};return asSuccessor(s)}],
@@ -135,7 +140,9 @@ describe('a claimed question wait continues a complete head (#341)',()=>{
   const s=await scene()
   await park(s)
   const continuation=(wait:string)=>open({runStore:{store:s.store,id:PREDECESSOR,resume:true},questionContinuation:wait})
-  // Parked, not yet claimed: a complete head is not resumed.
+  // Parked, or answered and not yet claimed: a complete head is not resumed.
+  await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
+  await wake(s)
   await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
   const resumed=await claim(s)
   expect(answersOf(await continuation('wait-q'))).toEqual([{question:QUESTION,answer:{selected:['risk'],text:''}}])
@@ -149,6 +156,15 @@ describe('a claimed question wait continues a complete head (#341)',()=>{
   const head=(await s.store.load(PREDECESSOR))!
   await s.store.commitFenced({runId:PREDECESSOR,expectedRevision:head.revision,commitId:'moved',checkpoint:head.checkpoint!,events:[]},resumed.fence)
   await expect(continuation('wait-q')).rejects.toBeInstanceOf(RunComplete)
+ })
+})
+
+describe('a question continuation of a running head (#341)',()=>{
+ it('names a storage id, and continues only as its claimed wait',async()=>{
+  const s=await scene(c=>{c.status='running'})
+  const continuation=(wait:string)=>open({runStore:{store:s.store,id:PREDECESSOR,resume:true},questionContinuation:wait})
+  await expect(continuation('wait-q')).rejects.toEqual(waitRefused('mismatch'))
+  await expect(continuation('wait\nq')).rejects.toEqual(waitRefused('invalid'))
  })
 })
 
@@ -180,6 +196,13 @@ describe('a successor made while something else happens (#340)',()=>{
   await expect(asSuccessor(s)).rejects.toEqual(refused('succeeded'))
   const again=await asSuccessor(s,s.store,true)
   expect(answersOf(again)).toHaveLength(1);expect(again.context?.execution).toMatchObject({used:20,limit:30})
+ })
+ it('two successors of one question made at once are one run: the later create is refused succeeded',async()=>{
+  // Another process makes the successor after this one read that it was not there, before this one's create lands.
+  let s:Scene|undefined,raced=false
+  s=await scene(undefined,hooked(async()=>{if(!raced){raced=true;await asSuccessor(s!)}}))
+  await expect(asSuccessor(s)).rejects.toEqual(refused('succeeded'))
+  expect(await s.store.load(SUCCESSOR)).toBeDefined()
  })
  it('a successor and a question wait made at once both fail closed',async()=>{
   let s:Scene|undefined

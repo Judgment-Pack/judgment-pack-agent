@@ -76,14 +76,22 @@ func (s *successorScene) park(t *testing.T) {
 	}
 }
 
-func (s *successorScene) claim(t *testing.T) ResumedWait {
+// wake delivers the person's answer to the question wait; the wait is answered and not yet claimed.
+func (s *successorScene) wake(t *testing.T) {
 	t.Helper()
-	ctx := context.Background()
 	actor := "person-reviewer"
 	answer := s.answer
 	s.clock.advance(leaseMinute)
-	if _, err := WakeRun(ctx, s.store, WakeEvidence{Version: 1, Resource: successorPredecessor, Wait: "wait-q", Evidence: "answer-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}, Key: waitKey, Answer: &answer, Actor: &actor}); err != nil {
+	if _, err := WakeRun(context.Background(), s.store, WakeEvidence{Version: 1, Resource: successorPredecessor, Wait: "wait-q", Evidence: "answer-1", Kind: "event", Event: &contract.RunWaitEventCondition{Kind: "question-answer", Subject: "question-1"}, Key: waitKey, Answer: &answer, Actor: &actor}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func (s *successorScene) claim(t *testing.T) ResumedWait {
+	t.Helper()
+	ctx := context.Background()
+	if held, err := s.store.ReadWait(ctx, successorPredecessor, "wait-q"); err != nil || held == nil || held.State == "parked" {
+		s.wake(t)
 	}
 	resumed, err := ResumeParked(ctx, withCurrent(t, ResumeInput{Store: s.store, Resource: successorPredecessor, Wait: "wait-q", Evidence: "answer-1", Owner: "worker-b", DurationMs: waitHour}))
 	if err != nil {
@@ -270,6 +278,10 @@ func TestASuccessorIsRefusedByName(t *testing.T) {
 			in.RunStore.Context = &StoredChatScope{}
 			return in
 		}},
+		{"a store that is one writer's callback", "invalid", nil, func(s *successorScene) *Input {
+			callback := NewCheckpointCallbackRunStore(func(context.Context, contract.Checkpoint) error { return nil }, func([]byte) (contract.Checkpoint, error) { return contract.Checkpoint{}, nil })
+			return s.input(callback, "question-1", false)
+		}},
 		{"an id not derived", "unbound", nil, func(s *successorScene) *Input {
 			in := s.input(s.store, "question-1", false)
 			in.RunStore.ID = "successor-chosen"
@@ -322,7 +334,11 @@ func TestAClaimedQuestionWaitContinuesACompleteHead(t *testing.T) {
 	continuation := func(wait string) *Input {
 		return &Input{RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}, QuestionContinuation: wait}
 	}
-	// Parked, not yet claimed: a complete head is not resumed.
+	// Parked, or answered and not yet claimed: a complete head is not resumed.
+	if _, err := PrepareDurableInput(ctx, continuation("wait-q")); !errors.As(err, new(*RunComplete)) {
+		t.Fatal(err)
+	}
+	s.wake(t)
 	if _, err := PrepareDurableInput(ctx, continuation("wait-q")); !errors.As(err, new(*RunComplete)) {
 		t.Fatal(err)
 	}
@@ -354,6 +370,18 @@ func TestAClaimedQuestionWaitContinuesACompleteHead(t *testing.T) {
 	}
 	if _, err := PrepareDurableInput(ctx, continuation("wait-q")); !errors.As(err, new(*RunComplete)) {
 		t.Fatal(err)
+	}
+}
+
+// A question continuation names a storage id, and continues a running head only as its claimed wait.
+func TestAQuestionContinuationOfARunningHeadNeedsItsClaimedWait(t *testing.T) {
+	ctx := context.Background()
+	s := successorStore(t, func(c map[string]any) { c["status"] = "running" })
+	for wait, reason := range map[string]string{"wait-q": "mismatch", "wait\nq": "invalid"} {
+		in := &Input{RunStore: &DurableRunInput{Store: s.store, ID: successorPredecessor, Resume: true}, QuestionContinuation: wait}
+		if _, err := PrepareDurableInput(ctx, in); waitReasonOf(err) != reason {
+			t.Fatalf("%q: %v", wait, err)
+		}
 	}
 }
 
@@ -461,8 +489,23 @@ func TestASuccessorAndAQuestionWaitAtOnceBothFailClosed(t *testing.T) {
 	}
 }
 
-// A delegated predecessor's successor carries its principal (checkpoint 4), and is not made under another principal or
-// none.
+func TestTwoSuccessorsOfOneQuestionAtOnceAreOneRun(t *testing.T) {
+	ctx := context.Background()
+	s := successorStore(t, nil)
+	// Another process makes the successor after this one read that it was not there, before this one's create lands.
+	raced := hookedStore{durableWaitStore: s.store, before: func(RunCommit) error {
+		_, err := PrepareDurableInput(ctx, s.input(s.store, "question-1", false))
+		return err
+	}}
+	if _, err := PrepareDurableInput(ctx, s.input(raced, "question-1", false)); successorRefusal(t, err) != successorFailure("succeeded") {
+		t.Fatal(err)
+	}
+	if head, err := s.store.Load(ctx, SuccessorRunID(successorPredecessor, "question-1")); err != nil || head == nil {
+		t.Fatal(head, err)
+	}
+}
+
+// A successor is made under the predecessor's request cap or none, as the restore holds it, before it is written.
 func TestASuccessorIsMadeOnlyUnderThePredecessorsRequestCap(t *testing.T) {
 	ctx := context.Background()
 	capped := func(c map[string]any) { c["used"], c["limit"], c["requestCap"], c["grants"] = 3, 5, 5, []any{} }
@@ -490,6 +533,8 @@ func TestASuccessorIsMadeOnlyUnderThePredecessorsRequestCap(t *testing.T) {
 
 func capOf(v int) *int { return &v }
 
+// A delegated predecessor's successor carries its principal (checkpoint 4), and is not made under another principal or
+// none.
 func TestASuccessorIsMadeOnlyUnderThePredecessorsPrincipal(t *testing.T) {
 	ctx := context.Background()
 	raw, err := os.ReadFile("../../contract/vectors/checkpoint/members.json")
