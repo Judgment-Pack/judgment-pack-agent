@@ -93,8 +93,11 @@ and their pinned tools, whatever image version each drew. A job that reports ano
 digest than the release runner, or a tool that is not its pin, refuses (`runtime-identity`), and is
 never revalidated: the agent does not opt in to revalidation, because its `check` job does work
 outside the check list (the Desk and Gateway checkouts) and its mutation shards are not the check
-list. The fresh route below applies then, or a new release once the label serves one OS release
-again. When `ubuntu-latest` moves to another OS release, capture refuses on the next main run
+list. For another OS release the fresh route below applies, or a new release once the label serves
+one OS release again. A tool that is not its pin is not an image roll: each job installs its tools
+itself, at the releases the workflows name, so a re-run installs the same tool again. Main CI
+therefore compares each job's recorded tools with its pins right after the capture ([#338](#main-ci-compares-the-recorded-tools-with-their-pins-338)), and a
+tool that differs is fixed on main, in a new version. When `ubuntu-latest` moves to another OS release, capture refuses on the next main run
 (`runner-platform`) and the `ImageOS` pin moves in a reviewed change. GitHub patches and retires
 hosted images; nothing here freezes one.
 
@@ -213,6 +216,29 @@ to `release-os`, with a pin for every tool they record, and to pin Python to one
   During a roll, a main job whose merged pull request's job drew another image version plans
   `fresh` (`reuse-runtime`) and runs its whole part of the list instead of reusing. That costs time,
   not a refusal at the release.
+
+### Main CI compares the recorded tools with their pins (#338)
+
+The gate compares a job's recorded tools with its pins only at the release, in `CI at the tag`.
+`tests/test_release_evidence.py` derives the `node`, `go` and `python` pins and the requirement
+versions from their sources, but not three things: the npm a Node release bundles, the pip a Python
+release bundles, and each package name as the `python-packages` command spells it (the
+distribution's own metadata name, `typing_extensions`, where `requirements-dev.txt` writes
+`typing-extensions`; the test compares names normalised). A stale pin of one of them passed every
+test and main CI and refused only after the tag: in a scratch copy, a pin spelled
+`typing-extensions` in both the configuration and the test's constant passed the whole module.
+
+- **What it holds.** Each job of `ci.yml` runs `scripts/recorded-tools.py` right after its capture
+  step, on the record that capture wrote: `contract` on main, and `check` and the race jobs on main
+  and on a pull request into main from this repository. The step fails the job when the record does
+  not hold exactly its profile's tools, when a tool is not its pin, or when the record or the
+  configuration cannot be read. The upload step comes after it, so a job that fails there keeps no
+  evidence. The step reads the record the capture wrote and runs no tool itself.
+- **What it does not cover.** The mutation table's shards record `node` and `npm` and are compared
+  only at the release; their pins are the `check` profile's (the test holds them equal), which every
+  main CI run compares. A fork's pull request records nothing, so nothing is compared there.
+- **Not live-tested yet.** The step first runs on the pull request that adds it, at its pull request
+  captures, and on main at its merge.
 
 ## Removed repetition and pull-request reuse (#240)
 
@@ -546,8 +572,11 @@ dispatches or re-runs anything automatically.
    commit, and of the mutation table's dispatch run when its evidence refused
    (`gh run rerun <run id> --repo Judgment-Pack/judgment-pack-agent`; a failed-jobs-only re-run
    leaves the other jobs' evidence in an earlier attempt and refuses). This works after main moved
-   on, and is the route for `runtime-identity` (another OS release, or a tool that is not its pin)
-   and for `run-age`. When main still
+   on, and is the route for `runtime-identity` when the OS release differs, and for `run-age`. It is
+   not the route for a tool that is not its pin (a `runtime-identity` refusal whose detail ends
+   `pinned '<pin>'`): the job's own setup installed that tool, and a re-run installs it again. Fix
+   the pin, or the toolchain the job sets up, on main and release a new version; the release run's
+   refusal help says so. When main still
    names the commit, a dispatch of `ci.yml` or `mutation.yml` on `main` is another. A re-run of a nightly
    run is not: it stays a schedule run. A re-run or a dispatch never reuses a pull request's checks: it
    runs the whole list.

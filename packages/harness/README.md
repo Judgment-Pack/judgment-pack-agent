@@ -667,7 +667,7 @@ a scratch copy of the repository, runs the row's tests, and fails on a row no te
 
 ```sh
 npm run mutation --workspace @judgment-pack/harness -- --list
-npm run mutation --workspace @judgment-pack/harness -- --check            # every row still applies; no test run
+npm run mutation --workspace @judgment-pack/harness -- --check            # every row still applies and parses; no test run
 npm run mutation --workspace @judgment-pack/harness -- --row "any relay 401"
 npm run mutation --workspace @judgment-pack/harness -- --changed origin/main --sample 15
 npm run mutation --workspace @judgment-pack/harness -- --shard 1/28        # the full table, in 28 parts
@@ -689,8 +689,15 @@ nothing fails is run again against the whole suite, which decides. A failure cou
 mutant caused it (agent#285): a test file that fails under a mutant is run once with no mutant and
 what fails then counts for nothing, and a failure only the whole suite found must fail again in a
 run of its own file under the mutant. A row whose mutant changes nothing a test reads comes back
-`NOT CAUGHT`, which fails the run. `--no-mutant` runs the whole suite in the scratch copy and names
-what fails. `.github/workflows/mutation.yml`
+`NOT CAUGHT`, which fails the run. A row whose mutant stops a test file from loading, where no
+failure caught it, comes back `BROKEN` with the load error, and fails the run too (agent#320): a
+file that does not load runs no test, so the row says nothing about its safeguard until its
+replacement fits its `find` again. The file must load with no mutant and must not load again in a
+run of its own under the mutant. `--check` applies each row in memory and parses the file it
+touches, as vitest's loader does (JSON with `JSON.parse`), so a replacement that no longer fits
+fails before any test runs; a mutant that only throws once its module runs is left to the run.
+`--no-mutant` runs the whole suite in the scratch copy and names what fails and what does not
+load. `.github/workflows/mutation.yml`
 runs the rows over the files a pull request changes (at most fifteen) and five more by the pull
 request's number, and the whole table nightly and by dispatch on `main`, in 28 shards, 14 at a time.
 A run prints a `mutation-row` line with each row's seconds on the standard error stream as it ends.

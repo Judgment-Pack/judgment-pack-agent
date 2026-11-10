@@ -162,6 +162,7 @@
       "paths": [
         "tests/**",
         "scripts/check-upgrade-guides.py",
+        "scripts/recorded-tools.py",
         "requirements-dev.txt"
       ],
       "checks": [
