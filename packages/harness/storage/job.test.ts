@@ -25,7 +25,7 @@ import {JOB_CANCEL_UNRECORDED,JOB_START_UNRECORDED,JobRefused,readJobStartAnswer
 import {exportWaits,parkRun,reauthorizedRunStore,resumeParked,wakeKeyDigest,wakeRun,type WaitLifetime} from './wait'
 
 /* #229: run-owned jobs through the real Vercel engine, the package's writer and the reference effect host. The Go twins are
- * go/context/run_job_test.go and go/adapter/jobtests. */
+ * go/context/run_job_test.go, go/adapter/jobtests and go/adapter/jobsendtests. */
 const T0=Date.parse('2026-01-01T00:00:00.000Z'),MINUTE=60_000,HOUR=60*MINUTE
 const iso=(ms:number)=>new Date(ms).toISOString()
 const jobRefusal=(reason:string)=>expect.objectContaining({name:'JobRefused',reason})
