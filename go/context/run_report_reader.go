@@ -86,9 +86,13 @@ func exactReportNumber(token string) (float64, bool) {
 
 // Go's generic JSON parser replaces lone surrogate escapes. Check them in source first.
 func validReportUnicode(data []byte) bool {
-	if !utf8.Valid(data) {
-		return false
-	}
+	return utf8.Valid(data) && pairedSurrogateEscapes(data)
+}
+
+// pairedSurrogateEscapes reports whether every UTF-16 surrogate escape in the JSON text's strings
+// is one half of a pair, high then low: a lone one is text JSON.parse holds as a string that is not
+// well-formed, where Go's parser holds U+FFFD. Bytes that are not UTF-8 are not its concern (#357).
+func pairedSurrogateEscapes(data []byte) bool {
 	inString := false
 	hex := func(at int) (uint64, bool) {
 		if at+4 > len(data) {
