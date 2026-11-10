@@ -17445,7 +17445,7 @@
   {
    "name": "#315 L-3 a goal table with no lease authority decides a fenced command unchecked",
    "file": "storage/goal.ts",
-   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   // #361 LOW: the check is synchronous. A promise, such as the port's async checkFence wired here, is a check not made: it\n   // refuses store-unsupported, its own outcome dropped, and never decides the command unchecked.\n   const checked:unknown=this.checkFence(held.fence)\n",
+   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   // #361, #368: the check is synchronous and answers nothing; it refuses by throwing. Any answer, such as the promise of the\n   // port's async checkFence wired here, or a false, is a check not made: it refuses store-unsupported, a promise's own outcome\n   // dropped, and never decides the command unchecked.\n   const checked:unknown=this.checkFence(held.fence)\n",
    "replace": "   const checked:unknown=this.checkFence?.(held.fence)\n",
    "tests": [
     "storage/goalFence.test.ts"
@@ -18241,7 +18241,7 @@
   {
    "name": "#361 LOW the goal table takes an asynchronous fence checker's promise for a passed check",
    "file": "storage/goal.ts",
-   "find": "if(typeof checked==='object'&&checked!==null&&typeof (checked as {then?:unknown}).then==='function'){Promise.resolve(checked).catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}",
+   "find": "if(checked!==undefined){if(checked instanceof Promise)checked.catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}",
    "replace": "void checked",
    "tests": [
     "storage/goalFence.test.ts"
@@ -18681,6 +18681,66 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, ledger.go searchHeld taking e on a refusal): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#368 the goal table takes a fence checker's non-promise answer for a passed check",
+   "file": "storage/goal.ts",
+   "find": "if(checked!==undefined){",
+   "replace": "if(checked instanceof Promise){",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "No Go twin: Go's checker returns its error, and has no other answer."
+  },
+  {
+   "name": "#368 the goal kit never sends the same owner's earlier epoch",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fD}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the fD send dropped): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_takes_a_fence_as_current_wherever_its_owner_holds_the_live_lease."
+  },
+  {
+   "name": "#368 the goal kit never sends a fence whose principal is not the lease's",
+   "file": "storage/goalConformance.ts",
+   "find": "  for(const forged of [{...pr,principal:{...principal,rootActor:'b2'.repeat(16)}},{version:1,resource:pr.resource,owner:pr.owner,epoch:pr.epoch}] as LeaseFence[])await fenced('goal.fence.principal','run-pr',()=>send(prCreate,{fence:forged}),'principal-changed')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the forged principal sends dropped): caught at TestGoalConformanceFailsEachBrokenStore/goal.fence.principal."
+  },
+  {
+   "name": "#368 the goal kit never sends the stale pause and abandon",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')\n await fenced('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_goal_conformance.go: the fPause and fAbandon sends under f.fence dropped): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_a_fenced_abandon_unchecked."
+  },
+  {
+   "name": "#368 the wait kit never reads the run's deadline through the deadline reader",
+   "file": "storage/waitConformance.ts",
+   "find": " if(typeof reader.readRunDeadline==='function')check('wait.deadline.read',(await reader.readRunDeadline('wait-c'))?.run===iso(T0+5*HOUR+10*MINUTE)&&await reader.readRunDeadline('wait-b')===undefined)\n",
+   "replace": "",
+   "tests": [
+    "storage/waitConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#368",
+   "note": "Go twin (by hand, run_wait_conformance.go: the RunDeadlineReader block dropped): caught at TestWaitConformanceKitNamesTheGuaranteeAStoreLeavesOut (#368: a deadline reader that reads none)."
   },
   {
    "name": "#367 an authored failure keeps its whole detail unbounded",

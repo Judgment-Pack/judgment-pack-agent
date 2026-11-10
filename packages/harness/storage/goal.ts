@@ -232,8 +232,8 @@ export interface GoalContext {head?:{revision:string;checkpoint:Uint8Array|null}
 /** The goal transitions, held in memory. MemoryRunStore calls them inside its own serialized transactions, with the run's head,
  * waits, jobs and lease as they are in that transaction; a host store kind implements the same transitions. `checkFence` is the
  * store's own lease authority (#315), called inside the same transaction: it throws LeaseRefused unless the fence is current. It
- * is synchronous, as the transaction is: one that answers a promise (the port's async `checkFence`) refuses store-unsupported
- * (#361). A table with none refuses every fenced transition store-unsupported, never decides it unchecked. */
+ * is synchronous, as the transaction is, and answers nothing: any answer, a promise (the port's async `checkFence`) or a false
+ * among them, refuses store-unsupported (#361, #368). A table with none refuses every fenced transition store-unsupported, never decides it unchecked. */
 export class GoalTable {
  private rows=new Map<string,RunGoal>()
  constructor(private readonly clock:()=>Date=()=>new Date(),private readonly checkFence?:(fence:LeaseFence)=>void){}
@@ -250,10 +250,11 @@ export class GoalTable {
   if(held.fence){
    if(held.fence.resource!==c.resource)throw new LeaseRefused('resource-mismatch')
    if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')
-   // #361 LOW: the check is synchronous. A promise, such as the port's async checkFence wired here, is a check not made: it
-   // refuses store-unsupported, its own outcome dropped, and never decides the command unchecked.
+   // #361, #368: the check is synchronous and answers nothing; it refuses by throwing. Any answer, such as the promise of the
+   // port's async checkFence wired here, or a false, is a check not made: it refuses store-unsupported, a promise's own outcome
+   // dropped, and never decides the command unchecked.
    const checked:unknown=this.checkFence(held.fence)
-   if(typeof checked==='object'&&checked!==null&&typeof (checked as {then?:unknown}).then==='function'){Promise.resolve(checked).catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}
+   if(checked!==undefined){if(checked instanceof Promise)checked.catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}
   }
   const row=this.rows.get(c.resource),digested=goalCommandDigest(c)
   // A repeat of a command id: the same command is answered as it was; another under that id is conflict.

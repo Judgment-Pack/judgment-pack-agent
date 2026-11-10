@@ -112,6 +112,8 @@ const FAULTS:[string,Fault][]=[
  ['goal.fence.stale',store=>wrap(store,'commandGoal',original=>(input,signal)=>{const {fence:_,...rest}=input;return original(rest,signal)})],
  ['goal.fence.resource',(store,{leases})=>wrap(store,'commandGoal',original=>(input,signal)=>{if(!input.fence)return original(input,signal);leases.check(input.fence);const {fence:_,...rest}=input;return original(rest,signal)})],
  ['goal.fence.current',store=>wrap(store,'commandGoal',original=>(input,signal)=>{if(input.fence)throw new LeaseRefused('stale-epoch');return original(input,signal)})],
+ // #368: a store whose goal transaction checks a fence by every rule of the lease but its principals.
+ ['goal.fence.principal',(_,{goals,leases})=>{goals.checkFence=(fence:Held)=>{const row=leases.rows.get(fence.resource),{principal:_principal,version:_version,...rest}=fence;leases.check(row?.principal?{...rest,version:2,principal:row.principal}:{...rest,version:1})}}],
  ['goal.owner',(store,{goals})=>wrap(store,'readGoal',original=>async(resource,signal)=>(await original(resource,signal))??(resource==='run-other'?structuredClone([...goals.rows.values()].at(-1)):undefined))],
 ]
 /** What a restart loses, each naming the property the kit must fail it on. */
@@ -143,6 +145,10 @@ const STORES:[string,string,Fault][]=[
  ['A store that decides another owner\'s fence of the current epoch','goal.fence.stale',fenceWithout('other-owner')],
  ['A store that decides a released fence','goal.fence.stale',fenceWithout('released')],
  ['A store that decides an expired fence','goal.fence.stale',fenceWithout('expired')],
+ // #368: a store that takes a fence as current wherever its owner holds the run's live lease, at any epoch; and one that checks
+ // the fence of every command but an abandon, the command a displaced worker's replay does most harm with.
+ ['A store that takes a fence as current wherever its owner holds the live lease','goal.fence.stale',(_,{goals,leases})=>{goals.checkFence=(fence:Held)=>{const row=leases.rows.get(fence.resource);if(row&&row.owner===fence.owner&&row.state==='held'&&leases.now()<Date.parse(row.expiry))return;leases.check(fence)}}],
+ ['A store that decides a fenced abandon unchecked','goal.fence.stale',unfencedWhere(input=>input.command.kind==='abandon')],
 ]
 const fails=(property:string)=>expect.objectContaining({name:'StorageConformanceFailure',property})
 describe('the goal conformance kit (#230)',()=>{

@@ -2,6 +2,8 @@ package runcontext
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"strings"
 	"testing"
@@ -134,5 +136,55 @@ func TestHistoryRelationsMissingRetainedRequestRefused(t *testing.T) {
 	relationAppend(t, store, nil)
 	if _, e := ReadRetainedRunHistory(context.Background(), store, "r"); e == nil {
 		t.Fatal("legacy relation without request evidence exposed")
+	}
+}
+
+// #368: a member the relation check reads that is missing, or not a string, refuses HistoryInputInvalid: every read is
+// guarded, never a panic on a missing member and never an empty string compared as a value.
+func TestHistoryRelationsRefuseAMissingMemberWithoutAPanic(t *testing.T) {
+	ref := func(c string) HistoryObjectRef {
+		return HistoryObjectRef{Digest: "sha256:" + strings.Repeat(c, 64), Bytes: 10}
+	}
+	refJSON := func(r HistoryObjectRef) map[string]any { return map[string]any{"digest": r.Digest, "bytes": r.Bytes} }
+	relRef, reqRef, evRef, cpRef, manRef := ref("1"), ref("2"), ref("3"), ref("4"), ref("5")
+	digest, scope, target := "sha256:"+strings.Repeat("b", 64), map[string]any{"execution": "e1", "role": "author"}, map[string]any{"kind": "job", "id": "j1"}
+	world := func() map[string]map[string]any {
+		return map[string]map[string]any{
+			"relation":  {"kind": "relation", "dispatchId": "d1", "scope": scope, "target": target, "evidence": refJSON(evRef)},
+			"request":   {"kind": "request", "dispatchId": "d1", "source": "src", "tool": "tool", "scope": scope, "request": refJSON(manRef)},
+			"evidence":  {"version": 1, "kind": "observed-relation", "scope": scope, "dispatchId": "d1", "checkpoint": refJSON(cpRef), "observationId": "o1", "requestDigest": digest, "resultDigest": HistoryBytesDigest([]byte(`{"ok":true}`)), "target": target},
+			"claim":     {"id": "d1", "scope": scope, "kind": "host", "state": "result", "result": map[string]any{"ok": true}, "requestDigest": digest, "source": "src", "tool": "tool"},
+			"operation": {"id": "o1", "kind": "operation", "dispatchId": "d1", "source": "src", "scope": scope, "commitId": "c1"},
+			"manifest":  {"digest": digest},
+		}
+	}
+	check := func(objects map[string]map[string]any) (err error) {
+		defer func() {
+			if held := recover(); held != nil {
+				err = errors.New("panic")
+			}
+		}()
+		value := func(v any) *Value { raw, _ := json.Marshal(v); return MustParseJSON(string(raw)) }
+		book := map[string]any{"durable": map[string]any{"dispatches": []any{objects["claim"]}, "observations": []any{objects["operation"]}}}
+		named := map[string]any{relRef.Digest: objects["relation"], reqRef.Digest: objects["request"], evRef.Digest: objects["evidence"], cpRef.Digest: book, manRef.Digest: objects["manifest"]}
+		commits := []RunHistoryEntry{{Sequence: 1, CommitID: "c1", Checkpoint: &cpRef, Observations: []HistoryObjectRef{reqRef, relRef}}}
+		return validateHistoryRelations(commits, func(r HistoryObjectRef, _ string) (*Value, error) { return value(named[r.Digest]), nil }, nil)
+	}
+	if err := check(world()); err != nil {
+		t.Fatalf("the whole relation is refused: %v", err)
+	}
+	for _, missing := range [][2]string{{"relation", "kind"}, {"relation", "dispatchId"}, {"claim", "id"}, {"claim", "state"}, {"claim", "requestDigest"}, {"claim", "source"}, {"claim", "tool"}, {"operation", "id"}, {"operation", "kind"}, {"operation", "dispatchId"}, {"operation", "source"}, {"operation", "commitId"}, {"request", "kind"}, {"request", "dispatchId"}, {"request", "source"}, {"request", "tool"}, {"manifest", "digest"}} {
+		for _, as := range []string{"missing", "a number"} {
+			objects := world()
+			if as == "missing" {
+				delete(objects[missing[0]], missing[1])
+			} else {
+				objects[missing[0]][missing[1]] = 1
+			}
+			var refused *HistoryInputInvalid
+			if err := check(objects); !errors.As(err, &refused) {
+				t.Errorf("%s %s %s: %v", missing[0], missing[1], as, err)
+			}
+		}
 	}
 }

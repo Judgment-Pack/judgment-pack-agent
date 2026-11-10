@@ -44,6 +44,8 @@ describe('the wait conformance kit (#265 M6)',()=>{
   await expect(runStoreWaitConformance(memoryKind([],now=>new AnyKey({now})))).rejects.toEqual(fails('wait.key.other-wait'))
   await expect(runStoreWaitConformance(memoryKind(['waits.approvals']))).rejects.toEqual(fails('wait.restart.approval-ceiling'))
   await expect(runStoreWaitConformance(memoryKind(['waits.ceilings']))).rejects.toEqual(fails('wait.restart.earliest'))
+  class ReadsNoDeadline extends DurableWaitStore {override readRunDeadline(){return Promise.resolve(undefined)}}
+  await expect(runStoreWaitConformance(memoryKind([],now=>new ReadsNoDeadline({now})))).rejects.toEqual(fails('wait.deadline.read'))
   await expect(runStoreWaitConformance(memoryKind(['waits.rows','waits.events']))).rejects.toEqual(fails('wait.restart.parked'))
   await expect(runStoreWaitConformance(()=>{throw new Error('unavailable')})).rejects.toBeInstanceOf(StorageConformanceFailure)
  })

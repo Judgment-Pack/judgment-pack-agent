@@ -659,9 +659,38 @@ func (k *goalKit) properties() {
 	fC := taken("run-f", "worker-c", goalKitMinute.Milliseconds())
 	k.at = k.at.Add(goalKitMinute)
 	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, fC); return err }, "expired")
-	fPaused, err := k.sendFenced(fPause, taken("run-f", "worker-d", goalKitHour))
+	// #368: the same owner's earlier epoch is stale too, as the lease kit holds every other port to: a store may not
+	// take a fence as current because its owner holds the run's live lease.
+	fD := taken("run-f", "worker-d", goalKitHour)
+	release(fD)
+	fD2 := taken("run-f", "worker-d", goalKitHour)
+	k.fenced("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, fD); return err }, "stale-epoch")
+	fPaused, err := k.sendFenced(fPause, fD2)
 	k.answers("goal.fence.current", err)
 	k.check("goal.fence.current", fPaused.Goal.Revision == fCreated.Goal.Revision+1 && fPaused.Entry.Command == fPause.Command && len(fPaused.Goal.Objectives) > 0 && fPaused.Goal.Objectives[len(fPaused.Goal.Objectives)-1].Paused != nil)
+	// #368: where the store binds principals to its leases (LeasePrincipals, where the lease kit's principal properties
+	// apply), a fence that names other principals, or none, is refused principal-changed with no record made, and the
+	// lease's own is decided.
+	if keeps, ok := k.store.(LeasePrincipalStore); ok && keeps.LeasePrincipals() {
+		principal := PrincipalBinding{Sub: contract.RunPrincipalPrincipalReference{Kind: "person", Issuer: "https://kit.example/", Subject: "kit-subject"}, RootActor: strings.Repeat("b1", 16), Host: "kit-host"}
+		opened, err := k.store.Commit(k.ctx, RunCommit{RunID: "run-pr", CommitID: "run-pr-open", Checkpoint: []byte(`{"kit":"run-pr"}`), Events: [][]byte{}})
+		if err != nil {
+			panic(err)
+		}
+		lease, err := k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-pr", Owner: "worker-a", ExpectedRevision: opened.Revision, DurationMs: goalKitHour, Principal: &principal})
+		k.answers("goal.fence.current", err)
+		pr := FenceOf(lease)
+		other := principal
+		other.RootActor = strings.Repeat("b2", 16)
+		forged := pr
+		forged.Principal = &other
+		prCreate := goalKitWith(k.command("run-pr", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-pr") })
+		for _, fence := range []LeaseFence{forged, {Version: 1, Resource: pr.Resource, Owner: pr.Owner, Epoch: pr.Epoch}} {
+			k.fenced("goal.fence.principal", "run-pr", func() error { _, err := k.sendFenced(prCreate, fence); return err }, "principal-changed")
+		}
+		_, err = k.sendFenced(prCreate, pr)
+		k.answers("goal.fence.current", err)
+	}
 
 	// A restart keeps every record, every disposition and every rule.
 	records := map[string]*RunGoal{}
