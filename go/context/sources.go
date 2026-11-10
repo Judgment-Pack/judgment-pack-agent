@@ -18,7 +18,9 @@ package runcontext
 // person's decision continues the run: SourceGate.Approved runs an approved call once under its
 // bounds, and the continued run's first request carries the result (ApprovalContinuationText).
 // The descriptive text inside a source's input schema is bounded and framed as its description is
-// (DescribedSchema), and the catalogue is held to CataloguedTools and CatalogueBytes. The boundary carries the source
+// (DescribedSchema); a source whose schemas keep more of its words as written than EnumMembers,
+// NamesPerObject and VerbatimBytes allow is a catalogue, so those words are read only inside
+// load_tool's data block; and the catalogue is held to CataloguedTools and CatalogueBytes. The boundary carries the source
 // record on the tool's events (SourceGate.Decorate) and the report in the checkpoint's sources.
 //
 // A Go host opens the gate with the names the boundary will offer (OfferedHostTools), as it adds the
@@ -621,6 +623,21 @@ const (
 	NameBytes       = 64
 )
 
+// A source's own words that its offered schemas keep as written (#308): an enum's or a const's
+// values, the names of properties and definitions, the required entries and the $ref pointers
+// (verbatimOf). The model has to write these back as they are, so they cannot be framed where they
+// stand. EnumMembers is the most members one enum may hold (ENUM_MEMBERS), NamesPerObject the most
+// names one properties, $defs or definitions map, or one required list, may hold
+// (NAMES_PER_OBJECT), and VerbatimBytes the most UTF-8 bytes of them all the source's tools
+// together may keep (VERBATIM_BYTES), a part of the bytes offeredSchemaBytes counts. A source past
+// any of the three is made a catalogue (OfferSources), so its schemas reach the model only in
+// load_tool's answer, which is framed as data.
+const (
+	EnumMembers    = 64
+	NamesPerObject = 64
+	VerbatimBytes  = 4096
+)
+
 // schemaDepth is how deep a source's schema is read; a branch past it is offered empty
 // (SCHEMA_DEPTH).
 const schemaDepth = 16
@@ -802,6 +819,64 @@ func DescribedSchema(node *Value, bytes int, frame func(string) string, notes *[
 	return walk(node, 0, "")
 }
 
+// verbatim is what one offered schema keeps of its source's words as written (Verbatim): the most
+// members one enum holds, the most names one object holds, and the UTF-8 bytes of them all.
+type verbatim struct{ members, names, bytes int }
+
+// verbatimOf reads a schema as DescribedSchema offers it (verbatimOf): a string is counted by its
+// UTF-8 bytes, any other enum or const value by its JSON text's, as plainValue counts them. A
+// description is framed and a type or a format is one of a fixed set, so neither is counted.
+func verbatimOf(schema *Value) verbatim {
+	var held verbatim
+	measure := func(value *Value) int {
+		if value.IsString() {
+			return UTF8Bytes(value.Str())
+		}
+		return UTF8Bytes(value.Text())
+	}
+	var walk func(node *Value)
+	walk = func(node *Value) {
+		if !node.IsObject() {
+			return
+		}
+		for _, key := range node.Keys() {
+			member := node.Get(key)
+			switch {
+			case key == "enum":
+				held.members = max(held.members, member.Len())
+				for _, item := range member.Items() {
+					held.bytes += measure(item)
+				}
+			case key == "const":
+				held.bytes += measure(member)
+			case key == "$ref":
+				held.bytes += UTF8Bytes(member.Str())
+			case key == "required":
+				held.names = max(held.names, member.Len())
+				for _, name := range member.Items() {
+					held.bytes += UTF8Bytes(name.Str())
+				}
+			case schemaMaps[key]:
+				held.names = max(held.names, member.Len())
+				for _, name := range member.Keys() {
+					held.bytes += UTF8Bytes(name)
+					walk(member.Get(name))
+				}
+			case key == "items" || key == "additionalProperties" || schemaLists[key]:
+				if member.IsArray() {
+					for _, item := range member.Items() {
+						walk(item)
+					}
+				} else {
+					walk(member)
+				}
+			}
+		}
+	}
+	walk(schema)
+	return held
+}
+
 // schemaNoteDetail is the words a note of DescribedSchema earns as a guardrail (schemaNoteDetail).
 func schemaNoteDetail(wire string, note SchemaNote) string {
 	where := note.Path
@@ -822,14 +897,20 @@ func schemaNoteDetail(wire string, note SchemaNote) string {
 
 // OfferSources is offerSources: each description, and each descriptive string of the input schema,
 // bounded and framed with the run's marker, only the schema's structure offered (DescribedSchema),
-// and a note, which the withheld list also holds, for each thing the model would need that was left out. Where the tools with a source pass OfferedSchemas or
+// and a note, which the withheld list also holds, for each thing the model would need that was left out. A source whose offered
+// schemas keep more of its words as written than one of EnumMembers, NamesPerObject and
+// VerbatimBytes allows (verbatimOf, the source's tools together) is made a catalogue first. Where the
+// other tools with a source still pass OfferedSchemas or
 // OfferedSchemaBytes, sources are made catalogues, the largest first (by its tools offered, then by
 // their bytes, then by id), until the rest fit; a catalogued source's tools are offered as
 // catalogue entries, at most CataloguedTools of them and CatalogueBytes bytes in all. The tools
 // past either are withheld, out of entries too, and said in the withheld notes, one for each
 // source. Whether any source became a catalogue is answered; the boundary then offers load_tool.
 func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Policy, marker string) ([]HostTool, bool, []Withheld) {
-	type size struct{ count, bytes int }
+	type size struct {
+		count, bytes, verbatim int
+		over                   bool
+	}
 	framed := map[string]string{}
 	var schemaNotes []Withheld
 	schemas := map[string]json.RawMessage{}
@@ -862,6 +943,9 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		}
 		schemas[tool.Name] = json.RawMessage(schema.JSON())
 		held.bytes += UTF8Bytes(ObjectOf("name", String(tool.Name), "description", String(text), "inputSchema", schema).Text())
+		words := verbatimOf(schema)
+		held.verbatim += words.bytes
+		held.over = held.over || words.members > EnumMembers || words.names > NamesPerObject
 	}
 	count, bytes := 0, 0
 	for _, held := range sizes {
@@ -879,7 +963,18 @@ func OfferSources(tools []HostTool, entries map[string]*SourceEntry, policy Poli
 		return lessUTF16(ids[i], ids[j])
 	})
 	catalogued := map[string]bool{}
+	// #308: words the model reads unframed are bounded; past a bound the source's schemas are loaded, framed.
 	for _, id := range ids {
+		if held := sizes[id]; held.over || held.verbatim > VerbatimBytes {
+			catalogued[id] = true
+			count -= held.count
+			bytes -= held.bytes
+		}
+	}
+	for _, id := range ids {
+		if catalogued[id] {
+			continue
+		}
 		if count <= policy.OfferedSchemas && bytes <= policy.OfferedSchemaBytes {
 			break
 		}
