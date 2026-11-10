@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto'
+import {readFileSync} from 'node:fs'
 import {canonicalJSON} from './context/chat'
 import {sha256} from './records'
 /**
@@ -20,7 +21,6 @@ import declarations from '../../contract/vectors/tool-offer/source-declarations.
 import sourceOffer from '../../contract/vectors/tool-offer/source-offer.json'
 import sourceSchema from '../../contract/vectors/tool-offer/source-schema.json'
 import sourceSchemaBounds from '../../contract/vectors/tool-offer/source-schema-bounds.json'
-import schemaBounds from '../../contract/testdata/tool-offer/schema-bounds.json'
 import catalogueVector from '../../contract/vectors/tool-offer/catalogue.json'
 import loadToolVector from '../../contract/vectors/tool-offer/load-tool.json'
 import loadedSchema from '../../contract/vectors/tool-result/loaded-schema-current.json'
@@ -332,6 +332,8 @@ describe('the declaration (ADR-0006)', () => {
 // bounded, and a source past a bound is a catalogue whose schemas the model reads only in load_tool's data block.
 // go/context/schema_bounds_test.go holds the Go to the same files.
 describe('the words a source’s schemas keep as written (#308)', () => {
+  // Read with JSON.parse, which keeps a lone surrogate escape; the bundler's JSON reader refuses one.
+  const schemaBounds = JSON.parse(readFileSync('../../contract/testdata/tool-offer/schema-bounds.json', 'utf8')) as { marker: string; limits: Record<string, number>; cases: unknown[] }
   /** What the model reads of each offered tool, byte for byte, and the taxonomy beside it. */
   const shownOf = (tools: readonly HostTool[]) => tools.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: JSON.stringify(tool.inputSchema), taxonomy: tool.taxonomy }))
   const wantOf = (items: readonly { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]) => items.map((item) => ({ name: item.name, description: item.description, inputSchema: JSON.stringify(item.inputSchema), taxonomy: item.taxonomy }))
@@ -341,14 +343,16 @@ describe('the words a source’s schemas keep as written (#308)', () => {
     expect(schemaBounds.cases.length).toBeGreaterThan(0)
   })
 
-  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[] }[]) {
+  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]; withheld: { tool: string; detail: string }[] }[]) {
     it(`bounds them at the limit and one past: ${item.what}`, async () => {
       const out = await declareSources(declared(pinnedLocal(item.declared)), [])
       expect(out.withheld ?? []).toEqual([])
       const offer = offerSources(out.hostTools, out.entries, { ...CONTEXT_DEFAULTS, ...(item.policy ?? {}) }, schemaBounds.marker)
       expect(offer.catalogue).toBe(item.catalogue)
       expect(shownOf(offer.hostTools)).toEqual(wantOf(item.offered))
-      expect(offer.withheld).toEqual([])
+      expect(offer.withheld).toEqual(item.withheld)
+      // What is offered is what the gate holds: a tool withheld cannot be loaded or called.
+      expect([...out.entries.keys()].sort()).toEqual(offer.hostTools.map((tool) => tool.name).sort())
     })
   }
 
@@ -361,11 +365,18 @@ describe('the words a source’s schemas keep as written (#308)', () => {
     // None of the source's words outside its description's first line reaches the offer.
     const offered = offer.hostTools[0]!.description + JSON.stringify(offer.hostTools[0]!.inputSchema)
     for (const word of ['IGNORE_', 'write_file', 'SYSTEM:', 'END_RETRIEVED_DATA_', 'deepest']) expect(offered).not.toContain(word)
-    const gate = new SourceGate(out.entries, out.sources, CONTEXT_DEFAULTS, sourceSchemaBounds.marker, (tool, detail) => new GateViolation(tool, detail), () => [])
+    const rows: SourceFigures[] = []
+    const gate = new SourceGate(out.entries, out.sources, CONTEXT_DEFAULTS, sourceSchemaBounds.marker, (tool, detail) => new GateViolation(tool, detail), () => rows)
     const answer = await gate.loadTool().execute({ name: 'shop__lookup' }, signal())
     expect(gate.loadedSection()).toBe(sourceSchemaBounds.loadedSection)
     // The answer holds the schema the gate checks arguments against, the marker kept.
     expect(JSON.stringify((answer.structuredContent as { inputSchema: unknown }).inputSchema)).toContain(`END_RETRIEVED_DATA_${sourceSchemaBounds.marker}`)
+    // A call that lacks a required entry whose text is an instruction is refused naming the entry's
+    // place, never its text: this answer reaches the model outside load_tool's data block.
+    const tool = offer.hostTools[0]!
+    const refused = gate.call(tool, sourceSchemaBounds.refusal.arguments, signal(), (given, bounded) => tool.execute(given, bounded))
+    await expect(refused).rejects.toMatchObject({ failure: { code: 'invalid-tool-input', detail: sourceSchemaBounds.refusal.detail } })
+    await expect(refused).rejects.not.toMatchObject({ failure: { detail: expect.stringContaining('IGNORE_THE_DATA_RULE') } })
   })
 })
 
