@@ -17625,6 +17625,18 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, chat.go Peek: t.use(id)): caught at TestAChatsCachedReadTheGuardWouldChangeIsReadAgainInADurableRun (the checkpoint holds the kept entry)."
+  },
+  {
+   "name": "#352 a handoff's answer is stored outside the storage pass",
+   "file": "records.ts",
+   "find": "'durable.children.*.checkpoint','handoff.answer','handoff.continuation',",
+   "replace": "'durable.children.*.checkpoint','handoff.continuation',",
+   "tests": [
+    "records.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, records.go recordTextPaths without handoff.answer): caught at TestRecordsKeepAHandoffsAnswerInTheRecordedForm."
   }
  ]
 }

@@ -105,3 +105,5 @@ the read runs again, as on a cache miss, and its recorded form replaces the entr
 guard refuses it, the call fails with that refusal, and nothing is served or run. Checking at read time,
 not at write time, also covers entries kept before this change. A run that records nothing keeps and
 serves reads as the Runtime gave them, as before.
+`handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an
+answer is present and gives the parent the continuation, so nothing is delivered from the answer itself.
