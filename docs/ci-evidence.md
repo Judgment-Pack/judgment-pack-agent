@@ -548,7 +548,9 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   on that hosted run). By that ratio, and the slowest runner's 1.5 times more, `go-race-d` is expected at about
   1,150 to 1,700 s on a hosted runner: under the binary's 2,400 s limit, though it may pass the 1,800 s warning
   on the slowest runner. `./adapter/jobtests` was not run under race here; `go-race-c` is expected well below
-  what the one binary took. `go-race-a` and `go-race-b` are unchanged. A new job test belongs in
+  what the one binary took. On the pull request's hosted run (run 42850239366), `./adapter/jobsendtests` took
+  813 s under race (the `go-race-d` job 877 s) and `./adapter/jobtests` 1,038 s (the `go-race-c` job 1,113 s).
+  `go-race-a` and `go-race-b` are unchanged. A new job test belongs in
   the package of its kind; a test that names what a cancel or an abandon sends, in `./adapter/jobsendtests`.
 
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
@@ -627,11 +629,13 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
   hosted run's, and what a step takes on a slow runner is an estimate from the speed of a reference binary
   on other runs, not a run on that runner.
 - **The `go-race-c` job.** Its evidence first ran on the pull request of #306, and its first plan and capture
-  on main at that merge, where the plan reused the pull request's evidence. A fresh run of the leg on main, and
-  the release gate over a candidate holding it, have not happened yet.
-- **The `go-race-d` job.** Its evidence first runs on the pull request of #364, and its first plan and capture
-  on main at that merge. Its times above are estimates from the one binary's hosted runs and a local run without
-  race, not a hosted run of the leg; the pull request's run is the first.
+  on main at that merge, where the plan reused the pull request's evidence. The release gate first passed over a
+  candidate holding it at the `v0.13.2` tag (release run 41901307254). A fresh run of the leg on main is not
+  recorded here.
+- **The `go-race-d` job.** Its evidence first ran on the pull request of #364 (run 42850239366), and its first
+  plan and capture on main at that merge (run 42856120113), where the plan reused the pull request's evidence.
+  Its expected times above are estimates; the one hosted run of the leg is the pull request's, above. A fresh
+  run of the leg on main, and the release gate over a candidate holding it, have not happened yet.
 - **The nightly table.** `report a failed nightly table` first runs on the first failed nightly after
   #299 merges; its issue writes were exercised only against a stand-in `gh`. How the API reports a shard at
   its limit and a hand cancel is from live runs. How a concurrency group treats a pending run, and GitHub's
@@ -642,9 +646,12 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
 - **The `release-os` mode.** The mutation profile's comparison ran live at the `v0.13.1` tag's
   `CI at the tag` job (release run 41859236684), over a table under the exact Node release whose
   shards drew three image versions, and passed; the run refused on the `check` profile, then
-  still `release-runner` (#336). The `base` and `check` profiles' comparison first runs live at
-  the next release's `CI at the tag` job; until then it was exercised only against fixtures, here
-  and in the kit. setup-python installed `3.12.16` on images whose tool cache holds `3.12.15` (a
+  still `release-runner` (#336). The `base` and `check` profiles' comparison first ran live at
+  the `v0.13.2` tag's `CI at the tag` job (release run 41901307254, over CI run 41882209845), and
+  passed: the release runner reported image version `20261101.186.1`, the `base` profile's
+  `contract` job `20261026.180.1`, and the `check` profile's four jobs two image versions
+  (`go-race-c` `20261101.186.1`, the other three `20261026.180.1`), all with the release runner's
+  OS-release digest. setup-python installed `3.12.16` on images whose tool cache holds `3.12.15` (a
   download from the published builds) and on images that hold `3.12.16` (the cache), on the pull
   request of #336 (#337).
 - **Fixtures.** `tests/test_release_evidence.py` runs the vendored gate over this repository's own

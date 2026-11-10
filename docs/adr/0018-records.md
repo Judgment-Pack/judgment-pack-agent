@@ -136,7 +136,10 @@ with that same form. In Go the call's error is wrapped in
 `failure.RecordedError`, which `failure.Normalize` reads before anything it wraps. In TypeScript the
 `AIFailureError` the failure was read from is given the form in place, with its message, so a check of
 the error's identity still holds; the whole detail it keeps is replaced with the guarded one its new
-detail was cut from (bounded as before), or dropped where there is none, so the two never disagree, and
-a second writer whose guard holds another pattern reads what Go's would. A model's own failure is only
-stored in that form. If the guard refuses the detail, the call ends as `StorageOutcomeUnknown` and
+detail was cut from (bounded as before), or dropped where there is none, so the two never disagree. A
+second writer given that error reads the first guard's form, not the host's raw detail, so a pattern of
+its own guard that overlaps one of the first guard's redactions can leave part of its match. Go does not
+restate the host's error: a second writer given the host's own error reads its raw whole detail, and one
+given the `failure.RecordedError` the call returned reads only the recorded form, with no whole detail
+(#371). A model's own failure is only stored in that form. If the guard refuses the detail, the call ends as `StorageOutcomeUnknown` and
 nothing of the failure is stored.
