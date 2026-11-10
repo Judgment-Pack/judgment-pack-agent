@@ -8,7 +8,7 @@
     "patch versions, with different preinstalled software outside the pinned tools. The release runner resolves no tool.",
     "There is no revalidation here, because the check job does work outside the check list (the Desk and Gateway",
     "checkouts) and the mutation shards are not the check list.",
-    "pull_request_reuse lists only the checks of the check and three go-race jobs whose result depends on the tree and the recorded inputs;",
+    "pull_request_reuse lists only the checks of the check and four go-race jobs whose result depends on the tree and the recorded inputs;",
     "tests/test_release_evidence.py holds every check of those jobs to one side or the other."
   ],
   "schema": 2,
@@ -134,6 +134,7 @@
           "go-race-a",
           "go-race-b",
           "go-race-c",
+          "go-race-d",
           "harness-check",
           "parity"
         ],
@@ -235,6 +236,14 @@
           "labels": ["ubuntu-latest"],
           "profile": "check",
           "checks": ["go-race-c"],
+          "setup": true
+        },
+        "go-race-d": {
+          "name": "go-race-d",
+          "job_id": "go-race",
+          "labels": ["ubuntu-latest"],
+          "profile": "check",
+          "checks": ["go-race-d"],
           "setup": true
         }
       }

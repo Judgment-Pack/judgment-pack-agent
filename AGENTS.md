@@ -121,8 +121,8 @@ summary block, and anything you stopped on or chose not to do.
 - The checks are `dev.json`, run by `scripts/dev/check.sh`; CI runs the same list (scoped on a pull
   request, see below). Edit `dev.json` when a check is added, not the workflow.
 - The `contract` job runs `contract`, `local-paths`, `agent-docs` and `diff-check` on every event;
-  the `go-race` matrix job's legs `go-race-a`, `go-race-b` and `go-race-c` each run the step of that name on a runner
-  of its own (#254, #292, #306); the `check` job runs every other step and skips those seven. On a pull request
+  the `go-race` matrix job's legs `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d` each run the step of that name on a
+  runner of its own (#254, #292, #306, #364); the `check` job runs every other step and skips those eight. On a pull request
   `check` and each race leg run their part
   of `scripts/dev/check.sh --all --changed origin/<base>`: only the steps that `jpdev.json` maps its
   changed paths to, and the whole list when a changed path matches no rule (the workflows,
@@ -134,7 +134,7 @@ summary block, and anything you stopped on or chose not to do.
   `tests/test_release_evidence.py` fails. Run the same selection
   locally with `scripts/dev/check.sh --changed origin/main` (or `jpdev check --changed`). The rules
   follow what each step reads, not its name: the Go certification steps (`go-test`, `go-race-a`, `go-race-b`, `go-race-c`,
-  `harness-check`) start the TypeScript scripted server, so a harness change selects them; the
+  `go-race-d`, `harness-check`) start the TypeScript scripted server, so a harness change selects them; the
   generated reference reads the Go sources and `packages/harness/dist`, so a Go change selects
   `reference` and `unit-tests`, and every rule with `reference`, `unit-tests`, `packed-smoke` or
   `release-quality-engine` also selects `build`. A new step, a new input of a step or a file in a

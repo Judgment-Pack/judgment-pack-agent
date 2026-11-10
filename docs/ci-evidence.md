@@ -71,7 +71,7 @@ pinned VM image**: nothing here chooses, holds or attests the machine a job runs
 
 - `.github/runner-identity.json` is the kit's manifest, revision 1, vendored unchanged and pinned
   by SHA-256 in the configuration's `identity` member.
-- Every profile (`base` for `contract`, `check` for the `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs, `mutation` for
+- Every profile (`base` for `contract`, `check` for the `check`, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d` jobs, `mutation` for
   the shards) is variant `linux-x64`,
   pins `ImageOS` `ubuntu26` and records its tools.
 - Every profile compares `release-os`: `mutation` since #332
@@ -255,9 +255,9 @@ No timing after it has been measured.
 
 The status names `contract`, `check` and `dependency-audit` are unchanged. The shards' are
 `every row (shard N of 28)` since #322 (`of 10` since #281). Branch protection requires `DCO` and `contract`. Since #292
-`go-race-a`, `go-race-b` and `go-race-c` are statuses as well, in place of the one `go-race` of #254.
+`go-race-a`, `go-race-b`, `go-race-c` and, since #364, `go-race-d` are statuses as well, in place of the one `go-race` of #254.
 
-**Pull-request-to-branch reuse.** The `check`, `go-race-a`, `go-race-b` and `go-race-c` jobs (one job of 45 minutes
+**Pull-request-to-branch reuse.** The `check`, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d` jobs (one job of 45 minutes
 on the run above, the race step 1,341 s and `unit-tests` 484 s of it, before #254) may each take from the same job
 of the merged pull request's newest run the checks `pull_request_reuse.checks` lists, where that run
 passed them. Tree equality alone never qualifies:
@@ -276,7 +276,7 @@ Listed as reusable, because each result depends only on the tree and the recorde
 `release-quality-engine`, `reference`, `unit-tests`, the three certification suites,
 `differential`, `gateway-receipt-process`, `gateway-receipts` (the Gateway checkout is pinned by
 commit in `tests/fixtures/gateway-receipts/source.json`), `go-module-path`, `gofmt`, `go-vet`,
-`go-generate`, `go-test`, `go-race-a`, `go-race-b`, `go-race-c`, `harness-check` and `parity` (the Desk checkout is pinned by
+`go-generate`, `go-test`, `go-race-a`, `go-race-b`, `go-race-c`, `go-race-d`, `harness-check` and `parity` (the Desk checkout is pinned by
 commit in `scripts/parity.sh`).
 
 Not reusable, run on every branch push:
@@ -498,8 +498,9 @@ and no evidence is false, but it costs an hour on a release candidate. So the on
 runner of its own. No limit was raised and no test was dropped: both steps are the same `go test` flags,
 under the same 40-minute limit per binary and the same 3,000 s per step.
 
-- **The steps.** `go-race-a` names its packages, `./gate` among them, and `go-race-c` names `./adapter/jobtests`. `go-race-b` asks `go list ./context/... ./adapter/...`
-  and takes every package the other two do not name, so a new package runs, in `go-race-b`, before anyone
+- **The steps.** `go-race-a` names its packages, `./gate` among them, `go-race-c` names `./adapter/jobtests` and `go-race-d`
+  `./adapter/jobsendtests`. `go-race-b` asks `go list ./context/... ./adapter/...`
+  and takes every package the others do not name, so a new package runs, in `go-race-b`, before anyone
   has placed it. `tests/test_release_evidence.py` runs the three steps' own text with a stand-in `go`, over this
   tree and over this tree with a package added: together they are the packages of the one pattern, each
   once. A package `go-race-a` names that has moved stops that step, and a `go list` that fails part of the
@@ -532,23 +533,42 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   new binary belongs in `go-race-b` or `go-race-c`. A binary that outgrows its leg moves the same way: name it
   in its step, and in `go-race-b`'s exclusion.
 
+  **A fourth leg (#364).** `./adapter/jobtests` outgrew its binary's limit: on hosted runs of pull requests that
+  did not touch it, the one binary took 1,629 s (`go-race-c` 1,669 s) on one runner and stopped at
+  `panic: test timed out after 40m0s` (2,400 s) on another. A longer limit would hide this, so the binary is two:
+  `./adapter/jobsendtests` holds the 13 tests whose names say what a cancel or an abandon sends through the
+  effect host, or that it sent nothing, and `./adapter/jobtests` keeps the other 53. No test was dropped or
+  renamed: `go test -list .` names the same 66 before and after. A test binary cannot import another's test
+  files, so the fixtures both use are `helpers_test.go`, the same file in both packages but for its package
+  clause. Without race on 16 CPUs, the one binary took 242 s at the split's base (the send tests 120 s of it,
+  the rest 122 s), and the two binaries 136 s and 132 s run side by side. Neither `go-race-b` (2,003 s on the
+  run above) nor `go-race-a` (1,449 s, and a job of 2,075 s on the slower runner) had room for half of it, so
+  `./adapter/jobsendtests` is `go-race-d`, a runner of its own. Under race, locally on 16 CPUs with other work
+  beside it, `./adapter/jobsendtests` took 1,005 s (the one binary took 1,271 s so at #306's head, and 1,467 s
+  on that hosted run). By that ratio, and the slowest runner's 1.5 times more, `go-race-d` is expected at about
+  1,150 to 1,700 s on a hosted runner: under the binary's 2,400 s limit, though it may pass the 1,800 s warning
+  on the slowest runner. `./adapter/jobtests` was not run under race here; `go-race-c` is expected well below
+  what the one binary took. `go-race-a` and `go-race-b` are unchanged. A new job test belongs in
+  the package of its kind; a test that names what a cancel or an abandon sends, in `./adapter/jobsendtests`.
+
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
   tests still to come add to that side first. To move a binary to `go-race-a`, name it in that step and in
   `go-race-b`'s exclusion; a name in only one of the two fails the test. The job's warning below says when
   that is due.
-- **The jobs.** `go-race` in `ci.yml` is one matrix job with three legs, `go-race-a`, `go-race-b` and `go-race-c`, as the
+- **The jobs.** `go-race` in `ci.yml` is one matrix job with four legs, `go-race-a`, `go-race-b`, `go-race-c` and `go-race-d`, as the
   mutation table is one job with 28 shards. In `.github/ci-evidence.json` each leg is a job of its own,
   with one check; each has its own status, its own artifact (`ci-evidence-ci-go-race-a-<attempt>`,
-  `ci-evidence-ci-go-race-b-<attempt>`, `ci-evidence-ci-go-race-c-<attempt>`), its own plan, capture and readmission, under the same rules as
+  `ci-evidence-ci-go-race-b-<attempt>`, `ci-evidence-ci-go-race-c-<attempt>`, `ci-evidence-ci-go-race-d-<attempt>`), its own plan,
+  capture and readmission, under the same rules as
   #254's one job. None cancels another on a failure. A leg skips every other step of the manifest, the
-  other legs' among them, and the `check` job skips all three.
+  other legs' among them, and the `check` job skips all four.
 - **What a release requires.** Every leg. The gate holds a candidate's job names to the configuration's, so a
   run without any one leg refuses (`job-coverage`), as does a run with the one old `go-race` job; without
   any leg's artifact, `artifact-coverage`; without any leg's result, `check-coverage` or `check-result`. A leg's
   evidence holding another leg's step refuses too. A merged pull request's run from before the division has
   none of the legs, so on main each step runs fresh (`reuse-job`), and the `check` job's reuse is unaffected.
 - **The warning.** As well as the warning for a binary, each job warns when its step passes three quarters
-  of the 3,000 s, 2,250 s: the sign that a binary should move to the other step, or that a third is due.
+  of the 3,000 s, 2,250 s: the sign that a binary should move to another step, or that another leg is due.
 
 The cost is one more job: its setup, and a second race compile, which the two steps no longer share. The
 hosted times of both jobs and the margin they leave are in the pull request of #292.
@@ -606,6 +626,9 @@ table was dispatched at the commit: [the table's section](#the-full-table-nightl
 - **The `go-race-c` job.** Its evidence first ran on the pull request of #306, and its first plan and capture
   on main at that merge, where the plan reused the pull request's evidence. A fresh run of the leg on main, and
   the release gate over a candidate holding it, have not happened yet.
+- **The `go-race-d` job.** Its evidence first runs on the pull request of #364, and its first plan and capture
+  on main at that merge. Its times above are estimates from the one binary's hosted runs and a local run without
+  race, not a hosted run of the leg; the pull request's run is the first.
 - **The nightly table.** `report a failed nightly table` first runs on the first failed nightly after
   #299 merges; its issue writes were exercised only against a stand-in `gh`. How the API reports a shard at
   its limit and a hand cancel is from live runs. How a concurrency group treats a pending run, and GitHub's

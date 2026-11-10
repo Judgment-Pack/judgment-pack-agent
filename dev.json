@@ -45,9 +45,11 @@
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
     {"name": "go-race-a", "run": "go test -count=1 -race -timeout=40m ./adapter/delegate ./adapter/reauthtests ./adapter/durableapprovaltests ./adapter/plantests ./adapter/principaltests ./adapter/agent ./adapter/enrollmenttests ./gate", "cwd": "go", "toolchain": "go",
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
-    {"name": "go-race-b", "run": "set -o pipefail; pkgs=$(go list ./context/... ./adapter/... | grep -vE '/go/adapter/(delegate|reauthtests|durableapprovaltests|plantests|principaltests|agent|enrollmenttests|jobtests)$') && go test -count=1 -race -timeout=40m $pkgs", "cwd": "go", "toolchain": "go",
+    {"name": "go-race-b", "run": "set -o pipefail; pkgs=$(go list ./context/... ./adapter/... | grep -vE '/go/adapter/(delegate|reauthtests|durableapprovaltests|plantests|principaltests|agent|enrollmenttests|jobtests|jobsendtests)$') && go test -count=1 -race -timeout=40m $pkgs", "cwd": "go", "toolchain": "go",
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
     {"name": "go-race-c", "run": "go test -count=1 -race -timeout=40m ./adapter/jobtests", "cwd": "go", "toolchain": "go",
+     "summary": "^(ok|FAIL|---) ", "timeout": 3000},
+    {"name": "go-race-d", "run": "go test -count=1 -race -timeout=40m ./adapter/jobsendtests", "cwd": "go", "toolchain": "go",
      "summary": "^(ok|FAIL|---) ", "timeout": 3000},
     {"name": "harness-check", "run": "go run ./cmd/harness-check", "cwd": "go", "toolchain": "go",
      "summary": "passed", "timeout": 3000}
