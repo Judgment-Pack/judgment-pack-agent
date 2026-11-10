@@ -14,7 +14,7 @@ import (
 )
 
 // The Go twin of packages/harness/storage/job.test.ts (#229): the shared job vectors, the store's transitions and
-// job waits. The flow through the real adapters is go/adapter/jobtests.
+// job waits. The flow through the real adapters is go/adapter/jobtests and go/adapter/jobsendtests.
 
 func readJobVector(t *testing.T, name string) map[string]json.RawMessage {
 	t.Helper()
