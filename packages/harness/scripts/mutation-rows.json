@@ -17419,8 +17419,8 @@
   {
    "name": "#315 L-3 the goal table decides a fenced command without checking its fence",
    "file": "storage/goal.ts",
-   "find": "   this.checkFence(held.fence)\n",
-   "replace": "",
+   "find": "   const checked:unknown=this.checkFence(held.fence)\n",
+   "replace": "   const checked:unknown=undefined\n",
    "tests": [
     "storage/goalFence.test.ts",
     "storage/goalConformance.test.ts"
@@ -17445,8 +17445,8 @@
   {
    "name": "#315 L-3 a goal table with no lease authority decides a fenced command unchecked",
    "file": "storage/goal.ts",
-   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   this.checkFence(held.fence)\n",
-   "replace": "   this.checkFence?.(held.fence)\n",
+   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   // #361 LOW: the check is synchronous. A promise, such as the port's async checkFence wired here, is a check not made: it\n   // refuses store-unsupported, its own outcome dropped, and never decides the command unchecked.\n   const checked:unknown=this.checkFence(held.fence)\n",
+   "replace": "   const checked:unknown=this.checkFence?.(held.fence)\n",
    "tests": [
     "storage/goalFence.test.ts"
    ],
@@ -17521,19 +17521,19 @@
   {
    "name": "#315 L-3 the kit takes a displaced worker's command",
    "file": "storage/goalConformance.ts",
-   "find": " await untouched('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')\n await untouched('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')\n check('goal.fence.stale',same(await store.readLease('run-f'),fLease))\n",
-   "replace": " void fLease\n",
+   "find": "  throw new StorageConformanceFailure(property)\n }\n",
+   "replace": " }\n",
    "tests": [
     "storage/goalConformance.test.ts"
    ],
    "status": "caught",
    "origin": "agent#315",
-   "note": "Go twin (by hand, in run_goal_conformance.go: drop the two stale sends and the lease compare): caught at TestGoalConformanceFailsEachBrokenStore."
+   "note": "Go twin (by hand, in run_goal_conformance.go fenced: pass a command that is answered, refused == nil ||): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_answers_a_repeat_before_it_checks_the_fence. Retargeted by #361 from the two stale sends, which the #361 rows now hold one by one, to the kit's fence helper."
   },
   {
    "name": "#315 L-3 the kit takes a fence of another run",
    "file": "storage/goalConformance.ts",
-   "find": " await untouched('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')\n",
+   "find": " await fenced('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')\n",
    "replace": " void g\n",
    "tests": [
     "storage/goalConformance.test.ts"
@@ -18073,8 +18073,8 @@
   {
    "name": "#355 a store that holds deadlines and cannot read them back is taken as holding one",
    "file": "storage/successor.ts",
-   "find": "return typeof held.limitRun==='function'",
-   "replace": "return false",
+   "find": "if(typeof held.limitRun==='function')return true",
+   "replace": "if(typeof held.limitRun==='function')return false",
    "tests": [
     "storage/successor.test.ts"
    ],
@@ -18093,6 +18093,162 @@
    "status": "caught",
    "origin": "agent#355",
    "note": "Go twin (by hand, run_wait.go WaitTable.Deadline): caught at TestASuccessorIsNotMadeOfARunWithADeadline."
+  },
+  {
+   "name": "#362 a store value with neither deadline port that does not declare itself unleased is read as holding no deadline",
+   "file": "storage/successor.ts",
+   "find": "if(declaredUnleased(store))return false\n throw new SuccessorRefused('invalid')",
+   "replace": "return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go predecessorDeadlined: return false, nil where the store has neither port): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_lease_port_and_no_deadline_reader."
+  },
+  {
+   "name": "#362 a store value with no wait export that does not declare itself unleased is read as holding no wait",
+   "file": "storage/successor.ts",
+   "find": "if(held===undefined){if(declaredUnleased(baseOf(store)))return false;throw new SuccessorRefused('invalid')}",
+   "replace": "if(held===undefined)return false",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go questionWaitHeld: return false, nil without the wait export): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_lease_port_and_no_wait_export."
+  },
+  {
+   "name": "#362 a store value with no lease port that does not declare itself unleased makes its successor unheld",
+   "file": "storage/successor.ts",
+   "find": "{if(declaredUnleased(baseOf(store)))return async()=>{};throw new SuccessorRefused('invalid')}",
+   "replace": "return async()=>{}",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go holdPredecessor: a no-op release without the lease port): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/the_deadline_reader_and_the_wait_export,_and_no_lease_port."
+  },
+  {
+   "name": "#362 a declaration beside a lease method is read as an unleased store",
+   "file": "storage/successor.ts",
+   "find": "held.unleased===true&&typeof held.acquireLease!=='function'&&typeof held.releaseLease!=='function'",
+   "replace": "held.unleased===true",
+   "tests": [
+    "storage/successor.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#362",
+   "note": "Go twin (by hand, run_successor.go declaredUnleased: drop the lease-method checks): caught at TestASuccessorIsNotMadeThroughAStoreValueThatHidesAPort/a_declaration_beside_the_lease_port."
+  },
+  {
+   "name": "#361 the goal table answers a repeat of a fenced command before it checks the fence",
+   "file": "storage/goal.ts",
+   "find": "if(held.fence){",
+   "replace": "if(held.fence&&!this.rows.get(c.resource)?.journal.some(entry=>entry.command===c.command)){",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal.go Command: skip the fence where the journal holds the command id): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart (goal.fence.stale)."
+  },
+  {
+   "name": "#361 the goal table checks a fenced command's fence only where the run has a record",
+   "file": "storage/goal.ts",
+   "find": "if(held.fence){",
+   "replace": "if(held.fence&&this.rows.has(c.resource)){",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal.go Command: check the fence only where t.rows holds the run): caught at TestGoalConformancePassesTheMemoryKindAcrossARestart (goal.fence.stale)."
+  },
+  {
+   "name": "#361 the goal kit does not replay an accepted command under a stale fence",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fCreate,{fence:f.fence}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go: drop the fCreate replay): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_answers_a_repeat_before_it_checks_the_fence."
+  },
+  {
+   "name": "#361 the goal kit sends no stale create on a run with no record",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-n',()=>send(command('run-n','create',null,{objective:'objective-n'}),{fence:nOpened.fence}),'stale-epoch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go: drop the nCreate send): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_checks_a_fence_only_where_the_run_has_a_record."
+  },
+  {
+   "name": "#361 the goal kit sends no fence of another owner at the current epoch",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:{...fB,owner:'worker-x'}}),'other-owner')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go: drop the other-owner send): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_another_owner's_fence_of_the_current_epoch."
+  },
+  {
+   "name": "#361 the goal kit sends no released fence",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fB}),'released')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go: drop the released send): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_a_released_fence."
+  },
+  {
+   "name": "#361 the goal kit sends no expired fence",
+   "file": "storage/goalConformance.ts",
+   "find": " await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fC}),'expired')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go: drop the expired send): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_decides_an_expired_fence."
+  },
+  {
+   "name": "#361 the goal kit takes a goal refusal of a lease reason for the lease's refusal",
+   "file": "storage/goalConformance.ts",
+   "find": "error instanceof LeaseRefused&&error.reason===reason",
+   "replace": "named(error)===reason",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "Go twin (by hand, run_goal_conformance.go fenced: goalKitReason(refused) == reason): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_refuses_a_stale_fence_as_a_goal_refusal_of_the_same_reason and its resource-mismatch twin."
+  },
+  {
+   "name": "#361 LOW the goal table takes an asynchronous fence checker's promise for a passed check",
+   "file": "storage/goal.ts",
+   "find": "if(typeof checked==='object'&&checked!==null&&typeof (checked as {then?:unknown}).then==='function'){Promise.resolve(checked).catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}",
+   "replace": "void checked",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "No Go twin: Go's checker is a func returning its error, so it cannot answer before its check is made."
   },
   {
    "name": "#352 a durable run's Runtime read is answered and kept in the form its writer records",

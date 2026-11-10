@@ -3,7 +3,7 @@ import {StorageConformanceFailure} from './conformance'
 import {GOAL_JOURNAL_LIMIT,GOAL_OBJECTIVE_LIMIT,GoalRefused,type GoalCommand,type GoalFinding,type GoalPlanSteps,type GoalStore,type RunGoal} from './goal'
 import {JOB_ABANDON_OWNER,JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence} from './job'
 import type {JobRunStore} from './jobConformance'
-import {LeaseRefused,fenceOf,type LeaseFence} from './lease'
+import {LeaseRefused,fenceOf,type LeaseFence,type LeaseRefusalReason} from './lease'
 import {pinsDigest,type ResumePins} from './resume'
 import {WaitRefused,checkpointBytesDigest,wakeKeyDigest,type WaitClaim,type WaitPark} from './wait'
 /* #230: the goal conformance kit, for a host store kind's goal port beside its lease, wait and job ports. Every guarantee of
@@ -57,6 +57,13 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  }
  /** A refusal that writes nothing at all. */
  const untouched=async(property:string,run:string,attempt:()=>Promise<unknown>,reason:string)=>{const before=await store.readGoal(run);await refuses(property,attempt,reason);check(property,same(await store.readGoal(run),before))}
+ /** #361: a fence refusal writes nothing, a record or none, and is the lease's own refusal by class: a LeaseRefused of the
+  * lease's reason, as the store's fenced commits refuse, never a goal refusal that carries the same reason. */
+ const fenced=async(property:string,run:string,attempt:()=>Promise<unknown>,reason:LeaseRefusalReason)=>{
+  const before=await store.readGoal(run)
+  try{await attempt()}catch(error){check(property,error instanceof LeaseRefused&&error.reason===reason);const after=await store.readGoal(run);check(property,before===undefined?after===undefined:same(after,before));return}
+  throw new StorageConformanceFailure(property)
+ }
 
  // Create: from none, under the store's clock and the command's actor; the record and the answer agree.
  const p=await open('run-p')
@@ -329,15 +336,31 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  // #315 L-3: a command presented with a fence is decided only while that fence is current for the command's run. A worker a
  // takeover displaced is refused as its commits are, with nothing journaled and nothing changed; the holder's is decided.
  const f=await open('run-f'),g=await open('run-g')
- const fCreated=await answers('goal.fence.current',()=>send(command('run-f','create',null,{objective:'objective-f'}),{fence:f.fence}))
+ const fCreate=command('run-f','create',null,{objective:'objective-f'})
+ const fCreated=await answers('goal.fence.current',()=>send(fCreate,{fence:f.fence}))
  await store.releaseLease(f.fence)
- const fB=fenceOf(await answers('goal.fence.current',async()=>store.acquireLease({resource:'run-f',owner:'worker-b',expectedRevision:(await store.load('run-f'))!.revision,durationMs:HOUR})))
+ const taken=async(run:string,owner:string,durationMs:number)=>fenceOf(await answers('goal.fence.current',async()=>store.acquireLease({resource:run,owner,expectedRevision:(await store.load(run))!.revision,durationMs})))
+ const fB=await taken('run-f','worker-b',HOUR)
  const fLease=await store.readLease('run-f'),fPause=command('run-f','pause',fCreated.goal.revision)
- await untouched('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')
- await untouched('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')
+ await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')
+ await fenced('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')
+ // #361: the fence is checked before the record is read for a repeat: the displaced worker's retry of the create the store
+ // accepted from it is refused, not answered. On a run with no record, a displaced worker's create creates none.
+ await fenced('goal.fence.stale','run-f',()=>send(fCreate,{fence:f.fence}),'stale-epoch')
+ const nOpened=await open('run-n')
+ await store.releaseLease(nOpened.fence)
+ await taken('run-n','worker-b',HOUR)
+ await fenced('goal.fence.stale','run-n',()=>send(command('run-n','create',null,{objective:'objective-n'}),{fence:nOpened.fence}),'stale-epoch')
+ // #361: a fence of the current epoch is refused as the lease refuses it where it is another owner's, released or expired.
+ await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:{...fB,owner:'worker-x'}}),'other-owner')
  check('goal.fence.stale',same(await store.readLease('run-f'),fLease))
- await untouched('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')
- const fPaused=await answers('goal.fence.current',()=>send(fPause,{fence:fB}))
+ await fenced('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')
+ await store.releaseLease(fB)
+ await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fB}),'released')
+ const fC=await taken('run-f','worker-c',MINUTE)
+ at+=MINUTE
+ await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fC}),'expired')
+ const fPaused=await answers('goal.fence.current',async()=>send(fPause,{fence:await taken('run-f','worker-d',HOUR)}))
  check('goal.fence.current',fPaused.goal.revision===fCreated.goal.revision+1&&fPaused.entry.command===fPause.command&&fPaused.goal.objectives.at(-1)?.paused!==undefined)
 
  // A restart keeps every record, every disposition and every rule.

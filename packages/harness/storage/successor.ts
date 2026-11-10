@@ -43,7 +43,8 @@ const SUCCESSOR_LEASE_MS=60_000
 export type SuccessorRefusalReason='invalid'|'unbound'|'budgeted'|'succeeded'|'not-complete'|'exhausted'|'parked'|'moved'|'deadlined'
 /**
  * #340: a successor run refused by name before any model request or tool call. invalid: the input is not one this
- * package reads. unbound: the run id is not the one `successorRunId` derives, a `successor-` id is opened without a
+ * package reads, or the store value has no lease port, wait export or deadline reader and does not declare itself
+ * unleased (#362, UnleasedRunStore). unbound: the run id is not the one `successorRunId` derives, a `successor-` id is opened without a
  * successor, the question is not the predecessor's last user_question, or the answer is not a real answer to it.
  * budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry. deadlined (#355): the
  * predecessor has a run deadline (limitRun), which a successor does not carry, or its store holds deadlines and cannot say
@@ -82,10 +83,25 @@ async function waitsOf(store:RunStore,run:string,signal?:AbortSignal):Promise<Wa
  return typeof base.exportWaits==='function'?readWaitExport(await base.exportWaits(run,signal)):undefined
 }
 
+/** #362: the declaration a store with no lease port makes. `unleased: true` says it holds no leases, and so no waits or
+ * run deadlines, which need the lease port. A successor reads the lease port, the wait export and the deadline reader
+ * of the store it is opened through; a store value without one of them is refused `invalid` unless it declares this.
+ * A value that wraps a store and exposes fewer of its ports declares nothing, so it is refused, never read as a store
+ * that holds none. A store with a lease method is leased, whatever it declares. */
+export interface UnleasedRunStore extends RunStore {readonly unleased:true}
+/** #362: a store value with no lease method that declares itself unleased. */
+function declaredUnleased(store:RunStore):boolean{
+ const held=store as Partial<UnleasedRunStore>&Partial<LeaseStore>
+ return held.unleased===true&&typeof held.acquireLease!=='function'&&typeof held.releaseLease!=='function'
+}
+
 /** The run holds a wait, in any state, on this question. Such a question is answered through its wait, and never by a
- * successor as well. A read error refuses; it is never taken for none. */
+ * successor as well. A read error refuses; it is never taken for none, and neither is a store with no wait export
+ * that does not declare itself unleased (#362). */
 export async function questionWaitHeld(store:RunStore,run:string,event:string,signal?:AbortSignal):Promise<boolean>{
- return (await waitsOf(store,run,signal))?.waits.some(wait=>wait.resource===run&&wait.pending.kind==='question'&&wait.pending.event===event)??false
+ const held=await waitsOf(store,run,signal)
+ if(held===undefined){if(declaredUnleased(baseOf(store)))return false;throw new SuccessorRefused('invalid')}
+ return held.waits.some(wait=>wait.resource===run&&wait.pending.kind==='question'&&wait.pending.event===event)
 }
 
 /** The question has its successor run. */
@@ -137,11 +153,14 @@ export function readSuccessorInput(id:string,asked:unknown,input:{execution?:unk
 /** A store that reads back the run deadline it holds (#355): undefined where it holds none. */
 export interface RunDeadlineReader {readRunDeadline(resource:string,signal?:AbortSignal):Promise<RunLimit|undefined>}
 /** #355: the predecessor has a run deadline its store holds. A store that holds deadlines (limitRun) and cannot read them
- * back is taken as holding one; a read error refuses, and is never taken for none. */
+ * back is taken as holding one; a read error refuses, and is never taken for none. #362: a store with neither holds
+ * none only where it declares itself unleased; any other is refused invalid. */
 async function predecessorDeadlined(store:RunStore,run:string,signal?:AbortSignal):Promise<boolean>{
  const held=store as Partial<RunDeadlineReader>&{limitRun?:unknown}
  if(typeof held.readRunDeadline==='function')return await held.readRunDeadline(run,signal)!==undefined
- return typeof held.limitRun==='function'
+ if(typeof held.limitRun==='function')return true
+ if(declaredUnleased(store))return false
+ throw new SuccessorRefused('invalid')
 }
 
 /** Holds on every open of a successor: the predecessor's head is complete, its records are not expired, it ran under no
@@ -195,10 +214,11 @@ export async function makeSuccessor(store:RunStore,id:string,asked:RunSuccessor,
  * another owner's lease on the predecessor is live (held), once the head has moved from the revision read
  * (revision-changed), and while it leases the run to no one: closed, past its deadline, or holding a wait not yet
  * claimed. The lease's new epoch fences out every earlier holder's commits, so an admitted continuation that lost its
- * lease spends nothing more of the allowance. The release is always made; the lease expires on its own otherwise. */
+ * lease spends nothing more of the allowance. The release is always made; the lease expires on its own otherwise. #362:
+ * a store with no lease port is held by nothing only where it declares itself unleased; any other is refused invalid. */
 export async function holdPredecessor(store:RunStore,id:string,asked:RunSuccessor,head:RunHead,principal:ExecutionCheckpoint['principal'],signal?:AbortSignal):Promise<()=>Promise<void>>{
  const leases=baseOf(store) as Partial<LeaseStore>
- if(typeof leases.acquireLease!=='function'||typeof leases.releaseLease!=='function')return async()=>{}
+ if(typeof leases.acquireLease!=='function'||typeof leases.releaseLease!=='function'){if(declaredUnleased(baseOf(store)))return async()=>{};throw new SuccessorRefused('invalid')}
  const lease=await leases.acquireLease({resource:asked.predecessor,owner:id,expectedRevision:head.revision,durationMs:SUCCESSOR_LEASE_MS,...(principal?{principal:principalBinding(principal)}:{})},signal)
  return async()=>{await leases.releaseLease!(fenceOf(lease)).catch(()=>undefined)}
 }

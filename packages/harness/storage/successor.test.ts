@@ -196,8 +196,16 @@ describe('a question continuation of a running head (#341)',()=>{
  })
 })
 
-/** A store with no lease or wait port, as a host's single store kind may be: nothing leases its runs. */
-const plain=(store:RunStore):RunStore=>({durability:store.durability,load:(...args)=>store.load(...args),commit:(...args)=>store.commit(...args),readEvents:(...args)=>store.readEvents(...args)})
+/** #362: a value that wraps the store and exposes the run store and only the ports named, as a decorator may: it declares
+ * nothing of the ports it hides. */
+const hiding=(store:RunStore,...ports:string[]):RunStore=>{
+ const held=store as unknown as Record<string,(...args:unknown[])=>unknown>,out:Record<string,unknown>={durability:store.durability,load:(...args:Parameters<RunStore['load']>)=>store.load(...args),commit:(...args:Parameters<RunStore['commit']>)=>store.commit(...args),readEvents:(...args:Parameters<RunStore['readEvents']>)=>store.readEvents(...args)}
+ for(const port of ports)out[port]=held[port]!.bind(store)
+ return out as unknown as RunStore
+}
+/** A store with no lease or wait port, as a host's single store kind may be: nothing leases its runs, and it declares so
+ * (#362). */
+const plain=(store:RunStore):RunStore=>({...hiding(store),unleased:true} as RunStore)
 /** Runs before (and can stand in for) the successor's create commit. */
 function hooked(before:(run:string)=>Promise<'land'|'lose'|'refuse'|void>){
  return class extends DurableWaitStore {
@@ -355,6 +363,10 @@ describe('what a successor is made of, and what it is not (#340 review)',()=>{
   const error=await asSuccessor(s).then(()=>undefined,error=>error)
   expect(error).toMatchObject({name:'LeaseRefused',reason:'held'});expect(error.message).toBe('LeaseRefused: held.')
   expect(await s.store.load(SUCCESSOR)).toBeUndefined()
+  // #362: nor through a value that wraps the same store and exposes only the run store: it is refused before anything is
+  // written, never made unheld while that lease is live.
+  await expect(asSuccessor(s,hiding(s.store))).rejects.toEqual(refused('invalid'))
+  expect(await s.store.load(SUCCESSOR)).toBeUndefined()
   // Once its lease has lapsed, another lease of the head, the claim's owner's at a new epoch or another owner's, is not
   // the claim's, and admits nothing either.
   s.clock.at+=MINUTE
@@ -406,9 +418,25 @@ describe('what a successor is made of, and what it is not (#340 review)',()=>{
   await expect(asSuccessor(s,{...plain(s.store),limitRun:async()=>{throw Error('not called')}} as RunStore)).rejects.toEqual(refused('deadlined'))
   await expect(asSuccessor(s,{...plain(s.store),readRunDeadline:async()=>{throw Error('the deadline could not be read')}} as RunStore)).rejects.toThrow('the deadline could not be read')
   expect(await s.store.load(SUCCESSOR)).toBeUndefined()
-  // A store with no wait port holds no deadline: the successor is made.
+  // A store with no lease port that declares itself unleased holds no deadline: the successor is made.
   await asSuccessor(s,plain(s.store))
   expect(await s.store.load(SUCCESSOR)).toBeDefined()
+ })
+ // #362: a successor reads the lease port, the wait export and the deadline reader of the store value it is opened
+ // through. A value that hides one of them and does not declare itself unleased is refused invalid, by the first read it
+ // cannot make, and nothing is written; it is never read as a store that holds none.
+ for(const [name,ports] of [['the run store alone',[]],['the deadline reader and no wait export',['readRunDeadline']],['the deadline reader and the wait export, and no lease port',['readRunDeadline','exportWaits']],['the lease port and no deadline reader',['acquireLease','releaseLease','exportWaits']],['the lease port and no wait export',['acquireLease','releaseLease','readRunDeadline']]] as const)it(`is not made through a store value that hides a port: ${name}`,async()=>{
+  const s=await scene(),before=await s.store.readLease(PREDECESSOR)
+  const error=await asSuccessor(s,hiding(s.store,...ports)).then(()=>undefined,error=>error)
+  expect(error).toBeInstanceOf(SuccessorRefused);expect(error.message).toBe('SuccessorRefused: invalid.')
+  expect(error.failure).toEqual({version:1,code:'configuration',source:'context',outcome:'not-started',detail:'SuccessorRefused: invalid.'})
+  expect(await s.store.load(SUCCESSOR)).toBeUndefined();expect(await s.store.readLease(PREDECESSOR)).toEqual(before)
+ })
+ it('reads a declaration only where the store value has no lease method',async()=>{
+  const s=await scene()
+  await expect(asSuccessor(s,{...hiding(s.store,'acquireLease'),unleased:true} as RunStore)).rejects.toEqual(refused('invalid'))
+  await expect(asSuccessor(s,{...hiding(s.store),unleased:'yes'} as unknown as RunStore)).rejects.toEqual(refused('invalid'))
+  expect(await s.store.load(SUCCESSOR)).toBeUndefined()
  })
  // MEDIUM-2: a predecessor's records keep their retainUntil in the successor, and expired records have no successor.
  it('keeps the predecessor\'s retention, and expired records have none',async()=>{
