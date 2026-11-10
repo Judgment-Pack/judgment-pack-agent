@@ -714,12 +714,31 @@ export const APPROVAL_CONTINUATION =
 
 /**
  * The text a continued run's first request carries after the request text (ADR-0008): the line, then
- * one data block under a marker drawn for it, whose data is the decision, the call's result and the
- * person's note. The note is the person's words and reaches the model only inside the block.
+ * one data block under a marker drawn for it, whose data is the decision, the call's result, the
+ * person's note and when the decision was taken. The note is the person's words and reaches the model
+ * only inside the block. The time makes the block this decision's own, whatever its call id: a
+ * recovered request that carries it is the one sent after the decision (#309).
  */
 export function approvalContinuation(record: ApprovalRecord, marker = dataMarker()): string {
-  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }) }
+  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }), ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }
   return `${APPROVAL_CONTINUATION}\n${frameData(record.name, JSON.stringify(data), marker)}`
+}
+
+/**
+ * Whether a durable request carries `record`'s continuation under any marker (#309): the text
+ * approvalContinuation builds, each marker occurrence the same 32 lowercase hex digits, as the
+ * request's JSON encodes a string. NUL stands for the marker while it is matched: no data block,
+ * source or line holds one, since their JSON text escapes it.
+ */
+export function carriesApprovalContinuation(request: string, record: ApprovalRecord): boolean {
+  const parts = approvalContinuation(record, '\u0000').split('\u0000')
+  if (parts.length !== 4) return false
+  const [head, first, second, last] = parts.map(part => JSON.stringify(part).slice(1, -1)) as [string, string, string, string]
+  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {
+    const from = at + head.length, marker = request.slice(from, from + 32)
+    if (/^[0-9a-f]{32}$/.test(marker) && request.startsWith(first + marker + second + marker + last, from + 32)) return true
+  }
+  return false
 }
 
 /** What a model engine's loop is answered for an act call held for the person's decision (ADR-0008); never sent, since the run's next request is refused. */

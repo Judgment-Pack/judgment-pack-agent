@@ -146,7 +146,9 @@ var ErrApprovalHeld = errors.New("this call waits for the person’s decision an
 
 // ApprovalContinuationText is the text a continued run's first request carries after the request
 // text (approvalContinuation): the line, then one data block under marker whose data is the
-// decision, the call's result and the person's note. The note reaches the model only inside it.
+// decision, the call's result, the person's note and when the decision was taken. The note reaches
+// the model only inside it. The time makes the block this decision's own, whatever its call id: a
+// recovered request that carries it is the one sent after the decision (#309).
 func ApprovalContinuationText(record contract.CheckpointApproval, marker string) string {
 	result := Null()
 	if record.Result != nil {
@@ -161,7 +163,41 @@ func ApprovalContinuationText(record contract.CheckpointApproval, marker string)
 	if record.Note != nil {
 		data.Set("note", String(*record.Note))
 	}
+	if record.DecidedAt != nil {
+		data.Set("decidedAt", String(*record.DecidedAt))
+	}
 	return ApprovalContinuation + "\n" + FrameData(record.Name, data.Text(), marker)
+}
+
+// approvalPlaceholder stands for the marker while a continuation is matched: no data block, source
+// or line holds a NUL, since their JSON text escapes it.
+const approvalPlaceholder = "\x00"
+
+// carriesApprovalContinuation reports whether a durable request carries record's continuation
+// under any marker (#309): the text ApprovalContinuationText builds, each marker occurrence the
+// same 32 lowercase hex digits, as the request's JSON encodes a string.
+func carriesApprovalContinuation(request string, record contract.CheckpointApproval) bool {
+	parts := strings.Split(ApprovalContinuationText(record, approvalPlaceholder), approvalPlaceholder)
+	if len(parts) != 4 {
+		return false
+	}
+	for i, part := range parts {
+		parts[i] = string(mustJSONText(part))
+	}
+	for from := 0; ; {
+		at := strings.Index(request[from:], parts[0])
+		if at < 0 {
+			return false
+		}
+		rest := request[from+at+len(parts[0]):]
+		if len(rest) >= 32 && approvalMarker.MatchString(rest[:32]) {
+			marker := rest[:32]
+			if strings.HasPrefix(rest[32:], parts[1]+marker+parts[2]+marker+parts[3]) {
+				return true
+			}
+		}
+		from += at + 1
+	}
 }
 
 // ApprovalBook is what the run's approval looks like to the gate (ADR-0008): the approval the
