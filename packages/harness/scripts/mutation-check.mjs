@@ -161,14 +161,32 @@ function occurrences(text, find) {
   return count
 }
 
+/**
+ * Where a parse error is, from the error's own fields: `file:line:column` from its `loc` (the column
+ * one-based, as the parser's code frame prints it), else its `id`, the file; the first of the error's
+ * and its `errors`' that says. A message whose line is too long for a code frame names no place, and
+ * these still do (agent#348). Undefined where none says.
+ */
+function located(error) {
+  if (error === null || typeof error !== 'object') return undefined
+  for (const held of [error, ...(Array.isArray(error.errors) ? error.errors : [])]) {
+    const loc = held?.loc
+    const file = typeof loc?.file === 'string' ? loc.file : typeof held?.id === 'string' ? held.id : undefined
+    if (file !== undefined && Number.isInteger(loc?.line) && Number.isInteger(loc?.column)) return `${file}:${loc.line}:${loc.column + 1}`
+    if (typeof held?.id === 'string') return held.id
+  }
+  return undefined
+}
+
 /** A load error as one line of a table cell: no colour codes, no scratch path, no `|`, bounded. */
-function oneLine(message, scratch) {
+function oneLine(message, scratch, error) {
   let text = String(message ?? '').replace(/\x1b\[[0-9;]*m/g, '')
   if (scratch) text = text.split(`${scratch}/`).join('')
   const lines = text.split('\n').map((line) => line.trim()).filter((line) => /[A-Za-z0-9]/.test(line) && !/^[│╭╰─]/.test(line))
-  const at = text.match(/[\w./-]+:\d+:\d+/)
+  let at = text.match(/[\w./-]+:\d+:\d+/)?.[0] ?? located(error)
+  if (at !== undefined && scratch) at = at.split(`${scratch}/`).join('')
   let shown = lines.slice(0, 2).join(' ')
-  if (at && !shown.includes(at[0])) shown += ` (at ${at[0]})`
+  if (at !== undefined && !shown.includes(at)) shown += ` (at ${at})`
   shown = shown.replace(/\|/g, '/')
   return shown.length > 300 ? `${shown.slice(0, 297)}...` : shown
 }
@@ -184,7 +202,7 @@ async function parseError(file, text) {
     }
     return null
   } catch (error) {
-    return oneLine(error?.message ?? error)
+    return oneLine(error?.message ?? error, undefined, error)
   }
 }
 

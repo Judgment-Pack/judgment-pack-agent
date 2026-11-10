@@ -344,7 +344,7 @@ describe('the words a source’s schemas keep as written (#308)', () => {
     expect(schemaBounds.cases.length).toBeGreaterThan(0)
   })
 
-  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]; withheld: { tool: string; detail: string }[] }[]) {
+  for (const item of schemaBounds.cases as { what: string; policy?: Partial<SourceBounds>; declared: unknown[]; catalogue: boolean; offered: { name: string; description: string; inputSchema: unknown; taxonomy: unknown }[]; withheld: { tool: string; detail: string }[]; loaded?: { tool: string; inputSchema: unknown }; accepts?: { tool: string; arguments: Record<string, unknown> }; approved?: { tool: string; arguments: Record<string, unknown> } }[]) {
     it(`bounds them at the limit and one past: ${item.what}`, async () => {
       const out = await declareSources(declared(pinnedLocal(item.declared)), [])
       expect(out.withheld ?? []).toEqual([])
@@ -354,6 +354,25 @@ describe('the words a source’s schemas keep as written (#308)', () => {
       expect(offer.withheld).toEqual(item.withheld)
       // What is offered is what the gate holds: a tool withheld cannot be loaded or called.
       expect([...out.entries.keys()].sort()).toEqual(offer.hostTools.map((tool) => tool.name).sort())
+      // #357: load_tool's answer and the gate's check of a catalogued tool read the declared schema as the offer does.
+      if (!item.loaded && !item.accepts && !item.approved) return
+      const rows: SourceFigures[] = []
+      const gate = new SourceGate(out.entries, out.sources, { ...CONTEXT_DEFAULTS, ...(item.policy ?? {}) }, schemaBounds.marker, (tool, detail) => new GateViolation(tool, detail), () => rows)
+      if (item.loaded) {
+        const answer = await gate.loadTool().execute({ name: item.loaded.tool }, signal())
+        expect(JSON.stringify((answer.structuredContent as { inputSchema: unknown }).inputSchema)).toBe(JSON.stringify(item.loaded.inputSchema))
+      }
+      if (item.accepts) {
+        const tool = offer.hostTools.find((shown) => shown.name === item.accepts!.tool)!
+        const result = await gate.call(tool, item.accepts.arguments, signal(), (given, bounded) => tool.execute(given, bounded))
+        expect(result.content).toEqual([{ type: 'text', text: 'ran' }])
+      }
+      if (item.approved) {
+        const entry = out.entries.get(item.approved.tool)!
+        const tool = offer.hostTools.find((shown) => shown.name === item.approved!.tool)!
+        const answer = await gate.approved({ callId: 'approved', name: item.approved.tool, tool: entry.record.tool!, source: entry.record, args: item.approved.arguments, state: 'approved' }, signal(), (given, bounded) => tool.execute(given, bounded))
+        expect(answer).toEqual({ result: { content: [{ type: 'text', text: 'ran' }] }, ran: true })
+      }
     })
   }
 

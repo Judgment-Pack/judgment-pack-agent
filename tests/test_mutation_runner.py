@@ -64,6 +64,18 @@ SOURCES = {
     'packages/harness/loadonly.test.ts': "import {it} from 'vitest'\nimport {readFileSync} from 'node:fs'\nimport {loadOnly} from './loadonly'\n"
                                          "const alone=readFileSync(`/proc/${process.ppid}/cmdline`,'utf8').includes('loadonly.test.ts')\n"
                                          "if(loadOnly!=='plain'&&!alone) throw new Error('refuses to load beside the suite')\nit('loads',()=>{})\n",
+    # agent#348: under its mutant the selection's file refuses to load only in a run that names it, and
+    # chosenother.test.ts in every run: the whole suite sees only the other, so only the selection's own
+    # run can name the selection's file.
+    'packages/harness/chosen.ts': "export const chosen='kept'\n",
+    'packages/harness/chosen.test.ts': "import {it} from 'vitest'\nimport {readFileSync} from 'node:fs'\nimport {chosen} from './chosen'\n"
+                                       "const named=readFileSync(`/proc/${process.ppid}/cmdline`,'utf8').includes('chosen.test.ts')\n"
+                                       "if(chosen!=='kept'&&named) throw new Error('the selection refuses to load')\nit('loads',()=>{})\n",
+    'packages/harness/chosenother.test.ts': "import {it} from 'vitest'\nimport {chosen} from './chosen'\n"
+                                            "if(chosen!=='kept') throw new Error('another file refuses to load')\nit('loads',()=>{})\n",
+    # agent#348: one line too long for the parser's code frame, whose message then names no line.
+    'packages/harness/long.ts': 'export const long=[' + '0,' * 300 + '1]\n',
+    'packages/harness/long.test.ts': "import {it,expect} from 'vitest'\nimport {long} from './long'\nit('reads',()=>{expect(long.length).toBe(301)})\n",
 }
 COMMENT = {'file': 'adder.ts', 'find': '// the adder', 'replace': '// the adder, reworded'}
 ROWS = {
@@ -87,6 +99,8 @@ ROWS = {
     'a mutant that leaves its JSON unreadable': {'file': 'data.json', 'find': 'true}', 'replace': 'true}}', 'tests': ['data.test.ts']},
     'a mutant that stops a file loading only beside the suite': {'file': 'loadonly.ts', 'find': "'plain'", 'replace': "'other'", 'tests': ['adder.test.ts']},
     'a mutant caught beside a test file it stops loading': {'file': 'both.ts', 'find': "'kept'", 'replace': "'lost'", 'tests': ['both.test.ts', 'bothload.test.ts']},
+    'a mutant that stops its selection and another file loading': {'file': 'chosen.ts', 'find': "'kept'", 'replace': "'lost'", 'tests': ['chosen.test.ts']},
+    'a mutant that stops a module with a long line loading': {'file': 'long.ts', 'find': '1]', 'replace': '1])', 'tests': ['long.test.ts']},
 }
 
 
@@ -176,7 +190,8 @@ class Runner(unittest.TestCase):
         for name, file, error in (('a mutant that stops its module loading', 'adder.test.ts', r'.*\(at \S*adder\.ts:2:\d+\)'),
                                   ('a mutant that stops a module only the whole suite loads', 'held.test.ts', r'.*\(at \S*held\.ts:1:\d+\)'),
                                   ('a mutant that throws as its module loads', 'held.test.ts', r'held does not load'),
-                                  ('a mutant that leaves its JSON unreadable', 'data.test.ts', r'\S')):
+                                  ('a mutant that leaves its JSON unreadable', 'data.test.ts', r'\S'),
+                                  ('a mutant that stops a module with a long line loading', 'long.test.ts', r'\S')):
             with self.subTest(row=name):
                 verdict = self.verdict(name)
                 self.assertRegex(verdict, r'^BROKEN: %s%s from loading: %s' % (re.escape(whole), re.escape(file), error))
@@ -184,6 +199,14 @@ class Runner(unittest.TestCase):
                 self.assertNotIn('unloadable', verdict)
                 self.assertNotIn('\x1b', verdict)
                 self.assertNotRegex(verdict, r'/mutation-\w+/')
+
+    def test_the_selections_file_is_asked_first_where_another_also_does_not_load(self):
+        """agent#348: the selection's unloaded files are noted before the whole suite's, so the verdict
+        names the selection's file, which only the selection's own run saw not load."""
+        verdict = self.verdict('a mutant that stops its selection and another file loading')
+        self.assertRegex(verdict, r'^BROKEN: whole, after its selection decided nothing: no test failed, and the mutant '
+                                  r'stops chosen\.test\.ts from loading: .*the selection refuses to load')
+        self.assertNotIn('chosenother', verdict)
 
     def test_a_test_file_that_loads_again_in_a_run_of_its_own_does_not_make_the_row_broken(self):
         """As a failure must fail again in its own file: load on the whole suite cannot break a row."""
@@ -194,7 +217,7 @@ class Runner(unittest.TestCase):
         self.assertEqual(self.verdict('a mutant caught beside a test file it stops loading'), 'caught: selected: both.test.ts > notices')
 
     def test_the_counts_say_what_the_rows_did(self):
-        self.assertIn('18 rows chosen: 7 caught, 7 not caught, 4 broken, 0 did not apply, 0 undecided, 0 retired', self.all.stdout)
+        self.assertIn('20 rows chosen: 7 caught, 7 not caught, 6 broken, 0 did not apply, 0 undecided, 0 retired', self.all.stdout)
         self.assertNotEqual(self.all.returncode, 0)
 
     def test_the_row_lint_applies_each_row_and_parses_the_file_it_touches(self):
@@ -206,11 +229,16 @@ class Runner(unittest.TestCase):
         self.assertEqual(sorted((file, name) for file, _, name in broken),
                          [('adder.ts', 'a mutant that stops its module loading'),
                           ('data.json', 'a mutant that leaves its JSON unreadable'),
-                          ('held.ts', 'a mutant that stops a module only the whole suite loads')])
+                          ('held.ts', 'a mutant that stops a module only the whole suite loads'),
+                          ('long.ts', 'a mutant that stops a module with a long line loading')])
         self.assertTrue(all(error.strip() for _, error, _ in broken))
+        # agent#348: the parser's message names no place on a line this long; its loc does. The stray
+        # parenthesis follows the line's 621 characters, so it is the 622nd.
+        long_error = [error for file, error, _ in broken if file == 'long.ts'][0]
+        self.assertTrue(long_error.endswith(' (at long.ts:1:622)'), long_error)
         self.assertNotIn('DOES NOT APPLY', done.stdout)
         self.assertNotIn('DOES NOT LOAD WITH NO MUTANT', done.stdout)
-        self.assertIn('18 rows checked, 3 problems; 0 retired', done.stdout)
+        self.assertIn('20 rows checked, 4 problems; 0 retired', done.stdout)
 
     def test_the_copy_holds_the_repository_and_the_no_mutant_run_names_only_what_truly_fails(self):
         """outside.test.ts reads a file outside the package: in a copy of the package alone it fails."""

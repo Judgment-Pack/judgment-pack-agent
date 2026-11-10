@@ -67,6 +67,18 @@ describe('records (ADR #101)',()=>{
   expect(validRecord(extended)).toBe(true)
  })
 
+ it('refuses a checkpoint holding one record header member but not another (#358)',()=>{
+  // The same bytes as Go's TestRecordHeaderMissingMemberRefuses, written by hand.
+  const body='"version":1,"id":"11111111-1111-4111-8111-111111111111","requestKey":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","phase":"work","status":"paused","unit":"model-requests","used":1,"limit":20,"grants":[],"plan":[],"explanation":"","operations":[],"context":{"scope":"records-18","entries":[]},"reason":"interrupted","records":{"redactions":{}}'
+  const schema='"schema":"https://github.com/Judgment-Pack/judgment-pack-agent/blob/main/contract/schemas/checkpoint.json",'
+  const digest='"digest":"sha256:15eb1da3c933fd34b096b3b6834f332a4bc602beef214e11c239be3c0ea31c5c",'
+  const until='"retainUntil":"2027-01-19T12:00:00.000Z",'
+  for(const text of [`{${digest}${until}${body}}`,`{${until}${body}}`,`{${schema}${until}${body}}`,`{${schema}${digest}${body}}`])
+   expect(()=>readExecution(JSON.parse(text)),text).toThrow('Saved execution progress is invalid. History was left untouched.')
+  for(const text of ['{}',`{"version":2,${digest}${until}"id":"x"}`])
+   expect(()=>exportRecords([JSON.parse(text)],policy,'0.8.0',now),text).toThrow('The host supplied an invalid record for export.')
+ })
+
  it('recognises each decided record schema',()=>{
   expect([CHECKPOINT_SCHEMA,PROVENANCE_SCHEMA,CRITIQUE_SCHEMA]).toEqual([checkpointVector.items[0].schema,provenanceVector.items[0].schema,critiqueVector.items[0].schema])
  })
