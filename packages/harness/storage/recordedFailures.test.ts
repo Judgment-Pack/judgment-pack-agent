@@ -11,7 +11,7 @@ import {MemoryRunStore} from './run'
 import {RECORD_DEFAULTS,type RecordGuard} from '../records'
 import {OutputGuard} from '../outputGuard'
 import {inspect} from 'node:util'
-import {AIFailureError,authoredFailure,normalizeFailure,restateFailure,takeWholeDetail,toolFailureResult} from '../failures'
+import {AIFailureError,WHOLE_DETAIL_MARGIN,authoredFailure,cutDetail,normalizeFailure,restateFailure,toolFailureResult,wholeDetail,type AIFailure} from '../failures'
 import {ofType,sseTurn,streamed,vercelTurn,type EndpointRequest} from '../testing/scripted'
 import {vercel} from '../engines/vercel'
 import type {ExecutionCheckpoint} from '../execution/state'
@@ -21,9 +21,9 @@ const RAW='https://packs.example/tmp/evaluation-pack',REDACTED='https://packs.ex
 const DETAIL=`Could not read ${RAW} today`,RECORDED=`Could not read ${REDACTED} today`
 const decode=(bytes:Uint8Array|null|undefined)=>bytes?new TextDecoder().decode(bytes):''
 const checkpoint=(id:string):ExecutionCheckpoint=>({version:2,id,requestKey:'a'.repeat(64),phase:'work',status:'running',unit:'model-requests',used:0,limit:20,grants:[],plan:[],explanation:'',operations:[],context:{scope:'fixture',entries:[]}})
-const setup=(id:string,mode:'redact'|'refuse'='redact',store=new MemoryRunStore())=>{
+const setup=(id:string,mode:'redact'|'refuse'='redact',store=new MemoryRunStore(),patterns:{name:string;pattern:string}[]=[])=>{
  const writer=new RunWriter(store,id),binding:DurableBinding={writer,root:true,scope:{execution:id,role:'author'}}
- const guard=new OutputGuard({outputGuard:{value:mode,layer:'host'}} as never,()=>({}),()=>{}) as unknown as RecordGuard
+ const guard=new OutputGuard({outputGuard:{value:mode,layer:'host'},...(patterns.length?{outputPatterns:{value:patterns,layer:'host'}}:{})} as never,()=>({}),()=>{}) as unknown as RecordGuard
  writer.bind(()=>writer.checkpoint??checkpoint(id),RECORD_DEFAULTS,()=>guard)
  return {writer,binding,store}
 }
@@ -151,21 +151,33 @@ describe('a failure’s detail the record guard reads whole, before the cut (#35
   // The record's canonical bytes: its members in key order.
   expect(JSON.stringify(row.failure)).toBe(JSON.stringify({code:'tool-failed',detail:c.want,outcome:'unknown',source:'tool',version:1}))
   for(const part of [KEY_BODY.slice(0,34),'QQQQQQQQ','PRIVATE KEY-----\\n'])expect(text).not.toContain(part)
+  // The whole detail the error keeps agrees with its restated detail (#367).
+  expect(wholeDetail(thrown)).toBe(c.want)
  })
- it('a long detail the guard leaves as it is: the error keeps its own, the row holds that, and the whole detail is dropped',async()=>{
+ it('a long detail the guard leaves as it is: the error keeps its own, the row holds that, and the error keeps the whole detail',async()=>{
   const raw='y'.repeat(1200),thrown=authoredFailure('tool-failed',raw,'tool'),before=thrown.failure
   const {writer,binding,store}=setup('long')
   await expect(writer.invoke(binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
   expect(thrown.failure).toBe(before)
   expect((await stored(store,'long')).row.failure).toEqual(toolFailed('y'.repeat(1000)))
-  expect(takeWholeDetail(thrown)).toBe('y'.repeat(1000))
+  // Kept once it is read, so a later use is guarded alike (#367).
+  expect(wholeDetail(thrown)).toBe(raw)
  })
- it('the whole detail is read only for the detail it was cut to',async()=>{
+ it('a failure restated with no whole detail keeps none',async()=>{
   const thrown=authoredFailure('tool-failed',WHOLE[0]!.raw,'tool')
   restateFailure(thrown,toolFailed('Rejected a key.') as never)
+  expect(wholeDetail(thrown)).toBe('Rejected a key.')
   const {writer,binding,store}=setup('restated')
   await expect(writer.invoke(binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
   expect((await stored(store,'restated')).row.failure).toEqual(toolFailed('Rejected a key.'))
+ })
+ it('the whole detail is read only for the detail it was cut to: an error whose failure is set by hand since',async()=>{
+  const thrown=authoredFailure('tool-failed',WHOLE[0]!.raw,'tool')
+  ;(thrown as unknown as {failure:AIFailure}).failure=toolFailed('Rejected a key.') as AIFailure
+  expect(wholeDetail(thrown)).toBe('Rejected a key.')
+  const {writer,binding,store}=setup('set')
+  await expect(writer.invoke(binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
+  expect((await stored(store,'set')).row.failure).toEqual(toolFailed('Rejected a key.'))
  })
  it('a model’s failure',async()=>{
   const c=WHOLE[1]!,{writer,binding,store}=setup('model-whole'),handle=await writer.startModel(binding,'source','fixture','{}')
@@ -177,5 +189,99 @@ describe('a failure’s detail the record guard reads whole, before the cut (#35
  it('authoredFailure cuts as Go’s Authored does: a pair the cut would split is left out whole',()=>{
   expect(authoredFailure('tool-failed','a'.repeat(999)+'\u{1F600}tail','tool').failure.detail).toBe('a'.repeat(999))
   expect(authoredFailure('tool-failed','a'.repeat(998)+'\u{1F600}tail','tool').failure.detail).toBe('a'.repeat(998)+'\u{1F600}')
+ })
+})
+
+const rows=async(store:MemoryRunStore,id:string)=>{
+ const text=decode((await store.load(id))?.checkpoint)
+ return {text,rows:(JSON.parse(text) as {durable:{dispatches:{kind:string;state:string;failure?:AIFailure}[]}}).durable.dispatches}
+}
+const TICKET='TICKET-'+'7'.repeat(40),TICKET_PATTERN={name:'ticket',pattern:'TICKET-[0-9]{40}'}
+
+// #367: the error keeps the whole detail once it is read, and a restated one keeps the guarded whole its detail was cut
+// from, so a later use of the same error is guarded whole, as the first was. The Go twins are in recorded_failures_test.go.
+describe('the same failure used again (#367)',()=>{
+ for(const c of WHOLE){
+  it(`a tool’s, twice on one writer: ${c.name}`,async()=>{
+   const thrown=authoredFailure('tool-failed',c.raw,'tool'),{writer,binding,store}=setup('twice')
+   for(const n of [1,2]){
+    await expect(writer.invoke(binding,'host','source','evaluate',`{"n":${n}}`,false,failing(thrown))).rejects.toBe(thrown)
+    expect(thrown.failure).toEqual(toolFailed(c.want))
+   }
+   const {text,rows:held}=await rows(store,'twice')
+   expect(held.map(row=>row.failure)).toEqual([toolFailed(c.want),toolFailed(c.want)])
+   for(const part of [KEY_BODY.slice(0,34),'QQQQQQQQ'])expect(text).not.toContain(part)
+  })
+  // A model's failure ends its run's dispatch, so its second use is on a second run.
+  it(`a model’s, twice: ${c.name}`,async()=>{
+   const error=authoredFailure('unavailable',c.raw,'model')
+   for(const id of ['model-first','model-second']){
+    const {writer,binding,store}=setup(id),handle=await writer.startModel(binding,'source','fixture','{}')
+    await writer.finishModel(binding,handle,{ok:false,error})
+    const {text,row}=await stored(store,id)
+    expect(row.failure).toEqual({version:1,code:'unavailable',source:'model',outcome:'unknown',detail:c.want})
+    for(const part of [KEY_BODY.slice(0,34),'QQQQQQQQ'])expect(text).not.toContain(part)
+   }
+  })
+ }
+ it('a second writer whose guard holds a pattern the first’s does not: the restated error keeps the guarded whole, and the second finds the match the cut would split',async()=>{
+  const filler='f'.repeat(975-'Rejected '.length-KEY_REDACTED.length-' then '.length)
+  const raw=`Rejected ${RSA_KEY} then ${filler}${TICKET} (end)`,guarded=`Rejected ${KEY_REDACTED} then ${filler}${TICKET} (end)`
+  const first=guarded.slice(0,1000),second=`Rejected ${KEY_REDACTED} then ${filler}[redacted: ticket] (end)`
+  expect([first.length,second.length,first.endsWith(TICKET.slice(0,25))]).toEqual([1000,999,true])
+  const thrown=authoredFailure('tool-failed',raw,'tool')
+  const one=setup('first')
+  await expect(one.writer.invoke(one.binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
+  expect(thrown.failure).toEqual(toolFailed(first))
+  expect((await stored(one.store,'first')).row.failure).toEqual(toolFailed(first))
+  // The whole detail the restated error keeps is the guarded one, and it cuts to the restated detail.
+  expect(wholeDetail(thrown)).toBe(guarded)
+  expect(cutDetail(wholeDetail(thrown)!)).toBe(thrown.failure.detail)
+  const two=setup('second','redact',undefined,[TICKET_PATTERN])
+  await expect(two.writer.invoke(two.binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
+  expect(thrown.failure).toEqual(toolFailed(second))
+  expect((await stored(two.store,'second')).row.failure).toEqual(toolFailed(second))
+  expect(wholeDetail(thrown)).toBe(second)
+ })
+ it('a redaction that lengthens the detail: the guarded whole the restated error keeps is bounded, so its second use stays within the guard’s work bound',async()=>{
+  const name='hash-'+'x'.repeat(59),label=`[redacted: ${name}]`,pattern={name,pattern:'#'}
+  const thrown=authoredFailure('tool-failed','#'.repeat(20000),'tool'),{writer,binding,store}=setup('lengthened','redact',undefined,[pattern])
+  const want=label.repeat(14).slice(0,1000)
+  for(const n of [1,2]){
+   await expect(writer.invoke(binding,'host','source','evaluate',`{"n":${n}}`,false,failing(thrown))).rejects.toBe(thrown)
+   expect(thrown.failure).toEqual(toolFailed(want))
+   expect(wholeDetail(thrown)!.length).toBe(1000+WHOLE_DETAIL_MARGIN)
+  }
+  expect((await rows(store,'lengthened')).rows.map(row=>row.failure)).toEqual([toolFailed(want),toolFailed(want)])
+ })
+})
+
+// #367: the guard reads the cut and WHOLE_DETAIL_MARGIN past it, so a very long detail stays within its work bound; a
+// private key whose END marker ends past the margin is not found, and the detail is stored as cut (ADR-0018 says so).
+describe('the whole detail’s margin (#367)',()=>{
+ const bound=1000+WHOLE_DETAIL_MARGIN
+ it('is 16384 UTF-16 code units past the cut, as Go’s failure.WholeDetailMargin is, and never half a pair',()=>{
+  expect(WHOLE_DETAIL_MARGIN).toBe(16384)
+  expect(wholeDetail(authoredFailure('tool-failed','y'.repeat(3*bound),'tool'))).toBe('y'.repeat(bound))
+  expect(wholeDetail(authoredFailure('tool-failed','y'.repeat(bound-1)+'\u{1F600}tail','tool'))).toBe('y'.repeat(bound-1))
+  expect(wholeDetail(authoredFailure('tool-failed','y'.repeat(bound-2)+'\u{1F600}tail','tool'))).toBe('y'.repeat(bound-2)+'\u{1F600}')
+ })
+ for(const shape of ['x','a b/'])it(`a 300,000-unit detail of ${JSON.stringify(shape)} ends as an ordinary stored failure, with exactly the cut’s bytes`,async()=>{
+  const raw=shape.repeat(300_000/shape.length),thrown=authoredFailure('tool-failed',raw,'tool'),{writer,binding,store}=setup('long')
+  await expect(writer.invoke(binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
+  const {row}=await stored(store,'long')
+  expect(row.state).toBe('unknown')
+  expect(JSON.stringify(row.failure)).toBe(JSON.stringify({code:'tool-failed',detail:raw.slice(0,1000),outcome:'unknown',source:'tool',version:1}))
+ })
+ const head=`Rejected key after ${'x'.repeat(800)}: `,begin='-----BEGIN RSA PRIVATE KEY-----\n',end='\n-----END RSA PRIVATE KEY-----'
+ const within=bound-head.length-begin.length-end.length
+ for(const c of [
+  {name:'a key whose END marker ends at the margin is found',body:within,want:()=>head+KEY_REDACTED},
+  {name:'a key whose END marker ends one unit past the margin is not: the detail is stored as cut',body:within+1,want:(raw:string)=>raw.slice(0,1000)},
+ ])it(c.name,async()=>{
+  const raw=`${head}${begin}${'Q'.repeat(c.body)}${end} (bad padding)`,thrown=authoredFailure('tool-failed',raw,'tool'),{writer,binding,store}=setup('margin')
+  await expect(writer.invoke(binding,'host','source','evaluate','{}',false,failing(thrown))).rejects.toBe(thrown)
+  expect(thrown.failure).toEqual(toolFailed(c.want(raw)))
+  expect((await stored(store,'margin')).row.failure).toEqual(toolFailed(c.want(raw)))
  })
 })

@@ -117,13 +117,26 @@ answer is present and gives the parent the continuation, so nothing is delivered
 A durable row's failure (`durable.dispatches.*.failure`) is stored with the form this pass leaves of its
 `detail` alone, then cut to the thousand UTF-16 code units a detail may hold without splitting a
 surrogate pair; its other members are the catalogue's and stay as they are. The pass reads the detail
-whole, before the cut. An authored failure (`authoredFailure`, Go `failure.Authored`) is cut to that
-length when it is made, so its error keeps the whole detail for this pass alone: a module-private map in
-TypeScript, an unexported field in Go, never encoded, printed or sent, and dropped once read. A match the
-cut would split, such as a private key whose END marker lies past the cut, is therefore still found.
-Where no durable writer reads it, the failure is cut as before. Where a host or Runtime call's failure
-reaches a model, the call fails with that same form. In Go the call's error is wrapped in
+whole, before the cut, as far as a margin past it. An authored failure (`authoredFailure`, Go
+`failure.Authored`) is cut to that length when it is made, so its error keeps the whole detail for this
+pass alone, as far as 16384 UTF-16 code units past the cut (`WHOLE_DETAIL_MARGIN`, Go
+`failure.WholeDetailMargin`; also without splitting a pair): a module-private map in TypeScript, an
+unexported field in Go, never encoded, printed or sent. The error keeps it once it is read, so a later
+use of the same error, on the same writer or another, is guarded whole as the first was; the pass reads
+it only while it still cuts to the error's detail. A match the cut would split is found where it ends
+within the margin, such as a private key whose END marker lies past the cut. The margin bounds the
+pass's work, so a very long detail is stored as an ordinary failure and does not reach the guard's work
+bound. It is a named constant, not derived from the patterns, because they give no longest match: the
+private-key pattern needs both its BEGIN and END markers and holds any text between them, and a host's
+`outputPatterns` may be unbounded too. That is the limit: a key whose END marker ends past the margin is
+not matched, and the detail is stored as cut, its BEGIN marker and the start of its body with it, as
+before #352; so is any other match that needs text past the margin. Where no durable writer reads it,
+the failure is cut as before. Where a host or Runtime call's failure reaches a model, the call fails
+with that same form. In Go the call's error is wrapped in
 `failure.RecordedError`, which `failure.Normalize` reads before anything it wraps. In TypeScript the
 `AIFailureError` the failure was read from is given the form in place, with its message, so a check of
-the error's identity still holds. A model's own failure is only stored in that form. If the guard
-refuses the detail, the call ends as `StorageOutcomeUnknown` and nothing of the failure is stored.
+the error's identity still holds; the whole detail it keeps is replaced with the guarded one its new
+detail was cut from (bounded as before), or dropped where there is none, so the two never disagree, and
+a second writer whose guard holds another pattern reads what Go's would. A model's own failure is only
+stored in that form. If the guard refuses the detail, the call ends as `StorageOutcomeUnknown` and
+nothing of the failure is stored.

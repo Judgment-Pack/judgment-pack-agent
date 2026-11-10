@@ -18445,7 +18445,7 @@
   {
    "name": "#352 a durable call fails with its failure as it was, not the recorded form",
    "file": "storage/writer.ts",
-   "find": "if(recorded!==failed&&from)restateFailure(from,recorded);",
+   "find": "if(recorded!==failed&&from)restateFailure(from,recorded,whole);",
    "replace": "",
    "tests": [
     "storage/recordedFailures.test.ts"
@@ -18469,8 +18469,8 @@
   {
    "name": "#352 a failure's detail the record guard refuses is stored as it is",
    "file": "storage/writer.ts",
-   "find": "recorded=this.recordedFailure(classified);",
-   "replace": "recorded=(()=>{try{return this.recordedFailure(classified)}catch{return failed}})();",
+   "find": "{failure:recorded,whole}=this.recordedFailure(classified);",
+   "replace": "{failure:recorded,whole}=(()=>{try{return this.recordedFailure(classified)}catch{return {failure:failed,whole:undefined}}})();",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18481,8 +18481,8 @@
   {
    "name": "#352 a redacted failure's detail is not cut to what a detail may hold",
    "file": "storage/writer.ts",
-   "find": "const detail=cutDetail(recordedForm(whole,this.policy,this.guard?.()))",
-   "replace": "const detail=recordedForm(whole,this.policy,this.guard?.())",
+   "find": "const guarded=recordedForm(whole,this.policy,this.guard?.()),detail=cutDetail(guarded)",
+   "replace": "const guarded=recordedForm(whole,this.policy,this.guard?.()),detail=guarded",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18493,14 +18493,14 @@
   {
    "name": "#352 a failure's detail is cut through a surrogate pair",
    "file": "failures.ts",
-   "find": "detail.slice(0,/[\\uD800-\\uDBFF]/.test(detail[999]!)?999:1000)",
-   "replace": "detail.slice(0,1000)",
+   "find": "text.slice(0,/[\\uD800-\\uDBFF]/.test(text[units-1]!)?units-1:units)",
+   "replace": "text.slice(0,units)",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
    "status": "caught",
    "origin": "agent#352",
-   "note": "No Go twin: Go's cutUTF16 counts runes and never splits a pair (TestARecordedFailureDetailIsCutWithoutSplittingAPair pins it)."
+   "note": "cutUnits, which cuts both a detail and the whole detail kept (#367). No Go twin: Go's cutUTF16 counts runes and never splits a pair (TestARecordedFailureDetailIsCutWithoutSplittingAPair and TestAWholeDetailIsKeptAsFarAsTheMargin pin it)."
   },
   {
    "name": "#352 the error a failure was read from is not named",
@@ -18553,7 +18553,7 @@
   {
    "name": "#352 a failure's detail is guarded as cut, not whole",
    "file": "storage/writer.ts",
-   "find": "const whole=(from&&takeWholeDetail(from))??f.detail",
+   "find": "const whole=(from&&wholeDetail(from))??f.detail",
    "replace": "const whole=f.detail",
    "tests": [
     "storage/recordedFailures.test.ts"
@@ -18565,8 +18565,8 @@
   {
    "name": "#352 a durable call's failure is guarded without the error it was read from",
    "file": "storage/writer.ts",
-   "find": "recorded=this.recordedFailure(classified);",
-   "replace": "recorded=this.recordedFailure({failure:failed});",
+   "find": "{failure:recorded,whole}=this.recordedFailure(classified);",
+   "replace": "{failure:recorded,whole}=this.recordedFailure({failure:failed});",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18589,7 +18589,7 @@
   {
    "name": "#352 an authored failure keeps no whole detail",
    "file": "failures.ts",
-   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "find": "if(cut!==detail)wholeDetails.set(authored,keptWhole(detail))",
    "replace": "",
    "tests": [
     "storage/recordedFailures.test.ts"
@@ -18601,8 +18601,8 @@
   {
    "name": "#352 an authored failure's whole detail is a member of the error",
    "file": "failures.ts",
-   "find": "if(cut!==detail)wholeDetails.set(authored,detail)",
-   "replace": "if(cut!==detail){wholeDetails.set(authored,detail);(authored as unknown as {whole:string}).whole=detail}",
+   "find": "if(cut!==detail)wholeDetails.set(authored,keptWhole(detail))",
+   "replace": "if(cut!==detail){wholeDetails.set(authored,keptWhole(detail));(authored as unknown as {whole:string}).whole=detail}",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
@@ -18611,16 +18611,16 @@
    "note": "Go twin (by hand, Error() printing the whole detail): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (the error's own detail, its encoding and printing)."
   },
   {
-   "name": "#352 a whole detail is kept once it is read",
+   "name": "#367 a whole detail is dropped once it is read",
    "file": "failures.ts",
-   "find": "const whole=wholeDetails.get(error);wholeDetails.delete(error)",
-   "replace": "const whole=wholeDetails.get(error)",
+   "find": "const whole=wholeDetails.get(error)\n",
+   "replace": "const whole=wholeDetails.get(error);wholeDetails.delete(error)\n",
    "tests": [
     "storage/recordedFailures.test.ts"
    ],
    "status": "caught",
-   "origin": "agent#352",
-   "note": "Go twin (by hand, TakeWhole without from.whole = nil): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (TakeWhole after the call)."
+   "origin": "agent#367",
+   "note": "#367 MEDIUM-1 inverts this row: the error keeps its whole detail once it is read, so a later use of the same error is guarded whole, as the first was. Caught at recordedFailures.test.ts: a long detail the guard leaves as it is (wholeDetail after the call) and the same failure used again, a model's, twice. Go twin (by hand, WholeDetail setting from.whole = nil once read): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut (WholeDetail after the call), TestTheSameFailureUsedTwiceIsGuardedWholeBothTimes and TestASecondWritersGuardReadsTheWholeDetail."
   },
   {
    "name": "#352 a whole detail is read for a failure it was not cut to",
@@ -18632,7 +18632,7 @@
    ],
    "status": "caught",
    "origin": "agent#352",
-   "note": "Go twin (by hand, TakeWhole without the cut check): caught at TestAWholeDetailIsReadOnlyForTheDetailItWasCutTo."
+   "note": "#367 keeps the check: a restated failure keeps no whole detail its detail does not cut to, so only an error whose failure is set by hand reaches it. Caught at recordedFailures.test.ts > the whole detail is read only for the detail it was cut to: an error whose failure is set by hand since. Go twin (by hand, WholeDetail without the cut check): caught at TestAWholeDetailIsReadOnlyForTheDetailItWasCutTo."
   },
   {
    "name": "#352 an authored failure's detail is cut through a surrogate pair",
@@ -18681,6 +18681,90 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin (by hand, ledger.go searchHeld taking e on a refusal): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_refusing_guard."
+  },
+  {
+   "name": "#367 an authored failure keeps its whole detail unbounded",
+   "file": "failures.ts",
+   "find": "if(cut!==detail)wholeDetails.set(authored,keptWhole(detail))",
+   "replace": "if(cut!==detail)wholeDetails.set(authored,detail)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "MEDIUM-2: the guard reads a detail of any length, so a long one reaches its work bound and the call ends as an unknown storage outcome. Caught at recordedFailures.test.ts > the whole detail's margin: a 300,000-unit detail ends as an ordinary stored failure, a key whose END marker ends one unit past the margin, and the margin's own case. Go twin (by hand, Authored keeping &detail): caught at TestAVeryLongFailureDetailIsAnOrdinaryStoredFailure, TestAKeyWhoseEndLiesPastTheMarginIsStoredAsCut and TestAWholeDetailIsKeptAsFarAsTheMargin."
+  },
+  {
+   "name": "#367 the whole detail is kept without the margin past the cut",
+   "file": "failures.ts",
+   "find": "const keptWhole=(detail:string)=>cutUnits(detail,1000+WHOLE_DETAIL_MARGIN)",
+   "replace": "const keptWhole=(detail:string)=>cutUnits(detail,1000)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "Caught at recordedFailures.test.ts: the cases a cut would split (a body across the cut and the rest) and the margin's own. Go twin (by hand, Authored keeping cutUTF16(detail, 1000)): caught at TestARecordedFailureDetailIsGuardedWholeBeforeItIsCut, TestAWholeDetailIsKeptAsFarAsTheMargin and TestAKeyWhoseEndLiesPastTheMarginIsStoredAsCut."
+  },
+  {
+   "name": "#367 the whole detail's bound splits a pair",
+   "file": "failures.ts",
+   "find": "const keptWhole=(detail:string)=>cutUnits(detail,1000+WHOLE_DETAIL_MARGIN)",
+   "replace": "const keptWhole=(detail:string)=>detail.slice(0,1000+WHOLE_DETAIL_MARGIN)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "Caught at recordedFailures.test.ts > the whole detail's margin is 16384 UTF-16 code units past the cut ... and never half a pair. No Go twin: Go's cutUTF16 counts runes and never splits a pair (TestAWholeDetailIsKeptAsFarAsTheMargin pins the same bytes)."
+  },
+  {
+   "name": "#367 the whole detail's margin is not Go's",
+   "file": "failures.ts",
+   "find": "export const WHOLE_DETAIL_MARGIN=16384",
+   "replace": "export const WHOLE_DETAIL_MARGIN=16383",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "Caught at recordedFailures.test.ts > the whole detail's margin is 16384 UTF-16 code units past the cut, as Go's failure.WholeDetailMargin is. Go twin (by hand, WholeDetailMargin = 16383): caught at TestAWholeDetailIsKeptAsFarAsTheMargin."
+  },
+  {
+   "name": "#367 a restated failure keeps no guarded whole detail",
+   "file": "failures.ts",
+   "find": "wholeDetails.set(error,keptWhole(whole))",
+   "replace": "wholeDetails.delete(error)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "The restated error's later use is guarded as its cut: a second writer whose guard holds another pattern does not find the match the cut would split. Caught at recordedFailures.test.ts > the same failure used again: a second writer whose guard holds a pattern the first's does not. Go twin: none; Go never restates (it wraps the call's error in failure.RecordedError), and the error keeps its whole detail (TestASecondWritersGuardReadsTheWholeDetail pins the same bytes)."
+  },
+  {
+   "name": "#367 a restated failure keeps its guarded whole detail unbounded",
+   "file": "failures.ts",
+   "find": "wholeDetails.set(error,keptWhole(whole))",
+   "replace": "wholeDetails.set(error,whole)",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "A redaction can lengthen the guarded whole past the margin, and its second use then reaches the guard's work bound. Caught at recordedFailures.test.ts > the same failure used again: a redaction that lengthens the detail. Go twin: none; Go never restates."
+  },
+  {
+   "name": "#367 a durable call restates its failure without the guarded whole",
+   "file": "storage/writer.ts",
+   "find": "if(recorded!==failed&&from)restateFailure(from,recorded,whole);",
+   "replace": "if(recorded!==failed&&from)restateFailure(from,recorded);",
+   "tests": [
+    "storage/recordedFailures.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#367",
+   "note": "Caught at recordedFailures.test.ts > the same failure used again: a second writer whose guard holds a pattern the first's does not. Go twin: none; Go never restates."
   }
  ]
 }

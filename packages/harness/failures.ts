@@ -65,15 +65,37 @@ export function classifyFailure(cause:unknown,source:FailureSource='desk',now=Da
  const found=classify(cause,0),from=read.get(found)
  return from?{failure:found,from}:{failure:found}
 }
+/** `text` cut to `units` UTF-16 code units, never half a pair. */
+const cutUnits=(text:string,units:number)=>text.length<=units?text:text.slice(0,/[\uD800-\uDBFF]/.test(text[units-1]!)?units-1:units)
 /** A failure's detail cut to the thousand UTF-16 code units it may hold, never half a pair (#352). */
-export const cutDetail=(detail:string)=>detail.length<=1000?detail:detail.slice(0,/[\uD800-\uDBFF]/.test(detail[999]!)?999:1000)
+export const cutDetail=(detail:string)=>cutUnits(detail,1000)
+/**
+ * #352: how far past the cut, in UTF-16 code units, the whole detail an authored failure keeps for the record guard
+ * reaches: the guard reads the cut and this much more, so a match the cut would split is found where it ends within the
+ * margin, and a very long detail stays within the guard's work bound. A match that needs text past it is not
+ * found (ADR-0018). Go's `failure.WholeDetailMargin` is the same.
+ */
+export const WHOLE_DETAIL_MARGIN=16384
+/**
+ * #352: the whole detail an authored failure was cut from, as far as `WHOLE_DETAIL_MARGIN` past the cut, by its error.
+ * Only a durable writer's record guard reads it (`wholeDetail`), so that a match the cut would split is still found; it
+ * is no member of the error, so nothing encodes, prints or sends it. It is kept, so a later use of the same error is
+ * guarded as the first was; `restateFailure` replaces it with the guarded one.
+ */
+const wholeDetails=new WeakMap<AIFailureError,string>()
+/** The most of a whole detail that is kept: the cut and the margin past it. */
+const keptWhole=(detail:string)=>cutUnits(detail,1000+WHOLE_DETAIL_MARGIN)
 /**
  * #352: `error` given `recorded`, the form a durable record holds of its failure, in place, its message with it: the same
- * error, so a check of its identity still holds.
+ * error, so a check of its identity still holds. `whole` is the guarded whole detail `recorded`'s was cut from; the error
+ * keeps it in place of the one it held, where it cuts to `recorded`'s detail, and otherwise keeps none, so the whole it
+ * keeps never disagrees with its detail.
  */
-export function restateFailure(error:AIFailureError,recorded:AIFailure){
+export function restateFailure(error:AIFailureError,recorded:AIFailure,whole?:string){
  const safe=readFailure(recorded);if(!safe)throw Error('Invalid AI failure')
  ;(error as {failure:AIFailure}).failure=safe;error.message=failureMessage(safe)
+ if(whole!==undefined&&safe.detail!==undefined&&cutDetail(whole)===safe.detail&&whole!==safe.detail)wholeDetails.set(error,keptWhole(whole))
+ else wholeDetails.delete(error)
 }
 export function failureEvent(cause:unknown,source:FailureSource='desk'):Extract<AssistantEvent,{type:'error'}>{const value=normalizeFailure(cause,source);return {type:'error',message:failureMessage(value),failure:value}}
 /** Automatic retry requires positive admission refusal; never infer replay safety from a 5xx or a timeout. */
@@ -109,24 +131,18 @@ export function canRetryRefusal(value:AIFailure,code?:string):boolean {
 }
 export function retryReady(value:AIFailure|undefined,now=Date.now()):boolean {return !value?.retryAt||Date.parse(value.retryAt)<=now}
 
-/**
- * #352: the whole detail an authored failure was cut from, by its error. Only a durable writer's record guard reads it
- * (`takeWholeDetail`), so that a match the cut would split is still found; it is no member of the error, so nothing
- * encodes, prints or sends it, and it is dropped once read.
- */
-const wholeDetails=new WeakMap<AIFailureError,string>()
 /** Host-authored validation only; never pass provider prose or arbitrary caught messages. The detail is cut to what a detail may hold (`cutDetail`). */
 export function authoredFailure(code:FailureCode,detail:string,source:FailureSource='desk'):AIFailureError{
  const cut=cutDetail(detail),authored=new AIFailureError({...failure(code,source),detail:cut})
- if(cut!==detail)wholeDetails.set(authored,detail)
+ if(cut!==detail)wholeDetails.set(authored,keptWhole(detail))
  return authored
 }
 /**
- * #352: the detail a durable writer's record guard reads of `error`'s failure: the whole one it was authored with, where
- * `authoredFailure` cut it, and otherwise its own. Read once: the error no longer holds it.
+ * #352: the detail a durable writer's record guard reads of `error`'s failure: the whole one it holds, where it still cuts
+ * to its detail, and otherwise its own. The error keeps it.
  */
-export function takeWholeDetail(error:AIFailureError):string|undefined{
- const whole=wholeDetails.get(error);wholeDetails.delete(error)
+export function wholeDetail(error:AIFailureError):string|undefined{
+ const whole=wholeDetails.get(error)
  return whole!==undefined&&cutDetail(whole)===error.failure.detail?whole:error.failure.detail
 }
 

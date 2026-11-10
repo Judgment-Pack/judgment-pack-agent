@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -102,11 +101,18 @@ func Recovery(f contract.Failure) string { return Catalog[f.Code].Recovery }
 // Error is AIFailureError: a failure carried as a Go error, its message the failure's.
 type Error struct {
 	Failure contract.Failure
-	// whole is the detail as it was authored, where Authored cut it to what a detail may hold (#352). Only a
-	// durable writer's record guard reads it (TakeWhole), so that a match the cut would split is still found.
-	// It is never encoded, printed or given to the model, and it is dropped once read.
+	// whole is the detail as it was authored, as far as WholeDetailMargin past the cut, where Authored cut it
+	// to what a detail may hold (#352). Only a durable writer's record guard reads it (WholeDetail), so that a
+	// match the cut would split is still found. It is never encoded, printed or given to the model, and it is
+	// kept, so a later use of the same error is guarded as the first was.
 	whole *string
 }
+
+// WholeDetailMargin is how far past the cut, in UTF-16 code units, the whole detail an authored failure keeps
+// for the record guard reaches (#352): the guard reads the cut and this much more, so a match the cut would
+// split is found where it ends within the margin, and a very long detail stays within the guard's work bound.
+// A match that needs text past it is not found (ADR-0018). authoredFailure keeps the same (WHOLE_DETAIL_MARGIN).
+const WholeDetailMargin = 16384
 
 // NewError is a failure as an error. A failure the catalogue does not admit is a programming
 // error and panics, as AIFailureError's constructor throws.
@@ -138,8 +144,9 @@ func CutDetail(detail string) string { return cutUTF16(detail, 1000) }
 func Err(code, source, outcome string) *Error { return NewError(New(code, source, outcome)) }
 
 // Authored is authoredFailure: a host-authored failure with its detail, cut to a thousand UTF-16
-// code units, never half a pair; where it is cut, the error keeps the whole detail for a durable
-// writer's record guard alone (TakeWhole, #352). Never provider prose or an arbitrary caught message.
+// code units, never half a pair; where it is cut, the error keeps the whole detail, as far as
+// WholeDetailMargin past the cut, for a durable writer's record guard alone (WholeDetail, #352). Never
+// provider prose or an arbitrary caught message.
 func Authored(code, detail, source string) *Error {
 	if source == "" {
 		source = "desk"
@@ -149,7 +156,8 @@ func Authored(code, detail, source string) *Error {
 	f.Detail = &cut
 	authored := NewError(f)
 	if cut != detail {
-		authored.whole = &detail
+		whole := cutUTF16(detail, 1000+WholeDetailMargin)
+		authored.whole = &whole
 	}
 	return authored
 }
@@ -287,26 +295,17 @@ func Normalize(cause error, source string, now time.Time) contract.Failure {
 	return f
 }
 
-// wholeMu guards an *Error's whole detail while TakeWhole reads and drops it.
-var wholeMu sync.Mutex
-
-// TakeWhole is Normalize for a durable writer's record (#352), with the detail its record guard reads: the
-// whole one the failure was authored with, where Authored cut it, and otherwise the failure's own. The guard
-// reads it before the cut, so that a match the cut would split is still found. The whole detail is read
-// once: the error it was read from no longer holds it.
-func TakeWhole(cause error, source string, now time.Time) (contract.Failure, *string) {
+// WholeDetail is Normalize for a durable writer's record (#352), with the detail its record guard reads: the
+// whole one the failure was authored with, as far as Authored keeps it, where Authored cut it, and otherwise
+// the failure's own. The guard reads it before the cut, so that a match the cut would split is still found.
+// The error keeps it, so every use of the same error is guarded alike; it is read only while it still cuts
+// to the failure's detail.
+func WholeDetail(cause error, source string, now time.Time) (contract.Failure, *string) {
 	f, from := normalize(cause, source, now)
-	detail := f.Detail
-	if from != nil {
-		wholeMu.Lock()
-		whole := from.whole
-		from.whole = nil
-		wholeMu.Unlock()
-		if whole != nil && detail != nil && cutUTF16(*whole, 1000) == *detail {
-			detail = whole
-		}
+	if from != nil && from.whole != nil && f.Detail != nil && cutUTF16(*from.whole, 1000) == *f.Detail {
+		return f, from.whole
 	}
-	return f, detail
+	return f, f.Detail
 }
 
 // normalize is Normalize, and the *Error it read the failure from, where it read one.
