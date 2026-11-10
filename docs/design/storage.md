@@ -943,7 +943,8 @@ under the same serialization as its commits, with the record surviving the store
 - From `create` on, an unfenced commit of the run refuses `lease-required`, through `commit` and `commitHistory` alike, and after the
   objective has ended too: an objective's run is leased. An objective that ends paused keeps no pause.
 - `inspectGoal(input)`: the record, with the inspection counted and its last row kept; no revision moves, and a repeat of the last id
-  is not counted again (M12). Nothing is written for a run with no record.
+  is not counted again (M12). Nothing is written for a run with no record. It carries no fence: an inspection sent through a
+  worker's view, a displaced one too, is counted as the host's, since it changes only the count (#361).
 - `recordGoalDeliveries(input)`: journals an abandon's deliveries on the objective that command abandoned (`invalid` otherwise).
 - `readGoal(resource)`: the record, or nothing.
 - The journal holds at most 64 entries. Past it the oldest refused entry goes first, then the oldest entry, and `discarded` counts
@@ -1236,8 +1237,8 @@ reads each again where it can, and every order of what the package admits fails 
   successor's lease is a new epoch, so the continuation's commits are `stale-epoch`, and an open of it after the
   create is `succeeded`. A commit of the predecessor made outside the package during the create refuses the
   successor `moved`; one after the re-read is not seen, since it is no continuation the package admitted.
-- Two successors at once: under the predecessor's lease the later is `LeaseRefused` `held`; on a store with no
-  lease port the store's create admits one, and the other is `succeeded`, having written nothing.
+- Two successors at once: under the predecessor's lease the later is `LeaseRefused` `held`; on a store that declares
+  itself unleased the store's create admits one, and the other is `succeeded`, having written nothing.
 - A park that commits before the successor's first read: the successor is `parked` and writes nothing.
 - A park that commits after that read and before the successor reads the waits again after its create: the successor's head
   exists, the successor is refused `parked` on this open and every later one, and once the wait is claimed its
@@ -1248,4 +1249,14 @@ reads each again where it can, and every order of what the package admits fails 
 - A successor made before the park reads it: the park is `nothing-pending`.
 
 A crash while the successor is made leaves it written or not: if not, the host makes it again; if so, making
-it again is `succeeded` and the host continues it with `resume` true.
+it again is `succeeded` and the host continues it with `resume` true. A crash between the successor's lease of
+the predecessor and its release leaves that lease to expire on its own: until then, up to the successor lease's
+60 seconds, the predecessor is leased by no one else, so a claim, a park, and making the successor again where
+the crash left it unwritten, are `LeaseRefused` `held` (#362).
+
+What fails closed and is not recovered (#362): a claimed continuation whose claim's lease lapses before the
+continuation's first commit cannot be opened again, since an expired lease does not renew, a new lease's epoch is
+not the claim's, and the wait is already claimed: that job or question's result reaches no request, and the host
+starts a new run for its work. A run deadline set on the predecessor after its successor exists refuses every
+later open of the successor `deadlined`, as it refuses a successor of a predecessor with one; the host sets the
+successor's own deadline instead, with `limitRun` on the successor.

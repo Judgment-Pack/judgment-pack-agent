@@ -17419,8 +17419,8 @@
   {
    "name": "#315 L-3 the goal table decides a fenced command without checking its fence",
    "file": "storage/goal.ts",
-   "find": "   this.checkFence(held.fence)\n",
-   "replace": "",
+   "find": "   const checked:unknown=this.checkFence(held.fence)\n",
+   "replace": "   const checked:unknown=undefined\n",
    "tests": [
     "storage/goalFence.test.ts",
     "storage/goalConformance.test.ts"
@@ -17445,8 +17445,8 @@
   {
    "name": "#315 L-3 a goal table with no lease authority decides a fenced command unchecked",
    "file": "storage/goal.ts",
-   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   this.checkFence(held.fence)\n",
-   "replace": "   this.checkFence?.(held.fence)\n",
+   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   // #361 LOW: the check is synchronous. A promise, such as the port's async checkFence wired here, is a check not made: it\n   // refuses store-unsupported, its own outcome dropped, and never decides the command unchecked.\n   const checked:unknown=this.checkFence(held.fence)\n",
+   "replace": "   const checked:unknown=this.checkFence?.(held.fence)\n",
    "tests": [
     "storage/goalFence.test.ts"
    ],
@@ -18237,6 +18237,18 @@
    "status": "caught",
    "origin": "agent#361",
    "note": "Go twin (by hand, run_goal_conformance.go fenced: goalKitReason(refused) == reason): caught at TestGoalConformanceFailsEachBrokenStore/a_store_that_refuses_a_stale_fence_as_a_goal_refusal_of_the_same_reason and its resource-mismatch twin."
+  },
+  {
+   "name": "#361 LOW the goal table takes an asynchronous fence checker's promise for a passed check",
+   "file": "storage/goal.ts",
+   "find": "if(typeof checked==='object'&&checked!==null&&typeof (checked as {then?:unknown}).then==='function'){Promise.resolve(checked).catch(()=>undefined);throw new GoalCapabilityRefused('store-unsupported')}",
+   "replace": "void checked",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#361",
+   "note": "No Go twin: Go's checker is a func returning its error, so it cannot answer before its check is made."
   }
  ]
 }
