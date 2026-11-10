@@ -16567,6 +16567,16 @@
    "status": "caught",
    "origin": "agent#309",
    "note": "#312's LOW-1: two decisions on one call id with one result give the same block. Go twin (by hand): drop decidedAt in ApprovalContinuationText; caught at ^TestARepeatedCallIDIsToldApart in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C9 a Plan decision after an approval refuses the approval pause's own invocation",
+   "file": "storage/writer.ts",
+   "find": "&&!(row.state==='unknown'&&!row.planPause&&this.endedBeforeContinuation(binding,row))",
+   "replace": "",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#312's MEDIUM-B: the Plan decision is refused HostOutcomeUnknown because the approval pause's invocation is still unknown. Go twin (by hand): skip the endedBeforeContinuationLocked clause of nativePlanDecisionLocked; caught at ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
   }
  ]
 }

@@ -734,7 +734,7 @@ export class RunWriter {
   if(!binding.root||binding.scope.role!=='author'||binding.scope.task!==undefined||!this.latest)return
   const pending=this.latest.planState?.pending
   if(!pending||pending.callId!==event.callId||pending.revision!==event.revision||pending.candidate.planState.revision!==event.candidateRevision)throw new ContinuationIdentityChanged()
-  const rows=this.book.dispatches.filter(row=>row.kind==='agent'&&(row.state==='unknown'||row.state==='claimed')&&scopeKey(row.scope)===scopeKey(binding.scope)&&!this.nativePlanSuperseded.has(row.id))
+  const rows=this.book.dispatches.filter(row=>row.kind==='agent'&&(row.state==='unknown'||row.state==='claimed')&&scopeKey(row.scope)===scopeKey(binding.scope)&&!this.nativePlanSuperseded.has(row.id)&&!(row.state==='unknown'&&!row.planPause&&this.endedBeforeContinuation(binding,row)))
   if(rows.length>1||rows.some(row=>row.state!=='unknown'||row.planPause?.callId!==event.callId||row.planPause.revision!==event.revision||row.planPause.candidateRevision!==event.candidateRevision))throw new HostOutcomeUnknown();const old=rows[0];if(!old)return
   const head=await this.store.load(this.id,signal);if(!head||head.revision!==this.revision||!this.acknowledgedCheckpoint||!head.checkpoint||historyBytesDigest(head.checkpoint)!==historyBytesDigest(this.acknowledgedCheckpoint))throw new ContinuationIdentityChanged()
   const invocation=await verifyNativePlanEvidence(this.store,head,this.latest,old,undefined,false,signal)

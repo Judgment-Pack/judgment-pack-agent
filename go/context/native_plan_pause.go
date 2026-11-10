@@ -203,6 +203,9 @@ func (w *RunWriter) nativePlanDecisionLocked(ctx context.Context, binding RunBin
 			}
 			continue
 		}
+		if row.PlanPause == nil && row.State == "unknown" && w.endedBeforeContinuationLocked(&binding, row) {
+			continue // #312's MEDIUM-B: it ended at an approval pause the response has gone on from
+		}
 		if row.PlanPause == nil || row.State != "unknown" || usageCanonical(row.PlanPause) != usageCanonical(pending) || old != nil {
 			return nil, &HostOutcomeUnknown{}
 		}
