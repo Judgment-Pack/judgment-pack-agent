@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -1512,6 +1513,86 @@ func RecoveringDurableRequest(binding *RunBinding, kind string) bool {
 	return at >= 0
 }
 
+// recordedResultLocked is result in the form the record holds it (#343): what the storage pass (ADR-0018)
+// leaves of its JSON, each object's members in the order the result wrote them, and its receipt carried.
+// With nothing redacted it is result itself. A guard refusal is returned with no result.
+func (w *RunWriter) recordedResultLocked(result ToolResult) (ToolResult, error) {
+	var guard RecordGuard
+	if w.guard != nil {
+		guard = w.guard()
+	}
+	raw := result.JSON()
+	clean, changed, err := recordedForm(w.policy, guard, raw)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if !changed {
+		return result, nil
+	}
+	original, err := ParseJSON(raw)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	redacted, err := ParseJSON(clean)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	// A member's new name is what the same pass leaves of its name.
+	rename := func(key string) string {
+		raw, _ := json.Marshal(key)
+		clean, _, err := recordedForm(w.policy, guard, raw)
+		name := key
+		if err != nil || json.Unmarshal(clean, &name) != nil {
+			return key
+		}
+		return name
+	}
+	out := ReadToolResult(inOrderOf(original, redacted, rename))
+	out.Receipt = result.Receipt
+	return out, nil
+}
+
+// inOrderOf is redacted with each object's members in the order original wrote them (#343). The guard
+// writes an object it changed with its members sorted, and a result's member order is part of the text a
+// model is given, which TypeScript keeps. Every member and value is redacted's. A member whose name the
+// guard rewrote (rename gives its new name) follows the others, as TypeScript's guard leaves it: in the
+// sorted order of the names it had, compared as UTF-16 code units.
+func inOrderOf(original, redacted *Value, rename func(string) string) *Value {
+	switch {
+	case original.IsObject() && redacted.IsObject():
+		out := Object()
+		var renamed []string
+		for _, key := range original.Keys() {
+			if rename(key) != key {
+				renamed = append(renamed, key)
+			} else if held := redacted.Get(key); held != nil {
+				out.Set(key, inOrderOf(original.Get(key), held, rename))
+			}
+		}
+		slices.SortFunc(renamed, func(a, b string) int {
+			return slices.Compare(utf16.Encode([]rune(a)), utf16.Encode([]rune(b)))
+		})
+		for _, key := range renamed {
+			if name := rename(key); redacted.Get(name) != nil {
+				out.Set(name, inOrderOf(original.Get(key), redacted.Get(name), rename))
+			}
+		}
+		for _, key := range redacted.Keys() {
+			if !out.Has(key) {
+				out.Set(key, redacted.Get(key))
+			}
+		}
+		return out
+	case original.IsArray() && redacted.IsArray() && original.Len() == redacted.Len():
+		out := Array()
+		for at, item := range redacted.Items() {
+			out.Append(inOrderOf(original.Items()[at], item, rename))
+		}
+		return out
+	}
+	return redacted
+}
+
 // InvokeDurable is used only AFTER existing current offer/source/authority checks. Its execution
 // callback rechecks host authority after claim acknowledgement. Generic recovered action results
 // are isolated by logical execution/role/task/source/tool/args, never shared by siblings.
@@ -1947,6 +2028,22 @@ func invokeDurable[T any](ctx context.Context, binding *RunBinding, kind, source
 			} else {
 				updated.State = "result"
 				if kind == "host" || kind == "runtime" {
+					// #343: the result is recorded in the form the record guard leaves of it, and the call is
+					// answered with that same form, so the record and what the model is given agree and the
+					// claim settles. An external read's checked result, which the source gate answers with, is
+					// given the same form. A job's start or cancel is answered from its job's record (ADR-0025),
+					// so its row keeps today's rule: a redacted answer cannot be recorded.
+					if result, ok := any(value).(ToolResult); ok && jobStart == nil && jobCancel == nil {
+						recorded, err := w.recordedResultLocked(result)
+						if held := receiptAdmissionOf(ctx); err == nil && admit != nil && held != nil {
+							err = held.deliver(w.recordedResultLocked)
+						}
+						if err != nil {
+							w.fatal = &StorageOutcomeUnknown{cause: err}
+							return zero, w.fatal
+						}
+						value = any(recorded).(T)
+					}
 					if w.repeatStateLocked(binding.Scope.Execution) != nil {
 						var exact []byte
 						if result, ok := any(value).(ToolResult); ok {

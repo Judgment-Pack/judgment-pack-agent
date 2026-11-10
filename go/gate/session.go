@@ -43,7 +43,10 @@ type Options struct {
 // handed Calls, the narrow handle, which can call, admit a host tool, and narrow the run to the
 // critic's or the reformat run's phase and back, and nothing else (ADR-0004, decision 3).
 type Gate struct {
-	transport      Call
+	transport Call
+	// inspect is Inspect; a test of this package replaces it to show a rehearsal whose rewrite is
+	// not confirmed is refused.
+	inspect        func(message []byte, allowed []string, bounds Bounds) Verdict
 	runtimeActions *RuntimeActionPort
 	runtimeOwner   *runtimeactions.Handle
 	allowed        []string
@@ -169,7 +172,7 @@ func intersect(list, within []string) []string {
 
 // New puts a session's runtime transport behind the gate.
 func New(options Options) *Gate {
-	g := &Gate{allowed: Allowed(options.Granted), bounds: options.Bounds, emit: options.Emit, turn: &turnCount{calls: options.TestCalls}}
+	g := &Gate{allowed: Allowed(options.Granted), bounds: options.Bounds, emit: options.Emit, turn: &turnCount{calls: options.TestCalls}, inspect: Inspect}
 	if options.RuntimeActions != nil {
 		port := *options.RuntimeActions
 		g.runtimeActions = &port
@@ -409,6 +412,10 @@ func (g *Gate) refuse(name, detail string) Result {
 // CallTool is the gated call: one Runtime tool call the model made, as the model wrote it, held
 // to the phase's offer, the turn's test-call cap and the gate on the wire, in that order.
 //
+//   - experimental_evaluate offered in the critic's phase or a delegated child's is a rehearsal
+//     (#344), sent without approval whatever effect the Runtime serves it with, and only once its
+//     rewrite to an own rehearsal: true is confirmed on the frame (rehearse). Any other call of a
+//     tool the Runtime serves with effect act is refused: it takes the approved path.
 //   - A name the phase did not offer is refused before any call. In the critic's phase and the
 //     reformat run's, with a guardrail event and their own words (agent#10); in Plan mode and a
 //     delegated child's, as the TypeScript boundary does, with the invalid-tool-input failure its
@@ -426,6 +433,9 @@ func (g *Gate) refuse(name, detail string) Result {
 // transport failed); every refusal is a Result the model reads.
 func (g *Gate) CallTool(ctx context.Context, name string, args json.RawMessage) (Result, error) {
 	phase := g.current()
+	if rehearsal(phase, name) {
+		return g.rehearse(ctx, name, args)
+	}
 	if g.acting(name) {
 		return g.refuse(name, "Runtime action requires an exact approved attempt. Nothing was sent."), nil
 	}
@@ -508,9 +518,39 @@ func (g *Gate) frame(name string, args json.RawMessage) json.RawMessage {
 	return frame
 }
 
+// rehearsal is a call the phase admits as a rehearsal (#344): experimental_evaluate, offered in the
+// critic's phase or a delegated child's. A declared sub-agent's phase offers no Runtime tool.
+func rehearsal(phase Phase, name string) bool {
+	return name == RehearsalTool && (phase.Kind == PhaseCritic || phase.Kind == PhaseChild) && contains(phase.Runtime, name)
+}
+
+// rehearse sends a rehearsal whatever effect the Runtime serves the tool with (#344): the frame the
+// gate writes, and only where its rewrite to an own rehearsal: true is confirmed on that frame
+// (Rehearsed). No approval is asked and no attempt is prepared; a frame the gate refuses, or one it
+// cannot confirm, is refused and nothing is sent.
+func (g *Gate) rehearse(ctx context.Context, name string, args json.RawMessage) (Result, error) {
+	decided := g.inspect(g.frame(name, args), g.allowed, g.bounds)
+	if !decided.Send {
+		g.emitNotice(decided.Notice.Event())
+		return failed(decided.Violation.Failure()), nil
+	}
+	if !Rehearsed(decided) {
+		return g.refuse(name, "Runtime action requires an exact approved attempt. Nothing was sent."), nil
+	}
+	if decided.Notice != nil {
+		g.emitNotice(decided.Notice.Event())
+	}
+	return g.sendFrame(ctx, decided.Frame)
+}
+
 // send puts one tools/call frame through the gated transport.
 func (g *Gate) send(ctx context.Context, name string, args json.RawMessage) (Result, error) {
-	reply, err := g.transport(ctx, g.frame(name, args))
+	return g.sendFrame(ctx, g.frame(name, args))
+}
+
+// sendFrame puts one frame through the gated transport and reads the runtime's answer.
+func (g *Gate) sendFrame(ctx context.Context, frame json.RawMessage) (Result, error) {
+	reply, err := g.transport(ctx, frame)
 	var violation *Violation
 	if errors.As(err, &violation) {
 		result := failed(violation.Failure())

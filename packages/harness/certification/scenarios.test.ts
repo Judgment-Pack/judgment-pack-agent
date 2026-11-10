@@ -49,6 +49,7 @@ import { REFUTATION_MARKER, type CriticCase } from '../refutation'
 import { REQUEST_REVIEW, REVIEW_TAKEN, reviewRefusal } from '../criticSwitch'
 import criticSwitch from './scenarios/critic-switch.json'
 import { appendFileSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {createHash} from 'node:crypto'
 import { type PolicyLayer } from '../policy'
 import policyAliasVector from '../../../contract/vectors/policy/alias.json'
@@ -447,7 +448,7 @@ function planModeChecks(run: () => Ran, received: () => { tool: string; argument
 
 describe('current-contract correction replay declarations',()=>{
   it('serves explicit synthetic taxonomy while preserving the explicitly selected historical recording',async()=>{
-    const bytes=readFileSync('certification/runtime.json')
+    const bytes=readFileSync(join(import.meta.dirname, 'runtime.json'))
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(currentRuntimeContract.historicalRecordingSha256)
     expect(currentRuntimeContract.kind).toBe('handwritten-current-contract-test-declarations')
     const list=(core:ReturnType<typeof recordedRuntime>)=>(core.answer({jsonrpc:'2.0',id:1,method:'tools/list'} as never) as unknown as {result:{tools:McpTool[]}}).result.tools

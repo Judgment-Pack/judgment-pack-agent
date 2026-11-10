@@ -29,6 +29,12 @@ pull request body. It runs what `.github/workflows/ci.yml` runs, from the list i
 (`scripts/dev/check.sh --setup` installs the dependencies first). Adapter directories carry their
 own checks.
 
+The local runner (`jpdev`) needs Node at exactly the release `dev.json` pins under
+`toolchains.node.version`, 22.23.4 today, the one CI sets up and records. It looks for that release
+under nvm (`$NVM_DIR`, by default `~/.nvm`), not for whichever Node is first on the `PATH`, and stops
+when it is not installed: run `nvm install 22.23.4`. Another 22.x passes most checks, but it is not
+the Node the release evidence holds CI to.
+
 ## Developer Certificate of Origin
 
 Every commit is signed off (`git commit -s`) under the

@@ -1,4 +1,5 @@
 import {registerPhysicalModel,registerPhysicalAgent,type PhysicalModelAttempt,type PhysicalAgentAttempt} from './storage/physicalDispatch'
+import {forwardRuntimeRehearsal} from './storage/runtimeActionOwner'
 import {writeRunEvent} from './recordReader'
 import {providerReleaseAttempt,composeProviderRelease,ProviderReleaseUnknown} from './storage/release'
 import {durableSession,durableOwner,prepareProviderDispatch,childDurability,ContinuationNotRecoverable} from './storage/writer'
@@ -549,11 +550,15 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
        if(!recovering){shared.agentRun(task!==undefined);if(task)childRuns.set(task.id,(childRuns.get(task.id)??0)+1);else parentRuns++}
        if(task&&meter)await accountChild(task,meter,atomic)
       }
-      const common={...base,context:{...base.context,...(base.context?.[durableOwner]?{[prepareProviderDispatch]:prepare}:{})},signal:base.signal,hostTools:base.hostTools.map(wrapTool),callTool:async(name:string,args:Record<string,unknown>)=>{
+      const admitCall=(name:string)=>{
         if(offer&&!offer.has(name))throw toolInputFailure('This task was not offered that Runtime tool.')
         // agent#7: the turn's test calls, a child's charged to its parent's turn.
         if(name===TEST_TOOL)shared.testCall(task!==undefined,testLimit)
-        claimTool(task,budget);return base.callTool(name,args)}}
+        claimTool(task,budget)}
+      const callTool=async(name:string,args:Record<string,unknown>)=>{admitCall(name);return base.callTool(name,args)}
+      // #344: a rehearsal through this binding is held to the same offer, test-call and budget checks.
+      forwardRuntimeRehearsal(callTool,base.callTool,admitCall)
+      const common={...base,context:{...base.context,...(base.context?.[durableOwner]?{[prepareProviderDispatch]:prepare}:{})},signal:base.signal,hostTools:base.hostTools.map(wrapTool),callTool}
       const mark = () => { if (meter) meter.firstByte ??= Date.now() }
       if ('model' in base) {
         const invoke=async(suffix:string,request:Parameters<ModelCall>[1],physical?:PhysicalModelAttempt):Promise<Response>=>{
@@ -723,6 +728,9 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       const selected=shared.context?.connection(shared.context.delegatedRole(profile.id))
       const provider=shared.context?.provider(shared.context.delegatedRole(profile.id))
       const fallback=shared.context?.resolvedPolicy[`models.${shared.context.delegatedRole(profile.id)}.fallback`]?.value as string[]|undefined
+      const childCall=async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)}
+      // #344: the child's rehearsal channel; its binding (bind's admitCall) holds the offer, test-call and budget checks.
+      forwardRuntimeRehearsal(childCall,session.callTool)
       const base = {...session,
         // ADR-0021: a child has its own empty host-input queue; it cannot drain the parent's steer.
         input:[],
@@ -735,7 +743,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
         subagents:undefined,childDefinition:planned.subagent,
         ...(planned.subagent?{policy:{budget:{...Object.fromEntries(Object.entries(shared.context?.resolvedPolicy??{}).filter(([k])=>k.startsWith('budget.')).map(([k,v])=>[k.slice(7),v.value])),maxInputBytes:planned.subagent.bounds.bytes,toolResultBytes:planned.subagent.bounds.resultBytes,turnMilliseconds:planned.subagent.bounds.milliseconds},models:{author:{model:provider?.connection??model.name,...(fallback?{fallback}:{})}},critic:{default:'off'}}}:{}),
         // agent#15: the gate's Runtime tools the profile names, and nothing beside them.
-        tools,callTool:async(name:string,args:Record<string,unknown>)=>{if(!runtime.has(name))throw toolInputFailure('This task was not offered that Runtime tool.');return session.callTool(name,args)},
+        tools,callTool:childCall,
         hostTools,signal:childSignal,
         ...(model.model?{model:model.model}:{})} as EngineSession
       if(shared.context){const members=shared.context.resolvedPolicy;base.policy={...base.policy,failover:{classes:members['failover.classes']!.value as import('./policy').FailoverClass[]},outputGuard:members.outputGuard!.value as 'off'|'redact'|'refuse',outputPatterns:members.outputPatterns!.value as import('./outputGuard').OutputPattern[],outputAllow:members.outputAllow!.value as string[]}}
@@ -1047,7 +1055,11 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
           const result=batchAnswer(tasks)
           handoff.answer=result.structuredContent as DurableHandoff['answer']
           handoff.continuation='\n\n'+CONTINUATION+'\n'+frameData(DELEGATE_TOOL,JSON.stringify(result.structuredContent??textOf(result)),dataMarker())
-          handoff.state='answered';await saveHandoff();continued=handoff.continuation;commitReuse()
+          handoff.state='answered';await saveHandoff()
+          // #343: the record guard (ADR-0018) keeps the continuation in the form it leaves of it, and a resumed run is given
+          // that form; so is this one, and its next request holds what the record can.
+          if(persistence){const held=parentCheckpoint?.handoff;if(held?.callId!==handoff.callId||held.state!=='answered'||typeof held.continuation!=='string')throw new ContinuationNotRecoverable();handoff.continuation=held.continuation}
+          continued=handoff.continuation;commitReuse()
           execution=parentCheckpoint
           restoredParent?.close();restoredParent=undefined;shared.closed()
         }

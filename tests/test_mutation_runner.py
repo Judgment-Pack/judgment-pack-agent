@@ -3,7 +3,8 @@
 The table is release evidence, so a row must not come back caught unless its mutant caused a test to
 fail. These tests run packages/harness/scripts/mutation-check.mjs as it stands, with the repository's
 installed vitest, over a fixture repository whose whole suite takes seconds. The fixture's sources are
-written here by hand. broken.test.ts fails with no mutant, as a test can in the runner's copy.
+written here by hand. broken.test.ts fails with no mutant, as a test can in the runner's copy, and
+unloadable.test.ts does not load with no mutant.
 """
 import json
 import os
@@ -49,6 +50,20 @@ SOURCES = {
                                           "const alone=readFileSync(`/proc/${process.ppid}/cmdline`,'utf8').includes('loadmixed.test.ts')\n"
                                           "it('a failure beside it',()=>{expect(1).toBe(2)})\n"
                                           "it('holds beside the suite',()=>{expect(loadMixed==='plain'||alone).toBe(true)})\n",
+    # agent#320: a test file that does not load runs no test. This one does not load with no mutant either.
+    'packages/harness/unloadable.test.ts': "import {it} from 'vitest'\nit('never runs',()=>{})))\n",
+    'packages/harness/data.json': '{"kept": true}\n',
+    'packages/harness/data.test.ts': "import {it,expect} from 'vitest'\nimport data from './data.json'\nit('reads its data',()=>{expect(data.kept).toBe(true)})\n",
+    # both.test.ts notices both.ts; bothload.test.ts refuses to load under the same mutant.
+    'packages/harness/both.ts': "export const both='kept'\n",
+    'packages/harness/both.test.ts': "import {it,expect} from 'vitest'\nimport {both} from './both'\nit('notices',()=>{expect(both).toBe('kept')})\n",
+    'packages/harness/bothload.test.ts': "import {it} from 'vitest'\nimport {both} from './both'\n"
+                                         "if(both!=='kept') throw new Error('refuses to load')\nit('loads',()=>{})\n",
+    # Under its mutant this refuses to load beside the rest of the suite, and loads when its file runs alone.
+    'packages/harness/loadonly.ts': "export const loadOnly='plain'\n",
+    'packages/harness/loadonly.test.ts': "import {it} from 'vitest'\nimport {readFileSync} from 'node:fs'\nimport {loadOnly} from './loadonly'\n"
+                                         "const alone=readFileSync(`/proc/${process.ppid}/cmdline`,'utf8').includes('loadonly.test.ts')\n"
+                                         "if(loadOnly!=='plain'&&!alone) throw new Error('refuses to load beside the suite')\nit('loads',()=>{})\n",
 }
 COMMENT = {'file': 'adder.ts', 'find': '// the adder', 'replace': '// the adder, reworded'}
 ROWS = {
@@ -64,6 +79,14 @@ ROWS = {
     'a comment that moves a line, whose selection passes': dict(COMMENT, replace='// the adder\n// reworded', tests=['adder.test.ts']),
     'a mutant of a generated page, naming its check': dict(COMMENT, replace='// the adder\n// reworded', tests=['providers-reference.test.ts']),
     'a mutant of a file outside the package': {'file': '../../notes.txt', 'find': 'kept', 'replace': 'lost', 'tests': ['outside.test.ts']},
+    # agent#320: a mutant that stops a test file from loading is BROKEN, and names the load error.
+    'a mutant that stops its module loading': {'file': 'adder.ts', 'find': 'a+b', 'replace': '(a+b))', 'tests': ['adder.test.ts']},
+    'a mutant that stops a module only the whole suite loads': {'file': 'held.ts', 'find': "'kept'", 'replace': "'kept'))", 'tests': ['adder.test.ts']},
+    'a mutant that throws as its module loads': {'file': 'held.ts', 'find': "export const held='kept'",
+                                                  'replace': "throw new Error('held does not load')\nexport const held='kept'", 'tests': ['held.test.ts']},
+    'a mutant that leaves its JSON unreadable': {'file': 'data.json', 'find': 'true}', 'replace': 'true}}', 'tests': ['data.test.ts']},
+    'a mutant that stops a file loading only beside the suite': {'file': 'loadonly.ts', 'find': "'plain'", 'replace': "'other'", 'tests': ['adder.test.ts']},
+    'a mutant caught beside a test file it stops loading': {'file': 'both.ts', 'find': "'kept'", 'replace': "'lost'", 'tests': ['both.test.ts', 'bothload.test.ts']},
 }
 
 
@@ -139,13 +162,55 @@ class Runner(unittest.TestCase):
         self.assertEqual(self.verdict('a mutant of a file outside the package'), 'caught: selected: outside.test.ts > reads the repository')
 
     def test_a_file_is_asked_with_no_mutant_once_and_what_fails_there_is_named(self):
-        lines = [line for line in self.all.stderr.splitlines() if line.startswith('mutation-baseline ')]
+        lines = [line for line in self.all.stderr.splitlines() if line.startswith('mutation-baseline fails ')]
         self.assertEqual(sorted(lines), ['mutation-baseline fails with no mutant: broken.test.ts > fails with no mutant',
                                          'mutation-baseline fails with no mutant: loadmixed.test.ts > a failure beside it',
                                          'mutation-baseline fails with no mutant: mixed.test.ts > a failure already there'])
+        unloaded = [line for line in self.all.stderr.splitlines() if line.startswith('mutation-baseline does not load ')]
+        self.assertEqual(len(unloaded), 1, self.all.stderr)
+        self.assertRegex(unloaded[0], r'^mutation-baseline does not load with no mutant: unloadable\.test\.ts: \S')
+
+    def test_a_mutant_that_stops_a_test_file_loading_is_broken_and_names_the_error(self):
+        """agent#320: not NOT CAUGHT, which sends a reader looking for a safeguard nothing holds."""
+        whole = 'whole, after its selection decided nothing: no test failed, and the mutant stops '
+        for name, file, error in (('a mutant that stops its module loading', 'adder.test.ts', r'.*\(at \S*adder\.ts:2:\d+\)'),
+                                  ('a mutant that stops a module only the whole suite loads', 'held.test.ts', r'.*\(at \S*held\.ts:1:\d+\)'),
+                                  ('a mutant that throws as its module loads', 'held.test.ts', r'held does not load'),
+                                  ('a mutant that leaves its JSON unreadable', 'data.test.ts', r'\S')):
+            with self.subTest(row=name):
+                verdict = self.verdict(name)
+                self.assertRegex(verdict, r'^BROKEN: %s%s from loading: %s' % (re.escape(whole), re.escape(file), error))
+                # The test file that does not load with no mutant is not the row's.
+                self.assertNotIn('unloadable', verdict)
+                self.assertNotIn('\x1b', verdict)
+                self.assertNotRegex(verdict, r'/mutation-\w+/')
+
+    def test_a_test_file_that_loads_again_in_a_run_of_its_own_does_not_make_the_row_broken(self):
+        """As a failure must fail again in its own file: load on the whole suite cannot break a row."""
+        self.assertEqual(self.verdict('a mutant that stops a file loading only beside the suite'),
+                         'NOT CAUGHT: whole, after its selection decided nothing: no test failed beyond the failures with no mutant')
+
+    def test_a_failure_the_mutant_caused_is_a_catch_beside_a_test_file_it_stops_loading(self):
+        self.assertEqual(self.verdict('a mutant caught beside a test file it stops loading'), 'caught: selected: both.test.ts > notices')
 
     def test_the_counts_say_what_the_rows_did(self):
-        self.assertIn('12 rows chosen: 6 caught, 6 not caught, 0 did not apply, 0 undecided, 0 retired', self.all.stdout)
+        self.assertIn('18 rows chosen: 7 caught, 7 not caught, 4 broken, 0 did not apply, 0 undecided, 0 retired', self.all.stdout)
+        self.assertNotEqual(self.all.returncode, 0)
+
+    def test_the_row_lint_applies_each_row_and_parses_the_file_it_touches(self):
+        """--check: a row whose replacement no longer fits its find fails before any test runs. It parses
+        as the loader would; a mutant that throws only when its module runs is the runner's to find."""
+        done = self.mutation('--check')
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        broken = re.findall(r'^BROKEN \((\S+) does not load under the mutant: (.+)\): (.+)$', done.stdout, re.M)
+        self.assertEqual(sorted((file, name) for file, _, name in broken),
+                         [('adder.ts', 'a mutant that stops its module loading'),
+                          ('data.json', 'a mutant that leaves its JSON unreadable'),
+                          ('held.ts', 'a mutant that stops a module only the whole suite loads')])
+        self.assertTrue(all(error.strip() for _, error, _ in broken))
+        self.assertNotIn('DOES NOT APPLY', done.stdout)
+        self.assertNotIn('DOES NOT LOAD WITH NO MUTANT', done.stdout)
+        self.assertIn('18 rows checked, 3 problems; 0 retired', done.stdout)
 
     def test_the_copy_holds_the_repository_and_the_no_mutant_run_names_only_what_truly_fails(self):
         """outside.test.ts reads a file outside the package: in a copy of the package alone it fails."""
@@ -154,7 +219,8 @@ class Runner(unittest.TestCase):
         self.assertEqual(sorted(re.findall(r'^fails with no mutant: (.+)$', done.stdout, re.M)),
                          ['broken.test.ts > fails with no mutant', 'loadmixed.test.ts > a failure beside it',
                           'mixed.test.ts > a failure already there'])
-        self.assertIn('the whole suite with no mutant: 3 failed', done.stdout)
+        self.assertIn('the whole suite with no mutant: 3 failed, 1 test file did not load', done.stdout)
+        self.assertRegex(done.stdout, r'(?m)^does not load with no mutant: unloadable\.test\.ts: \S')
 
     def test_a_selection_with_a_timeout_decides_nothing_and_fails_the_run(self):
         """A run that cannot answer is never a catch, under a mutant or with none."""

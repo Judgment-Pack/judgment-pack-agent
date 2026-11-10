@@ -2138,7 +2138,14 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		policy := RuntimeToolContextPolicy(name)
 		served := offered[name]
+		rehearsal := held.runtimeRehearsal(name)
 		inner := func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			// #344: a critic's or a child's rehearsal is admitted as the act its tool is served as.
+			if rehearsal {
+				if err := held.rehearsalDelegated(ctx, name); err != nil {
+					return ToolResult{}, err
+				}
+			}
 			return callTool(ctx, name, args)
 		}
 		call := func() (ToolResult, error) {

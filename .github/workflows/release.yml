@@ -204,6 +204,12 @@ jobs:
               print('::error::A run at this commit started after the evidence and did not pass. Read it. If the '
                     'fault is real, fix it on main and release a new version. If not, re-run its failed jobs, or '
                     're-run all jobs of the evidence run with gh run rerun <run id> --repo %s. %s' % (repo, then))
+          elif code == 'runtime-identity' and ', pinned ' in detail:
+              # A tool that is not its pin (#338): the job's own setup installed it, and a re-run installs
+              # the same tool again, so only a change on main helps.
+              print('::error::A job recorded a tool that is not its pin (%s). A re-run installs the same tool '
+                    'again and refuses the same way: fix the pin, or the toolchain the job sets up, on main, and '
+                    'release a new version (docs/ci-evidence.md#the-fresh-route).' % detail)
           else:
               print('::error::See docs/ci-evidence.md#the-fresh-route for what to do about %s.' % code)
           PYCURE

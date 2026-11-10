@@ -162,7 +162,7 @@ jobs:
           fi
           title='The nightly mutation table did not pass'
           body="$(printf '%s\n' "The full table did not pass at $COMMIT: $GITHUB_SERVER_URL/$GH_REPO/actions/runs/$RUN_ID" '' "$shards" '' \
-            'A shard that failed names its rows in its log, under NOT CAUGHT. This blocks a release only if this run started after the dispatch run of a candidate at the same commit (docs/ci-evidence.md). While this issue is open, a later failure comments here. Close it when the cause is dealt with.')"
+            'A shard that failed names its rows in its log, under NOT CAUGHT, or BROKEN for a row whose mutant stops a test file from loading (fix the row). This blocks a release only if this run started after the dispatch run of a candidate at the same commit (docs/ci-evidence.md). While this issue is open, a later failure comments here. Close it when the cause is dealt with.')"
           number="$(gh issue list --repo "$GH_REPO" --state open --search "\"$title\" in:title" --json number,title --jq "[.[] | select(.title == \"$title\") | .number][0] // empty")"
           if [ -n "$number" ]; then
             gh issue comment "$number" --repo "$GH_REPO" --body "$body"
