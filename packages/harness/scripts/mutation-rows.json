@@ -16422,6 +16422,246 @@
    "status": "caught",
    "origin": "agent#318",
    "note": "#310/#318 batch. Go twin (by hand, in run_goal_conformance.go): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "rehearsal #344 R1 any acting tool of a critic or child is taken for a rehearsal",
+   "file": "context/runtimeActions.ts",
+   "find": " const rehearsing=(name:string)=>name===REHEARSAL_TOOL&&acting(name)&&",
+   "replace": " const rehearsing=(name:string)=>acting(name)&&",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): runtimeRehearsal's name == gate.RehearsalTool in go/context/runtime_actions.go, caught at TestOnlyACriticsOrAChildsEvaluationIsARehearsal (another acting tool rows)."
+  },
+  {
+   "name": "rehearsal #344 R2 a critic or child rehearses in Plan mode",
+   "file": "context/runtimeActions.ts",
+   "find": "&&session.context?.phase!=='plan'&&(context.storageRole==='critic'||",
+   "replace": "&&(context.storageRole==='critic'||",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): runtimeRehearsal's Phase != \"plan\" in go/context/runtime_actions.go, caught at TestOnlyACriticsOrAChildsEvaluationIsARehearsal (the critic's in Plan mode)."
+  },
+  {
+   "name": "rehearsal #344 R3 a declared sub-agent rehearses as a delegated child does",
+   "file": "context/runtimeActions.ts",
+   "find": "&&!!session.context?.objective&&!session.childDefinition)",
+   "replace": "&&!!session.context?.objective)",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): runtimeRehearsal's !c.admittedChild in go/context/runtime_actions.go, caught at TestOnlyACriticsOrAChildsEvaluationIsARehearsal (a declared sub-agent's)."
+  },
+  {
+   "name": "rehearsal #344 R4 the loop's acting evaluation skips its approval",
+   "file": "context/runtimeActions.ts",
+   "find": "context.storageRole==='author'&&!!session.context?.objective&&",
+   "replace": "context.storageRole==='author'&&",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): runtimeRehearsal's c.objective != \"\" in go/context/runtime_actions.go, caught at TestOnlyACriticsOrAChildsEvaluationIsARehearsal (the loop's acting evaluation)."
+  },
+  {
+   "name": "rehearsal #344 R5 a critic's evaluation is not a rehearsal",
+   "file": "context/runtimeActions.ts",
+   "find": "(context.storageRole==='critic'||context.storageRole==='author'",
+   "replace": "(false||context.storageRole==='author'",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): runtimeRehearsal's c.CriticReading in go/context/runtime_actions.go, caught at TestACriticRehearsesASavedCaseOnAnActingEvaluate."
+  },
+  {
+   "name": "rehearsal #344 R6 the approval path is skipped for nothing",
+   "file": "context/runtimeActions.ts",
+   "find": " context.runtimeNeedsApproval=name=>acting(name)&&!rehearsing(name)\n",
+   "replace": " context.runtimeNeedsApproval=name=>acting(name)\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): RuntimeNeedsApproval's && !c.runtimeRehearsal(name) in go/context/runtime_actions.go, caught at TestACriticRehearsesASavedCaseOnAnActingEvaluate."
+  },
+  {
+   "name": "rehearsal #344 R7 a rehearsal with no channel to confirm it goes to the session",
+   "file": "context/runtimeActions.ts",
+   "find": "  if(!rehearse)throw context.refuse(name,'Runtime action requires an exact approved attempt. Nothing was sent.','approval refused')\n",
+   "replace": "  if(!rehearse)return session.callTool(name,args)\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): Gate.CallTool's acting refusal outside rehearsal(phase, name) in go/gate/session.go, caught at TestARehearsalIsAdmittedOnlyInTheCriticsPhaseAndAChildsThatOffersIt."
+  },
+  {
+   "name": "rehearsal #344 R8 a rehearsal is not held to the run's delegation",
+   "file": "context/runtimeActions.ts",
+   "find": "  await delegated(name,true,session.signal)\n  return rehearse(name,args)\n",
+   "replace": "  return rehearse(name,args)\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): out.CallTool's held.rehearsalDelegated in go/context/session.go, caught at TestACriticsRehearsalIsHeldToTheRunsDelegation."
+  },
+  {
+   "name": "rehearsal #344 R9 a rehearsal's delegation read is not counted",
+   "file": "context/runtimeActions.ts",
+   "find": "  await delegated(name,true,session.signal)\n  return rehearse(name,args)\n",
+   "replace": "  await delegated(name,false,session.signal)\n  return rehearse(name,args)\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): rehearsalDelegated's AdmitPrincipalRuntimeCall(ctx, name, true) in go/context/runtime_actions.go, caught at TestACriticsRehearsalIsHeldToTheRunsDelegation (admitted)."
+  },
+  {
+   "name": "rehearsal #344 R10 the session sends a rehearsal through the session, not its channel",
+   "file": "context/session.ts",
+   "find": "a=>context.runtimeCall?context.runtimeCall(name,a):session.callTool(name,a)",
+   "replace": "a=>session.callTool(name,a)",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): Gate.CallTool's rehearsal branch, if rehearsal(phase, name), in go/gate/session.go, caught at TestACriticRehearsesASavedCaseOnAnActingEvaluate."
+  },
+  {
+   "name": "rehearsal #344 R11 a rehearsal is confirmed whatever its rehearsal member holds",
+   "file": "toolGate.ts",
+   "find": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined",
+   "replace": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) ? args : undefined",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): Rehearsed's jbool true check in go/gate/gate.go, caught at TestRehearsedConfirmsTheRewriteOnTheFrame."
+  },
+  {
+   "name": "rehearsal #344 R12 a rehearsal is confirmed on an inherited rehearsal member",
+   "file": "toolGate.ts",
+   "find": "  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined",
+   "replace": "  return isRecord(args) && args[REHEARSAL_MEMBER] === true ? args : undefined",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin: none needed; Go parses the frame's own bytes, which have no inherited members (TestRehearsedConfirmsTheRewriteOnTheFrame pins the parsed member)."
+  },
+  {
+   "name": "rehearsal #344 R13 a rehearsal is confirmed on another tool's frame",
+   "file": "toolGate.ts",
+   "find": " || frame.params.name !== REHEARSAL_TOOL) return undefined",
+   "replace": "){} if (!isRecord(frame) || !isRecord(frame.params)) return undefined",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): Rehearsed's params.name == RehearsalTool in go/gate/gate.go, caught at TestRehearsedConfirmsTheRewriteOnTheFrame (a name not evaluation)."
+  },
+  {
+   "name": "rehearsal #344 R14 the connection sends a rehearsal it could not confirm",
+   "file": "session.ts",
+   "find": "        if(!confirmed)throw authoredFailure('permission','Runtime action requires an exact approved attempt. Nothing was sent.','tool')\n",
+   "replace": "",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): g.rehearse's if !Rehearsed(decided) in go/gate/session.go, caught at TestARehearsalWhoseRewriteIsNotConfirmedIsRefused."
+  },
+  {
+   "name": "rehearsal #344 R15 the connection goes on past a rewrite it could not apply",
+   "file": "session.ts",
+   "find": "        if(decided.verdict==='refused'){notify(decided.notice);throw decided.violation}\n",
+   "replace": "        if(decided.verdict==='refused'){notify(decided.notice)}\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): g.rehearse's if !decided.Send in go/gate/session.go, caught at TestARehearsalWhoseRewriteFailsIsRefused."
+  },
+  {
+   "name": "rehearsal #344 R16 the rewrite's notice is not given",
+   "file": "session.ts",
+   "find": "        if(decided.notice)notify(decided.notice)\n        return dispatch(name,confirmed)\n",
+   "replace": "        return dispatch(name,confirmed)\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin (by hand): g.rehearse's emitNotice in go/gate/session.go, caught at TestARehearsalIsAdmittedOnlyInTheCriticsPhaseAndAChildsThatOffersIt (the rewrote guardrail)."
+  },
+  {
+   "name": "rehearsal #344 R17 a delegation binding forwards a rehearsal past its own checks",
+   "file": "delegation.ts",
+   "find": "      forwardRuntimeRehearsal(callTool,base.callTool,admitCall)\n",
+   "replace": "      forwardRuntimeRehearsal(callTool,base.callTool,()=>{})\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin: none needed; a Go rehearsal takes the binding's own callTool down to Gate.CallTool, so its offer and budget checks hold by construction."
+  },
+  {
+   "name": "rehearsal #344 R18 a forwarded rehearsal skips the wrapper's check",
+   "file": "storage/runtimeActionOwner.ts",
+   "find": " rehearsals.set(wrapper,async(name,args)=>{admit(name);return held(name,args)})",
+   "replace": " rehearsals.set(wrapper,async(name,args)=>held(name,args))",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin: none needed; Go has no rehearsal channel to forward (see R17)."
+  },
+  {
+   "name": "rehearsal #344 R19 a wrapper of a callTool with no channel gets one",
+   "file": "storage/runtimeActionOwner.ts",
+   "find": " if(!held||rehearsals.has(wrapper))return\n",
+   "replace": " if(rehearsals.has(wrapper))return\n",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin: none needed; Go has no rehearsal channel to forward (see R17)."
+  },
+  {
+   "name": "rehearsal #344 R20 a callTool's rehearsal channel is replaced",
+   "file": "storage/runtimeActionOwner.ts",
+   "find": " if(rehearsals.has(call))throw fail()\n rehearsals.set(call,rehearse)",
+   "replace": " rehearsals.set(call,rehearse)",
+   "tests": [
+    "criticRehearsal.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#344",
+   "note": "#344. Go twin: none needed; Go has no rehearsal channel registry."
   }
  ]
 }

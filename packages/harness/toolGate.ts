@@ -387,6 +387,19 @@ export function inspectOutboundFrame(
 }
 
 /**
+ * #344: the arguments a verdict sends `experimental_evaluate` with, where its rehearsal rewrite was
+ * applied: a `tools/call` frame of that name whose arguments carry an own `rehearsal: true`.
+ * Undefined for any other verdict, so a caller refuses what it cannot confirm.
+ */
+export function rehearsalArguments(decided: FrameVerdict): Record<string, unknown> | undefined {
+  if (decided.verdict !== 'send') return undefined
+  const frame = decided.frame as unknown
+  if (!isRecord(frame) || frame.method !== TOOLS_CALL || !isRecord(frame.params) || frame.params.name !== REHEARSAL_TOOL) return undefined
+  const args = frame.params.arguments
+  return isRecord(args) && Object.hasOwn(args, REHEARSAL_MEMBER) && args[REHEARSAL_MEMBER] === true ? args : undefined
+}
+
+/**
  * Wrap a transport so nothing reaches the socket unexamined.
  *
  * `send` is replaced on the object it was handed rather than a proxy being

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
+	"github.com/Judgment-Pack/judgment-pack-agent/go/gate"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/internal/runtimeactions"
 )
 
@@ -19,13 +20,45 @@ type RuntimeCall struct {
 	Args      json.RawMessage
 }
 
+// RuntimeNeedsApproval is whether a Runtime call takes the approval path: a tool the Runtime serves
+// with effect act, except a critic's or a delegated child's rehearsal (runtimeRehearsal).
 func (c *SessionContext) RuntimeNeedsApproval(name string) bool {
+	return c.runtimeActing(name) && !c.runtimeRehearsal(name)
+}
+
+func (c *SessionContext) runtimeActing(name string) bool {
 	for _, t := range c.runtimeTools {
 		if t.Name == name {
 			return t.Meta != nil && t.Meta.Effect == "act"
 		}
 	}
 	return false
+}
+
+// runtimeRehearsal is a call this context sends as a rehearsal, without approval (#344): the acting
+// experimental_evaluate, from the critic's reading or from a delegated child (not a declared sub-agent),
+// outside Plan mode and the reformat run. The gate admits it only with its rehearsal rewrite applied
+// and confirmed (gate.Rehearsed), so the Runtime appends no audit record; it is kept as a read and
+// never as an effect. Every other acting call is still refused here.
+func (c *SessionContext) runtimeRehearsal(name string) bool {
+	return name == gate.RehearsalTool && c.runtimeActing(name) && !c.Reformatting && c.Execution.State().Phase != "plan" &&
+		(c.CriticReading || c.objective != "" && !c.admittedChild)
+}
+
+// rehearsalDelegated admits a rehearsal as the act its tool is served as (ADR-0029): refused outside
+// the scope, past expiry and after revocation, counted, immediately before the call.
+func (c *SessionContext) rehearsalDelegated(ctx context.Context, name string) error {
+	if c.Principal == nil {
+		return nil
+	}
+	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, true)
+	if err != nil {
+		return err
+	}
+	if refusal != nil {
+		return c.delegationRefused(name, *refusal)
+	}
+	return nil
 }
 func (c *SessionContext) runtimeAdmission() json.RawMessage {
 	state := c.Execution.State()
