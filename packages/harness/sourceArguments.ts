@@ -73,8 +73,10 @@ export function argumentProblem(schema: unknown, value: unknown, path = '', dept
   }
   if (object(value)) {
     if (Array.isArray(schema.required)) {
-      for (const name of schema.required) {
-        if (typeof name === 'string' && !Object.hasOwn(value, name)) return `${at(path, name)} is required and missing`
+      // #308: a missing entry is named by its place in the list, never by its text: the name is the
+      // source's, and this answer reaches the model outside load_tool's data block.
+      for (const [index, name] of schema.required.entries()) {
+        if (typeof name === 'string' && !Object.hasOwn(value, name)) return `a member the schema requires is missing from ${where(path)}: entry ${index} of its required list, counting from 0`
       }
     }
     const properties = object(schema.properties) ? schema.properties : {}

@@ -63,6 +63,9 @@ var notTheGates = map[string]string{
 	"tool-call/source-calls.json":         "the source record on a tool_call event: the boundary's (go/context, SourceGate.Decorate)",
 	"tool-result/loaded-schema.json":      "load_tool's answer: the boundary's (go/context, SourceGate.LoadToolHost)",
 	"tool-result/source-results.json":     "the source record on a tool_result event: the boundary's (go/context, SourceGate.Decorate)",
+	// #308: a source past the bounds on the words its schemas keep as written, held by
+	// go/context/schema_bounds_test.go and toolSources.test.ts.
+	"tool-offer/source-schema-bounds.json": "a source's schema past the bounds on the words it keeps as written, offered as a catalogue entry and read in load_tool's data block: the boundary's (go/context, OfferSources, SourceGate.LoadToolHost)",
 	// ADR-0008: the approval pause is the boundary's and the source gate's (go/context,
 	// approval_test.go, decision_test.go; certified scenario 8), not a decision of the gate on the
 	// Runtime's wire.
