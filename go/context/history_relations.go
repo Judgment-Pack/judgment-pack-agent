@@ -13,6 +13,17 @@ func ReadHistoryRelationEvidence(raw []byte) (*Value, error) {
 // A redacted checkpoint keeps its original digest as a source label; sanitized result bytes do not claim that hash.
 func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObjectRef, string) (*Value, error), derived func(HistoryObjectRef) bool) error {
 	invalid := func() error { return &HistoryInputInvalid{} }
+	// #368: str reads a member that other files check as a string, and notes one that is missing or not a string; each
+	// condition that read one refuses before it acts, so a missing member is HistoryInputInvalid, never a panic and never
+	// an empty string compared as a value.
+	malformed := false
+	str := func(v *Value) string {
+		if !v.IsString() {
+			malformed = true
+			return ""
+		}
+		return v.Str()
+	}
 	type observation struct {
 		sequence int
 		value    *Value
@@ -29,7 +40,9 @@ func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObject
 	}
 	for _, row := range observations {
 		relation := row.value
-		if relation.Get("kind").Str() != "relation" {
+		if kind := str(relation.Get("kind")); malformed {
+			return invalid()
+		} else if kind != "relation" {
 			continue
 		}
 		evidence, e := read(archiveRef(relation.Get("evidence")), "evidence")
@@ -40,7 +53,7 @@ func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObject
 		if e != nil {
 			return e
 		}
-		if evidence.Get("dispatchId").Str() != relation.Get("dispatchId").Str() || CanonicalJSON(evidence.Get("scope")) != CanonicalJSON(relation.Get("scope")) || CanonicalJSON(evidence.Get("target")) != CanonicalJSON(relation.Get("target")) {
+		if str(evidence.Get("dispatchId")) != str(relation.Get("dispatchId")) || malformed || CanonicalJSON(evidence.Get("scope")) != CanonicalJSON(relation.Get("scope")) || CanonicalJSON(evidence.Get("target")) != CanonicalJSON(relation.Get("target")) {
 			return invalid()
 		}
 
@@ -59,17 +72,25 @@ func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObject
 		book := checkpoint.Get("durable")
 		var claim *Value
 		for _, candidate := range book.Get("dispatches").Items() {
-			if candidate.Get("id").Str() == evidence.Get("dispatchId").Str() && CanonicalJSON(candidate.Get("scope")) == CanonicalJSON(evidence.Get("scope")) {
+			match := str(candidate.Get("id")) == str(evidence.Get("dispatchId")) && CanonicalJSON(candidate.Get("scope")) == CanonicalJSON(evidence.Get("scope"))
+			if malformed {
+				return invalid()
+			}
+			if match {
 				claim = candidate
 				break
 			}
 		}
-		if claim == nil || !oneOf(claim.Get("kind"), "host", "runtime") || claim.Get("state").Str() != "result" || !claim.Has("result") || claim.Get("requestDigest").Str() != evidence.Get("requestDigest").Str() || (derived == nil || !derived(ref)) && HistoryBytesDigest([]byte(CanonicalJSON(claim.Get("result")))) != evidence.Get("resultDigest").Str() {
+		if claim == nil || !oneOf(claim.Get("kind"), "host", "runtime") || str(claim.Get("state")) != "result" || !claim.Has("result") || str(claim.Get("requestDigest")) != str(evidence.Get("requestDigest")) || malformed || (derived == nil || !derived(ref)) && HistoryBytesDigest([]byte(CanonicalJSON(claim.Get("result")))) != evidence.Get("resultDigest").Str() {
 			return invalid()
 		}
 		var observed *Value
 		for _, candidate := range book.Get("observations").Items() {
-			if candidate.Get("id").Str() == evidence.Get("observationId").Str() && candidate.Get("kind").Str() == "operation" && candidate.Get("dispatchId").Str() == evidence.Get("dispatchId").Str() && candidate.Get("source").Str() == claim.Get("source").Str() && CanonicalJSON(candidate.Get("scope")) == CanonicalJSON(evidence.Get("scope")) {
+			match := str(candidate.Get("id")) == str(evidence.Get("observationId")) && str(candidate.Get("kind")) == "operation" && str(candidate.Get("dispatchId")) == str(evidence.Get("dispatchId")) && str(candidate.Get("source")) == str(claim.Get("source")) && CanonicalJSON(candidate.Get("scope")) == CanonicalJSON(evidence.Get("scope"))
+			if malformed {
+				return invalid()
+			}
+			if match {
 				observed = candidate
 				break
 			}
@@ -79,15 +100,19 @@ func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObject
 		}
 		committed := false
 		for _, commit := range commits {
-			committed = committed || commit.CommitID == observed.Get("commitId").Str() && commit.Sequence <= row.sequence
+			committed = committed || commit.CommitID == str(observed.Get("commitId")) && commit.Sequence <= row.sequence
 		}
-		if !committed {
+		if malformed || !committed {
 			return invalid()
 		}
 		var request *Value
 		for _, candidate := range observations {
 			r := candidate.value
-			if candidate.sequence <= row.sequence && r.Get("kind").Str() == "request" && r.Get("dispatchId").Str() == evidence.Get("dispatchId").Str() && r.Get("source").Str() == claim.Get("source").Str() && r.Get("tool").Str() == claim.Get("tool").Str() && CanonicalJSON(r.Get("scope")) == CanonicalJSON(evidence.Get("scope")) {
+			match := candidate.sequence <= row.sequence && str(r.Get("kind")) == "request" && str(r.Get("dispatchId")) == str(evidence.Get("dispatchId")) && str(r.Get("source")) == str(claim.Get("source")) && str(r.Get("tool")) == str(claim.Get("tool")) && CanonicalJSON(r.Get("scope")) == CanonicalJSON(evidence.Get("scope"))
+			if malformed {
+				return invalid()
+			}
+			if match {
 				request = r
 				break
 			}
@@ -96,7 +121,7 @@ func validateHistoryRelations(commits []RunHistoryEntry, read func(HistoryObject
 			return invalid()
 		}
 		manifest, e := read(archiveRef(request.Get("request")), "request-manifest")
-		if e != nil || manifest.Get("digest").Str() != evidence.Get("requestDigest").Str() {
+		if e != nil || str(manifest.Get("digest")) != str(evidence.Get("requestDigest")) || malformed {
 			return invalid()
 		}
 	}

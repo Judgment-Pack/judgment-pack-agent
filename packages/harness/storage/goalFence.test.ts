@@ -92,7 +92,9 @@ describe('#315 L-3: a goal command through a worker\'s view carries its fence',(
   expect(()=>new GoalTable(now).command({version:1,command:create,fence:held.a},context)).toThrow(expect.objectContaining({name:'GoalCapabilityRefused',reason:'store-unsupported'}))
   expect(()=>new GoalTable(now).command({version:1,command:create,fence:held.a},context)).toThrow(GoalCapabilityRefused)
   // #361 LOW: an asynchronous checker is a check the table cannot wait for, so it refuses, whether the check would pass or not.
-  for(const check of [async()=>undefined,async()=>{throw new LeaseRefused('stale-epoch')}]){const table=new GoalTable(now,check);expect(()=>table.command({version:1,command:create,fence:held.a},context)).toThrow(expect.objectContaining({name:'GoalCapabilityRefused',reason:'store-unsupported'}));expect(table.read(RUN)).toBeUndefined()}
+  // #368: any answer at all is a check not made: a thenable of any shape, a false, a null.
+  const thenable=Object.assign(()=>undefined,{then:(resolve:(value:unknown)=>void)=>resolve(undefined)})
+  for(const check of [async()=>undefined,async()=>{throw new LeaseRefused('stale-epoch')},()=>thenable,()=>({then:1}),()=>false,()=>null,()=>true] as ((fence:LeaseFence)=>void)[]){const table=new GoalTable(now,check);expect(()=>table.command({version:1,command:create,fence:held.a},context)).toThrow(expect.objectContaining({name:'GoalCapabilityRefused',reason:'store-unsupported'}));expect(table.read(RUN)).toBeUndefined()}
   for(const fence of [{...held.a,epoch:'0'},{...held.a,version:2},{...held.a,extra:true},'fence',null])expect(()=>new GoalTable(now,()=>undefined).command({version:1,command:create,fence} as never,context)).toThrow(expect.objectContaining({name:'GoalRefused',reason:'invalid'}))
   const checked:LeaseFence[]=[],table=new GoalTable(now,fence=>{checked.push(fence)})
   expect(table.command({version:1,command:create,fence:held.a},context).entry.outcome).toBe('accepted');expect(checked).toEqual([held.a])

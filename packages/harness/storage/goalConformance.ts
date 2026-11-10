@@ -360,8 +360,24 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const fC=await taken('run-f','worker-c',MINUTE)
  at+=MINUTE
  await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fC}),'expired')
- const fPaused=await answers('goal.fence.current',async()=>send(fPause,{fence:await taken('run-f','worker-d',HOUR)}))
+ // #368: the same owner's earlier epoch is stale too, as the lease kit holds every other port to: a store may not take a fence
+ // as current because its owner holds the run's live lease.
+ const fD=await taken('run-f','worker-d',HOUR)
+ await store.releaseLease(fD)
+ const fD2=await taken('run-f','worker-d',HOUR)
+ await fenced('goal.fence.stale','run-f',()=>send(fPause,{fence:fD}),'stale-epoch')
+ const fPaused=await answers('goal.fence.current',()=>send(fPause,{fence:fD2}))
  check('goal.fence.current',fPaused.goal.revision===fCreated.goal.revision+1&&fPaused.entry.command===fPause.command&&fPaused.goal.objectives.at(-1)?.paused!==undefined)
+ // #368: where the store binds principals to its leases (leasePrincipals, where the lease kit's principal properties apply), a
+ // fence that names other principals, or none, is refused principal-changed with no record made, and the lease's own is decided.
+ if(store.leasePrincipals===true){
+  const sub={kind:'person' as const,issuer:'https://kit.example/',subject:'kit-subject'},principal={sub,rootActor:'b1'.repeat(16),host:'kit-host'}
+  const prOpened=await store.commit({runId:'run-pr',expectedRevision:null,commitId:'run-pr-open',checkpoint:bytes('{"kit":"run-pr"}'),events:[]})
+  const pr=fenceOf(await answers('goal.fence.current',()=>store.acquireLease({resource:'run-pr',owner:'worker-a',expectedRevision:prOpened.revision,durationMs:HOUR,principal})))
+  const prCreate=command('run-pr','create',null,{objective:'objective-pr'})
+  for(const forged of [{...pr,principal:{...principal,rootActor:'b2'.repeat(16)}},{version:1,resource:pr.resource,owner:pr.owner,epoch:pr.epoch}] as LeaseFence[])await fenced('goal.fence.principal','run-pr',()=>send(prCreate,{fence:forged}),'principal-changed')
+  await answers('goal.fence.current',()=>send(prCreate,{fence:pr}))
+ }
 
  // A restart keeps every record, every disposition and every rule.
  const records:Record<string,RunGoal|undefined>={}

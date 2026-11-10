@@ -45,8 +45,8 @@ const successorLeaseMs = 60_000
 
 // SuccessorRefused (#340) refuses a successor run by name before any model request or tool call. invalid: the input is
 // not one this package reads, the open does not name its request (PrepareDurableInput; a session and
-// PrepareDurableInputFor name it), or the store value has no lease port, wait export or deadline reader and does not
-// declare itself unleased (#362, UnleasedRunStore). unbound: the run id is not the one SuccessorRunID derives, a "successor-" id is
+// PrepareDurableInputFor name it), or the store value has no wait export or deadline reader (every open), or no lease
+// port (the create only), and does not declare itself unleased (#362, UnleasedRunStore, the host's attestation). unbound: the run id is not the one SuccessorRunID derives, a "successor-" id is
 // opened without a successor, the question is not the predecessor's last user_question, or the answer is not a real
 // answer to it. budgeted: the predecessor ran under a usage budget, whose journal a successor does not carry.
 // deadlined (#355): the predecessor has a run deadline (LimitRun), which a successor does not carry, or its store holds
