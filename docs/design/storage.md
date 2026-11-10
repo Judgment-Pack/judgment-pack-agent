@@ -1079,3 +1079,79 @@ endings across a restart. The kit does not exercise a repeated reauthorization p
 `reauthorized` on another wait's claim; the memory kind is the reference for those. Refusals are
 `ReauthorizationRefused` (`invalid`, `untrusted`, `used`, `stale`, `unbound`,
 `permission-insufficient`), with `ResumeRefused` `identity-changed` and the wait refusals above.
+
+## A question's answer after the run completes (#340, #341)
+
+A run that asks the person a `user_question` and then ends `complete` can take the answer two ways. Both are
+borne out by the store, never by what the host passes alone, and each hands the first request one fixed line
+(`QUESTION_ANSWERED`, Go `QuestionAnswered`) and one data block: the canonical JSON of `{question,
+resolution, answer?}`, where `resolution` is `answered` (with the answer) or `unanswered` (without one). The
+vector is `contract/vectors/checkpoint/successor.json`.
+
+**A claimed question wait's continuation (#341).** After `resumeParked` claims a question wait, the host
+continues the same run with `context.questionContinuation` (Go `Input.QuestionContinuation`) set to the wait's
+id, through the claim's fenced view. This is a fourth resume a `complete` head takes (#328): it is admitted only where
+the store's `exportWaits` holds this run's question wait by that id, claimed (`resumed`) with its resolution,
+and parked at the head's own revision, so a continuation delivered again after the head moved is refused
+`RunComplete`. The answer handed on is the wait's resolution, never host text. A continuation with no run
+store, or of a run with no head, a wait id that is not a storage id, and one beside a job continuation are
+`WaitRefused` `invalid`. One that names no such wait admits nothing: a `complete` head is then admitted only as
+before (#328), and any other head is `WaitRefused` `mismatch`.
+
+**A successor run (#340).** With no wait, the host opens a new durable run with `runStore.successor =
+{predecessor, question, answer}` (Go `DurableRunInput.Successor`) at the one id `successorRunId(predecessor,
+question)` (Go `SuccessorRunID`): `successor-` and the SHA-256, in lowercase hex, of `jpack-successor`, the
+predecessor's run id and the question's event id, each after one NUL byte. A storage id holds no control
+character, so each pair has its own id. The host passes `successor` on every open, `resume` false to make the
+run and true to continue it, and presents the predecessor's request and phase. On every open the package reads
+that the predecessor's head is `complete` under its own id, that the question is the latest `user_question` in
+its retained log, that the answer is a real answer to it, read as a wake's answer is (an offered option or
+non-blank text; a recommendation is none), and that the predecessor holds no wait, in any state, on that
+question. Making it reads the predecessor's checkpoint and writes the successor's first checkpoint, an
+ordinary one: the predecessor's `unit`, `used`, `limit`, `grants` and `requestCap` exactly, its request key,
+phase, context scope and principal, at the checkpoint version those members need, with `status` `running`, and nothing else: no approval, operation, plan, explanation or journal entry. It is created
+with an expected revision of none, before any model request or tool call. The predecessor's head and log are
+read and never written. `parkRun` refuses a question that has its successor (`nothing-pending`).
+
+**What the package does not hold.** There is no parent, question or answer link in any record: the binding is
+the derived id. The answer is not recorded. Each open reads the answer the host passes again as a real answer
+to the predecessor's last question, but nothing can check it against the answer the successor was made with,
+so a host that must hold the answer to one value keeps it itself. The successor carries no usage budget
+journal, chat, wait retention (`retainUntil`) or record of the predecessor's approvals, and a successor input
+with a usage budget or a chat context is refused `invalid`.
+
+**Refusals.** `SuccessorRefused` (`configuration` for `invalid` and `unbound`, `stale-state` otherwise, from
+`context`, `not-started`), before any model request or tool call:
+
+- `invalid`: `successor` is not a record whose `predecessor` and `question` are storage ids; it sits beside an
+  execution, a job or question continuation, a usage budget or a chat context; or the store is one writer's
+  checkpoint callback, which cannot create once.
+- `unbound`: the run id is not the derived one, the question is not the predecessor's latest
+  `user_question`, or the answer is not a real answer to it.
+- `succeeded`: the run is made again (`resume` false over a head), its create meets a head another open made
+  meanwhile, or a `complete` head whose latest question has its successor is resumed another way (a job or
+  question continuation, a re-authorization claim, a leg of an objective): the successor carries the allowance.
+- `not-complete`: the predecessor's head is missing or not `complete`.
+- `parked`: the question has a wait of its own, and is answered through it.
+
+A request cap other than the predecessor's is the request cap's own refusal (`stale-state`) and a principal
+other than the predecessor's is `principal-changed`, both before anything is written. The request key and
+phase are checked by the ordinary restore when the session starts, after the first checkpoint is written: a
+host that presents another request is refused there ("The request or execution phase changed") and nothing
+is sent; the successor exists, and the host continues it with `resume` true and the predecessor's request.
+
+**Races, and how each ends.** A successor and a question wait of the same question are on two resources, the
+successor's head and the predecessor's wait, and no one transaction covers both. The package reads each
+again where it can, and every order fails closed:
+
+- Two successors at once: the store's create admits one; the other is `succeeded`, having written nothing.
+- A park that commits before the successor's first read: the successor is `parked` and writes nothing.
+- A park that commits after that read and before the successor reads the waits again after its create: the successor's head
+  exists, the successor is refused `parked` on this open and every later one, and once the wait is claimed its
+  continuation is refused `succeeded`. Neither continues; the person's answer reaches no request.
+- A park that read no successor and commits after that second read: the successor's first open goes
+  on; every later open of it is `parked`, and the wait's continuation is `succeeded`.
+- A successor made before the park reads it: the park is `nothing-pending`.
+
+A crash while the successor is made leaves it written or not: if not, the host makes it again; if so, making
+it again is `succeeded` and the host continues it with `resume` true.
