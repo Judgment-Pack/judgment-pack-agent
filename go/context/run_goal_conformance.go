@@ -91,6 +91,11 @@ func (k *goalKit) send(c GoalCommand, plan *GoalPlanSteps, refused *GoalFinding)
 	}
 	return k.store.CommandGoal(k.ctx, transition)
 }
+
+// sendFenced hands the store a transition presented with a worker's fence (#315).
+func (k *goalKit) sendFenced(c GoalCommand, fence LeaseFence) (GoalAnswer, error) {
+	return k.store.CommandGoal(k.ctx, GoalTransition{Version: 1, Command: c, Fence: &fence})
+}
 func (k *goalKit) sendRead(c GoalCommand, read int64) (GoalAnswer, error) {
 	return k.store.CommandGoal(k.ctx, GoalTransition{Version: 1, Command: c, Read: &read})
 }
@@ -594,6 +599,30 @@ func (k *goalKit) properties() {
 	k.check("goal.abandon.unleased", uTaken.Lease != nil && uTaken.Lease.Owner == JobAbandonOwner && len(uTaken.Jobs) == 0 && uLease != nil && uLease.Owner == JobAbandonOwner)
 	_, err = k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-u", Owner: "worker-b", DurationMs: goalKitHour})
 	k.refuses("goal.abandon.unleased", err, "held")
+
+	// #315 L-3: a command presented with a fence is decided only while that fence is current for the command's run.
+	// A worker a takeover displaced is refused as its commits are, with nothing journaled and nothing changed; the
+	// holder's is decided.
+	f := k.open("run-f")
+	g := k.open("run-g")
+	fCreated, err := k.sendFenced(goalKitWith(k.command("run-f", "create", 0), func(c *GoalCommand) { c.Objective = goalKitString("objective-f") }), f.fence)
+	k.answers("goal.fence.current", err)
+	if _, err := k.store.ReleaseLease(k.ctx, f.fence); err != nil {
+		panic(err)
+	}
+	fTaken, err := k.store.AcquireLease(k.ctx, LeaseAcquire{Resource: "run-f", Owner: "worker-b", ExpectedRevision: k.head("run-f").Revision, DurationMs: goalKitHour})
+	k.answers("goal.fence.current", err)
+	fLease, _ := k.store.ReadLease(k.ctx, "run-f")
+	fPause := k.command("run-f", "pause", fCreated.Goal.Revision)
+	k.untouched("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fPause, f.fence); return err }, "stale-epoch")
+	fAbandon := k.command("run-f", "abandon", fCreated.Goal.Revision)
+	k.untouched("goal.fence.stale", "run-f", func() error { _, err := k.sendFenced(fAbandon, f.fence); return err }, "stale-epoch")
+	fLeaseAfter, _ := k.store.ReadLease(k.ctx, "run-f")
+	k.check("goal.fence.stale", goalKitSame(fLeaseAfter, fLease))
+	k.untouched("goal.fence.resource", "run-f", func() error { _, err := k.sendFenced(fPause, g.fence); return err }, "resource-mismatch")
+	fPaused, err := k.sendFenced(fPause, FenceOf(fTaken))
+	k.answers("goal.fence.current", err)
+	k.check("goal.fence.current", fPaused.Goal.Revision == fCreated.Goal.Revision+1 && fPaused.Entry.Command == fPause.Command && len(fPaused.Goal.Objectives) > 0 && fPaused.Goal.Objectives[len(fPaused.Goal.Objectives)-1].Paused != nil)
 
 	// A restart keeps every record, every disposition and every rule.
 	records := map[string]*RunGoal{}

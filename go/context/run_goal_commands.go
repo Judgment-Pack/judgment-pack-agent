@@ -12,8 +12,11 @@ import (
 // The host's goal commands (ADR-0025 decision 8, #230). None calls a model, commits to the run or writes a
 // checkpoint, wait, budget or approval: each is one goal transaction, and an abandon adds the job abandon's own.
 // The package reads what only it can (the head's accepted Plan and its evidence) and hands the store the head it
-// read; the store decides against the head it holds. The TypeScript twin is
-// packages/harness/storage/goalCommands.ts.
+// read; the store decides against the head it holds. A command sent through a worker's fenced view carries that
+// view's fence, and the store decides it only while the fence is current (#315): a worker displaced by a takeover
+// is refused as its commits and dispatches are. A command sent through the store itself carries none and is the
+// host's, whoever the host lets issue it; the command's actor is the host's label, never checked. The TypeScript
+// twin is packages/harness/storage/goalCommands.ts.
 
 func goalPortOf(store RunStore) (GoalRunStore, error) {
 	if view := leaseViewOf(store); view != nil {
@@ -27,6 +30,16 @@ func goalPortOf(store RunStore) (GoalRunStore, error) {
 		return nil, &GoalCapabilityRefused{Reason: "store-lifetime"}
 	}
 	return held, nil
+}
+
+// goalFenceOfView (#315 L-3) is the fence of the worker's view the command came through, which the store checks in
+// the command's transaction; nil for the store itself.
+func goalFenceOfView(store RunStore) *LeaseFence {
+	if view := leaseViewOf(store); view != nil {
+		fence := view.fence
+		return &fence
+	}
+	return nil
 }
 
 // AdmitGoals: an objective needs a store whose goal record, leases, waits and jobs outlive its process. Anything
@@ -337,7 +350,9 @@ func goalCanonical(raw []byte) []byte {
 // RunGoalCommand is a host's goal command: create, bind, achieve, pause, resume, block or unblock (abandon is
 // AbandonGoal). One goal transaction: no model call, no run commit, no checkpoint, wait, budget or approval
 // written. Accepted: the record and the command's entry. Refused: GoalRefused, journaled where the run has a goal
-// record. A repeat of the command answers as the first did while its entry is in the journal.
+// record. A repeat of the command answers as the first did while its entry is in the journal. Through a worker's
+// fenced view the command presents that view's fence: one that is not current for the command's run is refused
+// *LeaseRefused by the store, with nothing journaled and nothing changed (#315).
 func RunGoalCommand(ctx context.Context, store RunStore, input GoalCommand) (GoalAnswer, error) {
 	port, err := goalPortOf(store)
 	if err != nil {
@@ -350,7 +365,7 @@ func RunGoalCommand(ctx context.Context, store RunStore, input GoalCommand) (Goa
 	if command.Kind == "abandon" {
 		return GoalAnswer{}, goalInvalid()
 	}
-	transition := GoalTransition{Version: GoalRecordVersion, Command: command}
+	transition := GoalTransition{Version: GoalRecordVersion, Command: command, Fence: goalFenceOfView(store)}
 	switch command.Kind {
 	case "bind":
 		plan, finding, err := goalBindFinding(ctx, port, command)
@@ -386,8 +401,13 @@ type GoalAbandonAnswer struct {
 // not settled, and each attempt's deliveries are journaled: the job abandon closes and journals nothing itself. A
 // retry of the command is answered from the record and, while the objective it abandoned is still the current one, sends
 // again only what the effect host has not admitted; after another objective is created it refuses revision-changed and
-// sends nothing (#313 H-2).
-// None of it proves anything stopped.
+// sends nothing (#313 H-2). Through a worker's fenced view the goal transaction presents that view's fence, so a
+// displaced worker's abandon is refused *LeaseRefused before anything is journaled, seized or sent (#315). The
+// abandon itself takes the lease, so the view it came through is stale after it: its retry goes through the store,
+// or a view of the fence it answered. A retry from a new process after a crash between the sends and their journal
+// hands cancel the same operation as the first attempt did, and an effect host whose admissions outlive its process
+// admits it once; the attempt that crashed journaled nothing, and its request stands on the job's record under its
+// own epoch. None of it proves anything stopped.
 func AbandonGoal(ctx context.Context, store RunStore, host EffectHost, input GoalCommand, durationMs int64, cancel func(context.Context, JobCancelInput) error) (GoalAbandonAnswer, error) {
 	port, err := goalPortOf(store)
 	if err != nil {
@@ -403,7 +423,7 @@ func AbandonGoal(ctx context.Context, store RunStore, host EffectHost, input Goa
 	if err := AdmitJobs(port, host); err != nil {
 		return GoalAbandonAnswer{}, err
 	}
-	answer, err := port.CommandGoal(ctx, GoalTransition{Version: GoalRecordVersion, Command: command})
+	answer, err := port.CommandGoal(ctx, GoalTransition{Version: GoalRecordVersion, Command: command, Fence: goalFenceOfView(store)})
 	if err != nil {
 		return GoalAbandonAnswer{}, err
 	}

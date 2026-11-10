@@ -17295,6 +17295,156 @@
    "status": "caught",
    "origin": "agent#308",
    "note": "schema-bounds.json: a lone surrogate in an enum member and inside a const object, each dropped with its guardrail, and a well-formed U+FFFD kept. Go twin (by hand, the same break in go/context/sources.go; and, apart, the marking left out of go/context/json.go): caught at go/context/schema_bounds_test.go."
+  },
+  {
+   "name": "#315 L-3 the goal table decides a fenced command without checking its fence",
+   "file": "storage/goal.ts",
+   "find": "   this.checkFence(held.fence)\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: drop the checkFence call): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 the goal table takes a current fence of another run",
+   "file": "storage/goal.ts",
+   "find": "   if(held.fence.resource!==c.resource)throw new LeaseRefused('resource-mismatch')\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: drop the resource compare): caught at TestGoalAFenceOfAnotherRunIsRefusedResourceMismatch and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 a goal table with no lease authority decides a fenced command unchecked",
+   "file": "storage/goal.ts",
+   "find": "   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')\n   this.checkFence(held.fence)\n",
+   "replace": "   this.checkFence?.(held.fence)\n",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go Command: call checkFence only when set): caught at TestGoalTheTableReadsAndChecksATransitionsFence."
+  },
+  {
+   "name": "#315 L-3 the memory kind's goal table has no lease authority",
+   "file": "storage/run.ts",
+   "find": "this.goals=new GoalTable(()=>this.options.now?.()??new Date(),fence=>{this.leases.check(fence)})}",
+   "replace": "this.goals=new GoalTable(()=>this.options.now?.()??new Date())}",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_store.go NewMemoryRunStore: NewGoalTable(options.Now)): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided and TestGoalConformancePassesTheMemoryKindAcrossARestart."
+  },
+  {
+   "name": "#315 L-3 the transition reader drops a fence",
+   "file": "storage/goal.ts",
+   "find": " if(held.fence!==undefined){try{transition.fence=readLeaseFence(held.fence)}catch{return invalid()}}\n",
+   "replace": "",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalConformance.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go ReadGoalTransition: skip the fence): caught at TestGoalCommandVectors and TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 the transition reader takes a malformed fence",
+   "file": "storage/goal.ts",
+   "find": "try{transition.fence=readLeaseFence(held.fence)}catch{return invalid()}",
+   "replace": "try{transition.fence=readLeaseFence(held.fence)}catch{transition.fence=held.fence as LeaseFence}",
+   "tests": [
+    "storage/goalFence.test.ts",
+    "storage/goalRecords.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go ReadGoalTransition: ignore ReadLeaseFence's error and keep the zero fence): caught at TestGoalCommandVectors and TestGoalTheTableReadsAndChecksATransitionsFence."
+  },
+  {
+   "name": "#315 L-3 goalCommand sends a worker's command without its view's fence",
+   "file": "storage/goalCommands.ts",
+   "find": "port.commandGoal({version:1,command,...found,...fenceOfView(input.store)},input.signal)",
+   "replace": "port.commandGoal({version:1,command,...found},input.signal)",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_commands.go RunGoalCommand: no Fence): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 abandonGoal sends a worker's abandon without its view's fence",
+   "file": "storage/goalCommands.ts",
+   "find": "port.commandGoal({version:1,command,...fenceOfView(input.store)},input.signal)",
+   "replace": "port.commandGoal({version:1,command},input.signal)",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_commands.go AbandonGoal: no Fence): caught at TestGoalAStaleViewIsRefusedForCreatePauseAndAbandonAndTheHolderIsDecided."
+  },
+  {
+   "name": "#315 L-3 the kit takes a displaced worker's command",
+   "file": "storage/goalConformance.ts",
+   "find": " await untouched('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')\n await untouched('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')\n check('goal.fence.stale',same(await store.readLease('run-f'),fLease))\n",
+   "replace": " void fLease\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_conformance.go: drop the two stale sends and the lease compare): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "#315 L-3 the kit takes a fence of another run",
+   "file": "storage/goalConformance.ts",
+   "find": " await untouched('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')\n",
+   "replace": " void g\n",
+   "tests": [
+    "storage/goalConformance.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal_conformance.go: drop the other run's send): caught at TestGoalConformanceFailsEachBrokenStore."
+  },
+  {
+   "name": "#315 L-2 an abandon retried from a new process cancels under a new identity",
+   "file": "storage/job.ts",
+   "find": "   const operation=jobCancelOperation(input.command,job.job)\n",
+   "replace": "   const operation=jobCancelOperation(`${input.command}.${fence?.epoch}`,job.job)\n",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_job.go AbandonJobs: the operation of the command and the fence's epoch): caught at TestGoalAnAbandonRetriedFromANewProcessAfterACrashCancelsUnderTheSameOperation."
+  },
+  {
+   "name": "#315 (#321 L-3) a create goes over an unfinished abandon on an earlier abandon's delivery",
+   "file": "storage/goal.ts",
+   "find": "!row!.journal.some(entry=>entry.command===current.abandoned!.command&&entry.outcome==='delivered')",
+   "replace": "!row!.journal.some(entry=>entry.outcome==='delivered')",
+   "tests": [
+    "storage/goalFence.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#315",
+   "note": "Go twin (by hand, in run_goal.go the create's abandon-unfinished gate: any delivered entry): caught at TestGoalTheFirstAbandonsDeliveryDoesNotLetACreateOverTheSecondThrough."
   }
  ]
 }

@@ -3,7 +3,7 @@ import {StorageConformanceFailure} from './conformance'
 import {GOAL_JOURNAL_LIMIT,GOAL_OBJECTIVE_LIMIT,GoalRefused,type GoalCommand,type GoalFinding,type GoalPlanSteps,type GoalStore,type RunGoal} from './goal'
 import {JOB_ABANDON_OWNER,JobRefused,jobIdentity,jobKeyDigest,type JobCompletionEvidence} from './job'
 import type {JobRunStore} from './jobConformance'
-import {LeaseRefused,fenceOf} from './lease'
+import {LeaseRefused,fenceOf,type LeaseFence} from './lease'
 import {pinsDigest,type ResumePins} from './resume'
 import {WaitRefused,checkpointBytesDigest,wakeKeyDigest,type WaitClaim,type WaitPark} from './wait'
 /* #230: the goal conformance kit, for a host store kind's goal port beside its lease, wait and job ports. Every guarantee of
@@ -43,7 +43,7 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  let n=0
  const command=(run:string,kind:GoalCommand['kind'],expectedRevision:number|null,over:Partial<GoalCommand>={}):GoalCommand=>({version:1,resource:run,command:`${run}-command-${++n}`,actor:'kit-person',expectedRevision,kind,...over})
  // An achievement carries the revision its finding was read from: here, the command's own, unless a property says otherwise.
- const send=(c:GoalCommand,over:{plan?:GoalPlanSteps;refused?:GoalFinding;read?:number}={})=>store.commandGoal({version:1,command:c,...(c.kind==='achieve'&&c.expectedRevision!==null?{read:c.expectedRevision}:{}),...over})
+ const send=(c:GoalCommand,over:{plan?:GoalPlanSteps;refused?:GoalFinding;read?:number;fence?:LeaseFence}={})=>store.commandGoal({version:1,command:c,...(c.kind==='achieve'&&c.expectedRevision!==null?{read:c.expectedRevision}:{}),...over})
  const head=async(run:string)=>{const held=(await store.load(run))!;return {revision:held.revision,digest:checkpointBytesDigest(held.checkpoint!)}}
  const open=async(run:string)=>{const opened=await store.commit({runId:run,expectedRevision:null,commitId:`${run}-open`,checkpoint:bytes(`{"kit":"${run}"}`),events:[]});return {revision:opened.revision,fence:fenceOf(await store.acquireLease({resource:run,owner:'worker-a',expectedRevision:opened.revision,durationMs:HOUR}))}}
  /** A refusal journals the command and changes nothing else: the whole record compared. With no record, nothing is written. */
@@ -325,6 +325,20 @@ async function goalProperties(create:GoalStoreFactory):Promise<void>{
  const uTaken=await answers('goal.abandon.unleased',()=>store.abandonJobs({version:1,resource:'run-u',command:uAbandon.command,durationMs:HOUR}))
  check('goal.abandon.unleased',uTaken.lease?.owner===JOB_ABANDON_OWNER&&uTaken.jobs.length===0&&(await store.readLease('run-u'))?.owner===JOB_ABANDON_OWNER)
  await refuses('goal.abandon.unleased',()=>store.acquireLease({resource:'run-u',owner:'worker-b',expectedRevision:null,durationMs:HOUR}),'held')
+
+ // #315 L-3: a command presented with a fence is decided only while that fence is current for the command's run. A worker a
+ // takeover displaced is refused as its commits are, with nothing journaled and nothing changed; the holder's is decided.
+ const f=await open('run-f'),g=await open('run-g')
+ const fCreated=await answers('goal.fence.current',()=>send(command('run-f','create',null,{objective:'objective-f'}),{fence:f.fence}))
+ await store.releaseLease(f.fence)
+ const fB=fenceOf(await answers('goal.fence.current',async()=>store.acquireLease({resource:'run-f',owner:'worker-b',expectedRevision:(await store.load('run-f'))!.revision,durationMs:HOUR})))
+ const fLease=await store.readLease('run-f'),fPause=command('run-f','pause',fCreated.goal.revision)
+ await untouched('goal.fence.stale','run-f',()=>send(fPause,{fence:f.fence}),'stale-epoch')
+ await untouched('goal.fence.stale','run-f',()=>send(command('run-f','abandon',fCreated.goal.revision),{fence:f.fence}),'stale-epoch')
+ check('goal.fence.stale',same(await store.readLease('run-f'),fLease))
+ await untouched('goal.fence.resource','run-f',()=>send(fPause,{fence:g.fence}),'resource-mismatch')
+ const fPaused=await answers('goal.fence.current',()=>send(fPause,{fence:fB}))
+ check('goal.fence.current',fPaused.goal.revision===fCreated.goal.revision+1&&fPaused.entry.command===fPause.command&&fPaused.goal.objectives.at(-1)?.paused!==undefined)
 
  // A restart keeps every record, every disposition and every rule.
  const records:Record<string,RunGoal|undefined>={}
