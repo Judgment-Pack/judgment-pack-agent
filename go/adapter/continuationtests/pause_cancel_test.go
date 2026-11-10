@@ -191,8 +191,9 @@ func TestAnAskThatCouldNotBeSavedIsNotShown(t *testing.T) {
 						failed = event.Error
 					}
 				}
-				// The run ends with the storage failure, as before: nothing shown, nothing run.
-				if s.count(asked) != 0 || s.ran != 0 || failed == nil || failed.Failure == nil || failed.Failure.Source != "storage" || failed.Failure.Outcome != "unknown" {
+				// The run ends with the storage failure, as before and as a Runtime action's unsaved ask ends, in both
+				// languages: unknown/storage/unknown. Nothing shown, nothing run.
+				if s.count(asked) != 0 || s.ran != 0 || failed == nil || failed.Failure == nil || failed.Failure.Code != "unknown" || failed.Failure.Source != "storage" || failed.Failure.Outcome != "unknown" {
 					t.Fatalf("asked %d, ran %d, error %+v", s.count(asked), s.ran, failed)
 				}
 				if saved := stored(t, memory); !lost && saved.Approval != nil {
@@ -279,8 +280,54 @@ func TestTheCallersOwnCancellationStillStops(t *testing.T) {
 				if saved := stored(t, memory); at == "before the call" && saved.Approval != nil {
 					t.Fatalf("a cancelled ask was kept %q", held(saved))
 				}
+				// The host finalizes its stop (RunWriter.FinalizeStop). A provider that answered the caller's own cancellation
+				// with its context's error is recorded stopped by it, never as the pause.
+				if at == "once the person is shown it" && h.name == "its context's error" {
+					binding := link.context.Persistence("author")
+					if _, err := binding.Writer.FinalizeStop(context.Background(), *binding); err != nil {
+						t.Fatal(err)
+					}
+					for _, row := range stored(t, memory).Durable.Dispatches {
+						if row.Kind == "agent" && (row.Failure == nil || row.Failure.Code != "cancelled") {
+							t.Fatalf("the caller's stop was recorded as %+v", row.Failure)
+						}
+					}
+				}
 			})
 		}
+	}
+}
+
+// The call's own context ending once the ask is made (a provider's per-call deadline) does not withdraw it: the ask is saved
+// under the invocation's context, as TypeScript saves it under the run's signal, and the run ends paused with it.
+func TestTheCallsOwnContextDoesNotWithdrawAnAsk(t *testing.T) {
+	for _, h := range hosts {
+		t.Run(h.name, func(t *testing.T) {
+			s := &scene{store: runcontext.NewMemoryRunStore(runcontext.MemoryRunStoreOptions{})}
+			given := h.host("writes__write_note", `{}`)
+			host := func(c context.Context, request adapter.AgentRequest, cb adapter.AgentCallbacks, n int) error {
+				call, end := context.WithCancel(c)
+				defer end()
+				s.approving = end
+				return given(call, request, cb, n)
+			}
+			if err := s.run(t, context.Background(), false, nil, false, host); err != nil {
+				t.Fatal(err)
+			}
+			saved := stored(t, s.store)
+			if held(saved) != "paused/asked" || s.count(asked) != 1 || len(s.errors()) != 0 || s.ran != 0 {
+				t.Fatalf("ended %q, asked %d, errors %v, ran %d", held(saved), s.count(asked), s.errors(), s.ran)
+			}
+			proof := runcontext.ApprovalShownDigest(*saved.Approval)
+			decision := &contract.CheckpointApprovalDecision{CallID: saved.Approval.CallID, Approved: true, ShownDigest: &proof}
+			s.events, s.approving = nil, nil
+			if err := s.run(t, context.Background(), true, decision, false); err != nil {
+				t.Fatal(err)
+			}
+			if s.ran != 1 || len(s.errors()) != 0 || !s.finished() {
+				t.Fatalf("the decision: ran %d, errors %v, finished %v", s.ran, s.errors(), s.finished())
+			}
+		})
 	}
 }
 

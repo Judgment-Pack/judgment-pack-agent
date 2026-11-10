@@ -602,13 +602,17 @@ func (r *runState) tool(invCtx context.Context, offered map[string]bool, recorde
 		if held.host != nil {
 			// The pause is claimed before the approval is written asked (SessionContext.PauseClaim),
 			// and the ask is saved paused before the provider is stopped or the person is shown it
-			// (agent#342). Where it could not be saved, the run ends with that error: the person is
-			// shown nothing and the call is not run.
+			// (agent#342), under the invocation's context as TypeScript saves it under the run's
+			// signal: the call's own deadline does not withdraw an ask. Where it could not be saved,
+			// the run ends with that error, delivered now as a Runtime action's unsaved ask ends, so
+			// both kinds of ask in both languages report the store's own failure: the person is shown
+			// nothing and the call is not run.
 			if asked := r.sc.Approval(ctx, held.name, args, call.ID); asked != nil {
-				if err := r.sc.SaveAsked(ctx); err != nil {
+				if err := r.sc.SaveAsked(invCtx); err != nil {
 					r.held.Lock()
 					r.fatal = err
 					r.held.Unlock()
+					r.deliver(failure.Event(err, "storage"))
 					pause()
 					return adapter.AgentToolAnswer{}, err
 				}
