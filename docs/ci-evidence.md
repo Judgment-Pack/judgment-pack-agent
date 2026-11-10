@@ -543,9 +543,12 @@ under the same 40-minute limit per binary and the same 3,000 s per step.
   clause. Without race on 16 CPUs, the one binary took 242 s at the split's base (the send tests 120 s of it,
   the rest 122 s), and the two binaries 136 s and 132 s run side by side. Neither `go-race-b` (2,003 s on the
   run above) nor `go-race-a` (1,449 s, and a job of 2,075 s on the slower runner) had room for half of it, so
-  `./adapter/jobsendtests` is `go-race-d`, a runner of its own. Expected on a hosted runner: each of
-  `go-race-c` and `go-race-d` about half of the one binary's time, 800 to 1,200 s by the times above, under its
-  2,250 s warning on the slowest runner seen; `go-race-a` and `go-race-b` unchanged. A new job test belongs in
+  `./adapter/jobsendtests` is `go-race-d`, a runner of its own. Under race, locally on 16 CPUs with other work
+  beside it, `./adapter/jobsendtests` took 1,005 s (the one binary took 1,271 s so at #306's head, and 1,467 s
+  on that hosted run). By that ratio, and the slowest runner's 1.5 times more, `go-race-d` is expected at about
+  1,150 to 1,700 s on a hosted runner: under the binary's 2,400 s limit, though it may pass the 1,800 s warning
+  on the slowest runner. `./adapter/jobtests` was not run under race here; `go-race-c` is expected well below
+  what the one binary took. `go-race-a` and `go-race-b` are unchanged. A new job test belongs in
   the package of its kind; a test that names what a cancel or an abandon sends, in `./adapter/jobsendtests`.
 
   `go-race-b` is the lighter on purpose: a new package lands there and `./context` is there, so the
