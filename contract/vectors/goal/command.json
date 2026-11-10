@@ -1,5 +1,5 @@
 {
- "description": "Handwritten goal commands of every kind with the digests a repeat must match, the store's transitions with every finding, inspections and deliveries; commands and transitions both readers refuse. refused fails the schema, and readerRefused passes it and only the readers hold it.",
+ "description": "Handwritten goal commands of every kind with the digests a repeat must match, the store's transitions with every finding and a worker's fence (#315), inspections and deliveries; commands and transitions both readers refuse. refused fails the schema, and readerRefused passes it and only the readers hold it.",
  "schema": "run-goal.json#/$defs/command",
  "source": {
   "harness": {
@@ -567,6 +567,41 @@
    "refused": {
     "reason": "plan-unbound"
    }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-2",
+    "actor": "person-1",
+    "expectedRevision": 1,
+    "kind": "pause"
+   },
+   "fence": {
+    "version": 1,
+    "resource": "run-g",
+    "owner": "worker-a",
+    "epoch": "3"
+   }
+  },
+  {
+   "version": 1,
+   "command": {
+    "version": 1,
+    "resource": "run-g",
+    "command": "cmd-1",
+    "actor": "person-1",
+    "expectedRevision": null,
+    "kind": "create",
+    "objective": "objective-1"
+   },
+   "fence": {
+    "version": 1,
+    "resource": "run-g",
+    "owner": "worker-a",
+    "epoch": "1"
+   }
   }
  ],
  "transitionsRefused": [
@@ -615,6 +650,117 @@
      ]
     },
     "read": 0
+   }
+  },
+  {
+   "problem": "a fence with epoch 0",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {
+     "version": 1,
+     "resource": "run-g",
+     "owner": "worker-a",
+     "epoch": "0"
+    }
+   }
+  },
+  {
+   "problem": "an empty fence",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {}
+   }
+  },
+  {
+   "problem": "a fence with an empty owner",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {
+     "version": 1,
+     "resource": "run-g",
+     "owner": "",
+     "epoch": "3"
+    }
+   }
+  },
+  {
+   "problem": "a fence whose owner is over 256 bytes",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {
+     "version": 1,
+     "resource": "run-g",
+     "owner": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww",
+     "epoch": "3"
+    }
+   }
+  },
+  {
+   "problem": "a fence with a member the lease does not name",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {
+     "version": 1,
+     "resource": "run-g",
+     "owner": "worker-a",
+     "epoch": "3",
+     "holder": "worker-a"
+    }
+   }
+  },
+  {
+   "problem": "a fence that is not a fence",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": "worker-a"
    }
   }
  ],
@@ -843,6 +989,26 @@
      ]
     },
     "read": 4
+   }
+  },
+  {
+   "problem": "a fence of version 2 without its principal",
+   "record": {
+    "version": 1,
+    "command": {
+     "version": 1,
+     "resource": "run-g",
+     "command": "cmd-2",
+     "actor": "person-1",
+     "expectedRevision": 1,
+     "kind": "pause"
+    },
+    "fence": {
+     "version": 2,
+     "resource": "run-g",
+     "owner": "worker-a",
+     "epoch": "3"
+    }
    }
   }
  ],
