@@ -60,7 +60,11 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
   const inputPause = new AbortController()
   const executionSignal = AbortSignal.any([gate.signal, inputPause.signal])
   let awaitingInput = false
-  context.claimApprovalPause=()=>{if(awaitingInput)return false;awaitingInput=true;return true}
+  /** A failure the run ends with whatever the agent returns (agent#342): an ask that could not be saved. */
+  let fatal: { cause: unknown } | undefined
+  /** The call whose ask claimed the run's pause, where the claim named it (a Runtime action's: agent#342). */
+  let claimant: string | undefined
+  context.claimApprovalPause=(callId)=>{if(awaitingInput)return false;awaitingInput=true;claimant=callId;return true}
   const callTool = guardedCallTool(session, executionSignal)
   const deliver = (event: AssistantEvent) => channel.push(event)
   const drive = async () => {
@@ -160,9 +164,20 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
           }
           // ADR-0008: an act call the host's policy asks about ends the run as a delegation handoff
           // does: its approval_requested in place of the call, the call never run, the invocation stopped.
-          const runtime = route.host ? undefined : await context.prepareRuntimeCall(route.name, call.arguments, call.id)
+          // agent#342: a Runtime action's ask is saved paused in prepareRuntimeCall, once this call claimed the run's pause
+          // and before it is shown or the provider stopped. Where it could not be saved (the ask withdrawn), the run ends
+          // with that failure, whatever the agent returns: the person is shown nothing and the call is not run. Any other
+          // refusal, or one of a call that did not claim the pause, is the call's own.
+          let runtime: Awaited<ReturnType<typeof context.prepareRuntimeCall>>
+          if (!route.host) try { runtime = await context.prepareRuntimeCall(route.name, call.arguments, call.id) } catch (cause) {
+            if (claimant === call.id && context.execution.state.approval === undefined) { fatal ??= { cause }; inputPause.abort() }
+            throw cause
+          }
           const held = route.host ? await context.approval(route.name, call.arguments, call.id) : runtime?.requested
           if (held !== undefined) {
+            // A custom source's ask is saved here, as a Runtime action's is above, and ends the run the same way where it
+            // could not be saved.
+            if (route.host) try { await context.saveAsked() } catch (cause) { fatal ??= { cause }; inputPause.abort(); throw cause }
             await deliver(held)
             awaitingInput = true
             inputPause.abort()
@@ -397,7 +412,8 @@ function runCodexLoop(session: RequestAgentAssistantSession): AsyncIterable<Assi
   }
   const open = () => {
     void drive().catch(async (cause: unknown) => {
-      if (!awaitingInput && !isCancelled(cause) && !gate.signal.aborted) await deliver(failureEvent(cause,'agent'))
+      const ended = fatal ? fatal.cause : cause
+      if ((fatal || !awaitingInput) && !isCancelled(ended) && !gate.signal.aborted) await deliver(failureEvent(ended,fatal?'storage':'agent'))
     }).then(async () => { await deliver({ type: 'end' }); channel.close() })
     return channel.drain()
   }

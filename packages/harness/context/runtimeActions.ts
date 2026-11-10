@@ -72,7 +72,7 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
    const answer=runtimePolicy(attempt)
    if(answer==='refuse')throw context.refuse(name,"The host refused this Runtime action. Nothing was sent.",'approval refused')
    if(answer==='ask'){
-    if(context.claimApprovalPause&&!context.claimApprovalPause())throw context.refuse(name,'The invocation did not claim this approval pause. Nothing was sent.','approval pending')
+    if(context.claimApprovalPause&&!context.claimApprovalPause(callId))throw context.refuse(name,'The invocation did not claim this approval pause. Nothing was sent.','approval pending')
     const record:ApprovalRecord={...runtimeJSON(attempt.request),callId,state:'asked',marker:context.marker}
     context.execution.mutate({approval:record,version:3,status:'paused'})
     try{await binding.writer.save(binding,context.execution.snapshot('paused'),session.signal)}catch(error){context.execution.mutate({approval:undefined,status:'stopped'});throw error}

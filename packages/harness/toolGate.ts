@@ -389,7 +389,7 @@ export function inspectOutboundFrame(
 /**
  * #344: the arguments a verdict sends `experimental_evaluate` with, where its rehearsal rewrite was
  * applied: a `tools/call` frame of that name whose arguments carry an own `rehearsal: true` and no
- * other own member whose name equals `rehearsal` ignoring case (`equalFold`, Go's strings.EqualFold),
+ * other own member whose name equals `rehearsal` ignoring case (`equalFold`, which matches Go's strings.EqualFold on `rehearsal`),
  * which a Runtime reading arguments case-insensitively could take in its place. Undefined for any
  * other verdict, so a caller refuses what it cannot confirm.
  */
@@ -403,9 +403,10 @@ export function rehearsalArguments(decided: FrameVerdict): Record<string, unknow
 }
 
 /**
- * Go's strings.EqualFold, code point by code point: equal where each pair is the same, or the same
- * under lower or upper casing of one code point (so `REHEARSAL` and `rehearſal` equal `rehearsal`,
- * and `ʀehearsal` does not).
+ * Case-insensitive equality, code point by code point: equal where each pair is the same, or the same
+ * under lower or upper casing of one code point. On `rehearsal` it matches Go's strings.EqualFold
+ * (`REHEARSAL` and `rehearſal` equal it, `ʀehearsal` does not); it is not claimed to match it on
+ * every string.
  */
 export function equalFold(a: string, b: string): boolean {
   const left = [...a], right = [...b]

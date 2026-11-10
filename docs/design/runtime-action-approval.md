@@ -90,9 +90,10 @@ gate refuses keeps that refusal. A frame it cannot confirm, and a call with no
 confirming owner, is refused with "Runtime action requires an exact approved
 attempt. Nothing was sent." Under a delegation (ADR-0029) the rehearsal is admitted
 as the act its tool is served as: source `runtime`, effect `act`, read once and
-counted when it is admitted. That count comes before the gate's checks and, in
-TypeScript, before the binding's offer and budget checks, so a rehearsal those
-checks then refuse is still counted; the count errs on the cautious side.
+counted when it is admitted. In both languages that count comes before the
+binding's budget check (and, in TypeScript, its offer check) and before the gate's
+checks, so a rehearsal those checks then refuse is still counted; the count errs on
+the cautious side.
 
 In TypeScript the actual connector registers a rehearsal channel on its call
 function, and a delegation's binding forwards it behind the same offer, test-call
