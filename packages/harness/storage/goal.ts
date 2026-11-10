@@ -4,14 +4,16 @@ import {sha256} from '../records'
 import {planStepId} from '../execution/plan'
 import {storageId} from './common'
 import {JOB_RUN_LIMIT,type JobDelivery,type JobOutcome,type JobState,type RunJob} from './job'
-import type {RunLease} from './lease'
+import {LeaseRefused,readLeaseFence,type LeaseFence,type RunLease} from './lease'
 import {checkpointBytesDigest,terminalWait,type RunWait,type WaitReason,type WaitState} from './wait'
 /* One durable goal (ADR-0025 decision 8, #230; contract/schemas/run-goal.json). A run may have one objective at a time, kept
  * by the store beside the run, never in its checkpoint or event log, and changed only by host commands: no model call and no
  * run commit. Each command carries its id, its actor and the record's expected revision, and the store decides it in one
  * transaction and journals it, accepted or refused. Paused is a disposition, never a state. The package checks what only it
- * can read (the head's accepted Plan and its evidence) and the store checks that the head it read is still the head. The host
- * owns scheduling, clocks, notifications and who may issue a command. The Go twin is go/context/run_goal.go. */
+ * can read (the head's accepted Plan and its evidence) and the store checks that the head it read is still the head. A command
+ * sent through a worker's fenced view carries that view's fence, and the store decides it only while the fence is current
+ * (#315); `actor` is a label the host attests, never checked. The host owns scheduling, clocks, notifications and who may issue
+ * a command. The Go twin is go/context/run_goal.go. */
 export const GOAL_RECORD_VERSION=1 as const
 /** A run's objectives, the current one last. History is never overwritten: each earlier one is kept whole. */
 export const GOAL_OBJECTIVE_LIMIT=8
@@ -65,8 +67,10 @@ export interface GoalFinding {reason:GoalRefusalReason;step?:string}
 /** What the store is handed: the host's command, and what the package found from the head (a bind's steps, or a refusal). An
  * achievement carries `read`, the goal record's revision its finding was computed from: the store refuses revision-changed unless
  * it is the command's expected revision, so a finding read before another command landed is never taken for that command's record
- * (#313 H-1). */
-export interface GoalTransition {version:1;command:GoalCommand;plan?:GoalPlanSteps;refused?:GoalFinding;read?:number}
+ * (#313 H-1). `fence` (#315): the run's fence, which a command sent through a worker's fenced view presents. The store decides
+ * the command only while it is current, before anything else, and refuses it LeaseRefused otherwise with nothing journaled. It is
+ * not part of the command's digest: a retry under a later fence of the same holder is the same command. */
+export interface GoalTransition {version:1;command:GoalCommand;plan?:GoalPlanSteps;refused?:GoalFinding;read?:number;fence?:LeaseFence}
 export interface GoalInspect {version:1;resource:string;command:string;actor:string}
 export interface GoalDeliveries {version:1;resource:string;command:string;deliveries:GoalDelivery[]}
 /** An accepted command's answer. `lease` (a pause or a resume): the run's lease as the store holds it, since a held lease
@@ -191,9 +195,11 @@ export function readGoalCommand(v:unknown):GoalCommand{
  return command
 }
 export function readGoalTransition(v:unknown):GoalTransition{
- const held=shape(v,['version','command'],['plan','refused','read'])
+ const held=shape(v,['version','command'],['plan','refused','read','fence'])
  if(held.version!==GOAL_RECORD_VERSION)return invalid()
  const command=readGoalCommand(held.command),transition:GoalTransition={version:1,command}
+ // #315: a fence is read as the lease reads one; a malformed fence is an invalid transition, as any malformed member is.
+ if(held.fence!==undefined){try{transition.fence=readLeaseFence(held.fence)}catch{return invalid()}}
  // An achievement carries the revision it read, and nothing else does.
  if((held.read!==undefined)!==(command.kind==='achieve'))return invalid()
  if(held.read!==undefined)transition.read=count(held.read,1)
@@ -224,10 +230,12 @@ function append(goal:RunGoal,entry:GoalEntry):void{
 export interface GoalContext {head?:{revision:string;checkpoint:Uint8Array|null};waits:readonly RunWait[];jobs:readonly RunJob[];lease?:RunLease}
 
 /** The goal transitions, held in memory. MemoryRunStore calls them inside its own serialized transactions, with the run's head,
- * waits, jobs and lease as they are in that transaction; a host store kind implements the same transitions. */
+ * waits, jobs and lease as they are in that transaction; a host store kind implements the same transitions. `checkFence` is the
+ * store's own lease authority (#315), called inside the same transaction: it throws LeaseRefused unless the fence is current. A
+ * table with none refuses every fenced transition store-unsupported, never decides it unchecked. */
 export class GoalTable {
  private rows=new Map<string,RunGoal>()
- constructor(private readonly clock:()=>Date=()=>new Date()){}
+ constructor(private readonly clock:()=>Date=()=>new Date(),private readonly checkFence?:(fence:LeaseFence)=>void){}
  private now():string{const t=this.clock();const ms=t instanceof Date?t.getTime():NaN;return Number.isSafeInteger(ms)?new Date(ms).toISOString():invalid()}
  read(resource:string):RunGoal|undefined{const row=this.rows.get(id(resource));return row?structuredClone(row):undefined}
  /** M8: a paused objective's run is leased by no acquisition and no resume. A held lease runs on. */
@@ -235,7 +243,15 @@ export class GoalTable {
  /** An objective requires a leased run, chosen at create: from then on an unfenced commit of the run is refused. */
  admitUnfenced(resource:string):void{if(this.rows.has(resource))throw new GoalRefused('lease-required')}
  command(input:GoalTransition,context:(resource:string)=>GoalContext):GoalAnswer{
-  const held=readGoalTransition(input),c=held.command,row=this.rows.get(c.resource),digested=goalCommandDigest(c)
+  const held=readGoalTransition(input),c=held.command
+  // #315 L-3: a command a worker's view sent is decided only while that worker's fence is current for this run, before anything
+  // is read or written: a stale holder is refused by the lease's own reason, and nothing is journaled, not even a repeat's answer.
+  if(held.fence){
+   if(held.fence.resource!==c.resource)throw new LeaseRefused('resource-mismatch')
+   if(typeof this.checkFence!=='function')throw new GoalCapabilityRefused('store-unsupported')
+   this.checkFence(held.fence)
+  }
+  const row=this.rows.get(c.resource),digested=goalCommandDigest(c)
   // A repeat of a command id: the same command is answered as it was; another under that id is conflict.
   const prior=row?.journal.find(entry=>entry.command===c.command&&entry.outcome!=='delivered')
   if(prior){if(prior.digest!==digested)throw new GoalRefused('conflict');if(prior.outcome!=='accepted')throw new GoalRefused(prior.outcome as GoalRefusalReason);return this.answer(row!,prior,c,context(c.resource))}
@@ -328,7 +344,11 @@ export class GoalTable {
  * accepted or refused; a repeat of a command id answers as the first did, with the record as it is now, while its entry is in
  * the journal, and another command under it is conflict. An achievement's finding is taken only from the record at the command's
  * revision (`read`). The store trusts the transition it is handed: a direct caller of commandGoal can claim any `read` and any
- * finding, so only the package's goalCommand composes them from what it read (#318 L-11). While the
+ * finding, so only the package's goalCommand composes them from what it read (#318 L-11). A transition that carries a fence
+ * (#315) is decided only while that fence is current for the command's run, checked against the store's leases in the same
+ * transaction and before anything else: one of another run refuses LeaseRefused resource-mismatch, and one that is not current
+ * the lease's own reason (no-lease, stale-epoch, other-owner, principal-changed, released, expired), with nothing journaled and
+ * nothing changed. A transition with no fence is the host's, decided as before. While the
  * current objective is paused, acquireLease and resumeWait refuse objective-paused; once the run has a goal record an unfenced
  * commit refuses lease-required. The package checks none of this in a host store; runStoreGoalConformance
  * (storage/goalConformance) does. */
@@ -336,7 +356,8 @@ export interface GoalStore {
  readonly goalVersion:1
  /** durable: the record survives the store's process. process: it ends with it (memory test kinds). */
  readonly goalLifetime:GoalLifetime
- /** Accepted: the record and the command's entry. Refused: GoalRefused, journaled where the run has a goal record. */
+ /** Accepted: the record and the command's entry. Refused: GoalRefused, journaled where the run has a goal record; LeaseRefused
+  * where the transition's fence is not current for its run, journaled nowhere (#315). */
  commandGoal(input:GoalTransition,signal?:AbortSignal):Promise<GoalAnswer>
  /** The record, counting the inspection; undefined, and nothing written, where the run has none. */
  inspectGoal(input:GoalInspect,signal?:AbortSignal):Promise<RunGoal|undefined>

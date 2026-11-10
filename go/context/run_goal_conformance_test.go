@@ -650,6 +650,36 @@ var goalFaults = map[string]func(*goalFault){
 			row.Objectives = row.Objectives[1:]
 		}
 	}),
+	// #315 L-3: a store that decides a fenced command whatever its fence, without the resource compare, and that
+	// refuses every fence.
+	"goal.fence.stale": func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			input.Fence = nil
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	},
+	"goal.fence.resource": func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			if input.Fence != nil {
+				s.MemoryRunStore.mu.Lock()
+				_, err := s.MemoryRunStore.leases.Check(*input.Fence)
+				s.MemoryRunStore.mu.Unlock()
+				if err != nil {
+					return GoalAnswer{}, err
+				}
+				input.Fence = nil
+			}
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	},
+	"goal.fence.current": func(f *goalFault) {
+		f.command = func(s *goalFault, ctx context.Context, input GoalTransition) (GoalAnswer, error) {
+			if input.Fence != nil {
+				return GoalAnswer{}, &LeaseRefused{Reason: "stale-epoch"}
+			}
+			return s.durableGoalStore.CommandGoal(ctx, input)
+		}
+	},
 	"goal.owner": func(f *goalFault) {
 		f.read = func(s *goalFault, ctx context.Context, resource string) (*RunGoal, error) {
 			held, err := s.durableGoalStore.ReadGoal(ctx, resource)

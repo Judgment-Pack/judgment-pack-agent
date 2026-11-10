@@ -12,7 +12,10 @@ import {verifyTaskEvidence} from './writer'
 /* The host's goal commands (ADR-0025 decision 8, #230). None calls a model, commits to the run or writes a checkpoint, wait,
  * budget or approval: each is one goal transaction, and an abandon adds the job abandon's own. The package reads what only it
  * can (the head's accepted Plan and its evidence) and hands the store the head it read; the store decides against the head it
- * holds. The Go twin is go/context/run_goal.go. */
+ * holds. A command sent through a worker's fenced view carries that view's fence, and the store decides it only while the fence
+ * is current (#315): a worker displaced by a takeover is refused as its commits and dispatches are. A command sent through the
+ * store itself carries none and is the host's, whoever the host lets issue it; `actor` is the host's label, never checked. The
+ * Go twin is go/context/run_goal_commands.go. */
 type GoalPort=RunStore&GoalStore&LeaseStore&WaitStore&JobStore&{leaseLifetime?:unknown;waitLifetime?:unknown;jobLifetime?:unknown}
 const invalid=():never=>{throw new GoalRefused('invalid')}
 function goalPort(store:RunStore):GoalPort{
@@ -23,6 +26,8 @@ function goalPort(store:RunStore):GoalPort{
 }
 /** An objective needs a store whose goal record, leases, waits and jobs outlive its process. Anything else refuses by name. */
 export function admitGoals(store:RunStore):void{goalPort(store)}
+/** #315 L-3: the fence of the worker's view the command came through, which the store checks in the command's transaction. */
+const fenceOfView=(store:RunStore):{fence?:LeaseFence}=>{const fence=leasedViewOf(store)?.fence;return fence?{fence}:{}}
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 function readBack(value:unknown,resource:string):RunGoal{const goal=readRunGoal(structuredClone(value));return goal.resource===resource?goal:invalid()}
 /** Whatever the store answers is read through the readers, and it must be this command's own accepted entry. */
@@ -97,12 +102,13 @@ async function achieveFinding(port:GoalPort,command:GoalCommand,signal?:AbortSig
 /** A host's goal command: create, bind, achieve, pause, resume, block or unblock (abandon is abandonGoal). One goal transaction:
  * no model call, no run commit, no checkpoint, wait, budget or approval written. Accepted: the record and the command's entry.
  * Refused: GoalRefused, journaled where the run has a goal record. A repeat of the command answers as the first did while its
- * entry is in the journal. */
+ * entry is in the journal. Through a worker's fenced view the command presents that view's fence: one that is not current for
+ * the command's run is refused LeaseRefused by the store, with nothing journaled and nothing changed (#315). */
 export async function goalCommand(input:{store:RunStore;command:GoalCommand;signal?:AbortSignal}):Promise<GoalAnswer>{
  const port=goalPort(input.store),command=readGoalCommand(input.command)
  if(command.kind==='abandon')return invalid()
  const found=command.kind==='bind'?await bindFinding(port,command,input.signal):command.kind==='achieve'?await achieveFinding(port,command,input.signal):{}
- return answerOf(await port.commandGoal({version:1,command,...found},input.signal),command)
+ return answerOf(await port.commandGoal({version:1,command,...found,...fenceOfView(input.store)},input.signal),command)
 }
 export interface GoalAbandonAnswer extends GoalAnswer {fence?:LeaseFence;jobs:JobAbandonAnswer['jobs']}
 /** ADR-0025 decision 8: abandon the objective, then ask a cancel of every started job of the run (abandonJobs: the lease under
@@ -110,12 +116,18 @@ export interface GoalAbandonAnswer extends GoalAnswer {fence?:LeaseFence;jobs:Jo
  * abandon left, the run's waits not resumed or ended and its jobs not settled, and each attempt's deliveries are journaled:
  * the job abandon closes and journals nothing itself. A retry of the command is answered from the record and, while the objective
  * it abandoned is still the current one, sends again only what the effect host has not admitted; after another objective is
- * created it refuses revision-changed and sends nothing (#313 H-2). None of it proves anything stopped. */
+ * created it refuses revision-changed and sends nothing (#313 H-2). Through a worker's fenced view the goal transaction presents
+ * that view's fence, so a displaced worker's abandon is refused LeaseRefused before anything is journaled, seized or sent (#315).
+ * The abandon itself takes the lease, so the view it came through is stale after it: its retry goes through the store, or a view
+ * of the fence it answered. A retry from a new process after a crash between the sends and their journal hands `cancel` the same
+ * operation as the first attempt did, and an effect host whose admissions outlive its process admits it once; the attempt that
+ * crashed journaled nothing, and its request stands on the job's record under its own epoch. None of it proves anything
+ * stopped. */
 export async function abandonGoal(input:{store:RunStore;effectHost:EffectHost;command:GoalCommand;durationMs:number;cancel:JobCancelSeam['cancel'];signal?:AbortSignal}):Promise<GoalAbandonAnswer>{
  const port=goalPort(input.store),command=readGoalCommand(input.command)
  if(command.kind!=='abandon')return invalid()
  admitJobs({store:port,effectHost:input.effectHost})
- const answer=answerOf(await port.commandGoal({version:1,command},input.signal),command)
+ const answer=answerOf(await port.commandGoal({version:1,command,...fenceOfView(input.store)},input.signal),command)
  // H-2: a repeat is answered from the journal whatever has happened since. Only while the objective this command abandoned is
  // still the current one does it ask anything of the run's jobs; otherwise nothing is sent, no lease is taken and nothing is
  // journaled.

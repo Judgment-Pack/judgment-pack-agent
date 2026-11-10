@@ -868,8 +868,19 @@ report, and with no objective created the store is not asked about one.
 
 **What the package does and what the host does.** Every command is the host's: no command calls a model, commits to the run, or
 writes a checkpoint, wait, budget or approval. The host decides who may issue one and says who did (`actor`), and owns
-scheduling, clocks (the store's), notifications and processes. The package reads what only it can, the head's accepted Plan and
-its evidence, and hands the store the head it read; the store decides against the head it holds.
+scheduling, clocks (the store's), notifications and processes. `actor` is a label the host attests: nothing checks it, and nothing
+in the package authenticates whoever sent a command. The package reads what only it can, the head's accepted Plan and its evidence,
+and hands the store the head it read; the store decides against the head it holds.
+
+**A worker's view (#315).** A command sent through a worker's fenced view (`fencedRunStore`, `unattendedRunStore`) presents that
+view's fence, the one its commits and dispatches already present, and the store decides the command only while the fence is current
+for the command's run. A worker a takeover displaced is refused as its commits are: `LeaseRefused` with the lease's own reason
+(`stale-epoch`, `other-owner`, `released`, `expired`, ...), or `resource-mismatch` for a fence of another run, with nothing journaled,
+seized, sent or changed. A command sent through the store itself presents no fence and is the host's, as before: the host's control
+plane, a pause of a run whose worker is gone, and the abandon of a stuck worker's run need no lease. The fence is enough for what it
+is for: what it shuts out is a stale holder acting on a run it no longer holds, and the lease is already the only thing that names
+the holder. It says nothing about who may command; that stays the host's. An abandon takes the lease itself, so the view it came
+through is stale after it: retry it through the store, or through a view of the fence it answered.
 
 **The record.** One per run: its `revision` (the count of accepted commands), its `objectives` in order, the current one last and
 only it open, each kept whole (history is never overwritten, at most eight), its `journal`, `discarded` and `inspections`. An
@@ -881,7 +892,9 @@ has none. Each state holds what proves it: `blocked` its condition, `achieved` i
 run with no record. `goalCommand({store, command})` (Go `RunGoalCommand`) runs `create` (`objective`), `bind` (`steps`, `head`),
 `achieve` (`head`, `waive?`), `pause`, `resume`, `block` (`condition`) and `unblock`; `abandonGoal` (Go `AbandonGoal`) runs
 `abandon`; `inspectGoal` is a counted read, `readGoal` a plain one and `goalReport` the report. An accepted command answers the record
-and its entry; a refused one throws `GoalRefused`, journaled where the run has a record. A repeat of a command id answers as the
+and its entry; a refused one throws `GoalRefused`, journaled where the run has a record. A goal refusal's record, `{version: 1,
+reason}`, has the shape of a lease refusal's, and a reason such as `invalid` is both: route a refusal by the error's name
+(`GoalRefused`, `LeaseRefused`), never by its record alone (#315 L-4). A repeat of a command id answers as the
 first did while its entry is in the journal, with the record as it is now; another command under it is `conflict`, and a host that
 wants to try again uses a new id. A repeat of an abandon asks the jobs again only while the objective it abandoned is current, and
 refuses `revision-changed` with nothing sent once another objective exists.
@@ -912,7 +925,10 @@ new run.
 under the same serialization as its commits, with the record surviving the store's own restarts.
 
 - `commandGoal(transition)`: decides one command against the record's revision and the run's head, waits, jobs and lease as they are
-  in that transaction, and journals it. `transition` is `{version, command, plan?, refused?, read?}`: a bind carries the steps the
+  in that transaction, and journals it. `transition` is `{version, command, plan?, refused?, read?, fence?}`. With `fence` (#315), the
+  store first checks it against its own leases in the same transaction, before it reads the record for a repeat: a fence of another
+  run refuses `LeaseRefused` `resource-mismatch`, one that is not current the lease's own reason, and nothing is journaled; a repeat
+  under a stale fence is refused too. The fence is not part of the command's digest. A bind carries the steps the
   package read or what refused them; an achievement carries `read`, the revision of the record its finding was computed from, which
   must be the command's expected revision (`revision-changed` otherwise), and may carry a finding; the store journals a finding as the
   refusal. It answers a pause and a resume with the run's lease as it holds it, and a repeat with the record as it is now. The store
@@ -933,14 +949,29 @@ under the same serialization as its commits, with the record surviving the store
 certifies the port, with a run of each kind, a whole-record compare after each refusal, a two-job case with a contradiction and a
 restart at the end. It names the first property broken: `goal.create.*`, `goal.repeat`, `goal.conflict`, `goal.refusal.repeat`,
 `goal.unfenced`, `goal.pause.*`, `goal.resume.*`, `goal.block*`, `goal.unblock*`, `goal.bind.*`, `goal.achieve.*`, `goal.terminal`,
-`goal.abandon.left`, `goal.deliveries*`, `goal.none`, `goal.inspect.*`, `goal.journal.bound`, `goal.exhausted`, `goal.owner` and
-`goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
+`goal.abandon.left`, `goal.deliveries*`, `goal.none`, `goal.inspect.*`, `goal.journal.bound`, `goal.exhausted`, `goal.owner`,
+`goal.fence.*` (#315: a fenced command is decided while the fence is current, refused stale with nothing changed, and refused for a
+fence of another run) and `goal.restart.*`. The tests show a kind that leaves one guarantee out failing the property that names it.
 
 **Abandoning.** `abandonGoal({store, effectHost, command, durationMs, cancel})` abandons the objective in one goal transaction, which
 records the run's waits not resumed or ended and its jobs not settled, then runs `abandonJobs` under the same command id and journals
 each job's delivery. A retry is answered from the record and journals its own deliveries; the effect host admits each cancel once
 while it remembers the operation. It closes no more than `abandonJobs` does: a wait it left can still be resumed, but no new objective
 is created over it until it is resumed or has ended (M10).
+
+- **A crash between the sends and their journal (#315 L-2).** The retry, from a new process, hands `cancel` the same `operation` as the
+  attempt that crashed: it is the command's and the job's (`jobCancelOperation`), never the attempt's. An effect host whose admissions
+  outlive its process admits it once and answers `already-admitted`; the reference host forgets on restart and lets it through again,
+  so a host's `cancel` must be idempotent by `operation`. The journal holds the deliveries of each attempt that lived to write them;
+  the job's record keeps the request of the attempt that crashed, under that attempt's epoch.
+- **A terminal objective's jobs (#315 L-6).** `abandonGoal` on an achieved or abandoned objective refuses `objective-terminal` and sends
+  nothing, so an achievement's waived jobs are stopped with `abandonJobs` under a command of the host's own.
+- **A `failed` delivery (#321 L-2).** It is journaled, so the next `create` goes through although that job was never asked to stop.
+  Send it again with `abandonJobs` under a new command before creating the next objective: after, it asks the new objective's jobs
+  too.
+- **An abandon that can never be journaled (#321 L-1).** Where `abandonJobs` always throws, or the store always refuses the
+  deliveries, every later `create` on the run refuses `abandon-unfinished`, and each retry sends again to an effect host that forgot
+  its admissions. The way out is a new run.
 
 ## Re-authorization waits (#226)
 

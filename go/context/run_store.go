@@ -129,7 +129,10 @@ type MemoryRunStore struct {
 }
 
 func NewMemoryRunStore(options MemoryRunStoreOptions) *MemoryRunStore {
-	return &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now), jobs: NewJobTable(options.Now), goals: NewGoalTable(options.Now)}
+	m := &MemoryRunStore{runs: map[string]heldRun{}, options: options, durability: RunStoreMemory, history: newMemoryHistoryJournal(options.Now), leases: NewLeaseTable(options.Now), waits: NewWaitTable(options.Now), jobs: NewJobTable(options.Now)}
+	// #315: a fenced goal command has its fence checked by this store's leases, inside the command's transaction.
+	m.goals = NewFencedGoalTable(options.Now, func(fence LeaseFence) error { _, err := m.leases.Check(fence); return err })
+	return m
 }
 func (m *MemoryRunStore) Durability() string { return m.durability }
 func validStorageID(id string) bool {
