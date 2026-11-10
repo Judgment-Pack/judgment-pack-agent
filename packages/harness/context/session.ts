@@ -525,7 +525,7 @@ this.storedBinding=session.context?.[durableOwner];this.storedChat=session.conte
  private approvalPreparing=false
  private claimApproval(){if(this.approvalPreparing)return false;this.approvalPreparing=true;return true}
  private releaseApproval(){this.approvalPreparing=false}
- claimApprovalPause?:()=>boolean
+ claimApprovalPause?:(callId?:string)=>boolean
  beginApproval(name:string):()=>void {
   if(this.execution.state.approval?.state==='asked'||!this.claimApproval())throw this.refuse(name,'One act call already waits for approval. Nothing was sent.','approval pending')
   return ()=>this.releaseApproval()

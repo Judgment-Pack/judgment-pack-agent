@@ -16445,7 +16445,7 @@
    ],
    "status": "caught",
    "origin": "agent#342",
-   "note": "agent#342. Go twin (by hand, in invoke.go: the failed save not kept as the run's fatal error): caught at TestTheCallersOwnCancellationStillStops (a host stop that closed dispatch before the save ends complete); the storage cases alone miss it, the writer ending the run with its own failure."
+   "note": "agent#342. Go twin (by hand, in invoke.go: the failed save not kept as the run's fatal error): equivalent on every reachable path, the failure now delivered at the call as a Runtime action's is; the writer that refused the save, or the record error that failed it, then ends the run. Kept as defence."
   },
   {
    "name": "pause P3 agent#342 an ask that could not be saved stays asked",
@@ -16458,6 +16458,18 @@
    "status": "caught",
    "origin": "agent#342",
    "note": "agent#342. Go twin (by hand, in session.go: SaveAsked keeps the ask after a failed save): caught at TestAnAskThatCouldNotBeSavedIsNotShown."
+  },
+  {
+   "name": "pause P4 agent#342 a Runtime action's ask that could not be saved ends the run silently",
+   "file": "engines/codex/index.ts",
+   "find": "if (claimant === call.id && context.execution.state.approval === undefined) { fatal ??= { cause }; inputPause.abort() }",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#342",
+   "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
   }
  ]
 }

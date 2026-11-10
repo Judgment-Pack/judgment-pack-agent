@@ -2,21 +2,27 @@
 // ADR-0008 on the agent wire: an approved continuation that delegates goes on past its batch (#305), and a decision is
 // taken by the response's first open only.
 import {describe,it,expect,vi} from 'vitest'
-import type {AgentAssistantSession,AssistantEvent,Engine,HostTool} from './engine'
+import type {AgentAssistantSession,AssistantEvent,Engine,HostTool,McpTool} from './engine'
 import type {AgentRun} from './agent'
 import {codex} from './engines/codex'
 import {withDelegation} from './delegation'
 import {MemoryRunStore,type RunStore} from './storage/run'
 import {toolListDigest} from './toolSources'
 import {approvalShownDigest,decisionForParentOpen} from './execution/state'
+import {openAssistantConnection} from './session'
+import type {ExecutionLink,SessionContext} from './context/session'
+import type {RuntimeExecutionOwner} from './runtimeActions'
+import type {Transport} from '@modelcontextprotocol/sdk/shared/transport.js'
+import type {JSONRPCMessage} from '@modelcontextprotocol/sdk/types.js'
 
 const ANSWER='THE-APPROVED-ANSWER'
 const WRITE={name:'write_note',description:'write_note',inputSchema:{type:'object'},taxonomy:{operation:'act',effect:'act'} as const}
 
-interface Scene{store:MemoryRunStore;asked:number;ran:number;children:number;prompts:string[];events:AssistantEvent[];extra?:HostTool[];seen?:(event:AssistantEvent)=>Promise<void>}
+interface Scene{store:MemoryRunStore;asked:number;ran:number;children:number;prompts:string[];events:AssistantEvent[];extra?:HostTool[];seen?:(event:AssistantEvent)=>Promise<void>
+ /** Runs as the person is first asked, before the ask is saved. */approving?:()=>void;link?:ExecutionLink;runtime?:{tools:McpTool[];callTool:AgentAssistantSession['callTool']}}
 const scene=():Scene=>({store:new MemoryRunStore(),asked:0,ran:0,children:0,prompts:[],events:[]})
 async function writeTool(s:Scene):Promise<HostTool>{
- return {...WRITE,effectClass:'act',source:{kind:'custom',id:'writes',trust:'person',version:'1',toolListDigest:await toolListDigest([WRITE] as never)},approve:()=>{s.asked++;return s.asked===1?'ask':'allow'},execute:async()=>{s.ran++;return {content:[{type:'text',text:ANSWER}]}}} as unknown as HostTool
+ return {...WRITE,effectClass:'act',source:{kind:'custom',id:'writes',trust:'person',version:'1',toolListDigest:await toolListDigest([WRITE] as never)},approve:()=>{s.asked++;if(s.asked===1)s.approving?.();return s.asked===1?'ask':'allow'},execute:async()=>{s.ran++;return {content:[{type:'text',text:ANSWER}]}}} as unknown as HostTool
 }
 type Step=(request:Parameters<AgentRun>[0],callbacks:Parameters<AgentRun>[1])=>Promise<void>
 const callTool=(prefix:string,args:Record<string,unknown>={}):Step=>async(request,callbacks)=>{
@@ -33,7 +39,7 @@ async function drive(s:Scene,engine:Engine,on:RunStore,resume:boolean,decision:u
    await callbacks.event({type:'message',id:'final',text:'Done.',phase:'final'})
   }finally{callbacks.providerRelease?.acknowledge(callbacks.providerRelease.invocation)}
  }
- const session={prompt:'Write the note.',testPrompt:'',tools:[],callTool:vi.fn(async()=>({content:[]})),hostTools:[await writeTool(s),...(s.extra??[])],signal:abort.signal,allowConversation:true,interactive:true,critic:'off',agent:{model:'fixture',run},context:{currentRequest:{message:'Write the note.',input:'note'},runStore:{store:on,id:'run-c',...(resume?{resume:true}:{})},...(decision?{approval:decision}:{})}} as unknown as AgentAssistantSession
+ const session={prompt:'Write the note.',testPrompt:'',tools:s.runtime?.tools??[],callTool:s.runtime?.callTool??vi.fn(async()=>({content:[]})),hostTools:[await writeTool(s),...(s.extra??[])],signal:abort.signal,allowConversation:true,interactive:true,critic:'off',agent:{model:'fixture',run},context:{...(s.link?{link:s.link}:{}),currentRequest:{message:'Write the note.',input:'note'},runStore:{store:on,id:'run-c',...(resume?{resume:true}:{})},...(decision?{approval:decision}:{})}} as unknown as AgentAssistantSession
  for await(const event of engine.start(session)){s.events.push(event);await s.seen?.(event)}
 }
 async function paused(s:Scene,engine:Engine){
@@ -102,6 +108,22 @@ const QUESTION={title:'Note',question:'Which note should be written?',selection:
 const askPerson={name:'ask_person',description:'ask_person',inputSchema:{type:'object'},taxonomy:{operation:'ask',effect:'pure'},interaction:'question',execute:async()=>({content:[{type:'text',text:'asked'}]})} as unknown as HostTool
 const head=async(store:MemoryRunStore)=>{const saved=JSON.parse(new TextDecoder().decode((await store.load('run-c'))!.checkpoint!));return {saved,held:`${saved.status}/${saved.approval?.state??'none'}`}}
 const count=(s:Scene,type:AssistantEvent['type'])=>s.events.filter(e=>e.type===type).length
+const failures=(s:Scene)=>s.events.filter(e=>e.type==='error').map(e=>(e as {failure?:{code:string;source:string;outcome:string}}).failure).map(f=>[f?.code,f?.source,f?.outcome])
+// A Runtime action's ask, as runtimeActions.test.ts serves one: a bounded Runtime over a transport, its owner current.
+async function runtimeAction(){
+ const pin='sha256:'+'a'.repeat(64)
+ const owner:RuntimeExecutionOwner={artifactDigest:pin,processId:'launch-one',projectId:'project-one',projectLabel:'Example project',sessionId:'server-session-one',principalDigest:pin,principalLabel:'Project editor',scopeDigest:pin,scopeLabel:'Evaluate example project'}
+ const tools:McpTool[]=[{name:'experimental_evaluate',description:'Evaluate one unsaved draft',inputSchema:{type:'object',properties:{value:{type:'integer'},rehearsal:{type:'boolean'}}},_meta:{operation:'evaluate',effect:'act',experimental:true}}]
+ const calls:unknown[]=[]
+ const transport:Transport={start:async()=>{},close:async()=>{},send:async(message:JSONRPCMessage)=>{
+  const m=message as {id?:string|number;method?:string;params?:unknown}
+  if(m.id===undefined)return
+  const result=m.method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'bounded-runtime',version:'fixture'}}:m.method==='tools/list'?{tools}:(calls.push(m.params),{content:[{type:'text',text:'evaluated draft'}],structuredContent:{status:'ok',auditAppended:false}})
+  queueMicrotask(()=>transport.onmessage?.({jsonrpc:'2.0',id:m.id!,result}))
+ }}
+ const connection=openAssistantConnection({allowed:['experimental_evaluate'],transport,onEvent:()=>{},runtimeActions:{owner,current:async()=>owner}})
+ return {...await connection.ready,calls,close:connection.close}
+}
 // Fails the commit of a checkpoint holding an asked approval: refused, nothing stored, or stored with its acknowledgement lost.
 const faulty=(memory:MemoryRunStore,lost:boolean):RunStore=>({durability:'memory',load:memory.load.bind(memory),readEvents:memory.readEvents.bind(memory),commit:async request=>{
  const asked=JSON.parse(new TextDecoder().decode(request.checkpoint!)).approval?.state==='asked'
@@ -134,9 +156,28 @@ describe('an ask the engine’s own pause stopped (agent#342)',()=>{
   for(const lost of [false,true])it(`that could not be saved is not shown, and the run ends with the storage failure: ${label}, ${lost?'acknowledgement lost':'refused'}`,async()=>{
    const s=scene()
    await drive(s,codex,faulty(s.store,lost),false,undefined,[host('writes__write_note')])
-   const failed=s.events.filter(e=>e.type==='error').map(e=>(e as {failure?:{source:string;outcome:string}}).failure)
-   expect([count(s,'approval_requested'),s.ran,failed.map(f=>[f?.source,f?.outcome])]).toEqual([0,0,[['storage','unknown']]])
+   // unknown/storage/unknown, as a Runtime action's unsaved ask ends, in both languages.
+   expect([count(s,'approval_requested'),s.ran,failures(s)]).toEqual([0,0,[['unknown','storage','unknown']]])
    if(!lost)expect((await head(s.store)).saved.approval).toBeUndefined()
+  },30_000)
+  for(const lost of [false,true])it(`a Runtime action’s ask that could not be saved is not shown, and the run ends with the storage failure: ${label}, ${lost?'acknowledgement lost':'refused'}`,async()=>{
+   const s=scene(),runtime=await runtimeAction();s.runtime=runtime
+   try{
+    await drive(s,codex,faulty(s.store,lost),false,undefined,[host('experimental_evaluate',{value:7,rehearsal:false})])
+    const {saved}=await head(s.store)
+    expect([count(s,'approval_requested'),runtime.calls,failures(s),saved.status==='complete']).toEqual([0,[],[['unknown','storage','unknown']],false])
+    if(!lost)expect(saved.approval).toBeUndefined()
+   }finally{await runtime.close()}
+  },30_000)
+  it(`stopped by its host closing dispatch before the ask is saved is not shown: ${label}`,async()=>{
+   // A host's stop closes dispatch before it aborts the run (RunWriter.closeDispatch): the ask comes in that window, the
+   // caller's signal still live, and cannot be saved.
+   const s=scene();let attached:SessionContext|undefined
+   s.link={attach:context=>{attached=context}}
+   s.approving=()=>{const binding=(attached as unknown as {storedBinding:{writer:{closeDispatch(binding:unknown):void}}}).storedBinding;binding.writer.closeDispatch(binding)}
+   await drive(s,codex,s.store,false,undefined,[host('writes__write_note')])
+   const {saved}=await head(s.store)
+   expect([count(s,'approval_requested'),s.ran,saved.status==='complete',saved.approval]).toEqual([0,0,false,undefined])
   },30_000)
   for(const at of ['before the call','while the ask is saved','once the person is shown it'])it(`stopped by the caller’s own abort ${at} is not read as the pause: ${label}`,async()=>{
    const s=scene(),abort=new AbortController()
