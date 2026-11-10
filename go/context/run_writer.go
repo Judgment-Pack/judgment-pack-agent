@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
 	"github.com/Judgment-Pack/judgment-pack-agent/go/failure"
@@ -1461,22 +1462,44 @@ func (w *RunWriter) recordedResultLocked(result ToolResult) (ToolResult, error) 
 	if err != nil {
 		return ToolResult{}, err
 	}
-	out := ReadToolResult(inOrderOf(original, redacted))
+	// A member's new name is what the same pass leaves of its name.
+	rename := func(key string) string {
+		raw, _ := json.Marshal(key)
+		clean, _, err := recordedForm(w.policy, guard, raw)
+		name := key
+		if err != nil || json.Unmarshal(clean, &name) != nil {
+			return key
+		}
+		return name
+	}
+	out := ReadToolResult(inOrderOf(original, redacted, rename))
 	out.Receipt = result.Receipt
 	return out, nil
 }
 
 // inOrderOf is redacted with each object's members in the order original wrote them (#343). The guard
 // writes an object it changed with its members sorted, and a result's member order is part of the text a
-// model is given, which TypeScript keeps. Every member and value is redacted's: a member whose name the
-// guard rewrote follows the others, in redacted's order.
-func inOrderOf(original, redacted *Value) *Value {
+// model is given, which TypeScript keeps. Every member and value is redacted's. A member whose name the
+// guard rewrote (rename gives its new name) follows the others, as TypeScript's guard leaves it: in the
+// sorted order of the names it had, compared as UTF-16 code units.
+func inOrderOf(original, redacted *Value, rename func(string) string) *Value {
 	switch {
 	case original.IsObject() && redacted.IsObject():
 		out := Object()
+		var renamed []string
 		for _, key := range original.Keys() {
-			if held := redacted.Get(key); held != nil {
-				out.Set(key, inOrderOf(original.Get(key), held))
+			if rename(key) != key {
+				renamed = append(renamed, key)
+			} else if held := redacted.Get(key); held != nil {
+				out.Set(key, inOrderOf(original.Get(key), held, rename))
+			}
+		}
+		slices.SortFunc(renamed, func(a, b string) int {
+			return slices.Compare(utf16.Encode([]rune(a)), utf16.Encode([]rune(b)))
+		})
+		for _, key := range renamed {
+			if name := rename(key); redacted.Get(name) != nil {
+				out.Set(name, inOrderOf(original.Get(key), redacted.Get(name), rename))
 			}
 		}
 		for _, key := range redacted.Keys() {
@@ -1488,7 +1511,7 @@ func inOrderOf(original, redacted *Value) *Value {
 	case original.IsArray() && redacted.IsArray() && original.Len() == redacted.Len():
 		out := Array()
 		for at, item := range redacted.Items() {
-			out.Append(inOrderOf(original.Items()[at], item))
+			out.Append(inOrderOf(original.Items()[at], item, rename))
 		}
 		return out
 	}

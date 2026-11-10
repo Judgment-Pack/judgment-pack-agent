@@ -13,6 +13,8 @@ import {codex} from '../engines/codex'
 import {withDelegation} from '../delegation'
 import {ofType,sseTurn,streamed,vercelTurn,type EndpointRequest} from '../testing/scripted'
 import {approvalShownDigest,toolListDigest} from '../toolSources'
+import {OutputGuard} from '../outputGuard'
+import {recordedForm,type RecordGuard,type RecordsPolicy} from '../records'
 import type {AgentAssistantSession,AssistantEvent,HostTool} from '../engine'
 import type {AgentRun} from '../agent'
 
@@ -115,4 +117,19 @@ it('a handoff’s parent is given the continuation its record holds (#343)',asyn
  expect(recorded).toContain('[redacted: local-home-path]')
  expect(prompts[2]).toContain(recorded)
  expect(prompts[2]).not.toContain('C:\\\\Users\\\\\\n')
+})
+
+describe('the recorded form of one result (#343)',()=>{
+ const guard=()=>new OutputGuard({},()=>({}),()=>{}) as unknown as RecordGuard,policy={redactOnStore:true} as RecordsPolicy
+ // A value JSON writes otherwise is no change: with nothing redacted the result is answered exactly as it was given.
+ it('keeps a result with a Date and nothing redacted as it was',()=>{
+  const given={content:[{type:'text',text:'ok'}],structuredContent:{packId:'kept',at:new Date(0)}}
+  expect(recordedForm(given,policy,guard())).toBe(given)
+ })
+ // Members whose names the guard rewrote follow the others in the sorted order of the names they had; the Go writer keeps
+ // the same order (go/context/recorded_results_test.go).
+ it('puts renamed members after the others, in their old names’ order',()=>{
+  const given={content:[{type:'text',text:'ok'}],structuredContent:{z:1,'aZ/tmp/x':2,m:3,'a/tmp/x':4}}
+  expect(JSON.stringify(recordedForm(given,policy,guard()))).toBe('{"content":[{"type":"text","text":"ok"}],"structuredContent":{"z":1,"m":3,"a[redacted: local-temp-path]":4,"aZ[redacted: local-temp-path]":2}}')
+ })
 })

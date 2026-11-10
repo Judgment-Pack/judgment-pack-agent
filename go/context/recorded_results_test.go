@@ -191,9 +191,9 @@ func TestARedactedResultThatCannotBeRecordedIsStillUnknown(t *testing.T) {
 			return ReadToolResult(MustParseJSON(recordedPack(recordedRaw))), nil
 		}
 	}
+	refuse := PolicyMembers{"outputGuard": {Value: "refuse"}}
 	t.Run("a refusing guard", func(t *testing.T) {
 		store := NewMemoryRunStore(MemoryRunStoreOptions{})
-		refuse := PolicyMembers{"outputGuard": {Value: "refuse"}}
 		binding, guard := recordedWriter(t, store, "refused", false, RecordDefaults, refuse)
 		calls := 0
 		got, err := InvokeDurable(ctx, binding, "host", "source", "evaluate", []byte(`{}`), false, execute(&calls), nil, nil)
@@ -214,6 +214,21 @@ func TestARedactedResultThatCannotBeRecordedIsStillUnknown(t *testing.T) {
 		var host *HostOutcomeUnknown
 		if !errors.As(err, &host) || calls != 1 {
 			t.Fatalf("resumed: ran %d, %v", calls, err)
+		}
+	})
+	// The checked result is not given the form when the result itself could not be: one refusal, one notice.
+	t.Run("a refusing guard, an external read", func(t *testing.T) {
+		binding, guard := recordedWriter(t, NewMemoryRunStore(MemoryRunStoreOptions{}), "refused-read", false, RecordDefaults, refuse)
+		admission := &receiptAdmission{check: func(result ToolResult) (ToolResult, bool) { return result.Clone(), true }}
+		held := context.WithValue(ctx, receiptAdmissionKey{}, admission)
+		calls := 0
+		_, err := invokeDurable(held, binding, "host", "source", "read_record", []byte(`{}`), true, execute(&calls), admission.admit, nil, nil)
+		var unknown *StorageOutcomeUnknown
+		if !errors.As(err, &unknown) || calls != 1 {
+			t.Fatalf("ran %d, %v", calls, err)
+		}
+		if notices := guard.TakeNotices(); len(notices) != 1 || notices[0].Guardrail == nil || notices[0].Guardrail.Tool != "records" {
+			t.Fatalf("notices %+v", notices)
 		}
 	})
 	t.Run("a store that does not take the result", func(t *testing.T) {
@@ -276,5 +291,53 @@ func TestARedactedResultsRepeatTextIsTheRecordedForm(t *testing.T) {
 	}
 	if count := resumed.Writer.RepeatState(*resumed).Count; count != 1 {
 		t.Fatalf("repeat count %d", count)
+	}
+}
+
+// Members whose names the guard rewrote follow the others in the sorted order of the names they had, as
+// TypeScript's guard leaves them (recordedResults.test.ts holds the same object): "a/tmp/x" sorts before
+// "aZ/tmp/x", though "aZ[redacted: …]" sorts before "a[redacted: …]".
+func TestARedactedResultsRenamedMembersFollowAsTypeScriptLeavesThem(t *testing.T) {
+	given := `{"content":[{"type":"text","text":"ok"}],"structuredContent":{"z":1,"aZ/tmp/x":2,"m":3,"a/tmp/x":4}}`
+	want := `{"content":[{"type":"text","text":"ok"}],"structuredContent":{"z":1,"m":3,"a[redacted: local-temp-path]":4,"aZ[redacted: local-temp-path]":2}}`
+	binding, _ := recordedWriter(t, NewMemoryRunStore(MemoryRunStoreOptions{}), "renamed", false, RecordDefaults, nil)
+	got, err := InvokeDurable(context.Background(), binding, "host", "source", "evaluate", []byte(`{}`), true, func([]byte) (ToolResult, error) {
+		return ReadToolResult(MustParseJSON(given)), nil
+	}, nil, nil)
+	if err != nil || string(got.JSON()) != want {
+		t.Fatalf("answered %s, %v", got.JSON(), err)
+	}
+}
+
+// A job's start is answered from its job's record (ADR-0025), not from what its tool said: its answer is the
+// record's projection, which holds none of the tool's text, so it settles whatever the tool answered, and the
+// writer leaves it as the record gave it.
+func TestAJobStartIsAnsweredFromItsRecordWhateverItsToolSaid(t *testing.T) {
+	ctx := context.Background()
+	store := durableJobStore{NewMemoryRunStore(MemoryRunStoreOptions{})}
+	lease, err := store.AcquireLease(ctx, LeaseAcquire{Resource: "run-start", Owner: "worker-a", DurationMs: 3600000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := UnattendedRunStore(store, FenceOf(lease), NewReferenceEffectHost(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, _ := recordedWriter(t, view, "run-start", false, RecordDefaults, nil)
+	binding.Scope = DurableScope{Execution: "run-start", Role: "author"}
+	dispatch := &jobStartDispatch{mint: func(context.Context, string) (string, error) {
+		return JobKeyDigest("kit.job-start.Q7z2Xm9LpV4cR8tNb3Yh6Df1")
+	}}
+	calls := 0
+	got, err := InvokeDurable(context.WithValue(ctx, jobStartKey{}, dispatch), binding, "host", "jobs", "start", []byte(`{"q":1}`), false, func([]byte) (ToolResult, error) {
+		calls++
+		dispatch.answer = &JobStartAnswer{Started: true, Handle: recordedRaw}
+		return ResultOf([]Content{TextContent("started at " + recordedRaw)}, nil), nil
+	}, nil, nil)
+	if err != nil || calls != 1 || strings.Contains(string(got.JSON()), recordedRawPath) || !strings.Contains(string(got.JSON()), `\"state\":\"started\"`) {
+		t.Fatalf("answered %s, ran %d, %v", got.JSON(), calls, err)
+	}
+	if head, err := store.Load(ctx, "run-start"); err != nil || head == nil || strings.Contains(string(head.Checkpoint), recordedRawPath) {
+		t.Fatalf("the stored run: %v", err)
 	}
 }

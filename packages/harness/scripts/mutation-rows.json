@@ -16470,6 +16470,18 @@
    "status": "caught",
    "origin": "agent#343",
    "note": "Go twin (by hand, delegate/agent.go pending.continuation from the last checkpoint): caught at TestAHandoffsParentIsGivenTheContinuationItsRecordHolds."
+  },
+  {
+   "name": "#343 the recorded form reads the value's JSON form, so a Date is no change",
+   "file": "records.ts",
+   "find": "const clean=guardRecordMember(guard,JSON.parse(text) as T,{redactions:{}})",
+   "replace": "const clean=guardRecordMember(guard,value,{redactions:{}})",
+   "tests": [
+    "storage/recordedResults.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#343",
+   "note": "TypeScript only: Go reads the result's JSON text already."
   }
  ]
 }

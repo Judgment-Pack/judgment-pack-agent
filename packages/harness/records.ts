@@ -80,12 +80,15 @@ function guardRecord(record:Record<string,unknown>,guard:RecordGuard,figures:Rec
 }
 /**
  * What the storage pass leaves of one member's value, its figures discarded (#343): value itself where redaction on store
- * is off, there is no guard or nothing matched. A guard refusal (refuse mode, work-bound) is thrown, never value.
+ * is off, there is no guard or nothing matched. The pass reads the value's JSON form, as the record holds it, so a value
+ * JSON writes otherwise (a Date) is not taken for a change. A guard refusal (refuse mode, work-bound) is thrown, never value.
  */
 export function recordedForm<T>(value:T,policy:RecordsPolicy|undefined,guard:RecordGuard|undefined):T{
  if(!policy?.redactOnStore||!guard)return value
- const clean=guardRecordMember(guard,value,{redactions:{}})
- return JSON.stringify(clean)===JSON.stringify(value)?value:clean
+ const text=JSON.stringify(value)
+ if(typeof text!=='string')return value
+ const clean=guardRecordMember(guard,JSON.parse(text) as T,{redactions:{}})
+ return JSON.stringify(clean)===text?value:clean
 }
 
 /** Select the current graph for detached task candidates before their writer-owned schedule exists. */
