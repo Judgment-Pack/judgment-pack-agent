@@ -76,3 +76,41 @@ If the npm registry still reports it, the audit remains a findings result until 
 release review records the withdrawal separately. A future advisory or changed evidence requires
 fresh assessment. [#161](https://github.com/Judgment-Pack/judgment-pack-agent/issues/161) remains in
 undated Upstream follow-up, unscheduled and outside v0.9.1. No reachability exception is granted here.
+
+## 2026-11-09: Undici 7.30.2 and 8.12.4
+
+On 2026-11-05 Undici published 7.30.2 and 8.12.4, which patch six advisories. The previously
+approved 7.30.1 and 8.12.2 are inside every one of their affected ranges:
+
+- [GHSA-mqg3-3v4r-cm32](https://github.com/advisories/GHSA-mqg3-3v4r-cm32) (high): cache poisoning
+  and cross-user disclosure via intermediate redirect hops (affects 7.30.1 and 8.12.2–8.12.3 only;
+  it bypasses the earlier GHSA-4w7w-5xrc-9h26 fix);
+- [GHSA-7xg3-fphp-28hg](https://github.com/advisories/GHSA-7xg3-fphp-28hg) (medium): cross-user
+  cache disclosure via a same-origin redirect;
+- [GHSA-5rm8-gv32-r954](https://github.com/advisories/GHSA-5rm8-gv32-r954) (medium): cross-user
+  disclosure via cross-origin redirect revalidation;
+- [GHSA-3g9m-rv3r-w5w2](https://github.com/advisories/GHSA-3g9m-rv3r-w5w2) (medium): denial of
+  service via an unhandled exception in cache-interceptor response replay;
+- [GHSA-9v6h-8rgp-m69f](https://github.com/advisories/GHSA-9v6h-8rgp-m69f) (medium): cross-origin
+  credential disclosure when array-of-tuples headers bypass the redirect interceptor's stripping;
+- [GHSA-r4pc-4jcp-7pqc](https://github.com/advisories/GHSA-r4pc-4jcp-7pqc) (medium): Subresource
+  Integrity bypass via whitespace in integrity metadata.
+
+Remedy 1 (upstream fix): the Undici control (`packages/harness/scripts/undici-controls.mjs`) now
+approves exactly 7.30.2 and 8.12.4 and refuses 7.30.1 and 8.12.2. The lock moves only its two
+Undici records: `@ai-sdk/provider-utils/node_modules/undici` (runtime, `^7.29.0`) to 7.30.2 and the
+development-only root `undici` (jsdom, `^8.10.2`) to 8.12.4. No manifest, range or override changes.
+
+Reachability, recorded for the decision, not as an exception: the four cache advisories and
+GHSA-9v6h-8rgp-m69f need Undici's `cache()` or `redirect()` interceptors. No harness module outside
+the Undici test controls imports Undici. `@ai-sdk/provider-utils` uses an `Agent` with a
+DNS-validating `connect.lookup` and no interceptors, and calls Undici `fetch` with
+`redirect: 'error'`, or `redirect: 'manual'` in its own per-hop validated loop that rebuilds
+`Headers` and drops caller headers on a cross-origin hop. No harness or provider path passes an
+`integrity` option, so GHSA-r4pc-4jcp-7pqc's SRI check is not reached. jsdom, the development-only
+test environment (vitest `environment: 'jsdom'`, no options), follows redirects in its own
+dispatcher and composes only its decompression interceptor; the harness adds none.
+
+The registry audit (`dependency-audit-live`) on 2026-11-09 reports clean for both the previous and
+the updated lock: it did not yet list these six identifiers, so a clean audit is not the evidence
+for this change. The control's installed-copy inventory and behavior tests are.
