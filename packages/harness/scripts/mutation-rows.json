@@ -18193,8 +18193,8 @@
   {
    "name": "#352 a chat entry the record guard refuses is read by id as it is",
    "file": "context/ledger.ts",
-   "find": "const {entry}=looked,value=this.recorded(entry.value)",
-   "replace": "const {entry}=looked,value=(()=>{try{return this.recorded!(entry.value)}catch{return entry.value}})()",
+   "find": "const value=this.recorded!(entry.value)",
+   "replace": "const value=(()=>{try{return this.recorded!(entry.value)}catch{return entry.value}})()",
    "tests": [
     "storage/recordedReads.test.ts"
    ],
@@ -18489,6 +18489,42 @@
    "status": "caught",
    "origin": "agent#352",
    "note": "Go twin: none; Go's Authored counts runes and never splits a pair (TestAnAuthoredDetailIsCutWithoutSplittingAPair pins the same bytes)."
+  },
+  {
+   "name": "#352 a durable run's search of every item matches the chat's entries as the chat keeps them",
+   "file": "context/ledger.ts",
+   "find": ".filter(e=>request.scope==='all'||this.attached.has(e.id)).map(e=>this.look(e))",
+   "replace": ".filter(e=>request.scope==='all'||this.attached.has(e.id))",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go searchHeld scoping e, not l.look(e)): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_durable_run."
+  },
+  {
+   "name": "#352 a durable run's search makes the entries it matches the run's",
+   "file": "context/ledger.ts",
+   "find": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}",
+   "replace": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.use(e.id)??e:e}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go look answering l.use(e.ID)): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_durable_run."
+  },
+  {
+   "name": "#352 a chat entry the record guard refuses is searched as it is",
+   "file": "context/ledger.ts",
+   "find": "private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}",
+   "replace": "private look(e:Entry):Entry{try{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}catch{return e}}",
+   "tests": [
+    "storage/recordedReads.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#352",
+   "note": "Go twin (by hand, ledger.go searchHeld taking e on a refusal): caught at TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm/a_refusing_guard."
   }
  ]
 }

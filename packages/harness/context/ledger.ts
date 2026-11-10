@@ -107,10 +107,17 @@ export class ContextLedger {
   if(!this.recorded||!turn)return this.store.use(id)
   const looked=turn.look(id)
   if(!looked||looked.recorded)return turn.use(id)
-  const {entry}=looked,value=this.recorded(entry.value)
-  if(value===entry.value)return turn.use(id)
+  const held=this.recordedEntryOf(looked.entry)
+  return held===looked.entry?turn.use(id):turn.useRecorded(id,held)
+ }
+ /** #352: `e`, an entry of the store, as this run reads it, neither touched nor made the run's: in a durable run on a chat, the form its writer records. A guard refusal is thrown. */
+ private look(e:Entry):Entry{return this.recorded&&this.store.chat?this.recordedEntryOf(e):e}
+ /** #352: `entry` in the form this durable run's writer records it, `entry` itself where that is unchanged. A guard refusal is thrown. */
+ private recordedEntryOf(entry:Entry):Entry{
+  const value=this.recorded!(entry.value)
+  if(value===entry.value)return entry
   const {valueJSON:_,...rest}=entry as Entry&{valueJSON?:string},text=JSON.stringify(value)
-  return turn.useRecorded(id,{...rest,value,bytes:utf8Bytes(text),digest:sha256(text)})
+  return {...rest,value,bytes:utf8Bytes(text),digest:sha256(text)}
  }
  private entry(id:unknown):Entry{
   const draft=this.drafts?.().find(d=>d.id===id)
@@ -238,7 +245,8 @@ export class ContextLedger {
   let scoped:Entry[]
   if(request.id!==undefined){
    scoped=[this.entry(request.id)]
-  }else scoped=[...this.store.entries.values()].filter(e=>request.scope==='all'||this.attached.has(e.id))
+  // #352: a durable run searches each chat entry in the form it reads it by id, without making it the run's; a guard refusal is thrown.
+  }else scoped=[...this.store.entries.values()].filter(e=>request.scope==='all'||this.attached.has(e.id)).map(e=>this.look(e))
   // An image is not searched as text; one that cannot be shown is reported with its line, never passed in silence.
   if(request.id===undefined&&request.scope==='all')scoped.push(...(this.drafts?.()??[]).map(d=>({...d,kind:'artifact' as const,bytes:utf8Bytes(d.value),digest:''})))
   const images=new Map(scoped.map(e=>[e.id,resolveImage(e.value,reference=>this.image(reference))]))

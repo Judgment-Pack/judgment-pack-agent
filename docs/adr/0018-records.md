@@ -107,7 +107,9 @@ covers entries kept before this change. A chat entry a durable run reads by id (
 `read_context`, a search of one item, an image), and one its restored checkpoint referenced, joins the
 run's context in the form this pass leaves of it: the run reads that form, its checkpoint carries it,
 and the chat keeps its own entry. If the guard refuses the entry, that refusal is the read's error, and
-the entry is not made the run's. A run that records nothing keeps and serves reads as the Runtime gave
+the entry is not made the run's. A durable run's search of every item, or of the attachments, matches
+each chat entry in that same form, so what it finds, and where, agrees with a search of that one item;
+the search makes no entry the run's, and a refusal of any entry is the search's error. A run that records nothing keeps and serves reads as the Runtime gave
 them, as before. A read a durable run kept is in the recorded form, though, so a later run on the same
 chat that records nothing is served that form from the cache.
 `handoff.answer` is now a scanned member, as `handoff.continuation` is. A resumed run checks only that an

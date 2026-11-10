@@ -194,3 +194,48 @@ describe('a chat entry a durable run reads by id (#352)',()=>{
   turn.release()
  })
 })
+
+// A durable run's search of every item matches each chat entry in the form the run reads it by id, so what it finds, and
+// where, agrees with a search of that one item and with read_window, and the search makes no entry the run's. A run that
+// records nothing searches the chat's own entries. A guard refusal of an entry is the search's error. The Go twin is
+// TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm.
+describe('a durable run’s search of every item (#352)',()=>{
+ const keptID=(chat:ChatContext)=>new TextDecoder().decode(chat.snapshot()).match(/[^"\\]*result-get_schema-[0-9a-f]{64}[^"\\]*/)?.[0]
+ const ledgerOn=(chat:ChatContext,mode?:'redact'|'refuse')=>{
+  const turn=chat.openTurn(),ledger=new ContextLedger({...CONTEXT_DEFAULTS},turn)
+  if(mode){
+   const guard=new OutputGuard((mode==='refuse'?{outputGuard:{value:'refuse',layer:'host'}}:{}) as never,()=>({}),()=>{}) as unknown as RecordGuard
+   ledger.recordWith(value=>recordedForm(value,{redactOnStore:true} as RecordsPolicy,guard))
+  }
+  return {turn,ledger}
+ }
+ it('a durable run: what it finds is the recorded form’s, where a search of the one item finds it, and no entry is made the run’s',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const id=keptID(chat)!,{turn,ledger}=ledgerOn(chat,'redact')
+  // The raw text's path is not there to find.
+  expect(ledger.search({pattern:'tmp/evaluation'}).matches).toEqual([])
+  const every=ledger.search({pattern:'local-temp-path'}).matches
+  expect(ledger.snapshot().entries).toEqual([])
+  expect(every.length).toBeGreaterThan(0)
+  expect(JSON.stringify(every)).not.toContain(RAW_PATH)
+  // The chat also keeps the call's operation, found too; the kept result's matches are the one item's.
+  expect(every.filter(match=>match.id===id)).toEqual(ledger.search({pattern:'local-temp-path',id}).matches)
+  turn.release()
+ })
+ it('a run that records nothing searches the chat’s own entries',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const {turn,ledger}=ledgerOn(chat)
+  expect(ledger.search({pattern:'tmp/evaluation'}).matches.length).toBeGreaterThan(0)
+  turn.release()
+ })
+ it('a refusing guard: the search is refused, and no entry is made the run’s',async()=>{
+  const calls:string[]=[],chat=new ChatContext()
+  await read(calls,{chat,answer:lines})
+  const {turn,ledger}=ledgerOn(chat,'refuse')
+  expect(()=>ledger.search({pattern:'evaluated'})).toThrow(/local-temp-path/)
+  expect(ledger.snapshot().entries).toEqual([])
+  turn.release()
+ })
+})

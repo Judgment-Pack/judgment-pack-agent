@@ -154,7 +154,8 @@ is served an entry of the chat's read cache only where the record guard leaves t
 guard would change it, the read runs again and its recorded form replaces the entry. If the guard refuses
 it, that refusal is the call's error. A chat entry a durable run reads by id, or that its restored
 checkpoint referenced, is read and carried by its checkpoint in the recorded form, and the chat keeps its
-own; a refusal is the read's error. A read a durable run kept stays in the recorded form, so a later run
+own; a refusal is the read's error. A search of every item, or of the attachments, matches each chat entry
+in that form, without making it the run's; a refusal of any entry is the search's error. A read a durable run kept stays in the recorded form, so a later run
 on the chat that records nothing is served that form. A durable row's failure is stored with the record
 guard's form of its detail, read whole before an authored detail's cut and then cut to 1000 UTF-16 code
 units, and a call whose failure reaches a model fails with that same form; a guard refusal of the detail is `StorageOutcomeUnknown`. A guard refusal of a call's result, or a result whose

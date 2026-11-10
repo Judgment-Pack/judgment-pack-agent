@@ -316,17 +316,38 @@ func (l *ContextLedger) use(id string) (*Entry, error) {
 	if entry == nil || recorded {
 		return turn.Use(id), nil
 	}
+	held, err := l.recordedEntryOf(entry)
+	if err != nil {
+		return nil, err
+	}
+	if held == entry {
+		return turn.Use(id), nil
+	}
+	return turn.UseRecorded(id, held), nil
+}
+
+// look is e, an entry of the store, as this run reads it, neither touched nor made the run's: in a durable
+// run on a chat, the form its writer records (#352). A guard refusal is returned with no entry.
+func (l *ContextLedger) look(e *Entry) (*Entry, error) {
+	if l.recorded == nil || l.store.Chat() == nil {
+		return e, nil
+	}
+	return l.recordedEntryOf(e)
+}
+
+// recordedEntryOf is entry in the form this durable run's writer records it (#352), entry itself where that
+// is unchanged. A guard refusal is returned with no entry.
+func (l *ContextLedger) recordedEntryOf(entry *Entry) (*Entry, error) {
 	value, changed, err := l.recorded(entry.Value)
 	if err != nil {
 		return nil, err
 	}
 	if !changed {
-		return turn.Use(id), nil
+		return entry, nil
 	}
 	text := value.Text()
-	held := &Entry{ID: entry.ID, Kind: entry.Kind, Label: entry.Label, Value: value, Revision: entry.Revision, revisionPresent: entry.revisionPresent,
-		Bytes: UTF8Bytes(text), Digest: ContextDigest(text)}
-	return turn.UseRecorded(id, held), nil
+	return &Entry{ID: entry.ID, Kind: entry.Kind, Label: entry.Label, Value: value, Revision: entry.Revision, revisionPresent: entry.revisionPresent,
+		Bytes: UTF8Bytes(text), Digest: ContextDigest(text)}, nil
 }
 
 // NewContextLedger is a ledger over a store: a chat's turn (agent#8), or, where store is nil, a
@@ -893,7 +914,13 @@ func (l *ContextLedger) searchHeld(args *Value) (SearchResult, error) {
 	} else {
 		for _, e := range l.store.entryList().values() {
 			if request.Scope == "all" || l.attached[e.ID] {
-				scoped = append(scoped, e)
+				// #352: a durable run searches each chat entry in the form it reads it by id, without making it
+				// the run's; a guard refusal is the search's error.
+				held, err := l.look(e)
+				if err != nil {
+					return SearchResult{}, err
+				}
+				scoped = append(scoped, held)
 			}
 		}
 	}

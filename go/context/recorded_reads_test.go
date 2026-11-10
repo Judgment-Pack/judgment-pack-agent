@@ -323,3 +323,62 @@ func TestTheReadCacheServesOnlyTheEntryThatWasPeeked(t *testing.T) {
 		t.Fatalf("the read cache served %s, %v for the entry it holds", held.JSON(), ok)
 	}
 }
+
+// #352: a durable run's search over every item matches each chat entry in the form it reads that entry by
+// id, so what it finds, and where, agrees with a search of that one item and with read_window, and the
+// search makes no entry the run's. A run that records nothing searches the chat's own entries. A guard
+// refusal of an entry is the search's error.
+func TestADurableRunsSearchOfEveryItemMatchesTheRecordedForm(t *testing.T) {
+	ctx := context.Background()
+	chat := NewChatContext("recorded-search")
+	id, _ := keptRawEntry(t, chat)
+	matches := func(t *testing.T, run *Run, args string) string {
+		t.Helper()
+		found, err := hostTool(t, run, SearchTool).Execute(ctx, json.RawMessage(args))
+		if err != nil {
+			t.Fatalf("search %s: %v", args, err)
+		}
+		return CanonicalJSON(found.StructuredContent.Get("matches"))
+	}
+	t.Run("a durable run", func(t *testing.T) {
+		calls := 0
+		run := openRun(t, readSession(chat, NewMemoryRunStore(MemoryRunStoreOptions{}), &calls, recordedRaw))
+		defer run.Context.Close()
+		// The raw text's path is not there to find.
+		if got := matches(t, run, `{"pattern":"tmp/evaluation"}`); got != "[]" {
+			t.Fatalf("found the raw path: %s", got)
+		}
+		every := matches(t, run, `{"pattern":"local-temp-path"}`)
+		saved, err := run.Context.Snapshot("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if carried := carriedEntry(saved, id); carried != nil {
+			t.Fatalf("the search made the entry the run's: %s", carried.Value)
+		}
+		// What is there is found where a search of the one item finds it.
+		if one := matches(t, run, `{"pattern":"local-temp-path","id":"`+id+`"}`); every == "[]" || every != one || strings.Contains(every, recordedRawPath) {
+			t.Fatalf("every item: %s; the one item: %s", every, one)
+		}
+	})
+	t.Run("a run that records nothing", func(t *testing.T) {
+		calls := 0
+		run := openRun(t, readSession(chat, nil, &calls, recordedRaw))
+		defer run.Context.Close()
+		if got := matches(t, run, `{"pattern":"tmp/evaluation"}`); got == "[]" {
+			t.Fatal("the chat's own entry was not searched")
+		}
+	})
+	t.Run("a refusing guard", func(t *testing.T) {
+		calls := 0
+		session := readSession(chat, NewMemoryRunStore(MemoryRunStoreOptions{}), &calls, recordedRaw)
+		session.Policy = PolicyLayer{"outputGuard": "refuse"}
+		run := openRun(t, session)
+		defer run.Context.Close()
+		found, err := hostTool(t, run, SearchTool).Execute(ctx, json.RawMessage(`{"pattern":"evaluated"}`))
+		var refused *OutputRefused
+		if !errors.As(err, &refused) || refused.Pattern != "local-temp-path" || found.StructuredContent != nil {
+			t.Fatalf("searched %s, %v", found.JSON(), err)
+		}
+	})
+}
