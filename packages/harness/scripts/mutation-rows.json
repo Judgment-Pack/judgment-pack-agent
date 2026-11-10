@@ -3451,8 +3451,8 @@
   {
    "name": "the person's note reaches the model outside the continuation's data block",
    "file": "toolSources.ts",
-   "find": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }) }\n  return `${APPROVAL_CONTINUATION}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
-   "replace": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null }\n  return `${APPROVAL_CONTINUATION}${record.note === undefined ? '' : ` ${record.note}`}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "find": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.note === undefined ? {} : { note: record.note }), ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }\n  return `${APPROVAL_CONTINUATION}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
+   "replace": "  const data = { callId: record.callId, name: record.name, tool: record.tool, approved: record.state !== 'refused', result: record.result ?? null, ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt }) }\n  return `${APPROVAL_CONTINUATION}${record.note === undefined ? '' : ` ${record.note}`}\\n${frameData(record.name, JSON.stringify(data), marker)}`",
    "tests": [
     "certification/scenarios.test.ts",
     "toolSources.test.ts"
@@ -7481,7 +7481,7 @@
 {
   "name": "native Plan pause R4 distinct unknown without task budgets",
   "file": "storage/writer.ts",
-  "find": "  // A Plan decision exempts its exact claim, never another unknown in that scope.\n  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope)))throw new HostOutcomeUnknown()\n",
+  "find": "  if(row.kind==='agent'&&scopeKey(row.scope)===scopeKey(binding.scope)&&this.book.dispatches.some(old=>this.nativePlanSuperseded.has(old.id)&&scopeKey(old.scope)===scopeKey(binding.scope))){\n   if(!row.planPause&&this.endedBeforeContinuation(binding,row))return true\n   throw new HostOutcomeUnknown()\n  }\n",
   "replace": "",
   "tests": [
     "storage/nativePlanPause.test.ts"
@@ -16293,8 +16293,8 @@
   {
    "name": "approval A4 a later open withholds any decided approval's decision",
    "file": "execution/state.ts",
-   "find": " return execution.approval.callId===given.callId&&execution.approval.state!=='asked'?undefined:given\n",
-   "replace": " return execution.approval.state!=='asked'?undefined:given\n",
+   "find": " if(execution.approval!==undefined&&execution.approval.callId===given.callId&&execution.approval.state!=='asked')return undefined\n",
+   "replace": " if(execution.approval!==undefined&&execution.approval.state!=='asked')return undefined\n",
    "tests": [
     "approvalContinuation.test.ts"
    ],
@@ -16305,8 +16305,8 @@
   {
    "name": "approval A5 the first open is not given a decision already taken",
    "file": "execution/state.ts",
-   "find": " if(given===undefined||!opened||execution?.approval===undefined)return given\n",
-   "replace": " if(given===undefined||execution?.approval===undefined)return given\n",
+   "find": " if(given===undefined||!opened||execution===undefined)return given\n",
+   "replace": " if(given===undefined||execution===undefined)return given\n",
    "tests": [
     "approvalContinuation.test.ts"
    ],
@@ -16746,6 +16746,133 @@
    "status": "caught",
    "origin": "agent#342",
    "note": "agent#342 (the fault existed before it). Go twin: none by hand; Go's Runtime action delivers its failed save as the call's result, and the writer that refused it ends the run with unknown/storage/unknown."
+  },
+  {
+   "name": "continuation C1 a recovered invocation is sent again by the handoff's rule alone",
+   "file": "storage/writer.ts",
+   "find": "  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#309: the paused invocation is sent again in place of the decision's continuation, so the model is not told the result. Go twin (by hand): drop the approval branch of agentReplayLocked; caught at ^TestTheApprovedResultReachesTheModel in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C2 a recovered request carries the decision's block by its call id alone",
+   "file": "toolSources.ts",
+   "find": "  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {\n",
+   "replace": "  if (request.includes(JSON.stringify(`\"callId\":${JSON.stringify(record.callId)}`).slice(1, -1))) return true\n  for (let at = request.indexOf(head); at >= 0; at = request.indexOf(head, at + 1)) {\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's LOW-1: the continuation of an earlier decision on the same call id is taken for this one's. Go twin (by hand): answer true where the request holds the call id; caught at ^TestARepeatedCallIDIsToldApart in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C3 a decided approval outranks a newer handoff",
+   "file": "storage/writer.ts",
+   "find": "  if(approvalAt!==undefined&&(!handoff||approvalAt>this.handoffCarrier(binding)))return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "replace": "  if(approvalAt!==undefined)return carriesApprovalContinuation(row.request,latest.approval!)\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's HIGH-1: the continuation that delegated is sent again after the batch's answer, and its child runs twice. Go twin (by hand): drop the handoff comparison in agentReplayLocked; caught at ^TestATakeoverAfterTheBatchRunsTheChildOnce in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C4 an answered decision is not told again in a fresh request",
+   "file": "context/managed.ts",
+   "find": "   if(answered?.state==='answered'&&context.execution.state.unit==='provider-managed'&&binding&&binding.writer.approvalContinuationOwed(binding))ready.session.prompt=ready.session.prompt+'\\n\\n'+approvalContinuation(answered)\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's MEDIUM-2: a fresh request after the approval is answered (the Plan continuation after a Plan pause the approval's invocation ended at) carries no block. A takeover once the approval is answered sends the lost invocation again as recorded, which carries the block, so the TypeScript takeover case does not reach this branch. Go twin (by hand): drop the answered branch in ContextualSessionWithEnrollment; caught at ^TestATakeoverAfterTheAnswerStillTellsTheModel in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C5 a fresh request carries the decision past a newer handoff",
+   "file": "storage/writer.ts",
+   "find": "  return approvalAt!==undefined&&(!this.latest.handoff||approvalAt>this.handoffCarrier(binding))\n",
+   "replace": "  return approvalAt!==undefined\n",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#309: after the batch's answer the parent's next request carries the batch's answer only, as without a takeover. Go twin (by hand): drop the handoff comparison in ApprovalContinuationOwed; caught at ^TestATakeoverAfterTheBatchRunsTheChildOnce in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C6 an invocation that ended at a handoff after a Plan decision refuses the takeover",
+   "file": "storage/writer.ts",
+   "find": "   if(!row.planPause&&this.endedBeforeContinuation(binding,row))return true\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#317 and #312's MEDIUM-B: the native Plan exemption refuses the delegating invocation's, or the approval pause's, unknown row. Go twin (by hand): endedBeforeContinuationLocked answers false; caught at ^TestAPlanContinuationThatDelegatesGoesOn and ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C7 a later parent open is given a Plan decision already taken",
+   "file": "execution/state.ts",
+   "find": " if(plan&&plan.pending?.callId!==given.callId&&(plan.decisions??[]).some(row=>row.callId===given.callId))return undefined\n",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#317: the next parent open refuses the taken Plan decision as not waited on, and the response stalls. Go twin (by hand): drop the Plan clause of DecisionForParentOpen; caught at ^TestDecisionForParentOpen in ./context (Go's native Plan decision is consumed by PreparePlanDecision, so no Go drive reaches it)."
+  },
+  {
+   "name": "continuation C8 the decision's block does not say when it was taken",
+   "file": "toolSources.ts",
+   "find": ", ...(record.decidedAt === undefined ? {} : { decidedAt: record.decidedAt })",
+   "replace": "",
+   "tests": [
+    "approvalContinuation.test.ts",
+    "toolSources.test.ts"
+   ],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "#312's LOW-1: two decisions on one call id with one result give the same block. Go twin (by hand): drop decidedAt in ApprovalContinuationText; caught at ^TestARepeatedCallIDIsToldApart in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C9 a Plan decision after an approval refuses the approval pause's own invocation",
+   "file": "storage/writer.ts",
+   "find": "&&!(row.state==='unknown'&&!row.planPause&&this.endedBeforeContinuation(binding,row))",
+   "replace": "",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "#312's MEDIUM-B: the Plan decision is refused HostOutcomeUnknown because the approval pause's invocation is still unknown. Go twin (by hand): skip the endedBeforeContinuationLocked clause of nativePlanDecisionLocked; caught at ^TestAPlanDecisionAfterAnApprovalGoesOn in ./adapter/continuationtests."
+  },
+  {
+   "name": "continuation C10 a recovered request carries the decision's block only in the very text it was sent with",
+   "file": "toolSources.ts",
+   "find": "      if (canonicalJSON(JSON.parse(JSON.parse(`\"${request.slice(start, end)}\"`))) === want) return true\n",
+   "replace": "      if (JSON.parse(`\"${request.slice(start, end)}\"`) === parts[2]!.slice(1, closing) && want !== '') return true\n",
+   "tests": ["approvalContinuation.test.ts","toolSources.test.ts"],
+   "status": "caught",
+   "origin": "agent#309",
+   "note": "The block is built from the record as the run held it, and the restored record holds the result's members in the checkpoint's order: a continuation lost after it was sent is then sent fresh, not again as recorded, and under task steps not refused. Go twin (by hand): compare the data's text in carriesApprovalContinuation; caught at ^TestARecordedContinuationIsFoundByItsValue in ./context."
+  },
+  {
+   "name": "continuation C11 the Plan exemption passes over any unknown invocation once an approval or a handoff is held",
+   "file": "storage/writer.ts",
+   "find": "  return at>=0&&!this.agentReplay(binding,at)\n",
+   "replace": "  return at>=0&&(this.latest?.approval!==undefined||this.latest?.handoff!==undefined||!this.agentReplay(binding,at))\n",
+   "tests": ["approvalContinuation.test.ts"],
+   "status": "caught",
+   "origin": "agent#317",
+   "note": "The safety side of the native Plan exemption: the Plan continuation lost after it was sent, which carries the newest continuation, is passed over and sent fresh, so the continuation runs twice. Go twin (by hand): return w.latest.Approval != nil || w.latest.Handoff != nil || !w.agentReplayLocked(binding, i) in endedBeforeContinuationLocked; caught at ^TestALostPlanContinuationAfter in ./adapter/continuationtests."
   },
   {
    "name": "#343 the writer records and answers a host result in the record guard's form",

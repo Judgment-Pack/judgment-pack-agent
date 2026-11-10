@@ -203,6 +203,9 @@ func (w *RunWriter) nativePlanDecisionLocked(ctx context.Context, binding RunBin
 			}
 			continue
 		}
+		if row.PlanPause == nil && row.State == "unknown" && w.endedBeforeContinuationLocked(&binding, row) {
+			continue // #312's MEDIUM-B: it ended at an approval pause the response has gone on from
+		}
 		if row.PlanPause == nil || row.State != "unknown" || usageCanonical(row.PlanPause) != usageCanonical(pending) || old != nil {
 			return nil, &HostOutcomeUnknown{}
 		}
@@ -270,7 +273,13 @@ func (w *RunWriter) supersededNativePlanLocked(binding *RunBinding, row DurableD
 	}
 	proof, ok := w.nativePlanSuperseded[row.ID]
 	if !ok {
-		if row.PlanPause != nil || len(w.nativePlanSuperseded) > 0 || nativePlanPending(w.latest) != nil {
+		if row.PlanPause != nil || nativePlanPending(w.latest) != nil {
+			return false, &HostOutcomeUnknown{}
+		}
+		if len(w.nativePlanSuperseded) > 0 {
+			if w.endedBeforeContinuationLocked(binding, row) {
+				return true, nil
+			}
 			return false, &HostOutcomeUnknown{}
 		}
 		return false, nil
@@ -292,6 +301,20 @@ func (w *RunWriter) supersededNativePlanLocked(binding *RunBinding, row DurableD
 		return false, &ContinuationIdentityChanged{}
 	}
 	return true, nil
+}
+
+// endedBeforeContinuationLocked reports whether an unknown agent row of a scope with a decided Plan pause ended before a
+// continuation the response has since taken (#317, #312's MEDIUM-B), so that it is never sent again and refuses
+// nothing: it does not carry the newest continuation (agentReplayLocked), having ended at a delegation handoff or at an
+// approval pause the response has gone on from. Any other unknown row of the scope may have run unseen, and still
+// refuses with HostOutcomeUnknown.
+func (w *RunWriter) endedBeforeContinuationLocked(binding *RunBinding, row DurableDispatch) bool {
+	for i, held := range w.book.Dispatches {
+		if held.ID == row.ID {
+			return !w.agentReplayLocked(binding, i)
+		}
+	}
+	return false
 }
 func (w *RunWriter) restoreNativePlanDecisions(ctx context.Context, binding RunBinding) error {
 	w.mu.Lock()

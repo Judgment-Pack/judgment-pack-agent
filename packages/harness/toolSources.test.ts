@@ -55,6 +55,7 @@ import {approvalShownArguments,
   APPROVAL_DEFAULT,
   ApprovalHeld,
   approvalContinuation,
+  carriesApprovalContinuation,
   CATALOGUE_SCHEMA,
   describedSchema,
   ENUM_MEMBER_BYTES,
@@ -1301,6 +1302,17 @@ describe('the approval pause’s words, the contract’s vectors (ADR-0008)', ()
     const { gate } = await gateFor(tools, { offeredSchemas: 100, offeredSchemaBytes: 1_000_000 }, false, { current: () => held.approval, ask: (record) => { held.approval = record }, closed: () => '' })
     expect((await gate.decide('tracker__create_issue', {}, 'a')).answer).toBe('ask')
     expect((await gate.decide('tracker__create_issue', {}, 'b')).detail).toBe(pendingVector.detail)
+  })
+  it('finds the continuation a request carries from the record as the checkpoint restores it (#309)', () => {
+    const executed = continueApproved.items[1]!.checkpoint!.approval! as unknown as ApprovalRecord
+    const request = JSON.stringify({ prompt: `Write the note.\n\n${continueApproved.continuation}` })
+    // The checkpoint stores the record as canonical text: the result's members come back in another order than the block's.
+    const restored = { ...(JSON.parse(canonicalJSON(executed)) as ApprovalRecord), state: 'answered' as const }
+    expect(JSON.stringify(restored.result)).not.toBe(JSON.stringify(executed.result))
+    expect([carriesApprovalContinuation(request, executed), carriesApprovalContinuation(request, restored)]).toEqual([true, true])
+    // Another result, another decision time or another call id is another decision's block.
+    const other = [{ ...restored, result: { content: [{ type: 'text', text: 'Another issue.' }] } }, { ...restored, decidedAt: '2026-10-20T10:05:00.001Z' }, { ...restored, callId: 'call_2_2' }]
+    expect(other.map((record) => carriesApprovalContinuation(request, record as ApprovalRecord))).toEqual([false, false, false])
   })
 })
 

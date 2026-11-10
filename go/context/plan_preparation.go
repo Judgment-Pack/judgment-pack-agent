@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -201,11 +202,14 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	}
 	// Replace only the transition's four members. json.RawMessage preserves prior
 	// durable result bytes (including number lexemes) instead of normalizing the book.
+	// The four members are written in canonical text, and the members are joined
+	// without json.Marshal's HTML escaping, so a checkpoint the writer stored as
+	// canonical text stays canonical: retained history refuses any other spelling.
 	var prior, decided map[string]json.RawMessage
 	if err = json.Unmarshal(raw, &prior); err != nil {
 		return nil, nil, err
 	}
-	decidedRaw, err := json.Marshal(saved)
+	decidedRaw, err := canonicalRaw(saved)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -215,22 +219,13 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	for _, name := range []string{"plan", "planState", "explanation", "status"} {
 		prior[name] = decided[name]
 	}
-	updatedRaw, err := json.Marshal(prior)
-	if err != nil {
-		return nil, nil, err
-	}
+	updatedRaw := checkpointMembersText(prior)
 	updated, err := ParseJSON(updatedRaw)
 	if err != nil {
 		return nil, nil, err
 	}
-	prior["digest"], err = json.Marshal(RecordDigest(updated))
-	if err != nil {
-		return nil, nil, err
-	}
-	updatedRaw, err = json.Marshal(prior)
-	if err != nil {
-		return nil, nil, err
-	}
+	prior["digest"] = json.RawMessage(quoteJS(RecordDigest(updated)))
+	updatedRaw = checkpointMembersText(prior)
 	updated, err = ParseJSON(updatedRaw)
 	if err != nil {
 		return nil, nil, err
@@ -288,6 +283,27 @@ func PreparePlanDecision(ctx context.Context, input *Input, expected PlanDecisio
 	result.Execution = &detached
 	result.Approval = nil
 	return &result, []contract.RunEvent{contract.StampEvent(*event)}, nil
+}
+
+// checkpointMembersText joins a checkpoint's members in canonical key order, each member's bytes as they are.
+func checkpointMembersText(members map[string]json.RawMessage) []byte {
+	names := make([]string, 0, len(members))
+	for name := range members {
+		names = append(names, name)
+	}
+	sort.SliceStable(names, func(i, j int) bool { return lessUTF16(names[i], names[j]) })
+	var b bytes.Buffer
+	b.WriteByte('{')
+	for i, name := range names {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(quoteJS(name))
+		b.WriteByte(':')
+		b.Write(members[name])
+	}
+	b.WriteByte('}')
+	return b.Bytes()
 }
 
 // Reconcile only acknowledged task facts. No session, policy, live balance or replacement
