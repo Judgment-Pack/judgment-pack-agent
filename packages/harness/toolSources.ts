@@ -48,7 +48,7 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
 import type { SourceIdentityState } from './execution/state'
 import { admitCall, refusalDetail, type OpenedPrincipal, type PrincipalRefusal } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
-import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether } from './context/chat'
+import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether, scalarValue } from './context/chat'
 import { readHistoryRequestJSON } from './history/codec'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
@@ -497,6 +497,19 @@ export const CATALOGUED = `Catalogued tool: call ${LOAD_TOOL} with this name for
 export const ENUM_MEMBER_BYTES = 64
 /** The most UTF-8 bytes of a property name, a `required` entry or a definition's name that is offered. */
 export const NAME_BYTES = 64
+/**
+ * A source's own words that its offered schemas keep as written (#308): an `enum`'s or a `const`'s
+ * values, the names of properties and definitions, the `required` entries and the `$ref` pointers
+ * (`verbatimOf`). The model has to write these back as they are, so they cannot be framed where they
+ * stand. `ENUM_MEMBERS` is the most members one `enum` may hold, `NAMES_PER_OBJECT` the most names one
+ * `properties`, `$defs` or `definitions` map, or one `required` list, may hold, and `VERBATIM_BYTES` the
+ * most UTF-8 bytes of them all the source's tools together may keep, a part of the bytes
+ * `offeredSchemaBytes` counts. A source past any of the three is made a catalogue (`offerSources`), so
+ * its schemas reach the model only in `load_tool`'s answer, which is framed as data.
+ */
+export const ENUM_MEMBERS = 64
+export const NAMES_PER_OBJECT = 64
+export const VERBATIM_BYTES = 4096
 /** How deep a source's schema is read; a branch past it is offered empty. */
 const SCHEMA_DEPTH = 16
 /** The keywords whose value is a number: kept where it is one. */
@@ -524,6 +537,9 @@ function plainName(name: string): boolean {
 
 /** Whether `value` may stay in an offered `enum` or `const`: a short, one-line string, or a short value. */
 function plainValue(value: unknown): boolean {
+  // #308: a lone surrogate anywhere in it is not plain: JSON.stringify writes it as an escape where
+  // Go holds U+FFFD, so the two languages would offer and count other bytes.
+  if (!scalarValue(value)) return false
   if (typeof value === 'string') return utf8Bytes(value) <= ENUM_MEMBER_BYTES && !/[\r\n]/.test(value)
   return utf8Bytes(JSON.stringify(value) ?? '') <= ENUM_MEMBER_BYTES
 }
@@ -542,7 +558,8 @@ export interface SchemaNote {
  * `additionalProperties`, `items`, `oneOf`, `anyOf`, `allOf`, `properties`, `$defs` and `definitions`
  * (a name over `NAME_BYTES` bytes, or with white space or a line break, is dropped with its schema),
  * `required` (its entries the same), `enum` and `const` (dropped where a string is over
- * `ENUM_MEMBER_BYTES` bytes or has a line break, or where `enum` is no list) and `description`, which
+ * `ENUM_MEMBER_BYTES` bytes or has a line break, where a lone surrogate is anywhere in one (#308), or
+ * where `enum` is no list) and `description`, which
  * is cut to `bytes` and, where `frame` is given, framed as retrieved text. Every other keyword, its
  * value whatever it is, is not offered: `title`, `$comment`, `default`, `examples`, `pattern`, the
  * `x-` extensions and the rest. A branch deeper than `SCHEMA_DEPTH` is offered empty. What is dropped
@@ -608,18 +625,67 @@ export function describedSchema(node: unknown, bytes: number, frame?: (text: str
   return walk(node, 0, '')
 }
 
+/** What one offered schema keeps of its source's words as written: the most members one `enum` holds, the most names one object holds, and the UTF-8 bytes of them all. */
+interface Verbatim {
+  members: number
+  names: number
+  bytes: number
+}
+
+/**
+ * A schema as `describedSchema` offers it, read for the words its source wrote that stay as written: a
+ * string is counted by its UTF-8 bytes, any other `enum` or `const` value by its JSON text's, as
+ * `plainValue` counts them. A `description` is framed and a `type` or a `format` is one of a fixed set,
+ * so neither is counted.
+ */
+function verbatimOf(schema: unknown): Verbatim {
+  const held: Verbatim = { members: 0, names: 0, bytes: 0 }
+  const measure = (value: unknown): number => (typeof value === 'string' ? utf8Bytes(value) : utf8Bytes(JSON.stringify(value) ?? ''))
+  const walk = (node: unknown): void => {
+    if (!object(node)) return
+    for (const [key, member] of Object.entries(node)) {
+      if (key === 'enum' && Array.isArray(member)) {
+        held.members = Math.max(held.members, member.length)
+        for (const item of member) held.bytes += measure(item)
+      } else if (key === 'const') {
+        held.bytes += measure(member)
+      } else if (key === '$ref' && typeof member === 'string') {
+        held.bytes += utf8Bytes(member)
+      } else if (key === 'required' && Array.isArray(member)) {
+        held.names = Math.max(held.names, member.length)
+        for (const name of member) held.bytes += utf8Bytes(String(name))
+      } else if (SCHEMA_MAPS.has(key) && object(member)) {
+        const names = Object.keys(member)
+        held.names = Math.max(held.names, names.length)
+        for (const name of names) {
+          held.bytes += utf8Bytes(name)
+          walk(member[name])
+        }
+      } else if (key === 'items' || key === 'additionalProperties' || SCHEMA_LISTS.has(key)) {
+        if (Array.isArray(member)) member.forEach(walk)
+        else walk(member)
+      }
+    }
+  }
+  walk(schema)
+  return held
+}
+
 /** The words a note of `describedSchema` earns as a guardrail: what was left out, where, and that the host still validates. */
 function schemaNoteDetail(wire: string, note: SchemaNote): string {
   const where = note.path === '' ? 'the schema' : note.path
   const what = note.what === 'name' ? `a property or definition name there is over ${NAME_BYTES} bytes or holds white space, and it is not offered with its schema`
     : note.what === 'required' ? `a required entry there is over ${NAME_BYTES} bytes or holds white space, and it is not offered`
-    : `its ${note.what} holds a string over ${ENUM_MEMBER_BYTES} bytes or a line break, or is no list, and it is not offered`
+    : `its ${note.what} holds a string over ${ENUM_MEMBER_BYTES} bytes, a line break or a lone surrogate, or is no list, and it is not offered`
   return `in the input schema of ${wire}, at ${where}: ${what}; the host still validates the arguments it executes`
 }
 
 /**
  * The offer of the tools with a source (ADR-0006): each description, and each descriptive string of
- * its input schema, bounded and framed with the run's marker. Where they pass `offeredSchemas` or
+ * its input schema, bounded and framed with the run's marker. A source whose offered schemas keep more
+ * of its words as written than one of `ENUM_MEMBERS`, `NAMES_PER_OBJECT` and `VERBATIM_BYTES` allows
+ * (`verbatimOf`, the source's tools together) is made a catalogue first (#308). Where the other tools
+ * with a source still pass `offeredSchemas` or
  * `offeredSchemaBytes`, sources are made catalogues, the largest first (by its tools offered, then
  * by their bytes, then by id), until the rest fit: a catalogued source's tools are offered as
  * catalogue entries (`CATALOGUED`, the first line framed, `CATALOGUE_SCHEMA`), at most
@@ -632,7 +698,7 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
   const framed = new Map<string, string>()
   const schemas = new Map<string, unknown>()
   const schemaNotes: Withheld[] = []
-  const sizes = new Map<string, { count: number; bytes: number }>()
+  const sizes = new Map<string, { count: number; bytes: number; verbatim: number; over: boolean }>()
   for (const tool of hostTools) {
     const entry = entries.get(tool.name)
     if (entry === undefined) continue
@@ -643,16 +709,27 @@ export function offerSources(hostTools: readonly HostTool[], entries: Map<string
     const schema = describedSchema(tool.inputSchema, bounds.toolDescriptionBytes, (cut) => frameBlock(`a description in the input schema of tool ${JSON.stringify(entry.wire)} from source ${JSON.stringify(entry.record.id)}`, cut, marker), notes)
     for (const held of notes) schemaNotes.push({ tool: entry.wire, detail: schemaNoteDetail(entry.wire, held) })
     schemas.set(tool.name, schema)
-    const size = sizes.get(entry.record.id) ?? { count: 0, bytes: 0 }
+    const size = sizes.get(entry.record.id) ?? { count: 0, bytes: 0, verbatim: 0, over: false }
     size.count++
     size.bytes += utf8Bytes(JSON.stringify({ name: tool.name, description: text, inputSchema: schema }))
+    const words = verbatimOf(schema)
+    size.verbatim += words.bytes
+    size.over = size.over || words.members > ENUM_MEMBERS || words.names > NAMES_PER_OBJECT
     sizes.set(entry.record.id, size)
   }
   let count = [...sizes.values()].reduce((sum, size) => sum + size.count, 0)
   let bytes = [...sizes.values()].reduce((sum, size) => sum + size.bytes, 0)
   const largest = [...sizes].sort(([a, x], [b, y]) => y.count - x.count || y.bytes - x.bytes || (a < b ? -1 : a > b ? 1 : 0))
   const catalogued = new Set<string>()
+  // #308: words the model reads unframed are bounded; past a bound the source's schemas are loaded, framed.
   for (const [id, size] of largest) {
+    if (!size.over && size.verbatim <= VERBATIM_BYTES) continue
+    catalogued.add(id)
+    count -= size.count
+    bytes -= size.bytes
+  }
+  for (const [id, size] of largest) {
+    if (catalogued.has(id)) continue
     if (count <= bounds.offeredSchemas && bytes <= bounds.offeredSchemaBytes) break
     catalogued.add(id)
     count -= size.count
