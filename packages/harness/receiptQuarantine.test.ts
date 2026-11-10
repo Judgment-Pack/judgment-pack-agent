@@ -7,7 +7,7 @@
  * (vercel) and the native one (codex) with an in-process model peer (the issue's six requests), and
  * with two sources' calls in flight together and the checkpoint written meanwhile restored.
  */
-import {describe,it,expect} from 'vitest'
+import {describe,it,expect,vi} from 'vitest'
 import vector from '../../contract/vectors/tool-result/receipt-quarantine.json'
 import {contextualSession} from './context/session'
 import {ChatContext,canonicalJSON} from './context/chat'
@@ -187,7 +187,10 @@ describe('an external read whose receipt does not verify (agent#242)',()=>{
 
 // #303 (from #301's review): the verifier gets what the call left of its deadline, no more. The executor spends three quarters
 // of the source's 2,000 ms; a verifier that needs 700 ms more is cut at the 500 ms left, and the result is withheld. Given the
-// whole limit, or twice what was left, it would have finished and verified.
+// whole limit, or twice what was left, it would have finished and verified. agent#323 LOW-5: on a fake clock (timers and Date),
+// so each mutant's margin is the clock's, not the 300 ms real timers left the twice-what-was-left one under load. The clock
+// moves a millisecond at a time with a real turn of the event loop between, so the work that is not a timer (digests, the
+// store) runs as it would, and what it adds is counted in turns, not in time.
 describe('the receipt verifier\'s budget (#303)',()=>{
  it('is what the call left of its deadline: a verifier that needs more is cut, and the result withheld',async()=>{
   const chat=new ChatContext({scope:fixture.scope}),store=new MemoryRunStore(),held=fixture.cases[0]!,receipt='receipt-budget'
@@ -201,10 +204,15 @@ describe('the receipt verifier\'s budget (#303)',()=>{
   }} as HostTool['source']
   const ready=await contextualSession({...session(chat,store,[tool],false),policy:{budget:{sourceCallMilliseconds:2000}}} as AssistantSession)
   const call=ready.session.values.hostTools.find(t=>t.name===fixture.wireName)!
-  const answer=await settle(call.execute(structuredClone(fixture.arguments),ready.session.signal,'call-budget'))
-  expect(verified).toBe(false)
-  expect(event(fixture.wireName,answer).text).toBe(RECEIPT_WITHHELD)
-  ready.context.close()
+  vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']})
+  try{
+   let settled=false
+   const answering=settle(call.execute(structuredClone(fixture.arguments),ready.session.signal,'call-budget')).finally(()=>{settled=true})
+   for(let at=0;at<3000&&!settled;at++){await vi.advanceTimersByTimeAsync(1);await new Promise(resolve=>setImmediate(resolve))}
+   const answer=await answering
+   expect(verified).toBe(false)
+   expect(event(fixture.wireName,answer).text).toBe(RECEIPT_WITHHELD)
+  }finally{vi.useRealTimers();ready.context.close()}
  },20_000)
 })
 

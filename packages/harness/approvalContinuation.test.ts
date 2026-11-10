@@ -2,9 +2,12 @@
 // ADR-0008 on the agent wire: an approved continuation that delegates goes on past its batch (#305), and a decision is
 // taken by the response's first open only.
 import {describe,it,expect,vi} from 'vitest'
-import type {AgentAssistantSession,AssistantEvent,Engine,HostTool,McpTool} from './engine'
+import type {AgentAssistantSession,AssistantEvent,Engine,EngineSession,HostTool,McpTool} from './engine'
 import type {AgentRun} from './agent'
 import {codex} from './engines/codex'
+import {vercel} from './engines/vercel'
+import {deepagents} from './engines/deepagents'
+import {answerWith} from './testing/scenarioDriver'
 import {withDelegation} from './delegation'
 import {MemoryRunStore,type RunStore} from './storage/run'
 import {APPROVAL_CONTINUATION,toolListDigest} from './toolSources'
@@ -214,6 +217,25 @@ describe('an ask the engine’s own pause stopped (agent#342)',()=>{
   await drive(s,engine,s.store,true,decision,[stoppedBySignal('delegate_tasks',{tasks:[{title:'Check',profile:'review',objective:'Check the note.'}]})])
   const ended=s.events.filter(e=>e.type==='delegated_task'&&['complete','failed'].includes((e as {task:{state:string}}).task.state)).length
   expect([s.ran,s.children,ended,errors(s),finished(s)]).toEqual([1,1,1,[],true])
+ },30_000)
+})
+
+// agent#349: the model engines, as the codex engine above. A Runtime action's ask whose save was refused, or whose acknowledgement
+// was lost, is not shown, the Runtime is not called, no request follows, and the run ends unknown/storage/unknown: the writer
+// cannot tell whether the save landed. Before, both modes reported storage/storage/not-started on vercel (the next request's
+// checkpoint refused), and unknown/model/unknown on deepagents.
+describe('a Runtime action\u2019s ask that could not be saved, on the model engines (agent#349)',()=>{
+ for(const [label,engine] of [['vercel',vercel],['deepagents',deepagents]] as const)for(const lost of [false,true])it(`is not shown, and the run ends with the storage failure: ${label}, ${lost?'acknowledgement lost':'refused'}`,async()=>{
+  const s=scene(),runtime=await runtimeAction();let requests=0
+  const call=async()=>answerWith(requests++===0?{call:{tool:'experimental_evaluate',arguments:{value:7,rehearsal:false}}}:{say:'Evaluated.'},'stream',requests-1)
+  const session={prompt:'Evaluate the draft.',testPrompt:'',tools:runtime.tools,callTool:runtime.callTool,hostTools:[],signal:new AbortController().signal,allowConversation:true,critic:'off',context:{currentRequest:{message:'Evaluate the draft.',input:'draft'},runStore:{store:faulty(s.store,lost),id:'run-c'}},model:{family:'openai-compatible',model:'fixture',call}} as unknown as EngineSession
+  try{
+   for await(const event of engine.start(session))s.events.push(event)
+   const {saved,held}=await head(s.store)
+   expect([count(s,'approval_requested'),runtime.calls,requests,failures(s),saved.status==='complete']).toEqual([0,[],1,[['unknown','storage','unknown']],false])
+   // A refused save stored no ask; a lost acknowledgement's did land, and the run still ends with the failure.
+   if(lost)expect(held).toBe('paused/asked');else expect(saved.approval).toBeUndefined()
+  }finally{await runtime.close()}
  },30_000)
 })
 
