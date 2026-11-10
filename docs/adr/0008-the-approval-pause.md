@@ -169,13 +169,15 @@ A restored checkpoint continues from where it stood:
   the durable book says by claim order: the decision's, or a delegation handoff's after it, whichever
   a recovered invocation carried later (one no invocation carried yet is the newer). A recovered
   invocation whose outcome is unknown is sent again as recorded only where it carries that newest
-  continuation (the block, matched by its text under any marker, or the handoff's answer); one that
-  ended at the pause, or at a handoff the response has gone on from, is not, and the next invocation
-  is a fresh request. A fresh request carries the block again, under a new marker, while the
-  decision is the newest: after a takeover before the continuing invocation was claimed, after it
-  finished with the response unfinished, and after a Plan pause it ended at. Once a handoff is newer,
-  the batch's answer is the continuation, as ADR-0007 has it. Under task steps a recovered invocation
-  that carries the newest continuation is refused `HostOutcomeUnknown`, as any re-send there is.
+  continuation (the block under any marker, its line and frame matched as text and its data as a
+  value, since a restored record holds the result's members in the checkpoint's order; or the
+  handoff's answer); one that ended at the pause, or at a handoff the response has gone on from, is
+  not, and the next invocation is a fresh request. A fresh request carries the block again, under a
+  new marker, while the decision is the newest: after a takeover before the continuing invocation was
+  claimed, after it finished with the response unfinished, and after a Plan pause it ended at. Once a
+  handoff is newer, the batch's answer is the continuation, as ADR-0007 has it. Under task steps a
+  recovered invocation that carries the newest continuation is refused `HostOutcomeUnknown`, as any
+  re-send there is.
 
 ```
 model calls act tool ──▶ gate: offered? effect act? bounds? ──▶ host policy(call)
