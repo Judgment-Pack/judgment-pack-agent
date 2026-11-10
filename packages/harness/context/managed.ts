@@ -156,6 +156,11 @@ async function* execute<T extends EngineSession>(session:T,run:(session:RequestS
     if(refused.state==='refused')yield {type:'guardrail',tool:refused.name,action:'refused',detail:refused.result?.content?.[0]?.text??'The person refused this call; it was not run and nothing was changed.',reason:'approval refused'}
    }
    ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(context.execution.state.approval!)
+  }else{
+   // #309: an answered decision whose continuation no recovered request is sent again as, and that no handoff since
+   // follows, is still the response's newest: the fresh request carries its block again, under a new marker.
+   const answered=context.execution.state.approval,binding=session.context?.[durableOwner]
+   if(answered?.state==='answered'&&context.execution.state.unit==='provider-managed'&&binding&&binding.writer.approvalContinuationOwed(binding))ready.session.prompt=ready.session.prompt+'\n\n'+approvalContinuation(answered)
   }
   // #229: a resumed job wait: one fixed line and one data block built from the job's record, and no checkpoint member.
   if(session.context?.jobContinuation)ready.session.prompt=ready.session.prompt+'\n\n'+jobContinuation(session.context.jobContinuation)
