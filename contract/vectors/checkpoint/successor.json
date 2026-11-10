@@ -8,7 +8,6 @@
       "package": "packages/harness"
     },
     "files": [
-      "go/context/run_successor.go (SuccessorRunID, SuccessorRefused, QuestionAnswerText)",
       "packages/harness/storage/successor.ts (successorRunId, SuccessorRefused, questionAnswerText)"
     ]
   },
