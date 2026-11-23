@@ -1,5 +1,5 @@
 {
- "description": "The agent library's own scope-binding vectors (spec RFC 0030 §2, Binding a chain to one scope identifier; §3, clause 9; conformance table 3's statement rows and its library rows). Signed once with the RFC's synthetic keys (the Ed25519 seed judgment-pack-delegation-host-01 and the P-256 scalar of 32 bytes of 01) by node:crypto, not by the verifier under test. statements: a chain and the first refusal of steps 1 to 7, or ok, with the link it is at. requests: a call under a chain of statements, by name, at a time inside its validity unless at is given; expect is the admission's refusal, or admit; reads is how many admission reads the host's port is asked.",
+ "description": "The agent library's own scope-binding vectors (spec RFC 0030 §2, Binding a chain to one scope identifier; §3, clause 9; conformance table 3's statement rows and its library rows). Signed once with the RFC's synthetic keys (the Ed25519 seed judgment-pack-delegation-host-01 and the P-256 scalar of 32 bytes of 01) by node:crypto, not by the verifier under test. statements: a chain and the first refusal of steps 1 to 7, or ok, with the link it is at. requests: a call under a chain of statements, by name, at a time inside its validity unless at is given; expect is the admission's refusal, or admit; reads is how many admission reads the host's port is asked. bindings: a gateway source declared to the run's gate under a chain of statements, by name, whose receipts the host verifies (verifyReceipt) and the package does not, fixed to the scope identifier fixed (null for none); expect is the refusal at binding, with a guardrail whose detail holds detail and no call of the source sent, or admit.",
  "keys": {
   "desk": [
    "00028d283e279178a6ce561e45f1b89f2a6ac45690fbb5ac48313ad61ab04584",
@@ -2133,6 +2133,40 @@
    },
    "expect": "admit",
    "reads": 1
+  }
+ ],
+ "bindings": [
+  {
+   "name": "library-bound-unverified-receipts",
+   "kind": "N",
+   "chain": "bound-root",
+   "fixed": "scope-a",
+   "expect": "scope-id-mismatch",
+   "detail": "does not verify the receipts"
+  },
+  {
+   "name": "library-bound-mapping-other-at-binding",
+   "kind": "N",
+   "chain": "bound-root",
+   "fixed": "scope-b",
+   "expect": "scope-id-mismatch",
+   "detail": "another scope identifier"
+  },
+  {
+   "name": "library-bound-mapping-none-at-binding",
+   "kind": "N",
+   "chain": "bound-root",
+   "fixed": null,
+   "expect": "scope-id-mismatch",
+   "detail": "fixed to no scope identifier"
+  },
+  {
+   "name": "library-unbound-unverified-receipts",
+   "kind": "P",
+   "chain": "unbound-root",
+   "fixed": null,
+   "expect": "admit",
+   "detail": ""
   }
  ]
 }

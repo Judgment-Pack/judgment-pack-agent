@@ -266,7 +266,11 @@ link and a bound child under an unbound one are each `widened`. Under a bound ch
   before any admission read and before the call leaves the harness; nothing is counted;
 - a host source is unaffected and carries no scope;
 - a gateway receipt the package verifies whose `scope` is not the binding withholds the result,
-  as an unverified receipt does.
+  as an unverified receipt does;
+- a gateway source whose receipts the package does not verify (no pinned `gatewayReceipt`, a host
+  `verifyReceipt` alone) is refused when the principal is bound to the gate, before any call, with a
+  `delegation refused` guardrail naming `scope-id-mismatch`, since the scope of its answers could not
+  be checked; a source fixed to another scope identifier, or to none, is refused there too.
 
 An unbound chain, and a run with no delegation, behave as before.
 

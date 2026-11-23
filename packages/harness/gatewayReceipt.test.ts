@@ -46,6 +46,12 @@ describe('Gateway v3 signed acquisition consumer',()=>{
  it('verifies remote and stdio signed artifact and independently pinned identity',async()=>{
   for(const remote of [true,false]){const {envelope,trust}=synthetic(remote);expect((await verify(outer(envelope),trust,approval(remote),snapshot(remote))).result).toEqual(vector.artifact)}
  })
+ it('hands the executor the scope a bound delegation sends, and none otherwise (RFC 0030 §2)',()=>{
+  const bound=new AbortController().signal,unbound=new AbortController().signal
+  beginGatewayInvocation(bound,'scope-a');beginGatewayInvocation(unbound)
+  expect(gatewayExecutionContext(bound)?.scope).toBe('scope-a')
+  expect(Object.hasOwn(gatewayExecutionContext(unbound)!,'scope')).toBe(false)
+ })
  it('withholds a receipt that is not of the scope a bound delegation sends (RFC 0030 §2)',async()=>{
   const bound=(raw:McpToolResult,trust:GatewayReceiptTrust)=>verifyGatewayResult(raw,trust,approval(),snapshot(),vector.tool,vector.args,{receiptSession:vector.session,scope:'scope-a'},GATEWAY_RECEIPT_ENVELOPE_BYTES,signal())
   const none=synthetic()
