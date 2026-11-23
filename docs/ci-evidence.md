@@ -173,7 +173,7 @@ to `release-os`, with a pin for every tool they record, and to pin Python to one
   | `base` (`contract`) | `python` | `Python 3.12.16` |
   | `check` (`check`, the race jobs) | `node` | `v22.23.4`, `dev.json`'s exact release |
   | | `npm` | `10.9.9`, the npm that Node release bundles |
-  | | `go` | `go version go1.26.10 linux/amd64`, `dev.json`'s exact release |
+  | | `go` | `go version go1.26.11 linux/amd64`, `dev.json`'s exact release |
   | | `python` | `Python 3.12.16`, the virtual environment's interpreter |
   | | `python-packages` | the virtual environment: `requirements-dev.txt`'s exact pins and `pip` `25.0.1`, the pip that Python release bundles, as the tool's command prints them |
 

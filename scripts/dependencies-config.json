@@ -3,7 +3,7 @@
   "goarch": "amd64",
   "cgo": "1",
   "tags": [],
-  "toolchain": "go1.26.10",
+  "toolchain": "go1.26.11",
   "compiler": "gc",
   "GOAMD64": "v1",
   "GOEXPERIMENT": "",
