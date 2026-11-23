@@ -37,6 +37,7 @@ import { canonicalJSON } from './context/chat'
 import { answer, contextDigest } from './context/ledger'
 import { prefix, utf8Bytes, type ContextPolicy } from './context/policy'
 import { AIFailureError, authoredFailure, toolInputFailure } from './failures'
+import { admitSkillLoad, type OpenedPrincipal, type PrincipalRefusal, type SkillRef } from './principal'
 import { MARKER_REMOVED, frameBlock } from './framing'
 import { SOURCE_ID, TRUST_CLASSES, type SourceRecord, type Withheld } from './toolSources'
 import type { AssistantEvent, HostTool, McpToolResult } from './engine'
@@ -370,6 +371,8 @@ export interface SkillRun {
   critic?: () => boolean
   /** An event for the stream, between the call and its result. */
   notify: (event: AssistantEvent) => void
+  /** ADR-0030: the run's principal; at read version "2" each load is read through its skill-load port first. */
+  principal?: () => OpenedPrincipal | undefined
 }
 
 /**
@@ -380,6 +383,64 @@ export interface SkillRun {
 export class SkillGate {
   private readonly byName = new Map<string, Skill>()
   private loaded: Skill[] = []
+  /** The gate's lock: a load, an unload, a resume's re-ask and a read of the loaded set run one at a time. */
+  private held: Promise<unknown> = Promise.resolve()
+  private locked<T>(work: () => T | Promise<T>): Promise<T> {
+    const run = this.held.then(work)
+    this.held = run.catch(() => undefined)
+    return run
+  }
+  private refs(): SkillRef[] {
+    return this.loaded.map((skill) => ({ id: skill.id, digest: skill.digest }))
+  }
+
+  /** The loaded set a read at "2" names (ADR-0030), taken under the gate's lock. */
+  principalSkills(): Promise<SkillRef[]> {
+    return this.locked(() => this.refs())
+  }
+
+  /**
+   * ADR-0030: at read version "2", catalogued skills need the host's skill-load port (a configuration failure
+   * before any request otherwise), and a resume asks again for each restored skill, in load order: one refused
+   * or unanswered leaves the set with the guardrail that names it. The budget is not claimed again.
+   */
+  async holdDelegation(signal?: AbortSignal): Promise<void> {
+    const principal = this.run.principal?.()
+    if (principal?.readVersion !== '2') return
+    if (this.byName.size > 0 && principal.skillLoad === undefined) throw authoredFailure('configuration', 'The run reads its issuing host at version "2" and catalogues skills, and the host supplied no skill-load port, so no skill could load unread. Nothing was sent.', 'context')
+    await this.locked(async () => {
+      const saved = this.run.state().skills ?? []
+      const kept: SkillLoad[] = []
+      const loaded: Skill[] = []
+      const before: SkillRef[] = []
+      let dropped = false
+      for (const load of saved) {
+        const skill = this.loaded.find((held) => held.id === load.id)
+        if (skill === undefined) continue
+        const asked = { id: skill.id, digest: skill.digest }
+        const refusal = await admitSkillLoad(principal, asked, before, signal)
+        if (refusal !== undefined) {
+          this.refuseLoad(principal, skill, refusal)
+          dropped = true
+          continue
+        }
+        kept.push(load)
+        loaded.push(skill)
+        before.push(asked)
+      }
+      if (!dropped) return
+      this.loaded = loaded
+      this.write(kept)
+    })
+  }
+
+  /** A load the delegation refused: the guardrail that names the refusal, and the failure the call ends with. */
+  private refuseLoad(principal: OpenedPrincipal, skill: Skill, refusal: PrincipalRefusal): AIFailureError {
+    const named = refusal.name + (refusal.reason ? ` (${refusal.reason})` : '')
+    const detail = `The skill ${skill.name} was not loaded: the delegation this run acts under does not admit it (${named}). Nothing was loaded. Do not retry it; use the skills already loaded.`
+    this.run.notify({ type: 'guardrail', tool: LOAD_SKILL, action: 'refused', detail, reason: 'delegation refused', refusal: { ...refusal }, principal: structuredClone(principal.record) })
+    return new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail })
+  }
 
   /** `sourceIds`: every source a skill is declared from, whose row counts its loads from 0. */
   constructor(catalogued: readonly Skill[], private readonly bounds: Pick<ContextPolicy, 'skillsPerRun'>, private readonly run: SkillRun, sourceIds: readonly string[] = []) {
@@ -453,7 +514,7 @@ export class SkillGate {
       effect: 'plan',
       description: LOAD_SKILL_DESCRIPTION,
       inputSchema: LOAD_SKILL_SCHEMA,
-      execute: async (args) => this.load(args.name)
+      execute: async (args) => this.locked(() => this.load(args.name))
     }
   }
 
@@ -464,11 +525,11 @@ export class SkillGate {
       effect: 'plan',
       description: UNLOAD_SKILL_DESCRIPTION,
       inputSchema: UNLOAD_SKILL_SCHEMA,
-      execute: async (args) => this.unload(args.name)
+      execute: async (args) => this.locked(() => this.unload(args.name))
     }
   }
 
-  private load(name: unknown): McpToolResult {
+  private async load(name: unknown): Promise<McpToolResult> {
     const skill = typeof name === 'string' ? this.byName.get(name) : undefined
     if (skill === undefined) throw toolInputFailure(`${LOAD_SKILL} loads a catalogued skill, and ${JSON.stringify(String(name).slice(0, 64))} is not one; nothing was loaded.`)
     if (this.loaded.some((held) => held.id === skill.id)) {
@@ -488,6 +549,13 @@ export class SkillGate {
     const rows = this.run.sources?.() ?? this.run.state().sources ?? []
     const row = rows.find((held) => held.source === skill.source.id)
     if (row !== undefined) {row.skills = (row.skills ?? 0) + 1;this.commitSources(rows)}
+    // ADR-0030: the skill-load read, after the budget claim and before the checkpoint is written. A refusal
+    // keeps the claim and loads nothing.
+    const principal = this.run.principal?.()
+    if (principal?.readVersion === '2') {
+      const refusal = await admitSkillLoad(principal, { id: skill.id, digest: skill.digest }, this.refs())
+      if (refusal !== undefined) throw this.refuseLoad(principal, skill, refusal)
+    }
     this.loaded.push(skill)
     this.write([...(this.run.state().skills ?? []), { id: skill.id, digest: skill.digest, bytes: skill.bytes, loadedAt: new Date().toISOString() }])
     this.run.notify({ type: 'skill_loaded', skill: loadedSkill(skill), bytes: skill.bytes })

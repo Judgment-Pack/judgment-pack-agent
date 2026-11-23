@@ -705,7 +705,7 @@ function delegationEngine(engine: Engine, options: DelegationOptions = {}): Engi
       const parentPrincipal=shared.context?.principal
       if(parentPrincipal&&!childLinks.has(task.id)){
        try{
-        const input=await narrowChild(parentPrincipal,{task:task.id,profile:profile.id,tools:hostTools.flatMap(t=>t.source?[{source:t.source.id,tool:t.name}]:[])},childSignal)
+        const input=await narrowChild(parentPrincipal,{task:task.id,profile:profile.id,tools:hostTools.flatMap(t=>t.source?[{source:t.source.id,tool:t.name}]:[])},childSignal,async()=>await shared.context?.sources?.principalSkills()??[])
         childLinks.set(task.id,{input,record:(await openChildPrincipal(parentPrincipal,input)).record})
        }catch(error){
         if(!(error instanceof DelegationRefused))throw error
