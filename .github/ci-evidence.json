@@ -111,7 +111,7 @@
       "name": "CI",
       "events": ["push", "workflow_dispatch"],
       "pull_request_reuse": {
-        "$comment": "Not listed, so run on every branch push: generated-docs (a generator reading Go module metadata), python-tests (reads the checkout's release tags), dependency-audit-live (a live advisory query), build (its output is read by later checks of the job) and packed-smoke (packs and installs the package).",
+        "$comment": "Not listed, so run on every branch push: generated-docs (a generator reading Go module metadata), python-tests (reads the checkout's release tags), dependency-audit-live (a live advisory query), advisory-exceptions (a live vulnerability database query, holding the standing advisory exceptions), build (its output is read by later checks of the job) and packed-smoke (packs and installs the package).",
         "checks": [
           "record-shapes",
           "dependency-audit",
@@ -209,7 +209,8 @@
             "go-generate",
             "go-test",
             "harness-check",
-            "parity"
+            "parity",
+            "advisory-exceptions"
           ],
           "optional_skips": ["dependency-audit-live"],
           "setup": true

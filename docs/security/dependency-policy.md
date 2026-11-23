@@ -54,7 +54,8 @@ Each proposed exception must name:
   input, including build, test and development paths within the decision's scope;
 - a regression test that fails if that path becomes reachable, its command and passing evidence;
 - the approving maintainer and approval link, the affected releases, and an expiry date no later
-  than 30 days after approval;
+  than 30 days after approval, unless it is a standing exception that the maintainer has recorded in
+  this policy by name, bound to conditions checked at every release commit instead of to a date;
 - reassessment at expiry, before each release, and immediately on a dependency/path/input change,
   a new upstream fix, or changed advisory evidence, whichever comes first.
 
@@ -62,6 +63,47 @@ Expired or invalidated approval cannot support a release. Reassess with fresh ev
 of the first two remedies. Preserve the original record and its replacement; do not silently delete
 or suppress an advisory. A source's withdrawal is its own disposition: record the source and date,
 recheck the live audit, and distinguish it from code remediation or a reachability exception.
+
+## Standing exception: GO-2026-5781 (rsc.io/pdf)
+
+Decided by the maintainer on 2026-11-23 on
+[#192](https://github.com/Judgment-Pack/judgment-pack-agent/issues/192). It replaces the narrow
+renewals #192 recorded for v0.9.1 to v0.13.2.
+
+[GO-2026-5781](https://vuln.go.dev/ID/GO-2026-5781.json) is an uncatchable stack overflow in
+`rsc.io/pdf`: `pdf.Open` and `pdf.NewReader` recurse without bound on nested arrays and
+dictionaries. Every version is affected and the upstream repository (`github.com/rsc/pdf`) is
+archived, so no fix is expected: remedy 1 is unavailable. Remedy 2 is not available today: the
+module is required by `golang.org/x/arch` (Agent → `github.com/bytedance/sonic` → x/arch), and the
+latest x/arch, v0.33.0, still requires `rsc.io/pdf v0.1.1`. Removing that path is
+[#386](https://github.com/Judgment-Pack/judgment-pack-agent/issues/386).
+
+The module is in the module graph only. No package of the agent's Go module imports it and it is
+not in the build or test closure, so the vulnerable functions cannot be called.
+
+**The exception holds while all three are true at a release commit:**
+
+1. no `rsc.io/pdf` package is in `go list -deps -test ./...` from `go/`;
+2. no package of the module imports `rsc.io/pdf`, in its imports, test imports or external test
+   imports;
+3. `govulncheck` (v1.1.4), under the Go release `dev.json` pins, reports no GO-2026-5781 finding at
+   any level: symbol, package or module.
+
+**It is enforced, not followed by hand.** The `advisory-exceptions` check
+(`scripts/advisory-exceptions.py`, in CI's `check` job) runs all three at every commit, and fails on
+unavailable evidence as on a hit: a Go release other than the pin, a failed `go list`, a failed or
+unreadable `govulncheck` run, or one that names no vulnerability database. The release admits only a
+commit whose exact-commit CI passed, and the check is never reused from other evidence, so a failing
+check refuses the release. The check holds exactly the standing exceptions this policy names in a
+section of this form, and fails if the two differ.
+
+**It lapses on its own.** The moment any condition fails, the exception no longer holds and the
+release is refused. It comes back to the maintainer, who decides afresh; an agent cannot restore it.
+
+**Its scope is GO-2026-5781 alone.** Any other advisory, a new advisory on `rsc.io/pdf` among them,
+gets its own decision under this policy. It covers the agent's Go module
+(`github.com/Judgment-Pack/judgment-pack-agent/go`) and its releases, not a downstream host's own
+binaries.
 
 ## Historical decision: #151
 
