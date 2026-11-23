@@ -1,6 +1,7 @@
 # ADR-0030: The admission read version "2" and the skill-load read
 
-Status: proposed. 0030 is a placeholder, assigned at merge. Builds on
+Status: accepted, with the maintainer's rulings at the end, which answer its open questions. 0030
+is a placeholder, assigned at merge. Builds on
 [ADR-0006](0006-tool-sources.md), [ADR-0009](0009-skills.md), [ADR-0013](0013-sub-agents.md) and
 [ADR-0029](0029-agent-principals.md). It is the library's row of build step 4 of spec RFC 0030's
 acceptance plan: version `"2"` admission reads and the skill-load read (RFC §2a, *The admission
@@ -42,7 +43,7 @@ TypeScript; the Go input error), naming the host and the value. A run reads its 
 start, from its root's `host`, and every read it makes to that host is at that version. A delegated
 child (ADR-0013) inherits its parent's map and reads at the same version, its chain having the same
 root. The child-link request (`run-principal.json#/$defs/childLinkRequest`) is not one of §2a's
-reads and stays at `"1"` (open question 3).
+reads and stays at `"1"` at either setting (ruling 3).
 
 **At "1", nothing changes, byte for byte.** With no map, or `"1"` for the host: the read types,
 their bytes, the answers taken, the refusals, the loader, the restore and every record are as today;
@@ -68,7 +69,9 @@ arguments, the tool's answer or the host's current observation:
 - a source declared in snapshot mode (ADR-0006, *Gateway snapshot pins*): the `descriptorDigest` of
   the called tool's entry in the approved `descriptorSnapshot`. This needs both readers to take
   snapshot versions `"3"` and `"4"`, by the gateway's reader, which this record builds in the same
-  release, first. The current observation is compared with the approved bytes as today, and a
+  release, first: the readers at `go/context/descriptor_snapshot.go:329` and
+  `packages/harness/descriptorSnapshot.ts:149` are part of this build, not a follow-up, so
+  `call.version` is never always `null` (ruling 6). The current observation is compared with the approved bytes as today, and a
   changed snapshot latches refusal before any read;
 - `null` for a snapshot of a version holding no `descriptorDigest`, a legacy tool-list declaration,
   a `custom` source, a host source, an acting Runtime call (source `runtime`) and source `local`.
@@ -76,14 +79,18 @@ arguments, the tool's answer or the host's current observation:
 For a gateway tool this is the digest the gateway names in its own read and in its tools/list
 `_meta.descriptorDigest` (gateway decision record on read `"2"`), when the approved snapshot is the
 capture the gateway pins. The library does not read `_meta`; a host can show it when it asks for
-approval. A version label is not read and not sent: §2a's `version` is a digest or `null`.
+approval. A version label is not read and not sent: §2a's `version` is a digest or `null`, and the
+label is in the gateway's `_meta` only, beside the digest; the RFC needs no amendment (ruling 1).
 
 **How `skills` is filled.** The run's loaded set as the checkpoint records it (`checkpoint.skills`)
 at the instant of the read: `{id, digest}` per skill, ordered by `id` by code point, `[]` when none
 is loaded, never `null`. It is taken through `SkillGate.Loads` (`go/context/skills.go:570`) and its
 TypeScript peer, under the gate's lock, so a read sees every load and unload before it and none
 half done; a call's read waits for a skill-load read in flight (at most five seconds). A child's
-read names the child's own set. A gateway source's call makes the library's read too, uncounted
+read names the child's own loaded set, never its parent's (ruling 5): by ADR-0009's amendment
+*Declared subagent skills*, an ad hoc delegated child is handed no skills and a declared subagent
+exactly its definition's, loaded under its own `skillsPerRun` count, and neither inherits the
+parent's loaded set. A gateway source's call makes the library's read too, uncounted
 (ADR-0029), so the issuing host judges a gateway call's skills on the library's read.
 
 **The skill-load read, and where it sits.** At `"2"`, for a delegated run, `load_skill` runs in this
@@ -102,8 +109,9 @@ order:
 
 The budget is claimed before the read, so a refused or unanswered read keeps its claim: each
 attempt that reaches the issuing host counts as a load in `sourceFigures.skills`, and the budget
-bounds the reads a model can cause in one run (open question 2). The read counts nothing at the
-host. An unload makes no read.
+bounds the reads a model can cause in one run. The read counts nothing at the
+host. A refused load counts against the skill budget, so a loop of refusals ends (ruling 2). An
+unload makes no read.
 
 **The skill-load port.** `RunPrincipal` gains `SkillLoad` (Go `PrincipalSkillLoadPort`,
 `func(ctx, PrincipalSkillLoadRead) ([]byte, error)`; TypeScript `skillLoad`, `(read, signal) =>
@@ -138,7 +146,7 @@ request, so its reads are made then.
 **The contract.** `run-principal.json` gains the version `"2"` call read beside `admissionRead`,
 `skillLoadRead`, `skillLoadAnswer`, the two answer forms of a body the host does not read, and four
 names in `$defs/refusal`: `tool-version-refused`, `skill-refused`, `read-version-unsupported` and
-`read-malformed`. Record versions do not move (open question 4).
+`read-malformed`. Record versions do not move (the question still open at the end).
 
 **Go and TypeScript in parity.** Both readers build every part of this record, from the same
 contract, against the same vectors and the same spec copy, as ADR-0029's do.
@@ -161,7 +169,9 @@ contract, against the same vectors and the same spec copy, as ADR-0029's do.
 - The shared conformance set: every case of tables 4 and 5 whose `applies` names the library, in Go
   and TypeScript, against an issuing-host test double, from a byte-for-byte copy
   `contract/testdata/principal/spec-admission-reads.json` listed in `spec-citation.json` with its
-  SHA-256, checked before it is read (the copy's form is below).
+  SHA-256, checked before it is read (the copy's form is below): every case whose `applies` holds
+  `sender` and whose `senders` names the library. A case whose sender part is "never emits" is
+  passed as ruling 4 says.
 - `"1"` byte for byte: `admission.json` unchanged; a run with no map and one with `"1"` hand the
   port identical reads; no skill-load read at `"1"` or in an undelegated run.
 - The option: values other than `"1"` and `"2"` refused; a host not named is `"1"`; `"2"` with
@@ -183,12 +193,14 @@ case fails); resend at `"1"` after `read-version-unsupported` (the one-read test
 code-point sort of `skills` (the body bytes fail); take `version` from the current observation
 rather than the approved snapshot (the version test fails).
 
-## The shared conformance set (proposal)
+## The shared conformance set
 
 One file in the specification repository, `conformance/delegation/admission-reads.json`, beside
 `es256-statements.json`, listed in that directory's README with its case count and SHA-256, holding
-tables 4 and 5, one case per name. Each case holds `name`, `table`, `kind`, `applies`
-(`["gateway", "library"]`, or `["library"]` for the `skills` and skill-load cases), the sender's
+tables 4 and 5, one case per name, and the gateway record's case `read-v2-binding-step-12`. Each
+case holds `name`, `table`, `kind`, `applies` (the side it holds, `issuing-host`, `sender` or both,
+each with what that side does; ruling 4), `senders` (`["gateway"]`, `["library"]` or both; the
+`skills` and skill-load cases are the library's), the sender's
 configured version and the versions the host double reads, `inputs` (the chain by the name of a case
 in `ed25519-statements.json`, `at`, `audience`, the call or the load, the approved `version`, the
 loaded skills, `count`, and the double's policy where a case needs one), `body` (the exact `canon`
@@ -208,22 +220,32 @@ written implementations, same vendor, not a cross-vendor claim.
 - Reads of a version after `"2"`, and any statement of the versions a host reads (RFC open question
   26).
 
-## Open questions
+## Rulings on the open questions
 
-1. **Table 4's reader-side cases.** `read-version-not-a-string`, `read-v1-with-skills`,
-   `read-v2-skills-unsorted`, `skill-load-with-count`, `skill-load-names-itself` and
-   `skill-load-at-v1` are an issuing host's verdicts, and the library is not one. Recommendation: it
-   passes them as a sender, showing it never emits such a body and that it maps the answer as above;
-   the acceptance record says so.
-2. **The budget and refused loads.** This record counts a load attempt that reaches the issuing host,
-   refused or not, in `sourceFigures.skills`. Recommendation: keep it, since it bounds the reads;
-   the alternative is a second budget for reads.
-3. **The child-link request's version.** It is the library's issuance request, not a §2a read.
-   Recommendation: it stays `"1"` at either setting; the RFC could say so in one sentence.
-4. **Record versions.** The four new refusal names reach guardrail records only in runs at `"2"`.
-   Recommendation: no record version moves, if the build confirms that a reader that predates the
-   names refuses such a record rather than misreading it; otherwise the event version moves, by
-   ADR-0024.
-5. **A skill loaded in the parent and a child's set.** This record names the child's own loaded set
-   in the child's reads. Recommendation: confirm against ADR-0009's amendment on declared subagent
-   skills during the build; a child that sees its parent's skills would need them in its `skills`.
+The maintainer's rulings, at acceptance:
+
+1. **A version label.** It goes in the gateway's tools/list `_meta` only, never in `call.version`,
+   and the RFC needs no amendment. The plan's earlier wording "label in `call.version`" meant the
+   label beside the digest in `_meta`.
+2. **The budget and refused loads.** A refused skill load counts against the skill budget, so a
+   loop of refusals ends: each attempt that reaches the issuing host counts in
+   `sourceFigures.skills`, refused or not, and no second budget is added.
+3. **The child-link request's version.** It stays `"1"`, at either setting.
+4. **Table 4's reader-side cases.** The malformed-body cases (`read-version-not-a-string`,
+   `read-v1-with-skills`, `read-v2-skills-missing`, `read-v2-skills-unsorted`,
+   `read-v2-skills-repeated`, `read-v2-call-and-load`, `read-body-over-cap`, and table 5's
+   `skill-load-with-count`, `skill-load-names-itself` and `skill-load-at-v1`) are passed by both
+   implementations as senders: they never emit such a body, and they refuse correctly when answered
+   `read-malformed`. The conformance file's `applies` says so per case
+   (`"sender": "never emits; refuses on read-malformed"`).
+5. **A child's set.** A child names its own loaded skills on its own reads, as ADR-0009's amendment
+   *Declared subagent skills* says: neither an ad hoc child nor a declared subagent inherits the
+   parent's loaded set.
+6. **The snapshot readers.** Accepting snapshot versions `"3"` and `"4"`
+   (`go/context/descriptor_snapshot.go:329`, `packages/harness/descriptorSnapshot.ts:149`) is part of
+   this build, so `call.version` is never always `null`; it is not a follow-up.
+
+**Still open: record versions** (the former open question 4). No ruling was given. The four new
+refusal names reach guardrail records only in runs at `"2"`. The record keeps its recommendation:
+no record version moves, if the build confirms that a reader that predates the names refuses such a
+record rather than misreading it; otherwise the event version moves, by ADR-0024.
