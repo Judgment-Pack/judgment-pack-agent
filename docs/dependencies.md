@@ -195,7 +195,7 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 | node_modules/@esbuild/win32-ia32 | 0.28.2 | development, optional | transitive | {"cpu":["ia32"],"os":["win32"]} | MIT | unknown: versioned package metadata does not declare publishing owner | unknown: versioned package.json unavailable |
 | node_modules/@esbuild/win32-x64 | 0.28.2 | development, optional | transitive | {"cpu":["x64"],"os":["win32"]} | MIT | unknown: versioned package metadata does not declare publishing owner | unknown: versioned package.json unavailable |
 | node_modules/@exodus/bytes | 1.15.1 | development | transitive | {"peerDependencies":{"@noble/hashes":"^1.8.0 &#124;&#124; ^2.0.0"},"peerDependenciesMeta":{"@noble/hashes":{"optional":true}}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/ExodusOSS/bytes.git |
-| node_modules/@hono/node-server | 2.1.5 | runtime graph | transitive | {"peerDependencies":{"hono":"^4 &#124;&#124; ^5.0.0-0"}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/node-server.git |
+| node_modules/@hono/node-server | 2.1.6 | runtime graph | transitive | {"peerDependencies":{"hono":"^4 &#124;&#124; ^5.0.0-0"}} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/node-server.git |
 | node_modules/@jridgewell/resolve-uri | 3.1.2 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | https://github.com/jridgewell/resolve-uri |
 | node_modules/@jridgewell/sourcemap-codec | 1.6.0 | development | devDependencies | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/jridgewell/sourcemaps.git |
 | node_modules/@jridgewell/trace-mapping | 0.3.31 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/jridgewell/sourcemaps.git |
@@ -321,7 +321,7 @@ Native membership: npm packages are not part of this Go package closure. Optiona
 | node_modules/gopd | 1.2.0 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/ljharb/gopd.git |
 | node_modules/has-symbols | 1.1.0 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git://github.com/inspect-js/has-symbols.git |
 | node_modules/hasown | 2.0.4 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/inspect-js/hasOwn.git |
-| node_modules/hono | 4.13.13 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/hono.git |
+| node_modules/hono | 4.13.16 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/honojs/hono.git |
 | node_modules/html-encoding-sniffer | 7.0.0 | development | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | git+https://github.com/jsdom/html-encoding-sniffer.git |
 | node_modules/http-errors | 2.0.1 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | jshttp/http-errors |
 | node_modules/iconv-lite | 0.7.3 | runtime graph | transitive | {} | MIT | unknown: versioned package metadata does not declare publishing owner | https://github.com/pillarjs/iconv-lite.git |
@@ -450,8 +450,8 @@ Metadata records bind exact module/version/sum or npm location/version/integrity
 
 - `go/go.mod`: `a5e7847150e3d021ba92d575887e3fac069ca012d940bb0a207ddfb8241dff99`
 - `go/go.sum`: `90154d6afad1d1c9111dfc54d4ce606142976ef83bb43d3866e587777a2c902d`
-- `package-lock.json`: `91b8b9e90b2ca7ceda96d64b2e5f5ad7b812efe30ea4b992c72b976f719a6c60`
+- `package-lock.json`: `d519606386b6a7fd3dc37d880c2d41d13c131726cddc0aea6ee977d249922698`
 - `scripts/dependencies-config.json`: `02fbaac28ac926d8abe15484f60c9f8c2833a188bf8c375d149568dddcb56a9b`
-- `scripts/dependencies-metadata.json`: `8cd5e33339bd7ff1f64cb7cbdc11abb75369b3aa944783e92a07a0524f8186e1`
+- `scripts/dependencies-metadata.json`: `7e4cebfe7feb892173527d93229d5e89a620061dc6eb23c6ec3335c3ef9ad0dd`
 
 Selected third-party modules: 77. npm installation entries: 296.

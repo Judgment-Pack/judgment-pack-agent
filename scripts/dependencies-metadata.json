@@ -2126,13 +2126,13 @@
     },
     "node_modules/@hono/node-server": {
       "binding": {
-        "integrity": "sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==",
-        "version": "2.1.5"
+        "integrity": "sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==",
+        "version": "2.1.6"
       },
       "evidence": [
         {
           "file": "package.json",
-          "sha256": "28b7c255c6c7ae6b994ceae9326211b6c6877c4746adb85b780b759ce1ceba41"
+          "sha256": "f69eb6c66106026a461fdf4a08142b6f871270dd656199cddbc3a81ddcf7eb1a"
         }
       ],
       "license": "MIT",
@@ -3851,13 +3851,13 @@
     },
     "node_modules/hono": {
       "binding": {
-        "integrity": "sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==",
-        "version": "4.13.13"
+        "integrity": "sha512-AOLOEhvrV+iH92xXCnFr/5+3KjPKcI3xP63XJtX5spAnkznPdHijlIsUTpi7/9EhWqrTCekw5c5zh1K+YsVw7A==",
+        "version": "4.13.16"
       },
       "evidence": [
         {
           "file": "package.json",
-          "sha256": "169a02072e32d85aacb089ad14b62b027d975479d811f741771fbd0f559fb5c9"
+          "sha256": "942238eb71c215a99d65704931b538b4b49e5d2f95900c240e5d1dfe2b9071d0"
         }
       ],
       "license": "MIT",
