@@ -1,0 +1,53 @@
+{
+ "description": "The answers to a version \"2\" call read: version \"1\"'s three forms, the two step 12 refusals, and both unread answers. Anything else refuses the call as admission-unknown.",
+ "schema": "run-principal.json#/$defs/admissionAnswerV2",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts"
+  ],
+  "spec": {
+   "repository": "Judgment-Pack/judgment-pack-spec",
+   "commit": "b6f0cba4f3c95843831e2a015b10204f476ec97e",
+   "file": "conformance/delegation/admission-reads.json"
+  }
+ },
+ "items": [
+  {
+   "admission": "admit"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "skill-refused"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "tool-version-refused"
+  },
+  {
+   "admission": "refuse",
+   "refusal": "subject-unauthorized"
+  },
+  {
+   "refusal": "read-version-unsupported"
+  },
+  {
+   "refusal": "read-malformed"
+  }
+ ],
+ "refused": [
+  {
+   "admission": "maybe"
+  },
+  {
+   "refusal": "read-version-unknown"
+  },
+  {
+   "admission": "admit",
+   "load": "admit"
+  }
+ ]
+}

@@ -1,0 +1,60 @@
+{
+ "description": "The skill-load port's answers: admit, a refusal of steps 8 to 10 or skill-refused, and both unread answers. Anything else refuses the load as admission-unknown, and the load keeps its claim on the skill budget.",
+ "schema": "run-principal.json#/$defs/skillLoadAnswer",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/skills.ts"
+  ],
+  "spec": {
+   "repository": "Judgment-Pack/judgment-pack-spec",
+   "commit": "b6f0cba4f3c95843831e2a015b10204f476ec97e",
+   "file": "conformance/delegation/admission-reads.json"
+  }
+ },
+ "items": [
+  {
+   "refusal": "read-version-unsupported"
+  },
+  {
+   "refusal": "read-malformed"
+  },
+  {
+   "load": "admit"
+  },
+  {
+   "load": "refuse",
+   "refusal": "skill-refused"
+  },
+  {
+   "load": "refuse",
+   "refusal": "revoked"
+  },
+  {
+   "load": "refuse",
+   "refusal": "expired"
+  },
+  {
+   "load": "refuse",
+   "refusal": "not-issued"
+  }
+ ],
+ "refused": [
+  {
+   "load": "maybe"
+  },
+  {
+   "admission": "admit"
+  },
+  {
+   "load": "refuse"
+  },
+  {
+   "load": "admit",
+   "refusal": "skill-refused"
+  }
+ ]
+}

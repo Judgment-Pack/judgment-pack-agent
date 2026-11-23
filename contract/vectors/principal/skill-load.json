@@ -1,0 +1,148 @@
+{
+ "description": "Skill-load reads at version \"2\" (ADR-0030): the skill to load and the set already loaded, after the budget claim and before the checkpoint write. From the shared admission-reads cases.",
+ "schema": "run-principal.json#/$defs/skillLoadRead",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/skills.ts"
+  ],
+  "spec": {
+   "repository": "Judgment-Pack/judgment-pack-spec",
+   "commit": "b6f0cba4f3c95843831e2a015b10204f476ec97e",
+   "file": "conformance/delegation/admission-reads.json"
+  }
+ },
+ "items": [
+  {
+   "at": "2026-10-30T01:00:00.000Z",
+   "audience": {
+    "kind": "agent-host",
+    "name": "agent-host-1"
+   },
+   "chain": [
+    "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+   ],
+   "host": "desk",
+   "load": {
+    "skill": {
+     "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+     "id": "issue-style"
+    },
+    "skills": [
+     {
+      "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+      "id": "expense-policy"
+     }
+    ]
+   },
+   "readVersion": "2"
+  },
+  {
+   "at": "2026-10-30T01:00:00.000Z",
+   "audience": {
+    "kind": "agent-host",
+    "name": "agent-host-1"
+   },
+   "chain": [
+    "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+   ],
+   "host": "desk",
+   "load": {
+    "skill": {
+     "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+     "id": "expense-policy"
+    },
+    "skills": []
+   },
+   "readVersion": "2"
+  }
+ ],
+ "refused": [
+  {
+   "problem": "a skill-load read at readVersion \"1\"",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "agent-host",
+     "name": "agent-host-1"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "load": {
+     "skill": {
+      "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+      "id": "issue-style"
+     },
+     "skills": [
+      {
+       "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+       "id": "expense-policy"
+      }
+     ]
+    },
+    "readVersion": "1"
+   }
+  },
+  {
+   "problem": "a load naming no skill",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "agent-host",
+     "name": "agent-host-1"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "load": {
+     "skills": [
+      {
+       "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+       "id": "expense-policy"
+      }
+     ]
+    },
+    "readVersion": "2"
+   }
+  },
+  {
+   "problem": "a skill-load read naming a call",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "agent-host",
+     "name": "agent-host-1"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "load": {
+     "skill": {
+      "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+      "id": "issue-style"
+     },
+     "skills": [
+      {
+       "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+       "id": "expense-policy"
+      }
+     ]
+    },
+    "readVersion": "2",
+    "call": {
+     "source": "notes",
+     "tool": "read_note",
+     "effect": "read",
+     "count": true
+    }
+   }
+  }
+ ]
+}

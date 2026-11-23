@@ -1,0 +1,240 @@
+{
+ "description": "Call reads at version \"2\" (ADR-0030; RFC 0030 §2a): the call names its descriptor version and the run's loaded skills, ordered by id. Taken from the specification's shared admission-reads cases, which the package runs in both languages.",
+ "schema": "run-principal.json#/$defs/admissionReadV2",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts"
+  ],
+  "spec": {
+   "repository": "Judgment-Pack/judgment-pack-spec",
+   "commit": "b6f0cba4f3c95843831e2a015b10204f476ec97e",
+   "file": "conformance/delegation/admission-reads.json"
+  }
+ },
+ "items": [
+  {
+   "at": "2026-10-30T01:00:00.000Z",
+   "audience": {
+    "kind": "gateway",
+    "name": "gateway:test"
+   },
+   "call": {
+    "count": false,
+    "effect": "read-external",
+    "skills": [],
+    "source": "tickets/live",
+    "tool": "query",
+    "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+   },
+   "chain": [
+    "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+   ],
+   "host": "desk",
+   "readVersion": "2"
+  },
+  {
+   "at": "2026-10-30T01:00:00.000Z",
+   "audience": {
+    "kind": "gateway",
+    "name": "gateway:test"
+   },
+   "call": {
+    "count": false,
+    "effect": "read-external",
+    "skills": [
+     {
+      "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+      "id": "expense-policy"
+     },
+     {
+      "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+      "id": "issue-style"
+     }
+    ],
+    "source": "tickets/live",
+    "tool": "query",
+    "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+   },
+   "chain": [
+    "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+   ],
+   "host": "desk",
+   "readVersion": "2"
+  }
+ ],
+ "refused": [
+  {
+   "problem": "a version \"2\" call at readVersion \"1\"",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "skills": [
+      {
+       "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+       "id": "expense-policy"
+      },
+      {
+       "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+       "id": "issue-style"
+      }
+     ],
+     "source": "tickets/live",
+     "tool": "query",
+     "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "1"
+   }
+  },
+  {
+   "problem": "a call without skills",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "source": "tickets/live",
+     "tool": "query",
+     "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "2"
+   }
+  },
+  {
+   "problem": "a call without version",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "skills": [
+      {
+       "digest": "sha256:0db9962ec1788a72f134587be9a2738c5f3db7bf53d57c0c2a28bdde20960ade",
+       "id": "expense-policy"
+      },
+      {
+       "digest": "sha256:54c58da035256c83611efb3bf1d4568f14bb07f0d90b0dc5a78b7c5771e53299",
+       "id": "issue-style"
+      }
+     ],
+     "source": "tickets/live",
+     "tool": "query"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "2"
+   }
+  },
+  {
+   "problem": "a skill without its digest",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "skills": [
+      {
+       "id": "issue-style"
+      }
+     ],
+     "source": "tickets/live",
+     "tool": "query",
+     "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "2"
+   }
+  },
+  {
+   "problem": "a skill with a member skillRef does not state",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "skills": [
+      {
+       "id": "issue-style",
+       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+       "note": "x"
+      }
+     ],
+     "source": "tickets/live",
+     "tool": "query",
+     "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "2"
+   }
+  },
+  {
+   "problem": "a skill id that does not start with a letter",
+   "item": {
+    "at": "2026-10-30T01:00:00.000Z",
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "call": {
+     "count": false,
+     "effect": "read-external",
+     "skills": [
+      {
+       "id": "9x",
+       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+     ],
+     "source": "tickets/live",
+     "tool": "query",
+     "version": "sha256:e36b74acc9fcf3a4bdf222f12eb1e68662aae5026e8fa289459140f12f51e327"
+    },
+    "chain": [
+     "sha256:2da3f48b6ab326b9664ead97c1c777c63e059ea90ef78ee0fe391c1c4f88e429"
+    ],
+    "host": "desk",
+    "readVersion": "2"
+   }
+  }
+ ]
+}

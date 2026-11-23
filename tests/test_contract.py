@@ -1541,7 +1541,7 @@ class VectorTests(unittest.TestCase):
         # value is carried by a handwritten principal vector, every refused record the schema can
         # state fails it, and every chain digest is the one an independent canonical JSON gives.
         rows = {name: vector for name, vector in self.vectors.items() if name.startswith("principal/")}
-        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json", "principal/binding.json", "principal/child.json", "principal/scope-binding.json"})
+        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json", "principal/binding.json", "principal/child.json", "principal/scope-binding.json", "principal/read-v2.json", "principal/skill-load.json", "principal/answer-v2.json", "principal/skill-load-answer.json"})
         schema = self.schemas["run-principal.json"]
 
         def invalid(changed):
@@ -1581,6 +1581,13 @@ class VectorTests(unittest.TestCase):
         check = validator(self.schemas, rows["principal/answer.json"]["schema"])
         for refused in rows["principal/answer.json"]["refused"]:
             self.assertNotEqual(problems(check, [refused]), [])
+        # ADR-0030: the version "2" reads and answers, each refused form refused.
+        for name in ("principal/read-v2.json", "principal/skill-load.json", "principal/answer-v2.json", "principal/skill-load-answer.json"):
+            check = validator(self.schemas, rows[name]["schema"])
+            for refused in rows[name]["refused"]:
+                item = refused["item"] if "problem" in refused else refused
+                with self.subTest(vector=name, refused=refused.get("problem", json.dumps(refused))):
+                    self.assertNotEqual(problems(check, [item]), [])
         self.assertEqual(problems(validator(self.schemas, "run-principal.json#/$defs/childLinkAnswer"), rows["principal/child.json"]["answers"]), [])
         chains = rows["principal/chains.json"]
         root, child = chains["items"][1]

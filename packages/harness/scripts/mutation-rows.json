@@ -11084,7 +11084,7 @@
   {
    "name": "principal P7 the port's revocation is ignored",
    "file": "principal.ts",
-   "find": "  if (answer !== undefined && BEFORE_SCOPE.includes(answer.name)) return answer\n  if (ownRefusal) return ownRefusal\n  return answer",
+   "find": "  if (answer !== undefined && (BEFORE_SCOPE.includes(answer.name) || UNREAD.includes(answer.name))) return answer\n  if (ownRefusal) return ownRefusal\n  return answer",
    "replace": "  return ownRefusal",
    "tests": [
     "principal.test.ts",
@@ -11330,8 +11330,8 @@
   {
    "name": "principal P45 an acting Runtime call is admitted under another source",
    "file": "principal.ts",
-   "find": "source: RUNTIME_SOURCE, tool, effect: 'act'}",
-   "replace": "source: 'notes', tool, effect: 'act'}",
+   "find": "source: RUNTIME_SOURCE, tool, effect: 'act', skills}",
+   "replace": "source: 'notes', tool, effect: 'act', skills}",
    "tests": [
     "principalPaths.test.ts",
     "principal.test.ts"
