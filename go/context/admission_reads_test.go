@@ -210,11 +210,33 @@ func TestAdmissionReadsSpecCases(t *testing.T) {
 	}
 }
 
+// readRecorder keeps the bodies a port is handed. The port runs on the
+// goroutine principalAsk starts, which an unanswered read leaves running past
+// the answer (the package stops waiting at the deadline), so every access is
+// under the lock and the test reads a copy.
+type readRecorder struct {
+	mu     sync.Mutex
+	bodies []string
+}
+
+func (r *readRecorder) add(body string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bodies = append(r.bodies, body)
+	return len(r.bodies)
+}
+
+func (r *readRecorder) sent() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.bodies)
+}
+
 func admissionReadsCallCase(t *testing.T, f admissionReadsFixture, c admissionReadsCase, neverEmits bool) {
 	answer := jsonText(t, c.Answer)
-	var bodies []string
+	var recorded readRecorder
 	port := func(_ context.Context, read PrincipalAdmissionRead) ([]byte, error) {
-		bodies = append(bodies, CanonicalJSON(read.Value()))
+		recorded.add(CanonicalJSON(read.Value()))
 		return []byte(*answer), nil
 	}
 	var skills []PrincipalSkill
@@ -231,6 +253,7 @@ func admissionReadsCallCase(t *testing.T, f admissionReadsFixture, c admissionRe
 	if got != nil {
 		verdict = got.Name
 	}
+	bodies := recorded.sent()
 	if verdict != c.Expect.Sender || len(bodies) != c.Expect.Reads {
 		t.Fatalf("got %s after %d reads, want %s after %d", verdict, len(bodies), c.Expect.Sender, c.Expect.Reads)
 	}
@@ -254,14 +277,14 @@ func admissionReadsLoadCase(t *testing.T, f admissionReadsFixture, c admissionRe
 	} else if text := jsonText(t, c.Answer); text != nil {
 		answers = []string{*text}
 	}
-	var bodies []string
+	var recorded readRecorder
 	load := func(ctx context.Context, read PrincipalSkillLoadRead) ([]byte, error) {
-		bodies = append(bodies, CanonicalJSON(read.Value()))
-		if len(answers) < len(bodies) {
+		n := recorded.add(CanonicalJSON(read.Value()))
+		if len(answers) < n {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}
-		return []byte(answers[len(bodies)-1]), nil
+		return []byte(answers[n-1]), nil
 	}
 	var principal *OpenedPrincipal
 	if c.Inputs.Chain != nil {
@@ -280,6 +303,7 @@ func admissionReadsLoadCase(t *testing.T, f admissionReadsFixture, c admissionRe
 		if err := json.Unmarshal(c.Expect.Loaded, &kept); err != nil {
 			t.Fatal(err)
 		}
+		bodies := recorded.sent()
 		refusal, guardrail := lastSkillRefusal(gate)
 		if refusal != "" {
 			var refused []string
@@ -308,6 +332,7 @@ func admissionReadsLoadCase(t *testing.T, f admissionReadsFixture, c admissionRe
 	if err != nil {
 		verdict, _ = lastSkillRefusal(gate)
 	}
+	bodies := recorded.sent()
 	var loaded bool
 	if err := json.Unmarshal(c.Expect.Loaded, &loaded); err != nil {
 		t.Fatal(err)
