@@ -618,3 +618,20 @@ func TestReadVersionTwoRefusalsAreRecorded(t *testing.T) {
 		}
 	}
 }
+
+// ADR-0030: a standing read at "2" the issuing host did not read is reported by its name after that one
+// read, never resent at "1".
+func TestStandingReadUnreadNeverResent(t *testing.T) {
+	f := loadAdmissionReads(t)
+	for _, name := range []string{"read-version-unsupported", "read-malformed"} {
+		var versions []string
+		principal := f.open(t, "2", "2026-10-30T01:00:00.000Z", func(_ context.Context, read PrincipalAdmissionRead) ([]byte, error) {
+			versions = append(versions, read.ReadVersion)
+			return []byte(`{"refusal":"` + name + `"}`), nil
+		}, nil)
+		got, err := principal.AdmitPrincipalStanding(context.Background(), "read_context", "read", nil)
+		if err != nil || got == nil || got.Name != name || !slices.Equal(versions, []string{"2"}) {
+			t.Fatalf("%s: got %+v, %v, after reads at %v", name, got, err, versions)
+		}
+	}
+}

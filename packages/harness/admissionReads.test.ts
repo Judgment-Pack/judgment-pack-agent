@@ -188,3 +188,14 @@ describe('descriptor snapshots of versions 3 and 4 (ADR-0030, ruling 6)', () => 
     })
   }
 })
+
+describe('a standing read at "2" the issuing host did not read (ADR-0030)', () => {
+  for (const name of ['read-version-unsupported', 'read-malformed'] as const) {
+    it(`reports ${name} after one read and never resends at "1"`, async () => {
+      const versions: string[] = []
+      const principal = await open('2', '2026-10-30T01:00:00.000Z', read => { versions.push(read.readVersion); return {refusal: name} })
+      expect(await admitStanding(principal, 'read_context', 'read')).toEqual({name})
+      expect(versions).toEqual(['2'])
+    })
+  }
+})
