@@ -1541,7 +1541,7 @@ class VectorTests(unittest.TestCase):
         # value is carried by a handwritten principal vector, every refused record the schema can
         # state fails it, and every chain digest is the one an independent canonical JSON gives.
         rows = {name: vector for name, vector in self.vectors.items() if name.startswith("principal/")}
-        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json", "principal/binding.json", "principal/child.json"})
+        self.assertEqual(set(rows), {"principal/chains.json", "principal/admission.json", "principal/record.json", "principal/refusal.json", "principal/answer.json", "principal/events.json", "principal/report.json", "principal/binding.json", "principal/child.json", "principal/scope-binding.json"})
         schema = self.schemas["run-principal.json"]
 
         def invalid(changed):

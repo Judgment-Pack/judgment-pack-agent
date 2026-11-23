@@ -1,5 +1,16 @@
 {
- "description": "The agent library's own scope-binding vectors (spec RFC 0030 §2, Binding a chain to one scope identifier; §3, clause 9; conformance table 3's statement rows and its library rows). Signed once with the RFC's synthetic keys (the Ed25519 seed judgment-pack-delegation-host-01 and the P-256 scalar of 32 bytes of 01) by node:crypto, not by the verifier under test. statements: a chain and the first refusal of steps 1 to 7, or ok, with the link it is at. requests: a call under a chain of statements, by name, at a time inside its validity unless at is given; expect is the admission's refusal, or admit; reads is how many admission reads the host's port is asked. bindings: a gateway source declared to the run's gate under a chain of statements, by name, whose receipts the host verifies (verifyReceipt) and the package does not, fixed to the scope identifier fixed (null for none); expect is the refusal at binding, with a guardrail whose detail holds detail and no call of the source sent, or admit.",
+ "description": "The agent library's own scope-binding vectors (spec RFC 0030 §2, Binding a chain to one scope identifier; §3, clause 9; conformance table 3's statement rows and its library rows). Signed once with the RFC's synthetic keys (the Ed25519 seed judgment-pack-delegation-host-01 and the P-256 scalar of 32 bytes of 01) by node:crypto, not by the verifier under test. statements: a chain and the first refusal of steps 1 to 7, or ok, with the link it is at. requests: a call under a chain of statements, by name, at a time inside its validity unless at is given; expect is the admission's refusal, or admit; reads is how many admission reads the host's port is asked. bindings: a gateway source declared to the run's gate under a chain of statements, by name, whose receipts the host verifies (verifyReceipt) and the package does not, fixed to the scope identifier fixed (null for none); expect is the refusal at binding, with a guardrail whose detail holds detail and no call of the source sent, or admit. items are the chains of the statements that verify (expect ok), in that order.",
+ "schema": "run-principal.json#/$defs/chain",
+ "source": {
+  "harness": {
+   "repository": "Judgment-Pack/judgment-pack-agent",
+   "package": "packages/harness"
+  },
+  "files": [
+   "packages/harness/principal.ts (verifyChain, admitCall)",
+   "packages/harness/principalScope.test.ts"
+  ]
+ },
  "keys": {
   "desk": [
    "00028d283e279178a6ce561e45f1b89f2a6ac45690fbb5ac48313ad61ab04584",
@@ -2193,5 +2204,893 @@
    "expect": "scope-id-mismatch",
    "detail": "bound to no scope identifier"
   }
+ ],
+ "items": [
+  [
+   {
+    "delegationVersion": "1",
+    "id": "599f3d67df5aa9bc358e14ef2eb9f963",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "2acd9a08dafa3f5b0734f205cc2c143d5b4da3eb212f2441cdf87b3e1603b417460b82a2bef5589f212faca7f536d7cd7c5f1db54f2502da28f622a2fcb11306"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "6903577f99921dd7f5f3df3d50ae9b12",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "3523bc70743d51310c2994bd52669c054d5df43222fdf57df741d21126e5558ff46ef5642289fce49f602a101904bcf189b9a6bf5f889f71729ce22935e1700e"
+   },
+   {
+    "delegationVersion": "1",
+    "id": "610a30d69b55ec6f5af9b1e73586a091",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": {
+     "id": "6903577f99921dd7f5f3df3d50ae9b12",
+     "digest": "sha256:cf48eb865f743ea16789367185210b11b55484f52d7a2919c54c8c993ecac0f3"
+    },
+    "depth": 1,
+    "signature": "9cd991ce67700c29bde5f82af9c6c33761a1c74453b2b3737e9b0514c31bd9c79dea69056122efc468dd8cf5c2b77f06ad12fdb70a0cb72123aa8cb9fe244e05"
+   },
+   {
+    "delegationVersion": "1",
+    "id": "e1d37b60e6edc2a6edc0b2e6c7ee5f44",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": {
+     "id": "610a30d69b55ec6f5af9b1e73586a091",
+     "digest": "sha256:b594195d4e012229fb0832472c49f9a2f023bd4eb9ae47944a29f1dccc664621"
+    },
+    "depth": 2,
+    "signature": "fdd425ada8b2c1a9af0a3448381019c199333ef33629b96ff258dfb16dcb1b7fb593dfc25fd7bb1c673789c4afc697dcc9bc6aaa1f58131145b0c971b19de608"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "614f05a65906f684509b62f43d2292e0",
+    "host": "desk",
+    "keyId": "dbdb99c64b3d511f72c88fb6c054da73",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "alg": "ES256",
+    "signature": "57ff78ee3ad474f907dc4f8a4fde3ca432b31f7ff7229742fbb70634367bebe742004c5b4d3ae731d843e0597789aaa5842e71245740a53877baed0982b09d67"
+   },
+   {
+    "delegationVersion": "1",
+    "id": "17e63d0aeb2aa4732b8698eb6385d015",
+    "host": "desk",
+    "keyId": "dbdb99c64b3d511f72c88fb6c054da73",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": {
+     "id": "614f05a65906f684509b62f43d2292e0",
+     "digest": "sha256:7f34bfac232b3a679192a9d0ed8ef6b77b5591506208a6a2425fc784f34cd2e0"
+    },
+    "depth": 1,
+    "alg": "ES256",
+    "signature": "4d653e6bdb08e468e18e3f35cbaecb230ccdbaf981bd1eb582170d2051ef006f591bcf07466565b7bd46b76b78926943f3333ee4cba0ab54a9a686e193499286"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "57d135cd9eba67ebc28287298c6b863b",
+    "host": "desk",
+    "keyId": "dbdb99c64b3d511f72c88fb6c054da73",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": true,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "alg": "ES256",
+    "signature": "0a0c6211aab46a3a538d2d6c032776c9a9b0994583ad2a3b57a7b1bdfaa7fba436ee71fd9bccc5000b642e57368c65d17daaaddb434844c20cb59c8a40ed3440"
+   },
+   {
+    "delegationVersion": "1",
+    "id": "e917786200a79bc7b2af771fefa96818",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "scope-a"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": {
+     "id": "57d135cd9eba67ebc28287298c6b863b",
+     "digest": "sha256:4e605f9b29f91f6f0b38377b6efa6e681ce5cbcff7e435656928eedb4efc93e7"
+    },
+    "depth": 1,
+    "signature": "661d4f8bb734bc58b9c499be3cb914bc5f6638a6eb8f4279c967b1fc866dbd9145ca08531dfa7b25661f59b7d41eeada11424c2c8373f5abdfcfec0f035b8401"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "505261e4b5c3acd0c8500aa979909533",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "22a3ccdf2c81d9e8e71b83c82411c67223acf3375e42fb809b41214b380682e4020872bd61acfe3a3966035291fb9f730b9d5f9b3b9e099fb292b7757c7ff50c"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "7a1852b1dac62b32f1a2712711e40177",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ],
+     "scopeId": "Scope-A é"
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "d089349ad457abd8c1d0c16c98f411b7d644b66fe7e91384dc8662b5a71efd2dcf4bbb13a6aab314553760448fc42aeaa9fda6e83d2348863a09674a01cd9005"
+   }
+  ],
+  [
+   {
+    "delegationVersion": "1",
+    "id": "1f530e50ef84ba6d0453f2532171b62f",
+    "host": "desk",
+    "keyId": "5c57cc9dc13bda735be87dc1de5db9a4",
+    "sub": {
+     "kind": "person",
+     "issuer": "https://login.example.com/",
+     "subject": "approver@example.com"
+    },
+    "act": {
+     "agent": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+     "software": {
+      "package": "@judgment-pack/harness",
+      "version": "0.13.0"
+     }
+    },
+    "scope": {
+     "sources": [
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "notes",
+       "tools": [
+        "read_note",
+        "write_note"
+       ],
+       "effects": [
+        "read",
+        "act"
+       ],
+       "limits": {
+        "calls": 3
+       }
+      },
+      {
+       "audience": {
+        "kind": "agent-host",
+        "name": "desk"
+       },
+       "source": "wiki",
+       "tools": [
+        "search"
+       ],
+       "effects": [
+        "read"
+       ],
+       "limits": {
+        "x-rows": 10
+       }
+      },
+      {
+       "audience": {
+        "kind": "gateway",
+        "name": "gateway:test"
+       },
+       "source": "tickets/live",
+       "tools": [
+        "query"
+       ],
+       "effects": [
+        "read",
+        "read-external"
+       ],
+       "limits": {}
+      }
+     ]
+    },
+    "mayDelegate": false,
+    "issuedAt": "2026-10-30T00:00:00.000Z",
+    "expiresAt": "2026-10-30T08:00:00.000Z",
+    "parent": null,
+    "depth": 0,
+    "signature": "50e052f3aa553c7b5fe7a4981ed2239cb1ee547d870a8d9fcff4ff3b1d0bef1f0ecda2ccdb9bf2005860c0128abaa8789d3a8308bee41486a76f73a7cbca6603"
+   }
+  ]
  ]
 }

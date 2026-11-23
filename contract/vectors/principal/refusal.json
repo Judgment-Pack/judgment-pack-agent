@@ -67,6 +67,9 @@
    "name": "not-parent-actor"
   },
   {
+   "name": "scope-id-mismatch"
+  },
+  {
    "name": "out-of-scope",
    "reason": "source"
   },
