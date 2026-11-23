@@ -10,13 +10,18 @@
  *   failure, exactly as the reference gateway's SPEC.md §11.1 reads them: `malformed`,
  *   `unsupported-version`, `malformed`, `key-mismatch`, `signature-mismatch`, `chain-broken`,
  *   `widened`. The canonical form is the gateway's `canon` (member names by code point, integers
- *   only); a signature is Ed25519 over `judgment-pack/delegation/1:` and `canon` of the link without
- *   its signature, under a key pinned for the link's host and held to the gateway's §8.4 key rule;
+ *   only); a signature is over `judgment-pack/delegation/1:` and `canon` of the link without its
+ *   signature, under a key pinned for the link's host with the link's algorithm: Ed25519 where the
+ *   link holds no `alg`, held to the gateway's §8.4 key rule, and ES256 where it holds
+ *   `alg: "ES256"`, held to the gateway's §1.5 rules, low S included (RFC 0030 §2, *Signing with a
+ *   P-256 key*). A chain's root may bind it to one scope identifier (`scope.scopeId`), which every
+ *   link repeats (§3, clause 9);
  * - **the run's principal** (`openPrincipal`): the chain, its leaf's software against the software
  *   the host states the run runs (`software-mismatch`), and the record member every delegated
  *   record carries (`principal`: actor, subject, the leaf by id and digest, the chain's digests);
- * - **admission** (`admitCall`): immediately before a call is dispatched, at the host's time, steps
- *   8 (`not-yet-valid`, `expired`), the package's own part of step 11 (`out-of-scope` with reason
+ * - **admission** (`admitCall`): immediately before a call is dispatched, the request check of a
+ *   bound chain (`scope-id-mismatch`: a gateway source fixed to another scope identifier, or none),
+ *   then, at the host's time, steps 8 (`not-yet-valid`, `expired`), the package's own part of step 11 (`out-of-scope` with reason
  *   `source`, `tool`, `effect` or `limit-unknown`), and the host admission port's answer for the
  *   issuing host's state (inventory, issuance, revocation, `calls` counters and the subject's
  *   standing), read afresh for every admission: no package-side cache holds an answer. A port that
@@ -28,6 +33,7 @@
 import {readDescriptorJSON} from './descriptorSnapshot'
 import {authoredFailure} from './failures'
 import {sha256} from './records'
+import graphicRanges from './descriptorGraphicRanges.json'
 
 export const DELEGATION_CONTEXT = 'judgment-pack/delegation/1:'
 /** RFC 0030 open questions 3 and 21, as the reference gateway enforces them. */
@@ -43,7 +49,7 @@ export const RUNTIME_SOURCE = 'runtime'
 export const LOCAL_SOURCE = 'local'
 export const SCOPE_REASONS = ['source', 'tool', 'effect', 'limit-unknown', 'limit'] as const
 export type ScopeReason = typeof SCOPE_REASONS[number]
-export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor'
+export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor' | 'scope-id-mismatch'
 /** A named refusal (`run-principal.json#/$defs/refusal`); `reason` is present exactly for out-of-scope. */
 export interface PrincipalRefusal {name: RefusalName; reason?: ScopeReason}
 
@@ -73,8 +79,9 @@ export type ChildLinkPort = (request: ChildLinkRequest, signal: AbortSignal) => 
 
 /**
  * What the host supplies for a delegated run (`ContextInput.principal`). `chain` is the JSON text of
- * the chain, root first, as the issuing host issued it; `keys` the issuing hosts' pinned Ed25519
- * public keys (64 lowercase hexadecimal characters each) by host; `software` the software the host
+ * the chain, root first, as the issuing host issued it; `keys` the issuing hosts' pinned public keys
+ * by host, each with its algorithm (`KeyPin`: an Ed25519 key as 64 lowercase hexadecimal characters,
+ * a P-256 key as `{alg: "ES256", key}`, its 33-byte compressed point in 66); `software` the software the host
  * states the run runs (RFC 0030 §1 rule 3); `audience` the flat token this host declares for the
  * host sources it serves; `admission` the port that answers from the issuing host's state; `clock`
  * the host's authoritative time (the system clock where absent). `child` asks the issuing host for the narrowed link
@@ -82,7 +89,7 @@ export type ChildLinkPort = (request: ChildLinkRequest, signal: AbortSignal) => 
  */
 export interface RunPrincipal {
   chain: string
-  keys: Readonly<Record<string, readonly string[]>>
+  keys: Readonly<Record<string, readonly KeyPin[]>>
   software: Software
   audience: string
   admission: AdmissionPort
@@ -175,7 +182,7 @@ export function keyProblem(key: string): 'key-not-canonical' | 'key-small-order'
   if (w !== 0n && modpow(w, (P - 1n) / 2n, P) !== 1n) return 'key-not-on-curve'
   return undefined
 }
-/** A key's identifier: the first 32 characters of the hex SHA-256 of its 32 bytes. */
+/** A key's identifier: the first 32 characters of the hex SHA-256 of its bytes (32 for Ed25519, the compressed point's 33 for P-256). */
 export async function keyIdentifier(key: string): Promise<string> {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', unhex(key)))).slice(0, 32)
 }
@@ -188,30 +195,121 @@ async function signatureVerifies(key: string, signature: string, message: string
   } catch { return false }
 }
 
+// ES256 (RFC 0030 §2, *Signing with a P-256 key*; the gateway's §1.5): ECDSA over P-256 with SHA-256, cofactor 1.
+const P256 = 0xffffffff00000001000000000000000000000000ffffffffffffffffffffffffn
+const P256_B = 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604bn
+const P256_N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n
+const P256_HALF_N = (P256_N - 1n) / 2n
+const bigEndian = (bytes: Uint8Array) => bytes.reduce((n, b) => (n << 8n) | BigInt(b), 0n)
+const be32 = (n: bigint) => Uint8Array.from({length: 32}, (_, i) => Number((n >> BigInt(8 * (31 - i))) & 0xffn))
+/**
+ * A P-256 key's uncompressed point (`04`, x, y) from its compressed one, or why it is not a key a reader may pin: 33 bytes
+ * (66 lowercase hexadecimal characters), the first `02` (y even) or `03` (y odd), x below p, and x³ − 3x + b a square
+ * modulo p, so the point exists. The uncompressed form and every other length are refused. p ≡ 3 (mod 4), so the
+ * square root is a power.
+ */
+export function p256Point(key: string): Uint8Array | 'key-malformed' | 'key-not-canonical' | 'key-not-on-curve' {
+  if (!/^0[23][0-9a-f]{64}$/.test(key)) return 'key-malformed'
+  const bytes = unhex(key)
+  const x = bigEndian(bytes.subarray(1))
+  if (x >= P256) return 'key-not-canonical'
+  const rhs = ((x * x % P256 * x - 3n * x + P256_B) % P256 + P256) % P256
+  let y = modpow(rhs, (P256 + 1n) / 4n, P256)
+  if (y * y % P256 !== rhs) return 'key-not-on-curve'
+  if ((y & 1n) !== BigInt(bytes[0]! & 1)) y = (P256 - y) % P256
+  const point = new Uint8Array(65)
+  point[0] = 4
+  point.set(be32(x), 1)
+  point.set(be32(y), 33)
+  return point
+}
+/** ES256 over a message: r||s with 1 ≤ r ≤ n − 1 and 1 ≤ s ≤ (n − 1)/2 (low S, which plain ECDSA does not hold), and ECDSA with SHA-256 under the point. */
+async function es256Verifies(point: Uint8Array, signature: string, message: string): Promise<boolean> {
+  const bytes = unhex(signature)
+  const r = bigEndian(bytes.subarray(0, 32)), s = bigEndian(bytes.subarray(32))
+  if (r < 1n || r > P256_N - 1n || s < 1n || s > P256_HALF_N) return false
+  try {
+    const imported = await crypto.subtle.importKey('raw', Uint8Array.from(point), {name: 'ECDSA', namedCurve: 'P-256'}, false, ['verify'])
+    return await crypto.subtle.verify({name: 'ECDSA', hash: 'SHA-256'}, imported, bytes, utf8(message))
+  } catch { return false }
+}
+
+/**
+ * Whether a value is a scope identifier in the gateway's §1.2a form, never the marker `unscoped` (RFC 0030 §2, *Binding a
+ * chain to one scope identifier*): a string of 1 to 128 bytes of UTF-8, one line, holding no code point display policy 1
+ * refuses (`Cc`, `Bidi_Control`, `Default_Ignorable_Code_Point`, `Co`, `Cn`, `Noncharacter_Code_Point`, Unicode
+ * 15.0.0). It is opaque: compared as written, never folded, trimmed or normalized. `Cn` is read from the package's own
+ * Unicode 15.0.0 table (a graphic code point is assigned), with the format and separator classes, whose members are
+ * assigned too, so a code point a later Unicode assigns is still refused.
+ */
+export function scopeIdentifier(v: unknown): v is string {
+  if (typeof v !== 'string' || v === 'unscoped') return false
+  const length = utf8(v).length
+  if (length < 1 || length > 128) return false
+  for (const c of v) {
+    if (/[\p{Cc}\p{Bidi_Control}\p{Default_Ignorable_Code_Point}\p{Co}\p{Noncharacter_Code_Point}]/u.test(c)) return false
+    if (!graphic(c.codePointAt(0)!) && !/[\p{Cf}\p{Zl}\p{Zp}]/u.test(c)) return false
+  }
+  return true
+}
+const graphic = (c: number): boolean => {
+  let low = 0, high = graphicRanges.length - 1
+  while (low <= high) {
+    const middle = (low + high) >>> 1, range = graphicRanges[middle]!
+    if (c < range[0]!) high = middle - 1
+    else if (c > range[1]!) low = middle + 1
+    else return true
+  }
+  return false
+}
+
 interface Entry {audience: Audience; source: string; tools: string[]; effects: string[]; limits: Record<string, number>}
 /** One link as verified. */
 export interface Link {
   value: Record<string, unknown>
+  /** The signature's algorithm: ES256 where the link holds `alg`, Ed25519 where it holds none. */
+  alg: DelegationAlg
+  /** The scope identifier the link is bound to, or absent for an unbound link. */
+  scopeId?: string
   id: string; host: string; keyId: string; sub: PrincipalReference; agent: string; software: Software
   entries: Entry[]; mayDelegate: boolean; issuedAt: number; expiresAt: number
   parent?: {id: string; digest: string}; depth: number; signature: string; digest: string
 }
-/** A chain that passed steps 1 to 7, root first. */
-export interface VerifiedChain {links: Link[]; digests: string[]}
-/** Pinned keys: by host, by key identifier. */
-export type PinnedKeys = ReadonlyMap<string, ReadonlyMap<string, string>>
+/** A chain that passed steps 1 to 7, root first; `scopeId` the scope identifier it is bound to, the root's, which clause 9 holds every link to. */
+export interface VerifiedChain {links: Link[]; digests: string[]; scopeId?: string}
+export type DelegationAlg = 'Ed25519' | 'ES256'
+/** One pinned key as the host configures it, in the gateway's pin form: an Ed25519 key's 64 lowercase hexadecimal characters, or a P-256 key's compressed point with its algorithm. */
+export type KeyPin = string | {alg: 'ES256'; key: string}
+/** A pinned key with the algorithm it was pinned with: only a link of that algorithm is verified under it. */
+export interface PinnedKey {alg: DelegationAlg; key: string; point?: Uint8Array}
+/** Pinned keys: by host, by key identifier, each with its algorithm. */
+export type PinnedKeys = ReadonlyMap<string, ReadonlyMap<string, PinnedKey>>
 
-/** Reads each host's keys, holding every key to the key rule; a key that fails it is refused, never pinned. */
+/**
+ * Reads each host's keys, holding every key to its algorithm's key rule; a key that fails it is refused, never pinned.
+ * The algorithm is the pin's: a string is an Ed25519 key, `{alg: "ES256", key}` a P-256 key. A key's length or form is
+ * held to that algorithm and never read as one.
+ */
 export async function pinKeys(keys: unknown): Promise<PinnedKeys> {
   if (!object(keys)) throw new PrincipalInputInvalid('keys is not an object of hosts')
-  const out = new Map<string, Map<string, string>>()
+  const out = new Map<string, Map<string, PinnedKey>>()
   for (const [host, list] of Object.entries(keys)) {
     if (!flatToken(host) || !Array.isArray(list) || list.length === 0 || list.length > 16) throw new PrincipalInputInvalid('keys names a host that is not a flat token, or a host with no keys')
-    const held = new Map<string, string>()
-    for (const key of list) {
-      const problem = typeof key === 'string' ? keyProblem(key) : 'key-malformed'
-      if (problem !== undefined) throw new PrincipalInputInvalid(`a pinned key is refused (${problem})`)
-      held.set(await keyIdentifier(key as string), key as string)
+    const held = new Map<string, PinnedKey>()
+    for (const pin of list) {
+      let pinned: PinnedKey
+      if (typeof pin === 'string') {
+        const problem = keyProblem(pin)
+        if (problem !== undefined) throw new PrincipalInputInvalid(`a pinned key is refused (${problem})`)
+        pinned = {alg: 'Ed25519', key: pin}
+      } else if (object(pin) && hasOnly(pin, ['alg', 'key']) && pin.alg === 'ES256' && typeof pin.key === 'string') {
+        const point = p256Point(pin.key)
+        if (typeof point === 'string') throw new PrincipalInputInvalid(`a pinned key is refused (${point})`)
+        pinned = {alg: 'ES256', key: pin.key, point}
+      } else throw new PrincipalInputInvalid('a pinned key is refused (key-malformed)')
+      const id = await keyIdentifier(pinned.key)
+      if (held.has(id) && held.get(id)!.alg !== pinned.alg) throw new PrincipalInputInvalid('two pinned keys of a host share a key identifier')
+      held.set(id, pinned)
     }
     out.set(host, held)
   }
@@ -271,7 +369,9 @@ function parseLink(v: Record<string, unknown>): Link | string {
   if (typeof v.act.agent !== 'string' || !OPAQUE.test(v.act.agent)) return 'act.agent is not an opaque identifier'
   const soft = software(v.act.software)
   if (!soft) return 'act.software is not a software identity'
-  if (!object(v.scope) || !hasOnly(v.scope, ['sources'])) return 'scope is not {sources}'
+  if (Object.hasOwn(v, 'alg') && v.alg !== 'ES256') return 'alg is not the string "ES256"'
+  if (!object(v.scope) || !(hasOnly(v.scope, ['sources']) || hasOnly(v.scope, ['sources', 'scopeId']))) return 'scope is not {sources} or {sources, scopeId}'
+  if (Object.hasOwn(v.scope, 'scopeId') && !scopeIdentifier(v.scope.scopeId)) return 'scope.scopeId is not a scope identifier'
   const sources = v.scope.sources
   if (!Array.isArray(sources) || sources.length === 0 || sources.length > DELEGATION_BOUNDS.entries) return 'scope.sources is not an array of 1 to 256 entries'
   const entries: Entry[] = []
@@ -299,7 +399,8 @@ function parseLink(v: Record<string, unknown>): Link | string {
   if (typeof v.signature !== 'string' || !/^[0-9a-f]{128}$/.test(v.signature)) return 'signature is not 128 lowercase hexadecimal characters'
   const text = canon(v)
   if (utf8(text).length > DELEGATION_BOUNDS.statementBytes) return 'the link is over 65536 bytes'
-  return {value: v, id: v.id, host: v.host, keyId: v.keyId, sub, agent: v.act.agent, software: soft, entries, mayDelegate: v.mayDelegate, issuedAt, expiresAt, ...(parent ? {parent} : {}), depth: v.depth, signature: v.signature, digest: `sha256:${sha256(text)}`}
+  const scopeId = Object.hasOwn(v.scope, 'scopeId') ? v.scope.scopeId as string : undefined
+  return {value: v, alg: v.alg === 'ES256' ? 'ES256' : 'Ed25519', ...(scopeId !== undefined ? {scopeId} : {}), id: v.id, host: v.host, keyId: v.keyId, sub, agent: v.act.agent, software: soft, entries, mayDelegate: v.mayDelegate, issuedAt, expiresAt, ...(parent ? {parent} : {}), depth: v.depth, signature: v.signature, digest: `sha256:${sha256(text)}`}
 }
 const signingInput = (link: Link) => DELEGATION_CONTEXT + canon(Object.fromEntries(Object.entries(link.value).filter(([name]) => name !== 'signature')))
 const sameReference = (a: PrincipalReference, b: PrincipalReference) => a.kind === b.kind && a.issuer === b.issuer && a.subject === b.subject
@@ -316,6 +417,8 @@ export function widening(child: Link, parent: Link): string | undefined {
     for (const [name, bound] of Object.entries(p.limits)) if (!Object.hasOwn(e.limits, name) || e.limits[name]! > bound) return 'drops or raises a limit of its parent'
   }
   if (!parent.mayDelegate) return 'is below a link that permits no child'
+  // Clause 9: the binding is the root's, and each child repeats it; a bound link under an unbound one is refused too.
+  if (child.scopeId !== parent.scopeId) return parent.scopeId === undefined ? 'is bound under an unbound parent' : child.scopeId === undefined ? 'is unbound under a bound parent' : 'is bound to another scope identifier than its parent'
   return undefined
 }
 
@@ -343,12 +446,13 @@ export async function verifyChain(text: string, keys: PinnedKeys): Promise<Verif
     if (typeof link === 'string') return refuse('malformed', `link ${i}: ${link}`)
     links.push(link)
   }
-  // Step 4.
-  for (let i = 0; i < links.length; i++) if (!keys.get(links[i]!.host)?.has(links[i]!.keyId)) return refuse('key-mismatch', `link ${i} is signed by a key not pinned for its host`)
-  // Step 5.
+  // Step 4: the key the link names among those pinned for its host with the link's algorithm; one of the other algorithm is not it.
+  for (let i = 0; i < links.length; i++) if (keys.get(links[i]!.host)?.get(links[i]!.keyId)?.alg !== links[i]!.alg) return refuse('key-mismatch', `link ${i} is signed by a key not pinned for its host with its algorithm`)
+  // Step 5: by the link's algorithm, which step 4 held to the pin's.
   for (let i = 0; i < links.length; i++) {
-    const link = links[i]!
-    if (!await signatureVerifies(keys.get(link.host)!.get(link.keyId)!, link.signature, signingInput(link))) return refuse('signature-mismatch', `link ${i}'s signature does not verify`)
+    const link = links[i]!, pinned = keys.get(link.host)!.get(link.keyId)!
+    const verifies = link.alg === 'ES256' && pinned.alg === 'ES256' ? await es256Verifies(pinned.point!, link.signature, signingInput(link)) : link.alg === 'Ed25519' && pinned.alg === 'Ed25519' && await signatureVerifies(pinned.key, link.signature, signingInput(link))
+    if (!verifies) return refuse('signature-mismatch', `link ${i}'s signature does not verify`)
   }
   // Step 6: clauses 0 to 3.
   if (links[0]!.parent !== undefined || links[0]!.depth !== 0) return refuse('chain-broken', 'the chain does not start at a root')
@@ -363,7 +467,7 @@ export async function verifyChain(text: string, keys: PinnedKeys): Promise<Verif
     const why = widening(links[k]!, links[k - 1]!)
     if (why !== undefined) return refuse('widened', `link ${k} ${why}`)
   }
-  return {links, digests: links.map(link => link.digest)}
+  return {links, digests: links.map(link => link.digest), ...(links[0]!.scopeId !== undefined ? {scopeId: links[0]!.scopeId} : {})}
 }
 
 /** A delegated run's principal, opened: the verified chain, the record member, and the host's ports. */
@@ -502,8 +606,22 @@ export function requireOpenedPrincipal(opened: OpenedPrincipal | undefined, inpu
 /** What a resume under other principals says, in both languages' session and at a durable root. */
 export const PRINCIPAL_CHANGED = 'The run continues under another principal than it began under (principal-changed). Nothing was sent.'
 
-/** The call the package admits: the audience its source answers to (null or undefined for a gateway source with no mapping), its source, tool and effect. */
-export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined}
+/**
+ * The call the package admits: the audience its source answers to (null or undefined for a gateway source with no
+ * mapping), its source, tool and effect. `scopeId`, for a call to a gateway source only, is the scope identifier the
+ * host's mapping fixes the source to, or null where it names none; it is absent for a host source, which has none.
+ */
+export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined; scopeId?: string | null}
+
+/**
+ * The request check of a bound chain (RFC 0030 §2, *Binding a chain to one scope identifier*), made before step 8 and
+ * any admission read: under a bound chain every call to a gateway source is sent with the chain's scope identifier, so a
+ * gateway source the host's mapping fixes to another scope identifier, or to none, is refused before the call leaves the
+ * harness. A host source is unaffected. It reads no issuing host, counts nothing and dispatches nothing.
+ */
+export function scopeIdRefusal(chain: VerifiedChain, call: Pick<PrincipalCall, 'scopeId'>): PrincipalRefusal | undefined {
+  return chain.scopeId !== undefined && call.scopeId !== undefined && call.scopeId !== chain.scopeId ? {name: 'scope-id-mismatch'} : undefined
+}
 
 /** The package's own part of step 11 over every link: the first failing reason, within a link before the next. */
 export function scopeReason(chain: VerifiedChain, call: PrincipalCall): ScopeReason | undefined {
@@ -597,6 +715,8 @@ export function principalsChanged(saved: PrincipalRecord | undefined, current: P
 }
 
 export async function admitCall(principal: OpenedPrincipal, call: PrincipalCall, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
+  const scope = scopeIdRefusal(principal.chain, call)
+  if (scope !== undefined) return scope
   const at = hostTime(principal.clock)
   if (at === undefined) return {name: 'admission-unknown'}
   const links = principal.chain.links

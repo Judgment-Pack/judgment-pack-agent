@@ -4,15 +4,19 @@ import type {McpToolResult} from './engine'
 export const GATEWAY_RECEIPT_ENVELOPE_BYTES=(8<<20)+4096
 /** Omitted adapter pins leave executable identity unverified. */
 export interface GatewayReceiptTrust {publicKey:string;authority:string;adapter?:{name:string;version:string;digest:string}}
-export interface GatewayExecutionContext {readonly receiptSession:string}
+/**
+ * `scope`, under a delegation bound to one scope identifier only (spec RFC 0030 §2), is that identifier: the executor
+ * sends it as the request's scope, and a receipt whose `scope` is not it is withheld. Absent otherwise.
+ */
+export interface GatewayExecutionContext {readonly receiptSession:string;readonly scope?:string}
 const invocations=new WeakMap<AbortSignal,Readonly<GatewayExecutionContext>>()
 /** Read-only executor context; absent outside an admitted Gateway invocation. Never model input. */
 export function gatewayExecutionContext(signal:AbortSignal):Readonly<GatewayExecutionContext>|undefined{return invocations.get(signal)}
 /** @internal Called only on the distinct bounded signal created for this invocation. */
-export function beginGatewayInvocation(signal:AbortSignal):Readonly<GatewayExecutionContext>{
+export function beginGatewayInvocation(signal:AbortSignal,scope?:string):Readonly<GatewayExecutionContext>{
  if(invocations.has(signal))throw Error('Gateway invocation context already exists')
  const nonce=crypto.getRandomValues(new Uint8Array(32))
- const context=Object.freeze({receiptSession:'agent-'+hex(nonce)})
+ const context:GatewayExecutionContext=Object.freeze(scope===undefined?{receiptSession:'agent-'+hex(nonce)}:{receiptSession:'agent-'+hex(nonce),scope})
  invocations.set(signal,context);return context
 }
 /** @internal Package-owned deadline wrappers carry the same immutable context. */
@@ -42,7 +46,7 @@ export function gatewayTrustProblem(trust:GatewayReceiptTrust|undefined):string{
  */
 export async function verifyGatewayResult(raw:McpToolResult,trust:GatewayReceiptTrust,approval:DescriptorApproval,snapshotBytes:Uint8Array,tool:string,args:Record<string,unknown>,invocation:Readonly<GatewayExecutionContext>,maxBytes:number,signal:AbortSignal):Promise<{result:McpToolResult;receipt:string}>{
  signal.throwIfAborted()
- if(!Number.isSafeInteger(maxBytes)||maxBytes<=0||maxBytes>GATEWAY_RECEIPT_ENVELOPE_BYTES||!object(invocation)||typeof invocation.receiptSession!=='string'||!/^agent-[0-9a-f]{64}$/.test(invocation.receiptSession)||!object(approval)||!object(args)||typeof tool!=='string'||tool.length<1||tool.length>128)throw Error('invalid Gateway verification input')
+ if(!Number.isSafeInteger(maxBytes)||maxBytes<=0||maxBytes>GATEWAY_RECEIPT_ENVELOPE_BYTES||!object(invocation)||typeof invocation.receiptSession!=='string'||!/^agent-[0-9a-f]{64}$/.test(invocation.receiptSession)||invocation.scope!==undefined&&typeof invocation.scope!=='string'||!object(approval)||!object(args)||typeof tool!=='string'||tool.length<1||tool.length>128)throw Error('invalid Gateway verification input')
  if(gatewayTrustProblem(trust))throw Error('invalid Gateway trust')
  const snapshot=readDescriptorSnapshot(snapshotBytes)
  if(descriptorApprovalProblem(snapshot,approval)||descriptorApprovalProblem(snapshot,approval,tool,approval.toolTaxonomies[tool]))throw Error('unapproved Gateway source')
@@ -61,6 +65,8 @@ export async function verifyGatewayResult(raw:McpToolResult,trust:GatewayReceipt
  if(!object(receipt)||!object(salts)||!object(artifact)||Object.hasOwn(artifact,'receipt')||Object.keys(salts).some(k=>k!=='args'&&k!=='statement'))throw Error('missing signed Gateway evidence')
  if(envelope.session!==invocation.receiptSession||receipt.sessionId!==invocation.receiptSession||receipt.callIndex!==0||receipt.prevSignature!==null)throw Error('receipt is not this invocation')
  if(receipt.receiptVersion!=='3'||receipt.kind!=='acquisition'||Object.hasOwn(receipt,'action')||receipt.authority!==trust.authority||receipt.source!==approval.platform+'/'+approval.operation)throw Error('wrong Gateway receipt source')
+ // RFC 0030 §2: under a bound delegation, a receipt of another scope identifier, or of none, is not this call's answer.
+ if(invocation.scope!==undefined&&receipt.scope!==invocation.scope)throw Error('Gateway receipt is not of the bound scope')
  const key=unhex(trust.publicKey,32),signature=unhex(receipt.signature,64)
  if(receipt.keyId!==(await digest(key)).slice(7,39))throw Error('wrong Gateway signing key')
  const unsigned={...receipt};delete unsigned.signature

@@ -46,6 +46,15 @@ describe('Gateway v3 signed acquisition consumer',()=>{
  it('verifies remote and stdio signed artifact and independently pinned identity',async()=>{
   for(const remote of [true,false]){const {envelope,trust}=synthetic(remote);expect((await verify(outer(envelope),trust,approval(remote),snapshot(remote))).result).toEqual(vector.artifact)}
  })
+ it('withholds a receipt that is not of the scope a bound delegation sends (RFC 0030 §2)',async()=>{
+  const bound=(raw:McpToolResult,trust:GatewayReceiptTrust)=>verifyGatewayResult(raw,trust,approval(),snapshot(),vector.tool,vector.args,{receiptSession:vector.session,scope:'scope-a'},GATEWAY_RECEIPT_ENVELOPE_BYTES,signal())
+  const none=synthetic()
+  await expect(bound(outer(none.envelope),none.trust)).rejects.toThrow('bound scope')
+  const other=synthetic();other.envelope.receipt.scope='scope-b';signReceipt(other.envelope.receipt)
+  await expect(bound(outer(other.envelope),other.trust)).rejects.toThrow('bound scope')
+  const same=synthetic();same.envelope.receipt.scope='scope-a';signReceipt(same.envelope.receipt)
+  expect((await bound(outer(same.envelope),same.trust)).result).toEqual(vector.artifact)
+ })
  for(const row of vector.cases)it('refuses '+row.name,async()=>{
   const {envelope,trust}=synthetic(),r=envelope.receipt,a=r.acquisition as Record<string,unknown>
   let args=vector.args,limit=GATEWAY_RECEIPT_ENVELOPE_BYTES
