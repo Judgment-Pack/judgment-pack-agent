@@ -59,7 +59,7 @@ PYTHON_RELEASE = '3.12.16'
 # cache held 3.12.16 (the other jobs reported 3.12.15, and the same packages: pip 25.0.1 is the pip both
 # releases bundle). python-packages is the virtual environment requirements-dev.txt makes, with that pip.
 BASE_PINS = {'python': 'Python 3.12.16'}
-CHECK_PINS = {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 linux/amd64',
+CHECK_PINS = {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.11 linux/amd64',
               'python': 'Python 3.12.16',
               'python-packages': '[["attrs", "26.1.0"], ["jsonschema", "4.26.0"], ["jsonschema-specifications", '
                                  '"2025.9.1"], ["pip", "25.0.1"], ["referencing", "0.37.0"], ["rpds-py", "2026.6.3"], '
@@ -72,7 +72,7 @@ BUNDLED_PIP = '25.0.1'
 # package name as the tool's command spells it) cannot drift from what the jobs install unnoticed.
 RECORDED_ON_MAIN = {
     'contract': {'python': 'Python 3.12.16'},
-    'check': {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.10 linux/amd64',
+    'check': {'node': 'v22.23.4', 'npm': '10.9.9', 'go': 'go version go1.26.11 linux/amd64',
               'python': 'Python 3.12.16',
               'python-packages': '[["attrs", "26.1.0"], ["jsonschema", "4.26.0"], ["jsonschema-specifications", '
                                  '"2025.9.1"], ["pip", "25.0.1"], ["referencing", "0.37.0"], ["rpds-py", "2026.6.3"], '
