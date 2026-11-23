@@ -1,10 +1,10 @@
 {
  "description": "The delegation statement cases of spec RFC 0030's amendment (conformance tables 1 and 2, and the row ed25519-unchanged), copied from the specification's conformance/delegation/, not regenerated: each copy is that file's bytes unchanged, and each sha256 is the one the specification's conformance/delegation/README.md states. The ES256 statements were signed once by a generator independent of both implementations and frozen. The TypeScript reader checks each copy's SHA-256 against this citation and reads every case to its expectation.",
  "repository": "Judgment-Pack/judgment-pack-spec",
- "pullRequest": 394,
- "commit": "8ea82147be38e9e0979c03e189f2434045777f03",
+ "pullRequest": 397,
+ "commit": "e84b5c11ae7d48c7219c61e793682347dc577f30",
  "files": [
-  {"path": "conformance/delegation/es256-statements.json", "copy": "spec-es256-statements.json", "cases": 55, "sha256": "5a687a254c35989951345cea7b7f7b5cdf3a2edc2cc1f02918ed2e3f7d900f8b"},
+  {"path": "conformance/delegation/es256-statements.json", "copy": "spec-es256-statements.json", "cases": 55, "sha256": "534e256df9babccc5d8bd9c4f17440b3036f5e85829a25e397cd5774a49887d6"},
   {"path": "conformance/delegation/ed25519-statements.json", "copy": "spec-ed25519-statements.json", "cases": 39, "sha256": "b1bdfe50cbab49f6408395511c0f9fbee897193f6c58f63328a6d677b99c3bd9"}
  ]
 }
