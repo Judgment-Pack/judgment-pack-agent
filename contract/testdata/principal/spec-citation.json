@@ -2,7 +2,7 @@
  "description": "The delegation cases of spec RFC 0030's amendment, copied from the specification's conformance/delegation/, not regenerated: the statement cases (conformance tables 1 and 2, and the row ed25519-unchanged) and the admission read cases (tables 4 and 5, section 2a, and read-v2-binding-step-12). Each copy is that file's bytes unchanged, and each sha256 is the one the specification's conformance/delegation/README.md states. The ES256 statements were signed once by a generator independent of both implementations and frozen; the admission read cases are hand-written and need no signer. Both readers check each copy's SHA-256 against this citation before they read it, and read every case to its expectation.",
  "repository": "Judgment-Pack/judgment-pack-spec",
  "pullRequest": 398,
- "commit": "e24cc829c5755d418c7eed4ed216e07629d5183a",
+ "commit": "b6f0cba4f3c95843831e2a015b10204f476ec97e",
  "files": [
   {"path": "conformance/delegation/es256-statements.json", "copy": "spec-es256-statements.json", "cases": 55, "sha256": "534e256df9babccc5d8bd9c4f17440b3036f5e85829a25e397cd5774a49887d6"},
   {"path": "conformance/delegation/ed25519-statements.json", "copy": "spec-ed25519-statements.json", "cases": 39, "sha256": "b1bdfe50cbab49f6408395511c0f9fbee897193f6c58f63328a6d677b99c3bd9"},
