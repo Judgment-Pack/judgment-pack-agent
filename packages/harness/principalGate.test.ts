@@ -17,7 +17,7 @@ import type {ApprovalRecord,SourceFigures} from './execution/state'
 
 // RFC 0030 §2: the scope identifier the host's mapping fixes the tickets source to, and the scope each of its calls is sent with.
 let ticketScope:string|undefined
-const sentScopes:(string|undefined)[]=[]
+const sentScopes:(string|null|undefined)[]=[]
 const boundRoot=scopeVectors.statements.find(s=>s.name==='bound-root')!.chain
 const unboundRoot=scopeVectors.statements.find(s=>s.name==='unbound-root')!.chain
 beforeEach(()=>{configureHarness(testHost());ticketScope=undefined;sentScopes.length=0})
@@ -234,8 +234,9 @@ describe('a chain bound to one scope identifier (RFC 0030 §2, Binding a chain t
    expect(sentScopes).toEqual([undefined])
    return
   }
-  // The unmapped records source is a gateway source too, and is refused at binding beside it.
-  expect(atBinding.map(n=>n.tool).sort()).toEqual(['records__lookup','tickets__query'])
+  // Under a bound chain the unmapped records source, a gateway source too, is refused at binding beside it; under an
+  // unbound chain it is fixed to no scope identifier, as the chain is.
+  expect(atBinding.map(n=>n.tool).sort()).toEqual(v.chain==='bound-root'?['records__lookup','tickets__query']:['tickets__query'])
   const tickets=atBinding.filter(n=>n.tool==='tickets__query')
   expect(tickets).toHaveLength(1)
   expect(tickets[0]).toMatchObject({refusal:{name:v.expect}})

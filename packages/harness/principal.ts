@@ -614,13 +614,14 @@ export const PRINCIPAL_CHANGED = 'The run continues under another principal than
 export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined; scopeId?: string | null}
 
 /**
- * The request check of a bound chain (RFC 0030 §2, *Binding a chain to one scope identifier*), made before step 8 and
- * any admission read: under a bound chain every call to a gateway source is sent with the chain's scope identifier, so a
- * gateway source the host's mapping fixes to another scope identifier, or to none, is refused before the call leaves the
- * harness. A host source is unaffected. It reads no issuing host, counts nothing and dispatches nothing.
+ * The request check of the chain's binding (RFC 0030 §2, *Binding a chain to one scope identifier*), made before step 8
+ * and any admission read: a call to a gateway source is sent with the chain's scope identifier, or with none under an
+ * unbound chain, so a gateway source the host's mapping fixes to another scope identifier, to none under a bound chain,
+ * or to one under an unbound chain, is refused before the call leaves the harness. A host source (no `scopeId`) is
+ * unaffected. It reads no issuing host, counts nothing and dispatches nothing.
  */
 export function scopeIdRefusal(chain: VerifiedChain, call: Pick<PrincipalCall, 'scopeId'>): PrincipalRefusal | undefined {
-  return chain.scopeId !== undefined && call.scopeId !== undefined && call.scopeId !== chain.scopeId ? {name: 'scope-id-mismatch'} : undefined
+  return call.scopeId !== undefined && (chain.scopeId ?? null) !== (call.scopeId ?? null) ? {name: 'scope-id-mismatch'} : undefined
 }
 
 /** The package's own part of step 11 over every link: the first failing reason, within a link before the next. */

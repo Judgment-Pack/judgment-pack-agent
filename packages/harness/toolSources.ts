@@ -1003,9 +1003,10 @@ export class SourceGate {
 
   figures():SourceFigures[]{return this.tally()}
   /**
-   * ADR-0029: the principal of a delegated run, set once by the boundary before any call. Under a chain bound to one scope
-   * identifier (spec RFC 0030 §2) every gateway source the run cannot hold to that binding is refused here, at binding,
-   * with a guardrail (`delegation refused`, `scope-id-mismatch`), and every call of it is refused before it leaves.
+   * ADR-0029: the principal of a delegated run, set once by the boundary before any call. Every gateway source the run
+   * cannot hold to the chain's binding (spec RFC 0030 §2: one scope identifier, or none under an unbound chain) is refused
+   * here, at binding, with a guardrail (`delegation refused`, `scope-id-mismatch`), and every call of it is refused before
+   * it leaves.
    */
   usePrincipal(principal: OpenedPrincipal | undefined): void {
     this.ownPrincipal = principal
@@ -1015,14 +1016,17 @@ export class SourceGate {
     }
   }
   /**
-   * Why a gateway source cannot be used under the run's bound chain, or undefined: the host's mapping fixes it to another
-   * scope identifier, or to none; or the package does not verify its receipts (no pinned `gatewayReceipt`), so the scope
-   * of its answers could not be checked, which a host-verified receipt does not show the package.
+   * Why a gateway source cannot be used under the run's chain, or undefined. Under an unbound chain: the host's mapping
+   * fixes it to a scope identifier. Under a bound chain: the mapping fixes it to another scope identifier, or to none; or
+   * the package does not verify its receipts (no pinned `gatewayReceipt`), so the scope of its answers could not be
+   * checked, which a host-verified receipt does not show the package.
    */
   private unboundSource(entry: SourceEntry): string | undefined {
-    const bound = this.principal?.chain.scopeId
-    if (bound === undefined || entry.record.kind !== 'gateway') return undefined
+    const principal = this.principal
+    if (principal === undefined || entry.record.kind !== 'gateway') return undefined
+    const bound = principal.chain.scopeId
     const fixed = entry.declared.source?.gatewayScope?.scope
+    if (bound === undefined) return fixed === undefined ? undefined : 'the delegation is bound to no scope identifier, and the source is fixed to one'
     if (fixed !== bound) return fixed === undefined ? 'the delegation is bound to a scope identifier, and the source is fixed to no scope identifier' : 'the delegation is bound to another scope identifier than the one the source is fixed to'
     if (entry.declared.source?.gatewayReceipt === undefined) return 'the delegation is bound to a scope identifier, and the package does not verify the receipts of this source, so the scope of its answers cannot be checked'
     return undefined
@@ -1470,9 +1474,10 @@ export class SourceGate {
     }
     try {
       result = await withDeadline((bounded) => {
-        // RFC 0030 §2: under a bound chain every call to a gateway source is sent with the chain's scope identifier.
-        const boundScope=entry.record.kind==='gateway'?this.principal?.chain.scopeId:undefined
-        if(entry.declared.source!.gatewayReceipt!==undefined||boundScope!==undefined) gatewayInvocation=beginGatewayInvocation(bounded,boundScope)
+        // RFC 0030 §2: under a delegation every call to a gateway source is sent with the chain's scope identifier, or with
+        // none (null) under an unbound chain, and its verified receipt is held to the same.
+        const delegatedScope=entry.record.kind==='gateway'&&this.principal!==undefined?this.principal.chain.scopeId??null:undefined
+        if(entry.declared.source!.gatewayReceipt!==undefined||typeof delegatedScope==='string') gatewayInvocation=beginGatewayInvocation(bounded,delegatedScope)
         if(admission!==undefined) admissions.set(bounded, admission)
         this.holdDispatch(bounded, entry, tool.name, callId, giveBackCall)
         return run(args,bounded)

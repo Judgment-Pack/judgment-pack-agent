@@ -2133,6 +2133,23 @@
    },
    "expect": "admit",
    "reads": 1
+  },
+  {
+   "name": "library-unbound-mapping-one",
+   "kind": "N",
+   "chain": "unbound-root",
+   "call": {
+    "audience": {
+     "kind": "gateway",
+     "name": "gateway:test"
+    },
+    "source": "tickets/live",
+    "tool": "query",
+    "effect": "read",
+    "scopeId": "scope-a"
+   },
+   "expect": "scope-id-mismatch",
+   "reads": 0
   }
  ],
  "bindings": [
@@ -2167,6 +2184,14 @@
    "fixed": null,
    "expect": "admit",
    "detail": ""
+  },
+  {
+   "name": "library-unbound-mapping-one-at-binding",
+   "kind": "N",
+   "chain": "unbound-root",
+   "fixed": "scope-a",
+   "expect": "scope-id-mismatch",
+   "detail": "bound to no scope identifier"
   }
  ]
 }

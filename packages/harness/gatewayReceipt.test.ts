@@ -48,18 +48,28 @@ describe('Gateway v3 signed acquisition consumer',()=>{
  it('verifies remote and stdio signed artifact and independently pinned identity',async()=>{
   for(const remote of [true,false]){const {envelope,trust}=synthetic(remote);expect((await verify(outer(envelope),trust,approval(remote),snapshot(remote))).result).toEqual(vector.artifact)}
  })
- it('hands the executor the scope a bound delegation sends, and none otherwise (RFC 0030 §2)',()=>{
-  const bound=new AbortController().signal,unbound=new AbortController().signal
-  beginGatewayInvocation(bound,'scope-a');beginGatewayInvocation(unbound)
+ it('hands the executor the scope a bound delegation sends, null under an unbound one, and none otherwise (RFC 0030 §2)',()=>{
+  const bound=new AbortController().signal,unbound=new AbortController().signal,undelegated=new AbortController().signal
+  beginGatewayInvocation(bound,'scope-a');beginGatewayInvocation(unbound,null);beginGatewayInvocation(undelegated)
   expect(gatewayExecutionContext(bound)?.scope).toBe('scope-a')
-  expect(Object.hasOwn(gatewayExecutionContext(unbound)!,'scope')).toBe(false)
+  expect(gatewayExecutionContext(unbound)?.scope).toBeNull()
+  expect(Object.hasOwn(gatewayExecutionContext(undelegated)!,'scope')).toBe(false)
+ })
+ it('withholds a receipt that carries a scope under a delegation bound to none (RFC 0030 §2)',async()=>{
+  const unbound=(raw:McpToolResult,trust:GatewayReceiptTrust)=>verifyGatewayResult(raw,trust,approval(),snapshot(),vector.tool,vector.args,{receiptSession:vector.session,scope:null},GATEWAY_RECEIPT_ENVELOPE_BYTES,signal())
+  const scoped=synthetic();scoped.envelope.receipt.scope='scope-a';signReceipt(scoped.envelope.receipt)
+  await expect(unbound(outer(scoped.envelope),scoped.trust)).rejects.toThrow('delegated scope')
+  // The same receipt, in a run with no delegation, is not held to a scope.
+  expect((await verify(outer(scoped.envelope),scoped.trust)).result).toEqual(vector.artifact)
+  const none=synthetic()
+  expect((await unbound(outer(none.envelope),none.trust)).result).toEqual(vector.artifact)
  })
  it('withholds a receipt that is not of the scope a bound delegation sends (RFC 0030 §2)',async()=>{
   const bound=(raw:McpToolResult,trust:GatewayReceiptTrust)=>verifyGatewayResult(raw,trust,approval(),snapshot(),vector.tool,vector.args,{receiptSession:vector.session,scope:'scope-a'},GATEWAY_RECEIPT_ENVELOPE_BYTES,signal())
   const none=synthetic()
-  await expect(bound(outer(none.envelope),none.trust)).rejects.toThrow('bound scope')
+  await expect(bound(outer(none.envelope),none.trust)).rejects.toThrow('delegated scope')
   const other=synthetic();other.envelope.receipt.scope='scope-b';signReceipt(other.envelope.receipt)
-  await expect(bound(outer(other.envelope),other.trust)).rejects.toThrow('bound scope')
+  await expect(bound(outer(other.envelope),other.trust)).rejects.toThrow('delegated scope')
   const same=synthetic();same.envelope.receipt.scope='scope-a';signReceipt(same.envelope.receipt)
   expect((await bound(outer(same.envelope),same.trust)).result).toEqual(vector.artifact)
  })
@@ -149,12 +159,12 @@ it.skipIf(!process.env.JP_AGENT_GATEWAY_FIXTURE)('refuses actual producer concur
 })
 
 describe('a pinned gateway source under a chain bound to one scope identifier (RFC 0030 §2)',()=>{
- const boundGate=async(fixed:string)=>{
-  const {trust}=synthetic(),seen={executions:0,scopes:[] as (string|undefined)[]},reads:AdmissionRead[]=[],refusals:PrincipalRefusal[]=[]
-  const t:HostTool={name:'query',taxonomy:{operation:'read',effect:'read-external'},description:'approved',inputSchema:{type:'object'},execute:async(_args,bounded)=>{seen.executions++;seen.scopes.push(gatewayExecutionContext(bounded!)?.scope);return {content:[]}},source:{kind:'gateway',id:'tickets',trust:'connected',toolListDigest:digest(snapshot()),descriptorSnapshot:snapshot(),descriptorApproval:approval(),currentDescriptorSnapshot:()=>snapshot(),gatewayReceipt:trust,gatewayScope:{authority:trust.authority,source:'tickets/live',scope:fixed}}}
+ const boundGate=async(fixed:string|undefined,chainName='bound-root')=>{
+  const {trust}=synthetic(),seen={executions:0,scopes:[] as (string|null|undefined)[]},reads:AdmissionRead[]=[],refusals:PrincipalRefusal[]=[]
+  const t:HostTool={name:'query',taxonomy:{operation:'read',effect:'read-external'},description:'approved',inputSchema:{type:'object'},execute:async(_args,bounded)=>{seen.executions++;seen.scopes.push(gatewayExecutionContext(bounded!)?.scope);return {content:[]}},source:{kind:'gateway',id:'tickets',trust:'connected',toolListDigest:digest(snapshot()),descriptorSnapshot:snapshot(),descriptorApproval:approval(),currentDescriptorSnapshot:()=>snapshot(),gatewayReceipt:trust,gatewayScope:{authority:trust.authority,source:'tickets/live',...(fixed===undefined?{}:{scope:fixed})}}}
   const admitted=await declareSources([t],[]),rows:SourceFigures[]=[]
   const gate=new SourceGate(admitted.entries,admitted.sources,CONTEXT_DEFAULTS,'marker',(name,detail,_reason,refusal)=>{if(refusal)refusals.push(refusal);return new GateViolation(name,detail)},()=>rows)
-  const chain=scopeVectors.statements.find(s=>s.name==='bound-root')!.chain
+  const chain=scopeVectors.statements.find(s=>s.name===chainName)!.chain
   gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain),keys:scopeVectors.keys as never,software:scopeVectors.software,audience:scopeVectors.audience,clock:()=>Date.parse('2026-10-30T01:00:00.000Z'),admission:read=>{reads.push(read);return {admission:'admit'}}}))
   return {gate,offered:admitted.hostTools[0]!,seen,reads,refusals}
  }
@@ -168,6 +178,20 @@ describe('a pinned gateway source under a chain bound to one scope identifier (R
  it('refuses a call for another scope before it leaves the harness, reading nothing',async()=>{
   const {gate,offered,seen,reads,refusals}=await boundGate('scope-b')
   // Refused at binding, and its call refused by the request check, which a host that ignored the binding guardrail still meets.
+  expect(refusals).toEqual([{name:'scope-id-mismatch'}])
+  await expect(gate.call(offered,{},signal(),offered.execute)).rejects.toBeInstanceOf(GateViolation)
+  expect(seen.executions).toBe(0)
+  expect(reads).toEqual([])
+  expect(refusals).toEqual([{name:'scope-id-mismatch'},{name:'scope-id-mismatch'}])
+ })
+ it('under an unbound chain, sends a call of a source fixed to no scope identifier with none (null)',async()=>{
+  const {gate,offered,seen,refusals}=await boundGate(undefined,'unbound-root')
+  expect(refusals).toEqual([])
+  await expect(gate.call(offered,{},signal(),offered.execute)).rejects.toThrow()
+  expect(seen).toEqual({executions:1,scopes:[null]})
+ })
+ it('under an unbound chain, refuses a source fixed to a scope identifier before it leaves the harness, reading nothing',async()=>{
+  const {gate,offered,seen,reads,refusals}=await boundGate('scope-a','unbound-root')
   expect(refusals).toEqual([{name:'scope-id-mismatch'}])
   await expect(gate.call(offered,{},signal(),offered.execute)).rejects.toBeInstanceOf(GateViolation)
   expect(seen.executions).toBe(0)

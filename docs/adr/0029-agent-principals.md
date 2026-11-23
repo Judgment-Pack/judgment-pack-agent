@@ -272,7 +272,12 @@ link and a bound child under an unbound one are each `widened`. Under a bound ch
   `delegation refused` guardrail naming `scope-id-mismatch`, since the scope of its answers could not
   be checked; a source fixed to another scope identifier, or to none, is refused there too.
 
-An unbound chain, and a run with no delegation, behave as before.
+Under an unbound chain the same request check holds the call to no scope identifier: a gateway source
+the host's mapping fixes to a scope identifier is refused `scope-id-mismatch` at binding, with the
+same guardrail, and at each call before any read; the executor's context holds `scope: null`, so it
+sends none; and a receipt the package verifies that carries a scope is withheld. A gateway source
+fixed to none, including one whose receipts only the host verifies, is admitted as before. A run
+with no delegation behaves as before.
 
 The TypeScript reader carries this amendment. The Go reader (`go/context/run_principal.go`) does not
 yet: it refuses an ES256 link (`key-mismatch`) and a bound one (`malformed`), so it fails closed
