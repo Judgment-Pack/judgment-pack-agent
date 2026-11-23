@@ -3,3 +3,6 @@
 entries/** -text
 manifest.json -text
 **/fixtures/** -text
+# The specification's frozen delegation cases are held to the SHA-256 digests their citation states (spec-citation.json),
+# so no checkout may convert a line ending in them.
+contract/testdata/principal/** -text

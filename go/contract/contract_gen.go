@@ -351,6 +351,7 @@ var Registry = map[string]func() any{
 	"run-principal.json#/$defs/opaqueIdentifier":    func() any { return new(string) },
 	"run-principal.json#/$defs/flatToken":           func() any { return new(string) },
 	"run-principal.json#/$defs/digest":              func() any { return new(string) },
+	"run-principal.json#/$defs/scopeIdentifier":     func() any { return new(string) },
 	"run-principal.json#/$defs/time":                func() any { return new(string) },
 	"run-principal.json#/$defs/principalReference":  func() any { return new(RunPrincipalPrincipalReference) },
 	"run-principal.json#/$defs/software":            func() any { return new(RunPrincipalSoftware) },
@@ -22042,8 +22043,10 @@ func (v RunPrincipalPrincipalReference) MarshalJSON() ([]byte, error) {
 // could not be read. A resume or takeover under another subject or root actor: principal-changed.
 // A delegated child: delegation-not-permitted below a link that permits none or with no child
 // port, not-parent-actor where the issuing host answers so, chain-broken for a chain that is not
-// the parent's with one link below it, widened for a wider link. reason is present exactly for
-// out-of-scope.
+// the parent's with one link below it, widened for a wider link. Under a chain bound to one scope
+// identifier, before the host time and any admission read: scope-id-mismatch for a call to a
+// gateway source the host maps to another scope identifier, or to none. reason is present exactly
+// for out-of-scope.
 type RunPrincipalRefusal struct {
 	Name   string  `json:"name"`
 	Reason *string `json:"reason,omitzero"`
@@ -22233,18 +22236,21 @@ func (v RunPrincipalSoftwareOption2) MarshalJSON() ([]byte, error) {
 }
 
 // From run-principal.json#/$defs/statement. A delegation statement, version 1 (RFC 0030 §2):
-// subject sub authorizes actor act for scope until expiresAt. Signed with Ed25519 under the
-// issuing host's pinned key over "judgment-pack/delegation/1:" and canon of the statement without
-// its signature. A top-level member beside those named is signed with the rest and not refused by
-// the structure (a member appended after signing fails the signature); every object inside a link
-// holds exactly its members. The readers hold the rest of RFC 0030's step 3: entries ordered by
-// audience kind, audience name and source with no repeat, a lifetime of at most 24 hours, parent
-// and depth consistent, and canon of the link at most 65536 bytes.
+// subject sub authorizes actor act for scope until expiresAt. Signed with Ed25519, or with ES256
+// where it holds alg (RFC 0030 §2, Signing with a P-256 key: r||s at low S under a P-256 key
+// pinned with its algorithm), under the issuing host's pinned key over
+// "judgment-pack/delegation/1:" and canon of the statement without its signature. A top-level
+// member beside those named is signed with the rest and not refused by the structure (a member
+// appended after signing fails the signature); every object inside a link holds exactly its
+// members. The readers hold the rest of RFC 0030's step 3: entries ordered by audience kind,
+// audience name and source with no repeat, a lifetime of at most 24 hours, parent and depth
+// consistent, and canon of the link at most 65536 bytes.
 type RunPrincipalStatement struct {
 	DelegationVersion string                         `json:"delegationVersion"`
 	ID                string                         `json:"id"`
 	Host              string                         `json:"host"`
 	KeyID             string                         `json:"keyId"`
+	Alg               *string                        `json:"alg,omitzero"`
 	Sub               RunPrincipalPrincipalReference `json:"sub"`
 	Act               RunPrincipalStatementAct       `json:"act"`
 	Scope             RunPrincipalStatementScope     `json:"scope"`
@@ -22258,7 +22264,7 @@ type RunPrincipalStatement struct {
 	AdditionalMembers map[string]json.RawMessage `json:"-"`
 }
 
-var runPrincipalStatementMembers = []string{"delegationVersion", "id", "host", "keyId", "sub", "act", "scope", "mayDelegate", "issuedAt", "expiresAt", "parent", "depth", "signature"}
+var runPrincipalStatementMembers = []string{"delegationVersion", "id", "host", "keyId", "alg", "sub", "act", "scope", "mayDelegate", "issuedAt", "expiresAt", "parent", "depth", "signature"}
 
 // UnmarshalJSON decodes a RunPrincipalStatement object and keeps the members the schema does not name.
 func (v *RunPrincipalStatement) UnmarshalJSON(data []byte) error {
@@ -22405,12 +22411,15 @@ func (v RunPrincipalStatementParentOption2) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
-// From run-principal.json#/$defs/statement/properties/scope.
+// From run-principal.json#/$defs/statement/properties/scope. What the actor may do; scopeId, where
+// present, the one scope identifier the chain is bound to (RFC 0030 §2, Binding a chain to one
+// scope identifier): the root's, which every link repeats (§3, clause 9).
 type RunPrincipalStatementScope struct {
 	Sources []RunPrincipalScopeEntry `json:"sources"`
+	ScopeID *string                  `json:"scopeId,omitzero"`
 }
 
-var runPrincipalStatementScopeMembers = []string{"sources"}
+var runPrincipalStatementScopeMembers = []string{"sources", "scopeId"}
 
 // UnmarshalJSON decodes a RunPrincipalStatementScope object and refuses a member the closed schema does not name.
 func (v *RunPrincipalStatementScope) UnmarshalJSON(data []byte) error {

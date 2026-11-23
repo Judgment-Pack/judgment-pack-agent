@@ -46,7 +46,7 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
  *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
  */
 import type { SourceIdentityState } from './execution/state'
-import { admitCall, refusalDetail, type OpenedPrincipal, type PrincipalRefusal } from './principal'
+import { admitCall, refusalDetail, scopeIdentifier, type OpenedPrincipal, type PrincipalRefusal } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether, scalarValue } from './context/chat'
 import { readHistoryRequestJSON } from './history/codec'
@@ -138,9 +138,11 @@ export interface ToolSource extends Omit<SourceRecord, 'tool' | 'receipt' | 'ide
    * ADR-0029: for a source a gateway serves, the gateway's authority label (its receipts' `authority`)
    * and the source name it gives the source, which a delegated run's scope names. A delegated run
    * refuses every call of a `gateway` source declared without it (out-of-scope, source). It is the
-   * host's declaration, never carried on the source record.
+   * host's declaration, never carried on the source record. `scope` is the scope identifier the gateway's configuration
+   * fixes the source to, where it fixes one: under a chain bound to one scope identifier (spec RFC 0030 §2) a source
+   * fixed to another, or to none, is refused `scope-id-mismatch` before the call leaves the harness.
    */
-  gatewayScope?: { authority: string; source: string }
+  gatewayScope?: { authority: string; source: string; scope?: string }
 }
 
 /** The harness tool that loads a catalogued tool's schema; a reserved name. */
@@ -311,7 +313,7 @@ function declarationProblem(tool: HostTool): string {
   if (source.identity !== undefined && (!object(source.identity) || !exactIdentity(source.identity))) return 'its identity is not a person, service or connection with a label of 1 to 128 characters'
   if (source.currentIdentity !== undefined && typeof source.currentIdentity !== 'function') return "its source's currentIdentity is not a function"
   if (source.currentDigest !== undefined && typeof source.currentDigest !== 'function') return "its source's currentDigest is not a function"
-  if (source.gatewayScope !== undefined && (!object(source.gatewayScope) || Object.keys(source.gatewayScope).some(k => k !== 'authority' && k !== 'source') || typeof source.gatewayScope.authority !== 'string' || !/^[!-~]{1,256}$/.test(source.gatewayScope.authority) || typeof source.gatewayScope.source !== 'string' || source.gatewayScope.source.length < 1 || source.gatewayScope.source.length > 256)) return "its gateway scope is not {authority, source}, a gateway's authority label and its source name"
+  if (source.gatewayScope !== undefined && (!object(source.gatewayScope) || Object.keys(source.gatewayScope).some(k => k !== 'authority' && k !== 'source' && k !== 'scope') || (source.gatewayScope.scope !== undefined && !scopeIdentifier(source.gatewayScope.scope)) || typeof source.gatewayScope.authority !== 'string' || !/^[!-~]{1,256}$/.test(source.gatewayScope.authority) || typeof source.gatewayScope.source !== 'string' || source.gatewayScope.source.length < 1 || source.gatewayScope.source.length > 256)) return "its gateway scope is not {authority, source, scope?}, a gateway's authority label, its source name and the scope identifier it fixes the source to"
   // ADR-0029: a mapping says a gateway enforces and counts this source, so the host that dispatches any other kind cannot name one; and it names the gateway the receipts pin.
   if (source.gatewayScope !== undefined && source.kind !== 'gateway') return 'its gatewayScope is for a source a gateway serves, and it is not one'
   if (source.gatewayScope !== undefined && source.gatewayReceipt !== undefined && (source.gatewayScope as {authority: unknown}).authority !== (source.gatewayReceipt as {authority?: unknown} | null)?.authority) return 'its gatewayScope names another authority than the receipts it pins'
@@ -1000,8 +1002,35 @@ export class SourceGate {
   }
 
   figures():SourceFigures[]{return this.tally()}
-  /** ADR-0029: the principal of a delegated run, set once by the boundary before any call. */
-  usePrincipal(principal: OpenedPrincipal | undefined): void { this.ownPrincipal = principal }
+  /**
+   * ADR-0029: the principal of a delegated run, set once by the boundary before any call. Every gateway source the run
+   * cannot hold to the chain's binding (spec RFC 0030 §2: one scope identifier, or none under an unbound chain) is refused
+   * here, at binding, with a guardrail (`delegation refused`, `scope-id-mismatch`), and every call of it is refused before
+   * it leaves.
+   */
+  usePrincipal(principal: OpenedPrincipal | undefined): void {
+    this.ownPrincipal = principal
+    for (const entry of this.entries.values()) {
+      const problem = this.unboundSource(entry)
+      if (problem !== undefined) this.refuse(entry.wire, `${entry.wire} is refused: ${problem}. None of its calls is sent.`, 'delegation refused', { name: 'scope-id-mismatch' })
+    }
+  }
+  /**
+   * Why a gateway source cannot be used under the run's chain, or undefined. Under an unbound chain: the host's mapping
+   * fixes it to a scope identifier. Under a bound chain: the mapping fixes it to another scope identifier, or to none; or
+   * the package does not verify its receipts (no pinned `gatewayReceipt`), so the scope of its answers could not be
+   * checked, which a host-verified receipt does not show the package.
+   */
+  private unboundSource(entry: SourceEntry): string | undefined {
+    const principal = this.principal
+    if (principal === undefined || entry.record.kind !== 'gateway') return undefined
+    const bound = principal.chain.scopeId
+    const fixed = entry.declared.source?.gatewayScope?.scope
+    if (bound === undefined) return fixed === undefined ? undefined : 'the delegation is bound to no scope identifier, and the source is fixed to one'
+    if (fixed !== bound) return fixed === undefined ? 'the delegation is bound to a scope identifier, and the source is fixed to no scope identifier' : 'the delegation is bound to another scope identifier than the one the source is fixed to'
+    if (entry.declared.source?.gatewayReceipt === undefined) return 'the delegation is bound to a scope identifier, and the package does not verify the receipts of this source, so the scope of its answers cannot be checked'
+    return undefined
+  }
   /** ADR-0029: the principal this gate admits calls under: its own, or its delegating run's. */
   get principal(): OpenedPrincipal | undefined { return this.ownPrincipal ?? this.parent?.principal }
 
@@ -1015,9 +1044,13 @@ export class SourceGate {
   private async delegated(entry: SourceEntry, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
     const principal = this.principal
     if (principal === undefined) return undefined
+    // At a call, the package's unverified receipts are refused here, and the scope the call would be sent with is
+    // checked by admitCall's request check (scopeIdRefusal), before any read.
+    if (principal.chain.scopeId !== undefined && entry.record.kind === 'gateway' && entry.declared.source?.gatewayReceipt === undefined) return { name: 'scope-id-mismatch' }
     const mapped = entry.declared.source?.gatewayScope
     const audience = mapped !== undefined ? { kind: 'gateway' as const, name: mapped.authority } : entry.record.kind === 'gateway' ? undefined : { kind: 'agent-host' as const, name: principal.audience }
-    return admitCall(principal, { audience, source: mapped?.source ?? entry.record.id, tool: entry.record.tool!, effect: entry.declared.taxonomy?.effect }, count && audience?.kind === 'agent-host', signal)
+    const scopeId = entry.record.kind === 'gateway' ? mapped?.scope ?? null : undefined
+    return admitCall(principal, { audience, source: mapped?.source ?? entry.record.id, tool: entry.record.tool!, effect: entry.declared.taxonomy?.effect, ...(scopeId !== undefined ? { scopeId } : {}) }, count && audience?.kind === 'agent-host', signal)
   }
   /** The final admission of a call the host is about to dispatch, immediately before it, counted. */
   private holdDispatch(bounded: AbortSignal, entry: SourceEntry, name: string, callId: string | undefined, giveBack: () => void): void {
@@ -1441,7 +1474,10 @@ export class SourceGate {
     }
     try {
       result = await withDeadline((bounded) => {
-        if(entry.declared.source!.gatewayReceipt!==undefined) gatewayInvocation=beginGatewayInvocation(bounded)
+        // RFC 0030 §2: under a delegation every call to a gateway source is sent with the chain's scope identifier, or with
+        // none (null) under an unbound chain, and its verified receipt is held to the same.
+        const delegatedScope=entry.record.kind==='gateway'&&this.principal!==undefined?this.principal.chain.scopeId??null:undefined
+        if(entry.declared.source!.gatewayReceipt!==undefined||typeof delegatedScope==='string') gatewayInvocation=beginGatewayInvocation(bounded,delegatedScope)
         if(admission!==undefined) admissions.set(bounded, admission)
         this.holdDispatch(bounded, entry, tool.name, callId, giveBackCall)
         return run(args,bounded)

@@ -66,6 +66,12 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
+    "scopeIdentifier": {
+      "description": "A scope identifier in the reference gateway's SPEC.md §1.2a form: a string of 1 to 128 bytes of UTF-8, one line, holding no code point display policy 1 refuses, compared as written; never the marker unscoped.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "time": {
       "description": "UTC with exactly millisecond precision, of a date that exists (the readers check the date).",
       "type": "string",
@@ -247,7 +253,7 @@
       "additionalProperties": false
     },
     "statement": {
-      "description": "A delegation statement, version 1 (RFC 0030 §2): subject sub authorizes actor act for scope until expiresAt. Signed with Ed25519 under the issuing host's pinned key over \"judgment-pack/delegation/1:\" and canon of the statement without its signature. A top-level member beside those named is signed with the rest and not refused by the structure (a member appended after signing fails the signature); every object inside a link holds exactly its members. The readers hold the rest of RFC 0030's step 3: entries ordered by audience kind, audience name and source with no repeat, a lifetime of at most 24 hours, parent and depth consistent, and canon of the link at most 65536 bytes.",
+      "description": "A delegation statement, version 1 (RFC 0030 §2): subject sub authorizes actor act for scope until expiresAt. Signed with Ed25519, or with ES256 where it holds alg (RFC 0030 §2, Signing with a P-256 key: r||s at low S under a P-256 key pinned with its algorithm), under the issuing host's pinned key over \"judgment-pack/delegation/1:\" and canon of the statement without its signature. A top-level member beside those named is signed with the rest and not refused by the structure (a member appended after signing fails the signature); every object inside a link holds exactly its members. The readers hold the rest of RFC 0030's step 3: entries ordered by audience kind, audience name and source with no repeat, a lifetime of at most 24 hours, parent and depth consistent, and canon of the link at most 65536 bytes.",
       "type": "object",
       "required": [
         "delegationVersion",
@@ -275,9 +281,13 @@
           "$ref": "#/$defs/flatToken"
         },
         "keyId": {
-          "description": "The first 32 characters of the lowercase hexadecimal SHA-256 of the issuing host's 32-byte public key.",
+          "description": "The first 32 characters of the lowercase hexadecimal SHA-256 of the issuing host's public key: its 32 bytes for Ed25519, its 33-byte compressed point for P-256.",
           "type": "string",
           "pattern": "^[0-9a-f]{32}$"
+        },
+        "alg": {
+          "description": "Present exactly when a P-256 key signs the statement: ES256, inside the signing input and the digest. Any other value is refused (malformed); an Ed25519-signed statement holds no alg.",
+          "const": "ES256"
         },
         "sub": {
           "$ref": "#/$defs/principalReference"
@@ -311,9 +321,13 @@
               "items": {
                 "$ref": "#/$defs/scopeEntry"
               }
+            },
+            "scopeId": {
+              "$ref": "#/$defs/scopeIdentifier"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "What the actor may do; scopeId, where present, the one scope identifier the chain is bound to (RFC 0030 §2, Binding a chain to one scope identifier): the root's, which every link repeats (§3, clause 9)."
         },
         "mayDelegate": {
           "type": "boolean"
@@ -378,7 +392,7 @@
       ]
     },
     "refusal": {
-      "description": "A named refusal of a delegated run. Verification of the chain (when the run starts, and of a child's chain when it is handed one): malformed, unsupported-version, key-mismatch, signature-mismatch, chain-broken, widened, and software-mismatch where the leaf's software is not the run's. Admission of a call, immediately before dispatch and with counting unset before an approval pause: not-yet-valid and expired at the host's time; the host admission port's agent-unregistered, software-mismatch, not-issued, revoked, subject-mismatch, subject-unauthorized and out-of-scope (limit); the package's own out-of-scope; admission-unknown where the port gave no valid answer in time or the host's time could not be read. A resume or takeover under another subject or root actor: principal-changed. A delegated child: delegation-not-permitted below a link that permits none or with no child port, not-parent-actor where the issuing host answers so, chain-broken for a chain that is not the parent's with one link below it, widened for a wider link. reason is present exactly for out-of-scope.",
+      "description": "A named refusal of a delegated run. Verification of the chain (when the run starts, and of a child's chain when it is handed one): malformed, unsupported-version, key-mismatch, signature-mismatch, chain-broken, widened, and software-mismatch where the leaf's software is not the run's. Admission of a call, immediately before dispatch and with counting unset before an approval pause: not-yet-valid and expired at the host's time; the host admission port's agent-unregistered, software-mismatch, not-issued, revoked, subject-mismatch, subject-unauthorized and out-of-scope (limit); the package's own out-of-scope; admission-unknown where the port gave no valid answer in time or the host's time could not be read. A resume or takeover under another subject or root actor: principal-changed. A delegated child: delegation-not-permitted below a link that permits none or with no child port, not-parent-actor where the issuing host answers so, chain-broken for a chain that is not the parent's with one link below it, widened for a wider link. Under a chain bound to one scope identifier, before the host time and any admission read: scope-id-mismatch for a call to a gateway source the host maps to another scope identifier, or to none. reason is present exactly for out-of-scope.",
       "type": "object",
       "required": [
         "name"
@@ -404,7 +418,8 @@
             "admission-unknown",
             "principal-changed",
             "delegation-not-permitted",
-            "not-parent-actor"
+            "not-parent-actor",
+            "scope-id-mismatch"
           ]
         },
         "reason": {

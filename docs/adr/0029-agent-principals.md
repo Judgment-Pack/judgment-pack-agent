@@ -236,3 +236,49 @@ is recorded, a widened one and one with no port or permission start nothing, and
 delegates as before. The lease vectors hold version 2 and `principal-changed`; the store and wait
 conformance kits hold the binding across takeover, effect admission, claim and restart. Mutation rows
 `principal P1` onward hold the safeguards, each with its Go twin.
+
+## Amendment: ES256 statements and the scope binding (spec RFC 0030's amendment, agent #373)
+
+**ES256 statements.** A link that holds `alg: "ES256"` is verified by ECDSA over P-256 with
+SHA-256, as RFC 0030 §2 (*Signing with a P-256 key*) restates the gateway's §1.5: a signature is
+`r||s` (128 lowercase hexadecimal characters; a DER signature is `malformed`), with
+1 ≤ r ≤ n − 1 and 1 ≤ s ≤ (n − 1)/2, so a high-S signature is `signature-mismatch` although plain
+ECDSA accepts it. A link that holds no `alg` is Ed25519 and is verified byte for byte as before;
+an `alg` other than the string `"ES256"` is `malformed`. A chain may mix the two, link by link.
+
+**Keys are pinned with their algorithm.** `ContextInput.principal.keys` takes, by host, the
+gateway's pin forms: an Ed25519 key as its 64 lowercase hexadecimal characters, as before, and a
+P-256 key as `{"alg": "ES256", "key": <66 lowercase hexadecimal characters>}`, its compressed point.
+The package picks the algorithm from the pin and from the link's `alg`, never from a key's length
+or form. A P-256 pin is refused unless its first byte is `02` or `03`, x < p and x³ − 3x + b is a
+square modulo p; the package decompresses the point itself, since WebCrypto imports no compressed
+point. Its key identifier is the first 32 hexadecimal characters of SHA-256 over the 33 bytes. A
+link whose `keyId` names only a pinned key of the other algorithm is `key-mismatch`.
+
+**A chain bound to one scope identifier.** A root may hold `scope.scopeId`, a scope identifier in
+the gateway's §1.2a form, never `"unscoped"`; any other value is `malformed`. Every link repeats
+the root's binding (clause 9): a child bound to another identifier, an unbound child under a bound
+link and a bound child under an unbound one are each `widened`. Under a bound chain:
+- every call to a gateway source is sent with that scope identifier: the executor reads it as
+  `gatewayExecutionContext(signal).scope`;
+- a gateway source the host's `gatewayScope` mapping fixes to another scope identifier, or to none
+  (`gatewayScope.scope` absent), is refused `scope-id-mismatch` before the host's time is read,
+  before any admission read and before the call leaves the harness; nothing is counted;
+- a host source is unaffected and carries no scope;
+- a gateway receipt the package verifies whose `scope` is not the binding withholds the result,
+  as an unverified receipt does;
+- a gateway source whose receipts the package does not verify (no pinned `gatewayReceipt`, a host
+  `verifyReceipt` alone) is refused when the principal is bound to the gate, before any call, with a
+  `delegation refused` guardrail naming `scope-id-mismatch`, since the scope of its answers could not
+  be checked; a source fixed to another scope identifier, or to none, is refused there too.
+
+Under an unbound chain the same request check holds the call to no scope identifier: a gateway source
+the host's mapping fixes to a scope identifier is refused `scope-id-mismatch` at binding, with the
+same guardrail, and at each call before any read; the executor's context holds `scope: null`, so it
+sends none; and a receipt the package verifies that carries a scope is withheld. A gateway source
+fixed to none, including one whose receipts only the host verifies, is admitted as before. A run
+with no delegation behaves as before.
+
+The TypeScript reader carries this amendment. The Go reader (`go/context/run_principal.go`) does not
+yet: it refuses an ES256 link (`key-mismatch`) and a bound one (`malformed`), so it fails closed
+until its twin is built.

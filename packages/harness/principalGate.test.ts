@@ -4,6 +4,8 @@
 // authority past the delegation; an undelegated gate asks nothing.
 import {describe,it,expect,beforeEach} from 'vitest'
 import chains from '../../contract/vectors/principal/chains.json'
+import scopeVectors from '../../contract/vectors/principal/scope-binding.json'
+import {gatewayExecutionContext} from './gatewayReceipt'
 import {declareSources,dispatchAdmission,SourceGate,toolListDigest,type ApprovalBook} from './toolSources'
 import {openPrincipal,type AdmissionRead,type AdmissionAnswer} from './principal'
 import {CONTEXT_DEFAULTS} from './context/policy'
@@ -13,7 +15,12 @@ import {testHost} from './testing/host'
 import type {HostTool,McpToolResult} from './engine'
 import type {ApprovalRecord,SourceFigures} from './execution/state'
 
-beforeEach(()=>configureHarness(testHost()))
+// RFC 0030 §2: the scope identifier the host's mapping fixes the tickets source to, and the scope each of its calls is sent with.
+let ticketScope:string|undefined
+const sentScopes:(string|null|undefined)[]=[]
+const boundRoot=scopeVectors.statements.find(s=>s.name==='bound-root')!.chain
+const unboundRoot=scopeVectors.statements.find(s=>s.name==='unbound-root')!.chain
+beforeEach(()=>{configureHarness(testHost());ticketScope=undefined;sentScopes.length=0})
 const T='2026-10-30T01:00:00.000Z'
 const ok=():McpToolResult=>({content:[{type:'text',text:'done'}]})
 type Port={answer:AdmissionAnswer|'throw';answerFor?:(read:AdmissionRead)=>AdmissionAnswer;reads:AdmissionRead[];now:string}
@@ -23,18 +30,18 @@ async function tools(ran:string[],extra:Partial<Record<string,Partial<HostTool>>
  const base=(name:string,operation:string,effect:string,source:Record<string,unknown>):HostTool=>({name,description:name,inputSchema:{type:'object'},taxonomy:{operation,effect} as HostTool['taxonomy'],execute:async()=>{ran.push(name);return ok()},...(effect==='act'?{approve:()=>'allow' as const}:{}),source:source as unknown as HostTool['source'],...extra[name]})
  const notesTools=notes.map(([name,operation,effect])=>base(name,operation,effect,{kind:'custom',id:'notes',trust:'first-party'}))
  // A gateway's read is read-external: its receipt is checked by the host's verifier before anything of it is kept.
- const external=(name:string,source:Record<string,unknown>):HostTool=>({...base(name,'read','read-external',{...source,verifyReceipt:()=>true}),execute:async()=>{ran.push(name);return {...ok(),receipt:'r-1'} as McpToolResult}})
- const tickets=[external('query',{kind:'gateway',id:'tickets',trust:'connected',gatewayScope:{authority:'gateway:test',source:'tickets/live'}})]
+ const external=(name:string,source:Record<string,unknown>):HostTool=>({...base(name,'read','read-external',{...source,verifyReceipt:()=>true}),execute:async(_given:unknown,signal:AbortSignal)=>{ran.push(name);sentScopes.push(gatewayExecutionContext(signal)?.scope);return {...ok(),receipt:'r-1'} as McpToolResult}})
+ const tickets=[external('query',{kind:'gateway',id:'tickets',trust:'connected',gatewayScope:{authority:'gateway:test',source:'tickets/live',...(ticketScope===undefined?{}:{scope:ticketScope})}})]
  const unmapped=[external('lookup',{kind:'gateway',id:'records',trust:'connected'})]
  const pin=async(group:HostTool[])=>{const digest=await toolListDigest(group.map(t=>({name:t.name,description:t.description,inputSchema:t.inputSchema,taxonomy:t.taxonomy}))as never);return group.map(t=>({...t,source:{...t.source!,toolListDigest:digest}}))}
  return [...await pin(notesTools),...await pin(tickets),...await pin(unmapped)]
 }
-async function delegatedGate(port:Port,ran:string[],book?:ApprovalBook,extra?:Partial<Record<string,Partial<HostTool>>>,chain:'root'|'child'='root'){
+async function delegatedGate(port:Port,ran:string[],book?:ApprovalBook,extra?:Partial<Record<string,Partial<HostTool>>>,chain:'root'|'child'|'bound'|'unbound'='root'){
  const declared=await declareSources(await tools(ran,extra),[])
  const notices:{tool:string;detail:string;reason?:string;refusal?:unknown}[]=[]
  const rows:SourceFigures[]=[]
  const gate=new SourceGate(declared.entries,declared.sources,CONTEXT_DEFAULTS,'marker',(tool,detail,reason,refusal)=>{notices.push({tool,detail,...(reason===undefined?{}:{reason}),...(refusal===undefined?{}:{refusal})});return new GateViolation(tool,detail)},()=>rows,'json-schema',undefined,book)
- gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain==='child'?chains.items[1]:chains.items[0]),keys:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(port.now),admission:read=>{port.reads.push(read);if(port.answerFor)return port.answerFor(read);if(port.answer==='throw')throw Error('port down');return port.answer}}))
+ gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain==='bound'?boundRoot:chain==='unbound'?unboundRoot:chain==='child'?chains.items[1]:chains.items[0]),keys:chain==='bound'||chain==='unbound'?scopeVectors.keys as never:chains.keys,software:chains.software,audience:chains.audience,clock:()=>Date.parse(port.now),admission:read=>{port.reads.push(read);if(port.answerFor)return port.answerFor(read);if(port.answer==='throw')throw Error('port down');return port.answer}}))
  const byName=new Map(declared.hostTools.map(t=>[t.name,t]))
  // As the session runs a call: the final admission, at the dispatch, and then the host's execute.
  const call=(name:string,args:Record<string,unknown>={},callId?:string)=>gate.call(byName.get(name)!,args,new AbortController().signal,async(given,signal)=>{await dispatchAdmission(signal)?.();return byName.get(name)!.execute(given,signal)},callId)
@@ -210,5 +217,40 @@ describe('a delegated run admits each call before dispatch (ADR-0029)',()=>{
   const byName=new Map(declared.hostTools.map(t=>[t.name,t]))
   await gate.call(byName.get('notes__delete_note')!,{},new AbortController().signal,(a,s)=>byName.get('notes__delete_note')!.execute(a,s))
   expect(ran).toEqual(['delete_note'])
+ })
+})
+
+describe('a chain bound to one scope identifier (RFC 0030 §2, Binding a chain to one scope identifier)',()=>{
+ // The tickets source's receipts are verified by the host (verifyReceipt), not by the package: under a bound chain it is refused at binding.
+ for(const v of scopeVectors.bindings)it(v.name,async()=>{
+  ticketScope=v.fixed??undefined
+  const port=admit(),ran:string[]=[]
+  const {call,notices}=await delegatedGate(port,ran,undefined,undefined,v.chain==='bound-root'?'bound':'unbound')
+  const atBinding=notices.filter(n=>n.reason==='delegation refused')
+  if(v.expect==='admit'){
+   expect(atBinding).toEqual([])
+   await call('tickets__query')
+   expect(ran).toEqual(['query'])
+   expect(sentScopes).toEqual([undefined])
+   return
+  }
+  // Under a bound chain the unmapped records source, a gateway source too, is refused at binding beside it; under an
+  // unbound chain it is fixed to no scope identifier, as the chain is.
+  expect(atBinding.map(n=>n.tool).sort()).toEqual(v.chain==='bound-root'?['records__lookup','tickets__query']:['tickets__query'])
+  const tickets=atBinding.filter(n=>n.tool==='tickets__query')
+  expect(tickets).toHaveLength(1)
+  expect(tickets[0]).toMatchObject({refusal:{name:v.expect}})
+  expect(tickets[0]!.detail).toContain(v.detail)
+  await expect(call('tickets__query')).rejects.toBeInstanceOf(GateViolation)
+  expect(ran).toEqual([])
+  expect(sentScopes).toEqual([])
+  expect(port.reads).toEqual([])
+ })
+ it('admits a host source under a bound chain, with no scope',async()=>{
+  const port=admit(),ran:string[]=[]
+  const {call}=await delegatedGate(port,ran,undefined,undefined,'bound')
+  await call('notes__read_note')
+  expect(ran).toEqual(['read_note'])
+  expect(port.reads.map(r=>r.call.tool)).toEqual(['read_note','read_note'])
  })
 })
