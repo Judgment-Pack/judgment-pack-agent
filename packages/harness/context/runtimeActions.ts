@@ -26,7 +26,7 @@ export function installRuntimeActions(context:SessionContext,session:EngineSessi
  const refusals=new WeakSet<object>()
  const delegated=async(name:string,count:boolean,signal:AbortSignal)=>{
   if(!context.principal)return
-  const refusal=await admitRuntimeCall(context.principal,name,count,signal)
+  const refusal=await admitRuntimeCall(context.principal,name,count,signal,async()=>await context.sources?.principalSkills()??[])
   if(!refusal)return
   const error=context.refuse(name,refusalDetail(name,refusal),'delegation refused',refusal)
   refusals.add(error)

@@ -49,7 +49,7 @@ export const RUNTIME_SOURCE = 'runtime'
 export const LOCAL_SOURCE = 'local'
 export const SCOPE_REASONS = ['source', 'tool', 'effect', 'limit-unknown', 'limit'] as const
 export type ScopeReason = typeof SCOPE_REASONS[number]
-export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor' | 'scope-id-mismatch'
+export type RefusalName = 'malformed' | 'unsupported-version' | 'key-mismatch' | 'signature-mismatch' | 'chain-broken' | 'widened' | 'not-yet-valid' | 'expired' | 'agent-unregistered' | 'software-mismatch' | 'not-issued' | 'revoked' | 'out-of-scope' | 'subject-mismatch' | 'subject-unauthorized' | 'admission-unknown' | 'principal-changed' | 'delegation-not-permitted' | 'not-parent-actor' | 'scope-id-mismatch' | 'tool-version-refused' | 'skill-refused' | 'read-version-unsupported' | 'read-malformed'
 /** A named refusal (`run-principal.json#/$defs/refusal`); `reason` is present exactly for out-of-scope. */
 export interface PrincipalRefusal {name: RefusalName; reason?: ScopeReason}
 
@@ -65,11 +65,20 @@ export interface PrincipalRecord {
   delegation: {id: string; digest: string}
   chain: string[]
 }
-export interface AdmissionCall {source: string; tool: string; effect: DelegationEffect; count: boolean}
-/** What the host's admission port is handed (`run-principal.json#/$defs/admissionRead`). */
-export interface AdmissionRead {readVersion: '1'; host: string; audience: Audience; chain: string[]; call: AdmissionCall; at: string}
-/** The port's answer (`run-principal.json#/$defs/admissionAnswer`). */
-export type AdmissionAnswer = {admission: 'admit'} | {admission: 'refuse'; refusal: string; reason?: string}
+/** A loaded skill as a read names it (`run-principal.json#/$defs/skillRef`). */
+export interface SkillRef {id: string; digest: string}
+/** The run's loaded skills, taken under the skill gate's lock when a read is made. */
+export type PrincipalSkills = () => readonly SkillRef[] | Promise<readonly SkillRef[]>
+/** At read version "2" (ADR-0030) a call also carries the approved descriptor digest (`version`, or null) and the loaded skills, sorted by id. */
+export interface AdmissionCall {source: string; tool: string; effect: DelegationEffect; count: boolean; version?: string | null; skills?: SkillRef[]}
+/** What the host's admission port is handed (`run-principal.json#/$defs/admissionRead`, or `admissionReadV2` at "2"). */
+export interface AdmissionRead {readVersion: '1' | '2'; host: string; audience: Audience; chain: string[]; call: AdmissionCall; at: string}
+/** The port's answer (`run-principal.json#/$defs/admissionAnswer`, or `admissionAnswerV2` and `unreadAnswer` at "2"). */
+export type AdmissionAnswer = {admission: 'admit'} | {admission: 'refuse'; refusal: string; reason?: string} | {refusal: 'read-version-unsupported' | 'read-malformed'}
+/** What the skill-load port is asked before a skill loads (`run-principal.json#/$defs/skillLoadRead`): the skill, and the skills loaded before it. */
+export interface SkillLoadRead {readVersion: '2'; host: string; audience: Audience; chain: string[]; load: {skill: SkillRef; skills: SkillRef[]}; at: string}
+export type SkillLoadAnswer = {load: 'admit'} | {load: 'refuse'; refusal: string} | {refusal: 'read-version-unsupported' | 'read-malformed'}
+export type SkillLoadPort = (read: SkillLoadRead, signal: AbortSignal) => SkillLoadAnswer | Promise<SkillLoadAnswer>
 export type AdmissionPort = (read: AdmissionRead, signal: AbortSignal) => AdmissionAnswer | Promise<AdmissionAnswer>
 /** What the host's child port is asked for one delegated child: the parent's chain, the task, its profile and the tools with a source it is offered. */
 export interface ChildLinkRequest {readVersion: '1'; host: string; chain: string[]; task: string; profile: string; tools: {source: string; tool: string}[]}
@@ -95,6 +104,10 @@ export interface RunPrincipal {
   admission: AdmissionPort
   clock?: () => Date | number
   child?: ChildLinkPort
+  /** ADR-0030: the read version the package sends, by issuing host; a host not named is read at "1". */
+  readVersions?: Readonly<Record<string, '1' | '2'>>
+  /** ADR-0030: the port a skill load is read through at "2"; required there when skills are catalogued. */
+  skillLoad?: SkillLoadPort
 }
 /** What a lease and a wait hold of a delegated run's principals (`run-principal.json#/$defs/binding`), in the form of the gateway's reservation scope: a takeover or a resume keeps them. */
 export interface PrincipalBinding {sub: PrincipalReference; rootActor: string; host: string}
@@ -483,6 +496,9 @@ export interface OpenedPrincipal {
   readonly text: string
   /** The host's input, which a child's principal is opened from with its own chain. */
   readonly input: RunPrincipal
+  /** The read version the root's issuing host is read at (ADR-0030). */
+  readonly readVersion: '1' | '2'
+  readonly skillLoad?: SkillLoadPort
 }
 
 function readSoftware(v: unknown): Software {
@@ -513,19 +529,29 @@ export function principalRecord(chain: VerifiedChain): PrincipalRecord {
  */
 export async function openPrincipal(input: RunPrincipal): Promise<OpenedPrincipal> {
   if (!object(input)) throw new PrincipalInputInvalid('it is not an object')
-  const known = ['chain', 'keys', 'software', 'audience', 'admission', 'clock', 'child']
+  const known = ['chain', 'keys', 'software', 'audience', 'admission', 'clock', 'child', 'readVersions', 'skillLoad']
   if (Object.keys(input).some(name => !known.includes(name))) throw new PrincipalInputInvalid('it carries a member the package does not name')
   if (typeof input.chain !== 'string') throw new PrincipalInputInvalid("chain is not the chain's JSON text")
   if (!flatToken(input.audience)) throw new PrincipalInputInvalid('audience is not a flat token')
   if (typeof input.admission !== 'function') throw new PrincipalInputInvalid('admission is not a function')
   if (input.clock !== undefined && typeof input.clock !== 'function') throw new PrincipalInputInvalid('clock is not a function')
   if (input.child !== undefined && typeof input.child !== 'function') throw new PrincipalInputInvalid('child is not a function')
+  if (input.skillLoad !== undefined && typeof input.skillLoad !== 'function') throw new PrincipalInputInvalid('skillLoad is not a function')
+  if (input.readVersions !== undefined) {
+    if (!object(input.readVersions)) throw new PrincipalInputInvalid('readVersions is not an object')
+    for (const host of Object.keys(input.readVersions).sort(codePointCompare)) {
+      const version: unknown = input.readVersions[host]
+      if (!flatToken(host) || (version !== '1' && version !== '2')) throw new PrincipalInputInvalid(`readVersions names ${JSON.stringify(String(version).slice(0, 16))} for the host ${JSON.stringify(host.slice(0, 128))}; a host is read at "1" or "2"`)
+    }
+  }
   const runSoftware = readSoftware(input.software)
   const keys = await pinKeys(input.keys)
   const chain = await verifyChain(input.chain, keys)
   const leaf = chain.links[chain.links.length - 1]!
   if (canon(leaf.software) !== canon(runSoftware)) throw new DelegationRefused({name: 'software-mismatch'}, "the leaf's software is not the software the host states the run runs")
-  return Object.freeze({chain, record: principalRecord(chain), audience: input.audience, keys, software: runSoftware, admission: input.admission, clock: input.clock ?? (() => Date.now()), text: input.chain, input})
+  const root = chain.links[0]!.host
+  const readVersion = input.readVersions !== undefined && Object.hasOwn(input.readVersions, root) ? input.readVersions[root]! : '1'
+  return Object.freeze({chain, record: principalRecord(chain), audience: input.audience, keys, software: runSoftware, admission: input.admission, clock: input.clock ?? (() => Date.now()), text: input.chain, input, readVersion, ...(input.skillLoad ? {skillLoad: input.skillLoad} : {})})
 }
 
 /** The binding a lease and a wait hold of a principal record. */
@@ -545,13 +571,13 @@ export const sameBinding = (a: PrincipalBinding | undefined, b: PrincipalBinding
  * issued for it (a port that gives no valid answer in time is `admission-unknown`). The model never names or supplies
  * the link. Throws `DelegationRefused`. `openChildPrincipal` verifies what this returns.
  */
-export async function narrowChild(parent: OpenedPrincipal, request: {task: string; profile: string; tools: {source: string; tool: string}[]}, signal?: AbortSignal): Promise<RunPrincipal> {
+export async function narrowChild(parent: OpenedPrincipal, request: {task: string; profile: string; tools: {source: string; tool: string}[]}, signal?: AbortSignal, skills?: PrincipalSkills): Promise<RunPrincipal> {
   const leaf = parent.chain.links[parent.chain.links.length - 1]!
   if (!leaf.mayDelegate) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the link this run acts under permits no child')
   const port = parent.input.child
   if (port === undefined) throw new DelegationRefused({name: 'delegation-not-permitted'}, 'the host issues no child link')
   // Nothing of a child starts from a delegation that no longer stands: a resumed batch has no earlier check to rely on.
-  const standing = await admitStanding(parent, 'delegate_tasks', 'pure', signal)
+  const standing = await admitStanding(parent, 'delegate_tasks', 'pure', signal, skills)
   if (standing !== undefined) throw new DelegationRefused(standing, 'the delegation this run acts under no longer stands')
   const controller = new AbortController()
   const abort = () => controller.abort()
@@ -611,7 +637,7 @@ export const PRINCIPAL_CHANGED = 'The run continues under another principal than
  * mapping), its source, tool and effect. `scopeId`, for a call to a gateway source only, is the scope identifier the
  * host's mapping fixes the source to, or null where it names none; it is absent for a host source, which has none.
  */
-export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined; scopeId?: string | null}
+export interface PrincipalCall {audience: Audience | null | undefined; source: string; tool: string; effect: string | undefined; scopeId?: string | null; /** ADR-0030: the approved snapshot's descriptor digest for the tool, or null. */ version?: string | null; skills?: PrincipalSkills}
 
 /**
  * The request check of the chain's binding (RFC 0030 §2, *Binding a chain to one scope identifier*), made before step 8
@@ -638,6 +664,12 @@ export function scopeReason(chain: VerifiedChain, call: PrincipalCall): ScopeRea
 
 const BEFORE_SCOPE: readonly string[] = ['expired', 'agent-unregistered', 'software-mismatch', 'not-issued', 'revoked']
 const HOST_REFUSALS: readonly string[] = [...BEFORE_SCOPE, 'subject-mismatch', 'subject-unauthorized']
+/** Step 12 refusals only a read at "2" can be answered (ADR-0030). */
+const STEP_TWELVE_V2: readonly string[] = ['tool-version-refused', 'skill-refused']
+/** A read the issuing host did not read: reported where steps 8 to 10 are, never resent at "1". */
+const UNREAD: readonly string[] = ['read-version-unsupported', 'read-malformed']
+const SKILL_LOAD_REFUSALS: readonly string[] = [...BEFORE_SCOPE, 'skill-refused']
+const skillRefs = (skills: readonly SkillRef[]): SkillRef[] => skills.map(skill => ({id: skill.id, digest: skill.digest})).sort((a, b) => codePointCompare(a.id, b.id))
 
 /** The host's time in the record form, or undefined where it cannot be read. */
 function hostTime(clock: () => Date | number): number | undefined {
@@ -649,22 +681,40 @@ function hostTime(clock: () => Date | number): number | undefined {
 }
 
 /** The port's answer held to its exact form, or admission-unknown. */
-function readAnswer(answer: unknown): PrincipalRefusal | undefined | 'unknown' {
+function readAnswer(answer: unknown, version: '1' | '2' = '1'): PrincipalRefusal | undefined | 'unknown' {
   if (!object(answer)) return 'unknown'
+  if (version === '2' && hasOnly(answer, ['refusal']) && UNREAD.includes(answer.refusal as string)) return {name: answer.refusal as RefusalName}
   if (answer.admission === 'admit' && hasOnly(answer, ['admission'])) return undefined
   if (answer.admission !== 'refuse') return 'unknown'
   if (answer.refusal === 'out-of-scope') return hasOnly(answer, ['admission', 'refusal', 'reason']) && SCOPE_REASONS.includes(answer.reason as ScopeReason) ? {name: 'out-of-scope', reason: answer.reason as ScopeReason} : 'unknown'
-  return hasOnly(answer, ['admission', 'refusal']) && HOST_REFUSALS.includes(answer.refusal as string) ? {name: answer.refusal as RefusalName} : 'unknown'
+  return hasOnly(answer, ['admission', 'refusal']) && (HOST_REFUSALS.includes(answer.refusal as string) || version === '2' && STEP_TWELVE_V2.includes(answer.refusal as string)) ? {name: answer.refusal as RefusalName} : 'unknown'
 }
 
-async function askPort(principal: OpenedPrincipal, read: AdmissionRead, signal?: AbortSignal): Promise<unknown> {
+/** The skill-load port's answer held to its exact form, or admission-unknown. */
+function readSkillLoadAnswer(answer: unknown): PrincipalRefusal | undefined | 'unknown' {
+  if (!object(answer)) return 'unknown'
+  if (hasOnly(answer, ['load']) && answer.load === 'admit') return undefined
+  if (hasOnly(answer, ['refusal']) && UNREAD.includes(answer.refusal as string)) return {name: answer.refusal as RefusalName}
+  return hasOnly(answer, ['load', 'refusal']) && answer.load === 'refuse' && SKILL_LOAD_REFUSALS.includes(answer.refusal as string) ? {name: answer.refusal as RefusalName} : 'unknown'
+}
+
+/** A call's read at the root host's read version: at "2" with the version and the loaded skills, taken now. */
+async function callRead(principal: OpenedPrincipal, audience: Audience, call: AdmissionCall, version: string | null | undefined, skills: PrincipalSkills | undefined, at: number): Promise<AdmissionRead> {
+  const base = {host: principal.chain.links[0]!.host, audience: {...audience}, chain: [...principal.chain.digests]}
+  if (principal.readVersion !== '2') return {readVersion: '1', ...base, call, at: formatTime(at)}
+  return {readVersion: '2', ...base, call: {...call, version: version ?? null, skills: skillRefs(skills ? await skills() : [])}, at: formatTime(at)}
+}
+
+const askPort = (principal: OpenedPrincipal, read: AdmissionRead, signal?: AbortSignal): Promise<unknown> => ask(port => principal.admission(structuredClone(read), port), signal)
+
+async function ask(port: (signal: AbortSignal) => unknown, signal?: AbortSignal): Promise<unknown> {
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, {once: true})
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
-      Promise.resolve().then(() => principal.admission(structuredClone(read), controller.signal)),
+      Promise.resolve().then(() => port(controller.signal)),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('admission timed out')), ADMISSION_MILLISECONDS) }),
       ...(signal ? [new Promise((_, reject) => { if (signal.aborted) reject(signal.reason); signal.addEventListener('abort', () => reject(signal.reason), {once: true}) })] : []),
     ])
@@ -689,16 +739,16 @@ async function askPort(principal: OpenedPrincipal, read: AdmissionRead, signal?:
  * declaration (an `act` or `read-external` tool must have a source). Steps 8 to 10 and 12 apply and scope does not:
  * validity at the host's time, then the port's answer, read afresh, under `source: local` with counting unset.
  */
-export async function admitStanding(principal: OpenedPrincipal, tool: string, effect: string | undefined, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
+export async function admitStanding(principal: OpenedPrincipal, tool: string, effect: string | undefined, signal?: AbortSignal, skills?: PrincipalSkills): Promise<PrincipalRefusal | undefined> {
   const at = hostTime(principal.clock)
   if (at === undefined) return {name: 'admission-unknown'}
   const links = principal.chain.links
   if (links.some(link => at < link.issuedAt)) return {name: 'not-yet-valid'}
   if (links.some(link => at >= link.expiresAt)) return {name: 'expired'}
   if (effect === undefined || !(EFFECTS as readonly string[]).includes(effect)) return {name: 'out-of-scope', reason: 'effect'}
-  const read: AdmissionRead = {readVersion: '1', host: links[0]!.host, audience: {kind: 'agent-host', name: principal.audience}, chain: [...principal.chain.digests], call: {source: LOCAL_SOURCE, tool, effect: effect as DelegationEffect, count: false}, at: formatTime(at)}
+  const read = await callRead(principal, {kind: 'agent-host', name: principal.audience}, {source: LOCAL_SOURCE, tool, effect: effect as DelegationEffect, count: false}, null, skills, at)
   let answer: PrincipalRefusal | undefined | 'unknown'
-  try { answer = readAnswer(await askPort(principal, read, signal)) } catch (error) {
+  try { answer = readAnswer(await askPort(principal, read, signal), principal.readVersion) } catch (error) {
     if (signal?.aborted) throw error
     answer = 'unknown'
   }
@@ -706,8 +756,8 @@ export async function admitStanding(principal: OpenedPrincipal, tool: string, ef
 }
 
 /** An acting Runtime call's admission: its source record under the run's agent-host audience, effect `act`. The host dispatches it, so the final admission counts. */
-export const admitRuntimeCall = (principal: OpenedPrincipal, tool: string, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> =>
-  admitCall(principal, {audience: {kind: 'agent-host', name: principal.audience}, source: RUNTIME_SOURCE, tool, effect: 'act'}, count, signal)
+export const admitRuntimeCall = (principal: OpenedPrincipal, tool: string, count: boolean, signal?: AbortSignal, skills?: PrincipalSkills): Promise<PrincipalRefusal | undefined> =>
+  admitCall(principal, {audience: {kind: 'agent-host', name: principal.audience}, source: RUNTIME_SOURCE, tool, effect: 'act', skills}, count, signal)
 
 /** Whether a resume runs under other principals than it began under: another subject, root actor or issuing host, or a delegation only one side has. A re-issued or narrowed chain of the same three is not. */
 export function principalsChanged(saved: PrincipalRecord | undefined, current: PrincipalRecord | undefined): boolean {
@@ -727,16 +777,38 @@ export async function admitCall(principal: OpenedPrincipal, call: PrincipalCall,
   const ownRefusal: PrincipalRefusal | undefined = own === undefined ? undefined : {name: 'out-of-scope', reason: own}
   // Nothing names the call to the issuing host where its audience or effect cannot be stated.
   if (call.audience == null || call.effect === undefined || !(EFFECTS as readonly string[]).includes(call.effect) || !call.tool || !call.source) return ownRefusal ?? {name: 'out-of-scope', reason: 'source'}
-  const read: AdmissionRead = {readVersion: '1', host: links[0]!.host, audience: {...call.audience}, chain: [...principal.chain.digests], call: {source: call.source, tool: call.tool, effect: call.effect as DelegationEffect, count: count && ownRefusal === undefined}, at: formatTime(at)}
+  const read = await callRead(principal, call.audience, {source: call.source, tool: call.tool, effect: call.effect as DelegationEffect, count: count && ownRefusal === undefined}, call.version, call.skills, at)
   let answer: PrincipalRefusal | undefined | 'unknown'
-  try { answer = readAnswer(await askPort(principal, read, signal)) } catch (error) {
+  try { answer = readAnswer(await askPort(principal, read, signal), principal.readVersion) } catch (error) {
     if (signal?.aborted) throw error
     answer = 'unknown'
   }
   if (answer === 'unknown') return {name: 'admission-unknown'}
-  if (answer !== undefined && BEFORE_SCOPE.includes(answer.name)) return answer
+  if (answer !== undefined && (BEFORE_SCOPE.includes(answer.name) || UNREAD.includes(answer.name))) return answer
   if (ownRefusal) return ownRefusal
   return answer
+}
+
+/**
+ * A skill load's admission at read version "2" (ADR-0030): step 8 at the host's time with no read, then the
+ * skill-load port's answer for the skill and the skills loaded before it. No port, or no valid answer in time, is
+ * admission-unknown. Returns the refusal, or undefined where the load is admitted.
+ */
+export async function admitSkillLoad(principal: OpenedPrincipal, skill: SkillRef, loaded: readonly SkillRef[], signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
+  const at = hostTime(principal.clock)
+  if (at === undefined) return {name: 'admission-unknown'}
+  const links = principal.chain.links
+  if (links.some(link => at < link.issuedAt)) return {name: 'not-yet-valid'}
+  if (links.some(link => at >= link.expiresAt)) return {name: 'expired'}
+  const port = principal.skillLoad
+  if (port === undefined) return {name: 'admission-unknown'}
+  const read: SkillLoadRead = {readVersion: '2', host: links[0]!.host, audience: {kind: 'agent-host', name: principal.audience}, chain: [...principal.chain.digests], load: {skill: {id: skill.id, digest: skill.digest}, skills: skillRefs(loaded.filter(held => held.id !== skill.id))}, at: formatTime(at)}
+  let answer: PrincipalRefusal | undefined | 'unknown'
+  try { answer = readSkillLoadAnswer(await ask(abort => port(structuredClone(read), abort), signal)) } catch (error) {
+    if (signal?.aborted) throw error
+    answer = 'unknown'
+  }
+  return answer === 'unknown' ? {name: 'admission-unknown'} : answer
 }
 
 /** The words the model and the host are told of a refused call; they repeat no statement, key or credential. */

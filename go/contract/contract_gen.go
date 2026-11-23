@@ -366,6 +366,14 @@ var Registry = map[string]func() any{
 	"run-principal.json#/$defs/admissionCall":       func() any { return new(RunPrincipalAdmissionCall) },
 	"run-principal.json#/$defs/admissionRead":       func() any { return new(RunPrincipalAdmissionRead) },
 	"run-principal.json#/$defs/admissionAnswer":     func() any { return new(RunPrincipalAdmissionAnswer) },
+	"run-principal.json#/$defs/skillRef":            func() any { return new(RunPrincipalSkillRef) },
+	"run-principal.json#/$defs/skillSet":            func() any { return new([]RunPrincipalSkillRef) },
+	"run-principal.json#/$defs/admissionCallV2":     func() any { return new(RunPrincipalAdmissionCallV2) },
+	"run-principal.json#/$defs/admissionReadV2":     func() any { return new(RunPrincipalAdmissionReadV2) },
+	"run-principal.json#/$defs/admissionAnswerV2":   func() any { return new(RunPrincipalAdmissionAnswerV2) },
+	"run-principal.json#/$defs/unreadAnswer":        func() any { return new(RunPrincipalUnreadAnswer) },
+	"run-principal.json#/$defs/skillLoadRead":       func() any { return new(RunPrincipalSkillLoadRead) },
+	"run-principal.json#/$defs/skillLoadAnswer":     func() any { return new(RunPrincipalSkillLoadAnswer) },
 	"run-principal.json#/$defs/binding":             func() any { return new(RunPrincipalBinding) },
 	"run-principal.json#/$defs/childLinkRequest":    func() any { return new(RunPrincipalChildLinkRequest) },
 	"run-principal.json#/$defs/childLinkAnswer":     func() any { return new(RunPrincipalChildLinkAnswer) },
@@ -21578,6 +21586,125 @@ func (v RunPrincipalAdmissionAnswerOption3) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-principal.json#/$defs/admissionAnswerV2. The port's answer to a version "2" call read:
+// admissionAnswer's three forms, the two step 12 refusals version "2" adds, or unreadAnswer.
+// Anything else, a throw or no answer within five seconds refuses the call as admission-unknown.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type RunPrincipalAdmissionAnswerV2 struct {
+	RunPrincipalAdmissionAnswer *RunPrincipalAdmissionAnswer
+	Option2                     *RunPrincipalAdmissionAnswerV2Option2
+	RunPrincipalUnreadAnswer    *RunPrincipalUnreadAnswer
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunPrincipalAdmissionAnswerV2) UnmarshalJSON(data []byte) error {
+	*v = RunPrincipalAdmissionAnswerV2{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if true {
+		var candidate RunPrincipalAdmissionAnswer
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.RunPrincipalAdmissionAnswer = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "admission", "refusal") {
+		var candidate RunPrincipalAdmissionAnswerV2Option2
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "refusal") {
+		var candidate RunPrincipalUnreadAnswer
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.RunPrincipalUnreadAnswer = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("RunPrincipalAdmissionAnswerV2: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = RunPrincipalAdmissionAnswerV2{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunPrincipalAdmissionAnswerV2) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.RunPrincipalAdmissionAnswer != nil {
+		set = append(set, v.RunPrincipalAdmissionAnswer)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if v.RunPrincipalUnreadAnswer != nil {
+		set = append(set, v.RunPrincipalUnreadAnswer)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunPrincipalAdmissionAnswerV2: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From run-principal.json#/$defs/admissionAnswerV2/oneOf/1.
+type RunPrincipalAdmissionAnswerV2Option2 struct {
+	Admission string `json:"admission"`
+	Refusal   string `json:"refusal"`
+}
+
+var runPrincipalAdmissionAnswerV2Option2Members = []string{"admission", "refusal"}
+
+// UnmarshalJSON decodes a RunPrincipalAdmissionAnswerV2Option2 object and refuses a member the closed schema does not name.
+func (v *RunPrincipalAdmissionAnswerV2Option2) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalAdmissionAnswerV2Option2
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalAdmissionAnswerV2Option2Members, true)
+	if err != nil {
+		return errorf("RunPrincipalAdmissionAnswerV2Option2: %w", err)
+	}
+	*v = RunPrincipalAdmissionAnswerV2Option2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalAdmissionAnswerV2Option2 object.
+func (v RunPrincipalAdmissionAnswerV2Option2) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalAdmissionAnswerV2Option2
+	return encodeObject(plain(v), nil)
+}
+
 // From run-principal.json#/$defs/admissionCall. The call an admission read names: the source as
 // the audience names it, the tool's own name at its source, its owner-declared ADR-0027 effect,
 // and whether this admission counts against the calls limits. count is true only on the admission
@@ -21613,6 +21740,108 @@ func (v RunPrincipalAdmissionCall) MarshalJSON() ([]byte, error) {
 	return encodeObject(plain(v), nil)
 }
 
+// From run-principal.json#/$defs/admissionCallV2. The call a version "2" read names (RFC 0030
+// §2a, ADR-0030): version "1"'s, with version, the descriptor digest the package's approval of
+// the tool records (the descriptorDigest of its entry in the approved descriptor snapshot of
+// version 3 or 4), or null where the approval records none; and skills, the run's own loaded set.
+type RunPrincipalAdmissionCallV2 struct {
+	Source  string                             `json:"source"`
+	Tool    string                             `json:"tool"`
+	Effect  string                             `json:"effect"`
+	Count   bool                               `json:"count"`
+	Version RunPrincipalAdmissionCallV2Version `json:"version"`
+	Skills  []RunPrincipalSkillRef             `json:"skills"`
+}
+
+var runPrincipalAdmissionCallV2Members = []string{"source", "tool", "effect", "count", "version", "skills"}
+
+// UnmarshalJSON decodes a RunPrincipalAdmissionCallV2 object and refuses a member the closed schema does not name.
+func (v *RunPrincipalAdmissionCallV2) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalAdmissionCallV2
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalAdmissionCallV2Members, true)
+	if err != nil {
+		return errorf("RunPrincipalAdmissionCallV2: %w", err)
+	}
+	*v = RunPrincipalAdmissionCallV2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalAdmissionCallV2 object.
+func (v RunPrincipalAdmissionCallV2) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalAdmissionCallV2
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/admissionCallV2/properties/version.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type RunPrincipalAdmissionCallV2Version struct {
+	String  *string
+	Option2 *json.RawMessage
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunPrincipalAdmissionCallV2Version) UnmarshalJSON(data []byte) error {
+	*v = RunPrincipalAdmissionCallV2Version{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "string" {
+		var candidate string
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.String = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	if kind == "null" {
+		var candidate json.RawMessage
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("RunPrincipalAdmissionCallV2Version: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = RunPrincipalAdmissionCallV2Version{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunPrincipalAdmissionCallV2Version) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.String != nil {
+		set = append(set, v.String)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunPrincipalAdmissionCallV2Version: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
 // From run-principal.json#/$defs/admissionRead. What the package hands the host's admission port
 // for one call (the body of the reference gateway's admission read, SPEC.md §11.5, with the
 // call's audience): the issuing host, the audience, the chain's digests, the call and the host's
@@ -21645,6 +21874,40 @@ func (v *RunPrincipalAdmissionRead) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunPrincipalAdmissionRead object.
 func (v RunPrincipalAdmissionRead) MarshalJSON() ([]byte, error) {
 	type plain RunPrincipalAdmissionRead
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/admissionReadV2. A call read at version "2", sent where the
+// host's readVersions names "2" for the issuing host (ADR-0030): admissionRead's, with readVersion
+// "2" and admissionCallV2. It may also be answered tool-version-refused or skill-refused, and
+// either form of unreadAnswer; it is never resent at "1".
+type RunPrincipalAdmissionReadV2 struct {
+	ReadVersion string                      `json:"readVersion"`
+	Host        string                      `json:"host"`
+	Audience    RunPrincipalAudience        `json:"audience"`
+	Chain       []string                    `json:"chain"`
+	Call        RunPrincipalAdmissionCallV2 `json:"call"`
+	At          string                      `json:"at"`
+}
+
+var runPrincipalAdmissionReadV2Members = []string{"readVersion", "host", "audience", "chain", "call", "at"}
+
+// UnmarshalJSON decodes a RunPrincipalAdmissionReadV2 object and refuses a member the closed schema does not name.
+func (v *RunPrincipalAdmissionReadV2) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalAdmissionReadV2
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalAdmissionReadV2Members, true)
+	if err != nil {
+		return errorf("RunPrincipalAdmissionReadV2: %w", err)
+	}
+	*v = RunPrincipalAdmissionReadV2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalAdmissionReadV2 object.
+func (v RunPrincipalAdmissionReadV2) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalAdmissionReadV2
 	return encodeObject(plain(v), nil)
 }
 
@@ -22045,8 +22308,12 @@ func (v RunPrincipalPrincipalReference) MarshalJSON() ([]byte, error) {
 // port, not-parent-actor where the issuing host answers so, chain-broken for a chain that is not
 // the parent's with one link below it, widened for a wider link. Under a chain bound to one scope
 // identifier, before the host time and any admission read: scope-id-mismatch for a call to a
-// gateway source the host maps to another scope identifier, or to none. reason is present exactly
-// for out-of-scope.
+// gateway source the host maps to another scope identifier, or to none. At read version "2"
+// (ADR-0030): tool-version-refused and skill-refused where the issuing host answers a call so
+// (step 12), skill-refused and the host refusals of steps 8 to 10 where it answers a skill-load
+// read so, and read-version-unsupported and read-malformed where it does not read the body; a
+// refused skill load names its refusal on load_skill's guardrail. reason is present exactly for
+// out-of-scope.
 type RunPrincipalRefusal struct {
 	Name   string  `json:"name"`
 	Reason *string `json:"reason,omitzero"`
@@ -22101,6 +22368,248 @@ func (v *RunPrincipalScopeEntry) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunPrincipalScopeEntry object.
 func (v RunPrincipalScopeEntry) MarshalJSON() ([]byte, error) {
 	type plain RunPrincipalScopeEntry
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/skillLoadAnswer. The skill-load port's answer: admit, a refusal
+// of steps 8 to 10 or skill-refused, or unreadAnswer. Anything else, a throw or no answer within
+// five seconds refuses the load as admission-unknown. A refused or unanswered load loads nothing
+// and keeps its claim on the skill budget.
+//
+// A union: exactly one member is set. Where more than one member decodes the value, the one closed member among them is set; where there is not exactly one, none is set and Raw keeps the value whole.
+type RunPrincipalSkillLoadAnswer struct {
+	Option1                  *RunPrincipalSkillLoadAnswerOption1
+	Option2                  *RunPrincipalSkillLoadAnswerOption2
+	RunPrincipalUnreadAnswer *RunPrincipalUnreadAnswer
+	// Raw is the value where more than one member decodes it; no member is set then.
+	Raw json.RawMessage
+}
+
+// UnmarshalJSON sets the one member the value decodes as.
+func (v *RunPrincipalSkillLoadAnswer) UnmarshalJSON(data []byte) error {
+	*v = RunPrincipalSkillLoadAnswer{}
+	kind := jsonKind(data)
+	decoded, closed := 0, 0
+	var first, firstClosed func()
+	if kind == "object" && hasMembers(data, "load") {
+		var candidate RunPrincipalSkillLoadAnswerOption1
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option1 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "load", "refusal") {
+		var candidate RunPrincipalSkillLoadAnswerOption2
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.Option2 = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	if kind == "object" && hasMembers(data, "refusal") {
+		var candidate RunPrincipalUnreadAnswer
+		if err := json.Unmarshal(data, &candidate); err == nil {
+			set := func() { v.RunPrincipalUnreadAnswer = &candidate }
+			decoded++
+			if first == nil {
+				first = set
+			}
+			closed++
+			if firstClosed == nil {
+				firstClosed = set
+			}
+		}
+	}
+	switch {
+	case decoded == 0:
+		return errorf("RunPrincipalSkillLoadAnswer: the value is none of the union's members")
+	case decoded == 1:
+		first()
+		return nil
+	case closed == 1:
+		firstClosed()
+		return nil
+	}
+	*v = RunPrincipalSkillLoadAnswer{Raw: append(json.RawMessage(nil), data...)}
+	return nil
+}
+
+// MarshalJSON encodes the one member that is set.
+func (v RunPrincipalSkillLoadAnswer) MarshalJSON() ([]byte, error) {
+	var set []any
+	if v.Option1 != nil {
+		set = append(set, v.Option1)
+	}
+	if v.Option2 != nil {
+		set = append(set, v.Option2)
+	}
+	if v.RunPrincipalUnreadAnswer != nil {
+		set = append(set, v.RunPrincipalUnreadAnswer)
+	}
+	if len(set) == 0 && v.Raw != nil {
+		return v.Raw, nil
+	}
+	if len(set) != 1 {
+		return nil, errorf("RunPrincipalSkillLoadAnswer: %d members are set; a union holds exactly one", len(set))
+	}
+	return json.Marshal(set[0])
+}
+
+// From run-principal.json#/$defs/skillLoadAnswer/oneOf/0.
+type RunPrincipalSkillLoadAnswerOption1 struct {
+	Load string `json:"load"`
+}
+
+var runPrincipalSkillLoadAnswerOption1Members = []string{"load"}
+
+// UnmarshalJSON decodes a RunPrincipalSkillLoadAnswerOption1 object and refuses a member the closed schema does not name.
+func (v *RunPrincipalSkillLoadAnswerOption1) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalSkillLoadAnswerOption1
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalSkillLoadAnswerOption1Members, true)
+	if err != nil {
+		return errorf("RunPrincipalSkillLoadAnswerOption1: %w", err)
+	}
+	*v = RunPrincipalSkillLoadAnswerOption1(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalSkillLoadAnswerOption1 object.
+func (v RunPrincipalSkillLoadAnswerOption1) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalSkillLoadAnswerOption1
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/skillLoadAnswer/oneOf/1.
+type RunPrincipalSkillLoadAnswerOption2 struct {
+	Load    string `json:"load"`
+	Refusal string `json:"refusal"`
+}
+
+var runPrincipalSkillLoadAnswerOption2Members = []string{"load", "refusal"}
+
+// UnmarshalJSON decodes a RunPrincipalSkillLoadAnswerOption2 object and refuses a member the closed schema does not name.
+func (v *RunPrincipalSkillLoadAnswerOption2) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalSkillLoadAnswerOption2
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalSkillLoadAnswerOption2Members, true)
+	if err != nil {
+		return errorf("RunPrincipalSkillLoadAnswerOption2: %w", err)
+	}
+	*v = RunPrincipalSkillLoadAnswerOption2(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalSkillLoadAnswerOption2 object.
+func (v RunPrincipalSkillLoadAnswerOption2) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalSkillLoadAnswerOption2
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/skillLoadRead. What the host's skill-load port is handed
+// immediately before a skill loads into a delegated run at version "2" (ADR-0030): after the
+// loader's own checks, its budget claim and step 8 at the package's time, and before the
+// checkpoint's skills are written. load.skill is the skill to load and load.skills the set already
+// loaded, never holding load.skill.id; audience is the run's agent-host audience. It names no
+// source, tool, effect or version and carries no count. A continued run asks one for each skill it
+// restores, in the checkpoint's load order.
+type RunPrincipalSkillLoadRead struct {
+	ReadVersion string                        `json:"readVersion"`
+	Host        string                        `json:"host"`
+	Audience    RunPrincipalAudience          `json:"audience"`
+	Chain       []string                      `json:"chain"`
+	Load        RunPrincipalSkillLoadReadLoad `json:"load"`
+	At          string                        `json:"at"`
+}
+
+var runPrincipalSkillLoadReadMembers = []string{"readVersion", "host", "audience", "chain", "load", "at"}
+
+// UnmarshalJSON decodes a RunPrincipalSkillLoadRead object and refuses a member the closed schema does not name.
+func (v *RunPrincipalSkillLoadRead) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalSkillLoadRead
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalSkillLoadReadMembers, true)
+	if err != nil {
+		return errorf("RunPrincipalSkillLoadRead: %w", err)
+	}
+	*v = RunPrincipalSkillLoadRead(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalSkillLoadRead object.
+func (v RunPrincipalSkillLoadRead) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalSkillLoadRead
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/skillLoadRead/properties/load.
+type RunPrincipalSkillLoadReadLoad struct {
+	Skill  RunPrincipalSkillRef   `json:"skill"`
+	Skills []RunPrincipalSkillRef `json:"skills"`
+}
+
+var runPrincipalSkillLoadReadLoadMembers = []string{"skill", "skills"}
+
+// UnmarshalJSON decodes a RunPrincipalSkillLoadReadLoad object and refuses a member the closed schema does not name.
+func (v *RunPrincipalSkillLoadReadLoad) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalSkillLoadReadLoad
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalSkillLoadReadLoadMembers, true)
+	if err != nil {
+		return errorf("RunPrincipalSkillLoadReadLoad: %w", err)
+	}
+	*v = RunPrincipalSkillLoadReadLoad(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalSkillLoadReadLoad object.
+func (v RunPrincipalSkillLoadReadLoad) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalSkillLoadReadLoad
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/skillRef. One loaded skill a version "2" read names: its id and
+// the digest it was loaded at (skill.json#/$defs/digest), as the checkpoint's skills record it.
+type RunPrincipalSkillRef struct {
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+}
+
+var runPrincipalSkillRefMembers = []string{"id", "digest"}
+
+// UnmarshalJSON decodes a RunPrincipalSkillRef object and refuses a member the closed schema does not name.
+func (v *RunPrincipalSkillRef) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalSkillRef
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalSkillRefMembers, true)
+	if err != nil {
+		return errorf("RunPrincipalSkillRef: %w", err)
+	}
+	*v = RunPrincipalSkillRef(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalSkillRef object.
+func (v RunPrincipalSkillRef) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalSkillRef
 	return encodeObject(plain(v), nil)
 }
 
@@ -22437,6 +22946,36 @@ func (v *RunPrincipalStatementScope) UnmarshalJSON(data []byte) error {
 // MarshalJSON encodes a RunPrincipalStatementScope object.
 func (v RunPrincipalStatementScope) MarshalJSON() ([]byte, error) {
 	type plain RunPrincipalStatementScope
+	return encodeObject(plain(v), nil)
+}
+
+// From run-principal.json#/$defs/unreadAnswer. The issuing host's answer to a body it does not
+// read (RFC 0030 §2a): read-version-unsupported for a version it does not read, read-malformed
+// for a body of another form. A version "2" sender refuses the call or the load under that name; a
+// version "1" sender reads neither form and refuses as admission-unknown. Neither is retried at
+// another version.
+type RunPrincipalUnreadAnswer struct {
+	Refusal string `json:"refusal"`
+}
+
+var runPrincipalUnreadAnswerMembers = []string{"refusal"}
+
+// UnmarshalJSON decodes a RunPrincipalUnreadAnswer object and refuses a member the closed schema does not name.
+func (v *RunPrincipalUnreadAnswer) UnmarshalJSON(data []byte) error {
+	type plain RunPrincipalUnreadAnswer
+	var p plain
+	extra, err := decodeObject(data, &p, runPrincipalUnreadAnswerMembers, true)
+	if err != nil {
+		return errorf("RunPrincipalUnreadAnswer: %w", err)
+	}
+	*v = RunPrincipalUnreadAnswer(p)
+	_ = extra
+	return nil
+}
+
+// MarshalJSON encodes a RunPrincipalUnreadAnswer object.
+func (v RunPrincipalUnreadAnswer) MarshalJSON() ([]byte, error) {
+	type plain RunPrincipalUnreadAnswer
 	return encodeObject(plain(v), nil)
 }
 

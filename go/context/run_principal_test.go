@@ -296,7 +296,7 @@ func TestPrincipalStandingVectors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := principal.AdmitPrincipalStanding(context.Background(), c.Tool, c.Effect)
+			got, err := principal.AdmitPrincipalStanding(context.Background(), c.Tool, c.Effect, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

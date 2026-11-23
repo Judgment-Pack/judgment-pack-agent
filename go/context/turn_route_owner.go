@@ -173,7 +173,7 @@ func (c *SessionContext) initializeTurnRoute(ctx context.Context, session Sessio
 			}
 			return owner.publish(ctx, restored, "route_decided")
 		}
-		return owner.preloadSkills()
+		return owner.preloadSkills(ctx)
 	}
 	route, e := DecideTurnRoute(*p, cat, facts, owner.binding, session.Route, nil)
 	if e != nil {
@@ -263,7 +263,7 @@ func (o *turnRouteOwner) publish(ctx context.Context, route TurnRoute, kind stri
 	o.route = &copy
 	o.mu.Unlock()
 	if kind == "route_decided" {
-		return o.preloadSkills()
+		return o.preloadSkills(ctx)
 	}
 	return nil
 }
@@ -599,14 +599,14 @@ func (c *SessionContext) NativeRouteCapability(ctx context.Context, kind, name s
 	return &ContinuationIdentityChanged{}
 }
 
-func (o *turnRouteOwner) preloadSkills() error {
+func (o *turnRouteOwner) preloadSkills(ctx context.Context) error {
 	if o.c.Skills == nil || o.route == nil {
 		return nil
 	}
 	for _, id := range o.route.Skills {
 		for name, skill := range o.c.Skills.byName {
 			if skill.ID == id {
-				if _, err := o.c.Skills.load(name); err != nil {
+				if err := o.c.Skills.preload(ctx, name); err != nil {
 					return err
 				}
 				break

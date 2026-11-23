@@ -1287,6 +1287,14 @@ func (c *SessionContext) OpenSkills(declared *DeclaredSkills, agentWire bool) {
 	c.Execution.SkillLoads = c.Skills.Loads
 }
 
+// PrincipalSkills is this run's own loaded set, which its reads name at read version "2" (ADR-0030).
+func (c *SessionContext) PrincipalSkills() PrincipalSkills {
+	if c == nil || c.Sources == nil {
+		return nil
+	}
+	return c.Sources.PrincipalSkills
+}
+
 // approvalBook is the run's approval as its source gate sees it (ADR-0008, ApprovalBook).
 type approvalBook struct {
 	c     *SessionContext
@@ -1801,6 +1809,9 @@ func ContextualSessionWithEnrollment(ctx context.Context, session Session, enrol
 		}
 		if len(selectedSkills) > 0 {
 			held.OpenSkills(skills, session.Agent != nil)
+			if err := held.Skills.HoldDelegation(ctx); err != nil {
+				return err
+			}
 		}
 		if hasSubagents {
 			notices := subagentNotices

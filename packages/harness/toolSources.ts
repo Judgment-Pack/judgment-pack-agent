@@ -46,7 +46,7 @@ import { descriptorSnapshotDigest, readDescriptorJSON, readDescriptorSnapshot, t
  *   the checkpoint's `sources`, and the source record on the tool's `tool_call` and `tool_result`.
  */
 import type { SourceIdentityState } from './execution/state'
-import { admitCall, refusalDetail, scopeIdentifier, type OpenedPrincipal, type PrincipalRefusal } from './principal'
+import { admitCall, refusalDetail, scopeIdentifier, type OpenedPrincipal, type PrincipalRefusal, type SkillRef } from './principal'
 import { REQUEST_REVIEW } from './criticSwitch'
 import { canonicalJSON, exactArgumentsText, exactlyHeld, namesFoldTogether, scalarValue } from './context/chat'
 import { readHistoryRequestJSON } from './history/codec'
@@ -1033,6 +1033,10 @@ export class SourceGate {
   }
   /** ADR-0029: the principal this gate admits calls under: its own, or its delegating run's. */
   get principal(): OpenedPrincipal | undefined { return this.ownPrincipal ?? this.parent?.principal }
+  private skillSet?: () => Promise<readonly SkillRef[]>
+  /** ADR-0030: the run's own skill gate, whose loaded set a read at "2" names; a child's gate names its own, never its parent's. */
+  useSkills(skills: () => Promise<readonly SkillRef[]>): void { this.skillSet = skills }
+  async principalSkills(): Promise<readonly SkillRef[]> { return this.skillSet ? this.skillSet() : [] }
 
   /**
    * ADR-0029: one admission of a call under the run's delegation, or undefined where the run has none.
@@ -1050,7 +1054,7 @@ export class SourceGate {
     const mapped = entry.declared.source?.gatewayScope
     const audience = mapped !== undefined ? { kind: 'gateway' as const, name: mapped.authority } : entry.record.kind === 'gateway' ? undefined : { kind: 'agent-host' as const, name: principal.audience }
     const scopeId = entry.record.kind === 'gateway' ? mapped?.scope ?? null : undefined
-    return admitCall(principal, { audience, source: mapped?.source ?? entry.record.id, tool: entry.record.tool!, effect: entry.declared.taxonomy?.effect, ...(scopeId !== undefined ? { scopeId } : {}) }, count && audience?.kind === 'agent-host', signal)
+    return admitCall(principal, { audience, source: mapped?.source ?? entry.record.id, tool: entry.record.tool!, effect: entry.declared.taxonomy?.effect, ...(scopeId !== undefined ? { scopeId } : {}), version: approvedVersion(entry), skills: () => this.principalSkills() }, count && audience?.kind === 'agent-host', signal)
   }
   /** The final admission of a call the host is about to dispatch, immediately before it, counted. */
   private holdDispatch(bounded: AbortSignal, entry: SourceEntry, name: string, callId: string | undefined, giveBack: () => void): void {
@@ -1584,4 +1588,11 @@ export class SourceGate {
     this.marks.delete(callId)
     return mark
   }
+}
+
+/** ADR-0030: the approved snapshot's descriptor digest for the entry's tool (versions 3 and 4), or null. */
+function approvedVersion(entry: SourceEntry): string | null {
+  const bytes = entry.declared.source?.descriptorSnapshot
+  if (bytes === undefined || entry.record.tool === undefined) return null
+  try { return readDescriptorSnapshot(bytes).tools[entry.record.tool]?.descriptorDigest ?? null } catch { return null }
 }

@@ -7,9 +7,28 @@ import graphicRanges from './descriptorGraphicRanges.json'
 import {taxonomyProblem, type ToolTaxonomy} from './toolTaxonomy'
 
 export const DESCRIPTOR_SNAPSHOT_BYTES = 320 << 10
-export interface DescriptorTool { description?: string; inputSchemaText?: string; taxonomy?: ToolTaxonomy; serverAnnotations?: Record<string, boolean> }
+export interface DescriptorTool { description?: string; inputSchemaText?: string; taxonomy?: ToolTaxonomy; serverAnnotations?: Record<string, boolean>; descriptorDigest?: string }
+/** A version 4 snapshot's executable identity (ADR-0030, ruling 6): absolute paths and their digests. */
+export interface DescriptorExecutable { path: string; digest: string; script?: DescriptorExecutable; interpreters?: DescriptorExecutable[] }
+const DESCRIPTOR_SNAPSHOT_INTERPRETERS = 8
+const DESCRIPTOR_DIGEST = /^sha256:[0-9a-f]{64}$/
+function descriptorAbsolute(p: string): boolean { return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p) }
+function descriptorExecutable(v: unknown, top: boolean): boolean {
+  if (!object(v)) return false
+  const allowed = ['path', 'digest', ...(top ? ['script', 'interpreters'] : [])]
+  if (!['path', 'digest'].every(k => Object.hasOwn(v, k)) || Object.keys(v).some(k => !allowed.includes(k))) return false
+  if (typeof v.path !== 'string' || !descriptorAbsolute(v.path) || typeof v.digest !== 'string' || !DESCRIPTOR_DIGEST.test(v.digest)) return false
+  if (Object.hasOwn(v, 'script') && !descriptorExecutable(v.script, false)) return false
+  if (Object.hasOwn(v, 'interpreters')) {
+    if (!Array.isArray(v.interpreters) || v.interpreters.length === 0 || v.interpreters.length > DESCRIPTOR_SNAPSHOT_INTERPRETERS) return false
+    if (!v.interpreters.every(item => descriptorExecutable(item, false))) return false
+  }
+  return true
+}
 export interface DescriptorSnapshot {
-  snapshotVersion?: '2'
+  snapshotVersion?: '2' | '3' | '4'
+  /** Version 4 only: the executable the gateway measured. */
+  executable?: DescriptorExecutable
   operation?: 'live' | 'write'
   binding: string
   capturedAt: string
@@ -147,8 +166,11 @@ export function readDescriptorSnapshot(bytes: Uint8Array): DescriptorSnapshot {
   if (canonical(v) !== text) fail('not in canonical form')
   if (!object(v)) return fail('not an object')
   const v2 = Object.hasOwn(v, 'snapshotVersion')
-  if (v2 && (v.snapshotVersion !== '2' || !['live','write'].includes(String(v.operation)))) fail('unsupported snapshot version or operation')
-  exact(v, ['binding', 'capturedAt', 'platform', 'policy', 'tools', ...(v2 ? ['snapshotVersion','operation','server'] : [])], ['endpoint', ...(v2 ? [] : ['server'])])
+  if (v2 && (!['2','3','4'].includes(v.snapshotVersion as string) || !['live','write'].includes(String(v.operation)))) fail('unsupported snapshot version or operation')
+  // Versions 3 and 4 (ADR-0030, ruling 6): a descriptor digest on every tool; 4 adds the executable.
+  const digests = v.snapshotVersion === '3' || v.snapshotVersion === '4'
+  exact(v, ['binding', 'capturedAt', 'platform', 'policy', 'tools', ...(v2 ? ['snapshotVersion','operation','server'] : []), ...(v.snapshotVersion === '4' ? ['executable'] : [])], ['endpoint', ...(v2 ? [] : ['server'])])
+  if (v.snapshotVersion === '4' && !descriptorExecutable(v.executable, true)) fail('invalid executable identity')
   if (!platform(v.platform)) fail('platform is not a platform name')
   if (!binding(v.binding)) fail('binding is not name@sha256:<64 hex>')
   if (Object.hasOwn(v, 'endpoint') && !endpoint(v.endpoint)) fail('invalid remote endpoint')
@@ -162,7 +184,8 @@ export function readDescriptorSnapshot(bytes: Uint8Array): DescriptorSnapshot {
   if (!object(v.tools)) fail('tools is not an object')
   for (const entry of Object.values(v.tools)) {
     if (!object(entry) || Object.keys(entry).length === 0) fail('tool has no captured candidates')
-    exact(entry, v2 ? ['taxonomy'] : [], ['description', 'inputSchemaText', ...(v2 ? ['serverAnnotations'] : [])])
+    exact(entry, [...(v2 ? ['taxonomy'] : []), ...(digests ? ['descriptorDigest'] : [])], ['description', 'inputSchemaText', ...(v2 ? ['serverAnnotations'] : [])])
+    if (digests && (typeof entry.descriptorDigest !== 'string' || !DESCRIPTOR_DIGEST.test(entry.descriptorDigest))) fail('invalid descriptor digest')
     for (const key of ['description','inputSchemaText']) if (Object.hasOwn(entry,key) && typeof entry[key] !== 'string') fail('tool candidate is not a string')
     if (v2) {
       if (taxonomyProblem(entry.taxonomy) || !['read-external','propose','act'].includes((entry.taxonomy as ToolTaxonomy).effect)) fail('missing or invalid owner taxonomy')
@@ -192,7 +215,7 @@ export interface DescriptorApproval {
 }
 export function descriptorApprovalProblem(snapshot: DescriptorSnapshot, approval: DescriptorApproval | undefined, tool?: string, owner?: ToolTaxonomy): string {
   if (!object(approval) || Object.keys(approval).some(k=>!['platform','binding','operation','endpoint','toolTaxonomies'].includes(k)) || !platform(approval.platform) || !binding(approval.binding) || !['live','write'].includes(String(approval.operation)) || !object(approval.toolTaxonomies)) return 'missing independently approved V2 descriptor context'
-  if (snapshot.snapshotVersion !== '2' || snapshot.platform !== approval.platform || snapshot.binding !== approval.binding || snapshot.operation !== approval.operation || snapshot.endpoint !== approval.endpoint) return 'descriptor operation or source differs from approval'
+  if (!['2','3','4'].includes(snapshot.snapshotVersion ?? '') || snapshot.platform !== approval.platform || snapshot.binding !== approval.binding || snapshot.operation !== approval.operation || snapshot.endpoint !== approval.endpoint) return 'descriptor operation or source differs from approval'
   const names = Object.keys(approval.toolTaxonomies)
   if (!names.length || names.length !== Object.keys(snapshot.tools).length) return 'descriptor owner projection differs from approval'
   for (const name of names) {

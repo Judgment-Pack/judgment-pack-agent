@@ -263,6 +263,16 @@ func (c *coordinator) parentPrincipal() *runcontext.OpenedPrincipal {
 	return c.shared.parent.Principal
 }
 
+// parentSkills is the parent's loaded set, which its own reads name at read version "2" (ADR-0030).
+func (c *coordinator) parentSkills() runcontext.PrincipalSkills {
+	c.shared.mu.Lock()
+	defer c.shared.mu.Unlock()
+	if c.shared.parent == nil {
+		return nil
+	}
+	return c.shared.parent.PrincipalSkills()
+}
+
 // narrowedChild is a delegated child's principal, issued once per task by the issuing host, or the
 // named refusal of a child it cannot have (ADR-0029). A run with no delegation has neither.
 func (c *coordinator) narrowedChild(ctx context.Context, task *contract.DelegatedTask, profile string, hosts []runcontext.HostTool) (*runcontext.RunPrincipal, *runcontext.PrincipalRefusal, error) {
@@ -282,7 +292,7 @@ func (c *coordinator) narrowedChild(ctx context.Context, task *contract.Delegate
 			tools = append(tools, runcontext.PrincipalChildTool{Source: tool.Source.ID, Tool: tool.Name})
 		}
 	}
-	input, err := runcontext.NarrowChild(ctx, parent, task.ID, profile, tools)
+	input, err := runcontext.NarrowChild(ctx, parent, task.ID, profile, tools, c.parentSkills())
 	var opened *runcontext.OpenedPrincipal
 	if err == nil {
 		opened, err = runcontext.OpenChildPrincipal(parent, input)

@@ -277,7 +277,9 @@ export class SessionContext {
  openSkills(declared:DeclaredSkills,agentWire:boolean){
   const catalogue=catalogueSkills(declared.skills,this.policy,this.marker)
   this.skillCatalogue=catalogue.section
-  this.skills=new SkillGate(catalogue.catalogued,this.policy,{state:()=>this.execution.state,write:patch=>this.execution.mutate(patch),sources:()=>this.sources!.figures(),publishSources:()=>this.sources!.publish(),marker:()=>this.marker,agentWire,critic:()=>this.criticRunning,notify:event=>{this.notices.push(event)}},declared.sourceIds)
+  this.skills=new SkillGate(catalogue.catalogued,this.policy,{state:()=>this.execution.state,write:patch=>this.execution.mutate(patch),sources:()=>this.sources!.figures(),publishSources:()=>this.sources!.publish(),marker:()=>this.marker,agentWire,critic:()=>this.criticRunning,notify:event=>{this.notices.push(event)},principal:()=>this.principal},declared.sourceIds)
+  const gate=this.skills
+  this.sources?.useSkills(()=>gate.principalSkills())
   const notices:SkillNotice[]=[...declared.withheld,...catalogue.withheld,...this.skills.restore()]
   for(const held of notices)this.notices.push({type:'guardrail',tool:held.tool,action:'refused',detail:held.detail,reason:held.reason})
   this.execution.loadedSkills=()=>this.skills?.section()??''
@@ -1028,6 +1030,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  declared.sources.push(...skills.sources)
  if(declared.sources.length)context.openSources(declared,offeredCatalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
  if(selectedSkills?.length)context.openSkills(skills,'agent'in session)
+ await context.skills?.holdDelegation(session.signal)
  if(admittedSubagents){
   const admitted=admittedSubagents
   const catalogue=catalogueSubagents(admitted.subagents,context.policy,context.marker)
@@ -1052,7 +1055,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  const sourceless=new Set(session.hostTools.filter(tool=>tool.source===undefined&&tool.interaction===undefined).map(tool=>tool.name))
  const stands=async(tool:HostTool,signal:AbortSignal)=>{
   if(!context.principal||!sourceless.has(tool.name))return
-  const refusal=await admitStanding(context.principal,tool.name,tool.taxonomy?.effect,signal)
+  const refusal=await admitStanding(context.principal,tool.name,tool.taxonomy?.effect,signal,async()=>await context.sources?.principalSkills()??[])
   if(refusal)throw context.refuse(tool.name,refusalDetail(tool.name,refusal),'delegation refused',refusal)
  }
  // ADR-0006: load_tool beside the ledger's tools where the tools with a source are a catalogue; each call

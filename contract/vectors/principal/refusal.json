@@ -88,6 +88,18 @@
   {
    "name": "out-of-scope",
    "reason": "limit"
+  },
+  {
+   "name": "tool-version-refused"
+  },
+  {
+   "name": "skill-refused"
+  },
+  {
+   "name": "read-version-unsupported"
+  },
+  {
+   "name": "read-malformed"
   }
  ],
  "refused": [
