@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Judgment-Pack/judgment-pack-agent/go/contract"
@@ -147,37 +148,105 @@ func (r PrincipalRecord) Value() *Value {
 	)
 }
 
-// PrincipalAdmissionCall is the call an admission read names.
+// PrincipalSkill is one loaded skill a version "2" read names: its id and the digest it was loaded at.
+type PrincipalSkill struct{ ID, Digest string }
+
+// PrincipalSkills is a run's loaded set at the instant of a read (checkpoint.skills), taken under its
+// skill gate's lock; nil is none loaded.
+type PrincipalSkills func() []PrincipalSkill
+
+// PrincipalAdmissionCall is the call an admission read names. Version and Skills are written at read
+// version "2" only (ADR-0030): the descriptor digest the approval records (nil is null) and the loaded set.
 type PrincipalAdmissionCall struct {
 	Source, Tool, Effect string
 	Count                bool
+	Version              *string
+	Skills               []PrincipalSkill
 }
 
 // PrincipalAdmissionRead is what the host's admission port is handed
-// (run-principal.json#/$defs/admissionRead).
+// (run-principal.json#/$defs/admissionRead, and admissionReadV2 where ReadVersion is "2").
 type PrincipalAdmissionRead struct {
-	Host     string
-	Audience PrincipalAudience
-	Chain    []string
-	Call     PrincipalAdmissionCall
-	At       string
+	// ReadVersion is the read's version: "" and "1" are version "1", byte for byte as before it.
+	ReadVersion string
+	Host        string
+	Audience    PrincipalAudience
+	Chain       []string
+	Call        PrincipalAdmissionCall
+	At          string
+}
+
+func principalDigests(digests []string) *Value {
+	chain := Array()
+	for _, digest := range digests {
+		chain.Append(String(digest))
+	}
+	return chain
+}
+
+// principalSkillsValue is a set of loaded skills as a version "2" read names it: ordered by id by code
+// point (byte order of UTF-8), [] where none is loaded, never null.
+func principalSkillsValue(skills []PrincipalSkill) *Value {
+	held := slices.Clone(skills)
+	slices.SortFunc(held, func(a, b PrincipalSkill) int { return strings.Compare(a.ID, b.ID) })
+	out := Array()
+	for _, skill := range held {
+		out.Append(ObjectOf("digest", String(skill.Digest), "id", String(skill.ID)))
+	}
+	return out
 }
 
 // Value is the read as JSON, its members in canonical order.
 func (r PrincipalAdmissionRead) Value() *Value {
-	chain := Array()
-	for _, digest := range r.Chain {
-		chain.Append(String(digest))
+	call := ObjectOf("count", Bool(r.Call.Count), "effect", String(r.Call.Effect), "source", String(r.Call.Source), "tool", String(r.Call.Tool))
+	version := "1"
+	if r.ReadVersion == "2" {
+		version = "2"
+		digest := Null()
+		if r.Call.Version != nil {
+			digest = String(*r.Call.Version)
+		}
+		call = ObjectOf("count", Bool(r.Call.Count), "effect", String(r.Call.Effect), "skills", principalSkillsValue(r.Call.Skills), "source", String(r.Call.Source), "tool", String(r.Call.Tool), "version", digest)
 	}
 	return ObjectOf(
 		"at", String(r.At),
 		"audience", ObjectOf("kind", String(r.Audience.Kind), "name", String(r.Audience.Name)),
-		"call", ObjectOf("count", Bool(r.Call.Count), "effect", String(r.Call.Effect), "source", String(r.Call.Source), "tool", String(r.Call.Tool)),
-		"chain", chain,
+		"call", call,
+		"chain", principalDigests(r.Chain),
 		"host", String(r.Host),
-		"readVersion", String("1"),
+		"readVersion", String(version),
 	)
 }
+
+// PrincipalSkillLoadRead is what the host's skill-load port is handed before a skill loads into a
+// delegated run at read version "2" (run-principal.json#/$defs/skillLoadRead): the skill to load and the
+// set already loaded, which never holds it.
+type PrincipalSkillLoadRead struct {
+	Host     string
+	Audience PrincipalAudience
+	Chain    []string
+	Skill    PrincipalSkill
+	Skills   []PrincipalSkill
+	At       string
+}
+
+// Value is the read as JSON, its members in canonical order.
+func (r PrincipalSkillLoadRead) Value() *Value {
+	return ObjectOf(
+		"at", String(r.At),
+		"audience", ObjectOf("kind", String(r.Audience.Kind), "name", String(r.Audience.Name)),
+		"chain", principalDigests(r.Chain),
+		"host", String(r.Host),
+		"load", ObjectOf("skill", ObjectOf("digest", String(r.Skill.Digest), "id", String(r.Skill.ID)), "skills", principalSkillsValue(r.Skills)),
+		"readVersion", String("2"),
+	)
+}
+
+// PrincipalSkillLoadPort answers one skill-load read from the issuing host's state, read afresh: its
+// answer is the JSON of {"load": "admit"}, {"load": "refuse", "refusal": R}, {"refusal":
+// "read-version-unsupported"} or {"refusal": "read-malformed"}. An error, another form, or no answer
+// within PrincipalAdmissionTimeout refuses the load as admission-unknown.
+type PrincipalSkillLoadPort func(ctx context.Context, read PrincipalSkillLoadRead) ([]byte, error)
 
 // PrincipalAdmissionPort answers one admission read from the issuing host's state, read afresh:
 // its answer is the JSON of {"admission": "admit"}, {"admission": "refuse", "refusal": R} or
@@ -200,6 +269,12 @@ type RunPrincipal struct {
 	// Child asks the issuing host for the narrowed link of a delegated child (RFC 0030 §3); with
 	// none, a delegated run starts no child.
 	Child PrincipalChildPort
+	// ReadVersions is the admission read version this host sends each issuing host, "1" or "2" (RFC 0030
+	// §2a, ADR-0030), keyed as Keys is: a host it does not name, and a nil map, is "1". It is configured,
+	// never negotiated, and a run reads it once, at start, from its root's host.
+	ReadVersions map[string]string
+	// SkillLoad answers the skill-load read of a run at "2"; such a run that catalogues a skill needs it.
+	SkillLoad PrincipalSkillLoadPort
 }
 
 // PrincipalChildTool is one tool with a source a delegated child is offered.
@@ -819,6 +894,9 @@ type OpenedPrincipal struct {
 	Software PrincipalSoftware
 	port     PrincipalAdmissionPort
 	clock    func() (time.Time, error)
+	// ReadVersion is the version of every read this run makes to its issuing host: "1" or "2".
+	ReadVersion string
+	skillLoad   PrincipalSkillLoadPort
 	// Text is the chain's JSON text as the issuing host supplied it.
 	Text []byte
 	// input is the host's, which a child's principal is opened from with its own chain.
@@ -837,6 +915,16 @@ func OpenPrincipal(input *RunPrincipal) (*OpenedPrincipal, error) {
 	}
 	if input.Admission == nil {
 		return nil, fmt.Errorf("%w admission is absent", ErrPrincipalInputInvalid)
+	}
+	hosts := make([]string, 0, len(input.ReadVersions))
+	for host := range input.ReadVersions {
+		hosts = append(hosts, host)
+	}
+	slices.Sort(hosts)
+	for _, host := range hosts {
+		if version := input.ReadVersions[host]; !PrincipalFlatToken(host) || version != "1" && version != "2" {
+			return nil, fmt.Errorf("%w readVersions names %s for the issuing host %s: a read version is \"1\" or \"2\"", ErrPrincipalInputInvalid, QuoteJSON(version), QuoteJSON(host))
+		}
 	}
 	software := input.Software
 	if (software.Harness == "") == (software.Package == "" && software.Version == "") || software.Harness != "" && !principalDigest.MatchString(software.Harness) || software.Harness == "" && (software.Package == "" || software.Version == "") {
@@ -857,7 +945,11 @@ func OpenPrincipal(input *RunPrincipal) (*OpenedPrincipal, error) {
 	if clock == nil {
 		clock = func() (time.Time, error) { return time.Now(), nil }
 	}
-	return &OpenedPrincipal{Chain: chain, Record: chain.Record(), Audience: input.Audience, Keys: keys, Software: software, port: input.Admission, clock: clock, Text: append([]byte(nil), input.Chain...), input: input}, nil
+	version := input.ReadVersions[chain.Links[0].Host]
+	if version == "" {
+		version = "1"
+	}
+	return &OpenedPrincipal{Chain: chain, Record: chain.Record(), Audience: input.Audience, Keys: keys, Software: software, port: input.Admission, clock: clock, ReadVersion: version, skillLoad: input.SkillLoad, Text: append([]byte(nil), input.Chain...), input: input}, nil
 }
 
 // NarrowChild is the narrowed principal of a delegated child (RFC 0030 §3). A child exists only below a
@@ -865,7 +957,9 @@ func OpenPrincipal(input *RunPrincipal) (*OpenedPrincipal, error) {
 // with the link the issuing host issued for it (a port that gives no valid answer in time is
 // admission-unknown). The model never names or supplies the link. A refusal is a *DelegationRefused.
 // OpenChildPrincipal verifies what this returns.
-func NarrowChild(ctx context.Context, parent *OpenedPrincipal, task, profile string, tools []PrincipalChildTool) (*RunPrincipal, error) {
+// skills is the parent's loaded set, which its standing read names at read version "2"; the child link
+// request itself stays at "1" (ADR-0030).
+func NarrowChild(ctx context.Context, parent *OpenedPrincipal, task, profile string, tools []PrincipalChildTool, skills PrincipalSkills) (*RunPrincipal, error) {
 	leaf := parent.Chain.Links[len(parent.Chain.Links)-1]
 	if !leaf.MayDelegate {
 		return nil, principalRefuse("delegation-not-permitted", "the link this run acts under permits no child")
@@ -876,7 +970,7 @@ func NarrowChild(ctx context.Context, parent *OpenedPrincipal, task, profile str
 	}
 	// Nothing of a child starts from a delegation that no longer stands: a resumed batch has no earlier
 	// check to rely on.
-	standing, err := parent.AdmitPrincipalStanding(ctx, "delegate_tasks", "pure")
+	standing, err := parent.AdmitPrincipalStanding(ctx, "delegate_tasks", "pure", skills)
 	if err != nil {
 		return nil, err
 	}
@@ -946,12 +1040,17 @@ func OpenChildPrincipal(parent *OpenedPrincipal, input *RunPrincipal) (*OpenedPr
 }
 
 // PrincipalCall is the call the package admits: the audience its source answers to (nil for a
-// gateway source with no mapping), its source, tool and owner-declared effect ("" where none).
+// gateway source with no mapping), its source, tool and owner-declared effect ("" where none). At read
+// version "2", Version is the descriptor digest the approval of the tool records (nil where it records
+// none), never the model's, the arguments' or the source's current observation, and Skills the run's
+// loaded set, taken at the instant of the read.
 type PrincipalCall struct {
 	Audience *PrincipalAudience
 	Source   string
 	Tool     string
 	Effect   string
+	Version  *string
+	Skills   PrincipalSkills
 }
 
 // PrincipalScopeReason is the package's own part of step 11 over every link: the first failing
@@ -987,10 +1086,25 @@ func (c *PrincipalChain) PrincipalScopeReason(call PrincipalCall) string {
 var (
 	principalBeforeScope = []string{"expired", "agent-unregistered", "software-mismatch", "not-issued", "revoked"}
 	principalHostRefusal = []string{"expired", "agent-unregistered", "software-mismatch", "not-issued", "revoked", "subject-mismatch", "subject-unauthorized"}
+	// principalStepTwelveV2 are the step 12 refusals only a version "2" call read is answered with, and
+	// principalUnread the two answers to a body the issuing host does not read (RFC 0030 §2a).
+	principalStepTwelveV2 = []string{"tool-version-refused", "skill-refused"}
+	principalUnread       = []string{"read-version-unsupported", "read-malformed"}
+	// principalSkillLoadRefusal are the refusals a skill-load read is answered with.
+	principalSkillLoadRefusal = []string{"expired", "agent-unregistered", "software-mismatch", "not-issued", "revoked", "skill-refused"}
 )
 
-// principalAnswer holds the port's answer to its exact form; ok is false where it is not one.
-func principalAnswer(data []byte) (refusal *PrincipalRefusal, ok bool) {
+// principalUnreadAnswer is {"refusal": R} for R one of principalUnread, or nil.
+func principalUnreadAnswer(obj map[string]any) *PrincipalRefusal {
+	if name, ok := obj["refusal"].(string); ok && len(obj) == 1 && slices.Contains(principalUnread, name) {
+		return &PrincipalRefusal{Name: name}
+	}
+	return nil
+}
+
+// principalAnswer holds the port's answer to its exact form at the read's version; ok is false where it
+// is not one. A version "1" read is answered in no form version "2" adds.
+func principalAnswer(data []byte, version string) (refusal *PrincipalRefusal, ok bool) {
 	value, err := descriptorJSON(data, true)
 	if err != nil {
 		return nil, false
@@ -998,6 +1112,11 @@ func principalAnswer(data []byte) (refusal *PrincipalRefusal, ok bool) {
 	obj, isObject := value.(map[string]any)
 	if !isObject {
 		return nil, false
+	}
+	if version == "2" {
+		if unread := principalUnreadAnswer(obj); unread != nil {
+			return unread, true
+		}
 	}
 	verdict, _ := obj["admission"].(string)
 	switch {
@@ -1014,10 +1133,35 @@ func principalAnswer(data []byte) (refusal *PrincipalRefusal, ok bool) {
 		}
 		return &PrincipalRefusal{Name: name, Reason: reason}, true
 	}
-	if len(obj) != 2 || !slices.Contains(principalHostRefusal, name) {
+	if len(obj) != 2 || !slices.Contains(principalHostRefusal, name) && !(version == "2" && slices.Contains(principalStepTwelveV2, name)) {
 		return nil, false
 	}
 	return &PrincipalRefusal{Name: name}, true
+}
+
+// principalSkillLoadAnswer holds the skill-load port's answer to its exact form; ok is false where it is
+// not one.
+func principalSkillLoadAnswer(data []byte) (refusal *PrincipalRefusal, ok bool) {
+	value, err := descriptorJSON(data, true)
+	if err != nil {
+		return nil, false
+	}
+	obj, isObject := value.(map[string]any)
+	if !isObject {
+		return nil, false
+	}
+	if unread := principalUnreadAnswer(obj); unread != nil {
+		return unread, true
+	}
+	verdict, _ := obj["load"].(string)
+	name, _ := obj["refusal"].(string)
+	switch {
+	case verdict == "admit" && len(obj) == 1:
+		return nil, true
+	case verdict == "refuse" && len(obj) == 2 && slices.Contains(principalSkillLoadRefusal, name):
+		return &PrincipalRefusal{Name: name}, true
+	}
+	return nil, false
 }
 
 func (p *OpenedPrincipal) hostTime() (time.Time, bool) {
@@ -1038,6 +1182,11 @@ func (p *OpenedPrincipal) hostTime() (time.Time, bool) {
 }
 
 func (p *OpenedPrincipal) askPort(ctx context.Context, read PrincipalAdmissionRead) ([]byte, error) {
+	return principalAsk(ctx, func(bounded context.Context) ([]byte, error) { return p.port(bounded, read) })
+}
+
+// principalAsk asks one port, bounded by PrincipalAdmissionTimeout; a panic is an error.
+func principalAsk(ctx context.Context, ask func(context.Context) ([]byte, error)) ([]byte, error) {
 	bounded, cancel := context.WithTimeout(ctx, PrincipalAdmissionTimeout)
 	defer cancel()
 	type answer struct {
@@ -1051,7 +1200,7 @@ func (p *OpenedPrincipal) askPort(ctx context.Context, read PrincipalAdmissionRe
 				done <- answer{err: errors.New("admission port panicked")}
 			}
 		}()
-		data, err := p.port(bounded, read)
+		data, err := ask(bounded)
 		done <- answer{data, err}
 	}()
 	select {
@@ -1094,7 +1243,7 @@ func (p *OpenedPrincipal) AdmitPrincipalCall(ctx context.Context, call Principal
 		}
 		return own, nil
 	}
-	read := PrincipalAdmissionRead{Host: p.Chain.Links[0].Host, Audience: *call.Audience, Chain: append([]string(nil), p.Chain.Digests...), Call: PrincipalAdmissionCall{Source: call.Source, Tool: call.Tool, Effect: call.Effect, Count: count && own == nil}, At: PrincipalTime(at)}
+	read := p.callRead(*call.Audience, PrincipalAdmissionCall{Source: call.Source, Tool: call.Tool, Effect: call.Effect, Count: count && own == nil, Version: call.Version}, call.Skills, at)
 	data, err := p.askPort(ctx, read)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -1102,16 +1251,33 @@ func (p *OpenedPrincipal) AdmitPrincipalCall(ctx context.Context, call Principal
 	if err != nil {
 		return &PrincipalRefusal{Name: "admission-unknown"}, nil
 	}
-	answer, ok := principalAnswer(data)
+	answer, ok := principalAnswer(data, read.ReadVersion)
 	switch {
 	case !ok:
 		return &PrincipalRefusal{Name: "admission-unknown"}, nil
-	case answer != nil && slices.Contains(principalBeforeScope, answer.Name):
+	case answer != nil && (slices.Contains(principalBeforeScope, answer.Name) || slices.Contains(principalUnread, answer.Name)):
+		// A body the issuing host does not read is reported where steps 8 to 10 are, and never resent.
 		return answer, nil
 	case own != nil:
 		return own, nil
 	}
 	return answer, nil
+}
+
+// callRead is one call read at the run's version: at "2" the call carries the approved version and the
+// loaded set, taken now, after the package's own checks and immediately before the port is asked.
+func (p *OpenedPrincipal) callRead(audience PrincipalAudience, call PrincipalAdmissionCall, skills PrincipalSkills, at time.Time) PrincipalAdmissionRead {
+	read := PrincipalAdmissionRead{ReadVersion: "1", Host: p.Chain.Links[0].Host, Audience: audience, Chain: append([]string(nil), p.Chain.Digests...), Call: call, At: PrincipalTime(at)}
+	if p.ReadVersion != "2" {
+		read.Call.Version = nil
+		return read
+	}
+	read.ReadVersion = "2"
+	read.Call.Skills = []PrincipalSkill{}
+	if skills != nil {
+		read.Call.Skills = append(read.Call.Skills, skills()...)
+	}
+	return read
 }
 
 // PrincipalRuntimeSource is the source an acting Runtime call is admitted under, as the source record
@@ -1127,7 +1293,7 @@ const (
 // no source, whose reach is local by its declaration (an act or read-external tool must have a source).
 // Steps 8 to 10 and 12 apply and scope does not: validity at the host's time, then the port's answer,
 // read afresh, under source local with counting unset.
-func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effect string) (*PrincipalRefusal, error) {
+func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effect string, skills PrincipalSkills) (*PrincipalRefusal, error) {
 	at, ok := p.hostTime()
 	if !ok {
 		return &PrincipalRefusal{Name: "admission-unknown"}, nil
@@ -1145,7 +1311,7 @@ func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effe
 	if principalStrength(effect) < 0 {
 		return &PrincipalRefusal{Name: "out-of-scope", Reason: "effect"}, nil
 	}
-	read := PrincipalAdmissionRead{Host: p.Chain.Links[0].Host, Audience: PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Chain: append([]string(nil), p.Chain.Digests...), Call: PrincipalAdmissionCall{Source: PrincipalLocalSource, Tool: tool, Effect: effect, Count: false}, At: PrincipalTime(at)}
+	read := p.callRead(PrincipalAudience{Kind: "agent-host", Name: p.Audience}, PrincipalAdmissionCall{Source: PrincipalLocalSource, Tool: tool, Effect: effect, Count: false}, skills, at)
 	data, err := p.askPort(ctx, read)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -1153,7 +1319,7 @@ func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effe
 	if err != nil {
 		return &PrincipalRefusal{Name: "admission-unknown"}, nil
 	}
-	answer, ok := principalAnswer(data)
+	answer, ok := principalAnswer(data, read.ReadVersion)
 	if !ok {
 		return &PrincipalRefusal{Name: "admission-unknown"}, nil
 	}
@@ -1162,8 +1328,60 @@ func (p *OpenedPrincipal) AdmitPrincipalStanding(ctx context.Context, tool, effe
 
 // AdmitPrincipalRuntimeCall is an acting Runtime call's admission: its source record under the run's
 // agent-host audience, effect act. The host dispatches it, so the final admission counts.
-func (p *OpenedPrincipal) AdmitPrincipalRuntimeCall(ctx context.Context, tool string, count bool) (*PrincipalRefusal, error) {
-	return p.AdmitPrincipalCall(ctx, PrincipalCall{Audience: &PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Source: PrincipalRuntimeSource, Tool: tool, Effect: "act"}, count)
+func (p *OpenedPrincipal) AdmitPrincipalRuntimeCall(ctx context.Context, tool string, count bool, skills PrincipalSkills) (*PrincipalRefusal, error) {
+	return p.AdmitPrincipalCall(ctx, PrincipalCall{Audience: &PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Source: PrincipalRuntimeSource, Tool: tool, Effect: "act", Skills: skills}, count)
+}
+
+// SkillLoadRead is whether a skill loads into this run only on the issuing host's skill-load read: a
+// delegated run at read version "2" (ADR-0030). An undelegated run, and one at "1", makes none.
+func (p *OpenedPrincipal) SkillLoadRead() bool { return p != nil && p.ReadVersion == "2" }
+
+// HasSkillLoadPort is whether the host supplied the skill-load port.
+func (p *OpenedPrincipal) HasSkillLoadPort() bool { return p != nil && p.skillLoad != nil }
+
+// AdmitPrincipalSkillLoad is the skill-load read (RFC 0030 §2a, ADR-0030), made after the loader's own
+// checks and its budget claim: step 8 at the host's time (no read where it refuses), then the issuing
+// host's answer, read afresh through the skill-load port. loaded is the set already loaded; the read
+// never names the skill among them. It returns nil where the load is admitted; a load whose ctx ends
+// while it waits returns ctx's error. It counts nothing and is never retried at another version.
+func (p *OpenedPrincipal) AdmitPrincipalSkillLoad(ctx context.Context, skill PrincipalSkill, loaded []PrincipalSkill) (*PrincipalRefusal, error) {
+	at, ok := p.hostTime()
+	if !ok {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	for _, l := range p.Chain.Links {
+		if at.Before(l.IssuedAt) {
+			return &PrincipalRefusal{Name: "not-yet-valid"}, nil
+		}
+	}
+	for _, l := range p.Chain.Links {
+		if !at.Before(l.ExpiresAt) {
+			return &PrincipalRefusal{Name: "expired"}, nil
+		}
+	}
+	port := p.skillLoad
+	if port == nil {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	before := []PrincipalSkill{}
+	for _, held := range loaded {
+		if held.ID != skill.ID {
+			before = append(before, held)
+		}
+	}
+	read := PrincipalSkillLoadRead{Host: p.Chain.Links[0].Host, Audience: PrincipalAudience{Kind: "agent-host", Name: p.Audience}, Chain: append([]string(nil), p.Chain.Digests...), Skill: skill, Skills: before, At: PrincipalTime(at)}
+	data, err := principalAsk(ctx, func(bounded context.Context) ([]byte, error) { return port(bounded, read) })
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err != nil {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	answer, ok := principalSkillLoadAnswer(data)
+	if !ok {
+		return &PrincipalRefusal{Name: "admission-unknown"}, nil
+	}
+	return answer, nil
 }
 
 // PrincipalsChanged is whether a resume runs under other principals than it began under: another

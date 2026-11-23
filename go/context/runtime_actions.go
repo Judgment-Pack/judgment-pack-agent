@@ -51,7 +51,7 @@ func (c *SessionContext) rehearsalDelegated(ctx context.Context, name string) er
 	if c.Principal == nil {
 		return nil
 	}
-	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, true)
+	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, true, c.PrincipalSkills())
 	if err != nil {
 		return err
 	}
@@ -126,7 +126,7 @@ func (c *SessionContext) refuseUnlessStanding(ctx context.Context, tool HostTool
 	if tool.Taxonomy != nil {
 		effect = tool.Taxonomy.Effect
 	}
-	refusal, err := c.Principal.AdmitPrincipalStanding(ctx, tool.Name, effect)
+	refusal, err := c.Principal.AdmitPrincipalStanding(ctx, tool.Name, effect, c.PrincipalSkills())
 	if err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (c *SessionContext) runtimeDelegated(ctx context.Context, name string, coun
 	if c.Principal == nil {
 		return nil
 	}
-	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, count)
+	refusal, err := c.Principal.AdmitPrincipalRuntimeCall(ctx, name, count, c.PrincipalSkills())
 	if err != nil {
 		return err
 	}

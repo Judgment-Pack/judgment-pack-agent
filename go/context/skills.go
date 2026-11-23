@@ -510,7 +510,91 @@ func NewSkillGate(catalogued []AdmittedSkill, policy Policy, sources *SourceGate
 		ids = append(ids, skill.Source.ID)
 	}
 	sources.countSkills(ids)
+	// ADR-0030: this run's reads name its own loaded set, taken under this gate's lock.
+	sources.skillSet = g.PrincipalSkills
 	return g
+}
+
+// PrincipalSkills is the checkpoint's loaded set as a version "2" read names it, taken under the gate's
+// lock: a read sees every load and unload before it and none half done, and waits for a skill-load read
+// in flight.
+func (g *SkillGate) PrincipalSkills() []PrincipalSkill {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.principalSkillsLocked()
+}
+
+func (g *SkillGate) principalSkillsLocked() []PrincipalSkill {
+	out := []PrincipalSkill{}
+	for _, load := range g.state.Skills {
+		out = append(out, PrincipalSkill{ID: load.ID, Digest: load.Digest})
+	}
+	return out
+}
+
+// HoldDelegation holds the run's skills to its delegation at read version "2" (ADR-0030), before the
+// first request: a run that catalogues a skill with no skill-load port is refused (configuration), and
+// a continued run asks a skill-load read for each skill its restore kept, in the checkpoint's load order,
+// each naming those restored before it. One refused or unanswered is dropped, with its guardrail, and
+// left out of the set the restore writes. The restore claims no budget.
+func (g *SkillGate) HoldDelegation(ctx context.Context) error {
+	principal := g.sources.Principal()
+	if !principal.SkillLoadRead() {
+		return nil
+	}
+	if g.Offered() && !principal.HasSkillLoadPort() {
+		return failure.Authored("configuration", "The run reads its issuing host at version \"2\" and catalogues skills, and the host supplied no skill-load port, so no skill could load unread. Nothing was sent.", "context")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	saved := g.state.Skills
+	if len(saved) == 0 {
+		return nil
+	}
+	var kept []contract.ProvenanceSkillLoad
+	var loaded []AdmittedSkill
+	before := []PrincipalSkill{}
+	dropped := false
+	for _, load := range saved {
+		var skill *AdmittedSkill
+		for i := range g.loaded {
+			if g.loaded[i].ID == load.ID {
+				skill = &g.loaded[i]
+			}
+		}
+		if skill == nil {
+			continue
+		}
+		asked := PrincipalSkill{ID: skill.ID, Digest: skill.Digest}
+		refusal, err := principal.AdmitPrincipalSkillLoad(ctx, asked, before)
+		if err != nil {
+			return err
+		}
+		if refusal != nil {
+			g.refuseLoad(principal, skill.ID, skill.Name, *refusal)
+			dropped = true
+			continue
+		}
+		kept = append(kept, load)
+		loaded = append(loaded, *skill)
+		before = append(before, asked)
+	}
+	g.loaded = loaded
+	if dropped {
+		g.write(CheckpointPatch{"Skills": kept})
+	}
+	return nil
+}
+
+// refuseLoad is a refused skill-load read: its guardrail, between the call and its result, names the
+// refusal and the run's principal, and the model is told the refusal by name and that nothing loaded.
+// The caller holds the lock.
+func (g *SkillGate) refuseLoad(principal *OpenedPrincipal, tool, name string, refusal PrincipalRefusal) string {
+	detail := "The skill " + name + " was not loaded: the delegation this run acts under does not admit it (" + refusal.Name + "). Nothing was loaded. Do not retry it; use the skills already loaded."
+	reason := "delegation refused"
+	notice := &contract.RunEventGuardrail{Type: "guardrail", Tool: tool, Action: "refused", Detail: detail, Reason: &reason, Refusal: refusal.Contract(), Principal: principal.Record.Contract()}
+	g.sources.Notify(contract.RunEvent{Guardrail: notice})
+	return detail
 }
 
 // Offered says any skill is catalogued: the loaders are offered.
@@ -590,7 +674,9 @@ func (g *SkillGate) Section() string {
 // LoadSkillHost is load_skill: one catalogued skill per call, counted against SkillsPerRun.
 func (g *SkillGate) LoadSkillHost() HostTool {
 	return HostTool{Name: LoadSkill, Taxonomy: &ToolTaxonomy{Operation: "own-state", Effect: "pure"}, Effect: "plan", Description: LoadSkillDescription, InputSchema: json.RawMessage(LoadSkillSchema),
-		Execute: func(_ context.Context, args json.RawMessage) (ToolResult, error) { return g.load(askedName(args)) }}
+		Execute: func(ctx context.Context, args json.RawMessage) (ToolResult, error) {
+			return g.load(ctx, askedName(args))
+		}}
 }
 
 // UnloadSkillHost is unload_skill: one loaded skill per call.
@@ -619,7 +705,7 @@ func shownName(name any) string {
 	return shown
 }
 
-func (g *SkillGate) load(asked any) (ToolResult, error) {
+func (g *SkillGate) load(ctx context.Context, asked any) (ToolResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	name, _ := asked.(string)
@@ -645,6 +731,19 @@ func (g *SkillGate) load(asked any) (ToolResult, error) {
 		reason := "skill budget"
 		g.sources.Notify(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: LoadSkill, Action: "refused", Detail: detail, Reason: &reason}})
 		return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
+	}
+	// ADR-0030: at read version "2", a delegated run loads a skill only on the issuing host's skill-load
+	// read, made here: after the name, the loaded set and the budget claim, and before the checkpoint is
+	// written. A refused or unanswered read keeps its claim, loads nothing, and the run goes on.
+	if principal := g.sources.Principal(); principal.SkillLoadRead() {
+		refusal, err := principal.AdmitPrincipalSkillLoad(ctx, PrincipalSkill{ID: skill.ID, Digest: skill.Digest}, g.principalSkillsLocked())
+		if err != nil {
+			return ToolResult{}, err
+		}
+		if refusal != nil {
+			detail := g.refuseLoad(principal, LoadSkill, skill.Name, *refusal)
+			return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
+		}
 	}
 	g.loaded = append(g.loaded, skill)
 	g.write(CheckpointPatch{"Skills": append(append([]contract.ProvenanceSkillLoad{}, g.state.Skills...), contract.ProvenanceSkillLoad{ID: skill.ID, Digest: skill.Digest, Bytes: int64(skill.Bytes), LoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z")})})

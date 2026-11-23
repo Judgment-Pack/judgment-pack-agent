@@ -102,7 +102,7 @@ func TestPrincipalChildVectors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			child, err := NarrowChild(context.Background(), parent, "task-1", "review", []PrincipalChildTool{{"notes", "read_note"}})
+			child, err := NarrowChild(context.Background(), parent, "task-1", "review", []PrincipalChildTool{{"notes", "read_note"}}, nil)
 			var opened *OpenedPrincipal
 			if err == nil {
 				opened, err = OpenChildPrincipal(parent, child)
@@ -155,7 +155,7 @@ func TestPrincipalChildPortThatNeverAnswers(t *testing.T) {
 		t.Fatal(err)
 	}
 	var refused *DelegationRefused
-	if _, err := NarrowChild(context.Background(), parent, "task-1", "review", nil); !errors.As(err, &refused) || refused.Refusal.Name != "admission-unknown" {
+	if _, err := NarrowChild(context.Background(), parent, "task-1", "review", nil, nil); !errors.As(err, &refused) || refused.Refusal.Name != "admission-unknown" {
 		t.Fatalf("got %v", err)
 	}
 }

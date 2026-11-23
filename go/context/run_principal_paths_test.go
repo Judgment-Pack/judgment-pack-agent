@@ -6,6 +6,7 @@ package runcontext
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -59,7 +60,7 @@ func TestPrincipalHostToolWithNoSource(t *testing.T) {
 			if _, err := hostTool(t, run, "local_lookup").Execute(context.Background(), json.RawMessage(`{}`)); err != nil {
 				t.Fatal(err)
 			}
-			if !sameStrings(ran.get(), []string{"local_lookup"}) || len(port.reads) != 1 || port.reads[0].Call != (PrincipalAdmissionCall{Source: "local", Tool: "local_lookup", Effect: effect, Count: false}) {
+			if !sameStrings(ran.get(), []string{"local_lookup"}) || len(port.reads) != 1 || !reflect.DeepEqual(port.reads[0].Call, PrincipalAdmissionCall{Source: "local", Tool: "local_lookup", Effect: effect, Count: false}) {
 				t.Fatalf("ran %v reads %+v", ran.get(), port.reads)
 			}
 		})

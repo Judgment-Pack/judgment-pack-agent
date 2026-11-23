@@ -27,6 +27,18 @@ type DescriptorTool struct {
 	InputSchemaText   *string         `json:"inputSchemaText,omitempty"`
 	Taxonomy          *ToolTaxonomy   `json:"taxonomy,omitempty"`
 	ServerAnnotations map[string]bool `json:"serverAnnotations,omitempty"`
+	// DescriptorDigest is the tool's descriptor digest in a snapshot of version 3 or 4: the SHA-256 of the
+	// exact bytes of the descriptor tools/list reported (RFC 0030 §2a, *Which digest version is*).
+	DescriptorDigest string `json:"descriptorDigest,omitempty"`
+}
+
+// DescriptorExecutable is a version 4 snapshot's executable identity: the command's file by absolute path
+// and digest, with at most the interpreters that run it and the script an operand names.
+type DescriptorExecutable struct {
+	Path         string                 `json:"path"`
+	Digest       string                 `json:"digest"`
+	Script       *DescriptorExecutable  `json:"script,omitempty"`
+	Interpreters []DescriptorExecutable `json:"interpreters,omitempty"`
 }
 type DescriptorServer struct {
 	Name    string `json:"name"`
@@ -41,7 +53,49 @@ type DescriptorSnapshot struct {
 	Platform        string                    `json:"platform"`
 	Policy          int                       `json:"policy"`
 	Server          *DescriptorServer         `json:"server,omitempty"`
+	Executable      *DescriptorExecutable     `json:"executable,omitempty"`
 	Tools           map[string]DescriptorTool `json:"tools"`
+}
+
+// descriptorSnapshotInterpreters is the most interpreters a version 4 executable names, as the gateway reads it.
+const descriptorSnapshotInterpreters = 8
+
+// descriptorAbsolute is an absolute path in POSIX form, or in a Windows drive's.
+func descriptorAbsolute(p string) bool {
+	return strings.HasPrefix(p, "/") || len(p) >= 3 && (p[0]|0x20) >= 'a' && (p[0]|0x20) <= 'z' && p[1] == ':' && (p[2] == '\\' || p[2] == '/')
+}
+
+// descriptorExecutable holds a version 4 executable identity to the gateway's form: path and digest, and
+// at the top only, a script of the same and one to eight interpreters of the same.
+func descriptorExecutable(v any, top bool) bool {
+	object, ok := v.(map[string]any)
+	var optional []string
+	if top {
+		optional = []string{"script", "interpreters"}
+	}
+	if !ok || !descriptorMembers(object, []string{"path", "digest"}, optional) {
+		return false
+	}
+	path, pok := object["path"].(string)
+	digest, dok := object["digest"].(string)
+	if !pok || !descriptorAbsolute(path) || !dok || !principalDigest.MatchString(digest) {
+		return false
+	}
+	if script, present := object["script"]; present && !descriptorExecutable(script, false) {
+		return false
+	}
+	if raw, present := object["interpreters"]; present {
+		list, ok := raw.([]any)
+		if !ok || len(list) == 0 || len(list) > descriptorSnapshotInterpreters {
+			return false
+		}
+		for _, item := range list {
+			if !descriptorExecutable(item, false) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func descriptorError() error {
@@ -326,13 +380,20 @@ func ReadDescriptorSnapshot(data []byte) (DescriptorSnapshot, error) {
 	}
 	object, ok := v.(map[string]any)
 	required, optional := []string{"binding", "capturedAt", "platform", "policy", "tools"}, []string{"endpoint", "server"}
+	// Versions 2 to 4 (ADR-0030): 3 adds each tool's descriptorDigest, and 4 is 3 with the command's
+	// executable identity.
 	_, v2 := object["snapshotVersion"]
+	version, _ := object["snapshotVersion"].(string)
+	digests := version == "3" || version == "4"
 	if v2 {
-		if object["snapshotVersion"] != "2" || (object["operation"] != "live" && object["operation"] != "write") {
+		if !taxonomyContains([]string{"2", "3", "4"}, version) || (object["operation"] != "live" && object["operation"] != "write") {
 			return DescriptorSnapshot{}, descriptorError()
 		}
 		required = append(required, "snapshotVersion", "operation", "server")
 		optional = []string{"endpoint"}
+		if version == "4" {
+			required = append(required, "executable")
+		}
 	}
 	if !ok || !descriptorMembers(object, required, optional) {
 		return DescriptorSnapshot{}, descriptorError()
@@ -364,6 +425,9 @@ func ReadDescriptorSnapshot(data []byte) (DescriptorSnapshot, error) {
 			return DescriptorSnapshot{}, descriptorError()
 		}
 	}
+	if version == "4" && !descriptorExecutable(object["executable"], true) {
+		return DescriptorSnapshot{}, descriptorError()
+	}
 	tools, ok := object["tools"].(map[string]any)
 	if !ok {
 		return DescriptorSnapshot{}, descriptorError()
@@ -375,8 +439,16 @@ func ReadDescriptorSnapshot(data []byte) (DescriptorSnapshot, error) {
 			required = []string{"taxonomy"}
 			optional = append(optional, "serverAnnotations")
 		}
+		if digests {
+			required = append(required, "descriptorDigest")
+		}
 		if !ok || len(entry) == 0 || !descriptorMembers(entry, required, optional) {
 			return DescriptorSnapshot{}, descriptorError()
+		}
+		if digest, present := entry["descriptorDigest"]; present {
+			if text, ok := digest.(string); !ok || !principalDigest.MatchString(text) {
+				return DescriptorSnapshot{}, descriptorError()
+			}
 		}
 		for _, key := range []string{"description", "inputSchemaText"} {
 			if field, present := entry[key]; present {
@@ -460,7 +532,7 @@ func DescriptorApprovalProblem(snapshot DescriptorSnapshot, approval *Descriptor
 	if approval == nil || !descriptorPlatform(approval.Platform) || !descriptorBinding.MatchString(approval.Binding) || !taxonomyContains([]string{"live", "write"}, approval.Operation) || len(approval.ToolTaxonomies) == 0 {
 		return "missing independently approved V2 descriptor context"
 	}
-	if snapshot.SnapshotVersion != "2" || snapshot.Platform != approval.Platform || snapshot.Binding != approval.Binding || snapshot.Operation != approval.Operation || (snapshot.Endpoint == nil) != (approval.Endpoint == nil) || (snapshot.Endpoint != nil && *snapshot.Endpoint != *approval.Endpoint) {
+	if !taxonomyContains([]string{"2", "3", "4"}, snapshot.SnapshotVersion) || snapshot.Platform != approval.Platform || snapshot.Binding != approval.Binding || snapshot.Operation != approval.Operation || (snapshot.Endpoint == nil) != (approval.Endpoint == nil) || (snapshot.Endpoint != nil && *snapshot.Endpoint != *approval.Endpoint) {
 		return "descriptor operation or source differs from approval"
 	}
 	if len(snapshot.Tools) != len(approval.ToolTaxonomies) {

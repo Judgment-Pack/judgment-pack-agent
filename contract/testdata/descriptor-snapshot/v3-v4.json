@@ -1,0 +1,261 @@
+{
+ "description": "Descriptor snapshots of versions 3 and 4 as the reference gateway's reader takes them (ADR-0030, ruling 6): each version's canonical snapshot text, its digest, its tools' descriptor digests, the operation it is approved for, and the gateway's own edits of it, each refused or accepted by the gateway. Copied from the gateway's testdata/tool-taxonomy/v3.json and v4.json; the package's reader with its approval check must take each accepted text and refuse each refused one. Synthetic data only.",
+ "source": {
+  "repository": "Judgment-Pack/judgment-pack-gateway",
+  "commit": "f23f4ca165c01f1bc053cf3306c9c470a3032e4a",
+  "paths": [
+   "testdata/tool-taxonomy/v3.json",
+   "testdata/tool-taxonomy/v4.json"
+  ]
+ },
+ "versions": [
+  {
+   "snapshotVersion": "3",
+   "snapshotText": "{\"binding\":\"tickets@sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"capturedAt\":\"2026-10-25T00:00:00Z\",\"endpoint\":\"https://mcp.example.test/mcp\",\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"example\",\"version\":\"1\"},\"snapshotVersion\":\"3\",\"tools\":{\"search\":{\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\",\"serverAnnotations\":{\"readOnlyHint\":true},\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"discover\"}},\"write\":{\"descriptorDigest\":\"sha256:2e2013f993e38029b14552ef1d520f3e0ab52508532dc8d5a5bfcdf84c8fdac0\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}}}}",
+   "snapshotDigest": "sha256:a27f559a0fcb5135eca9b52f9e0c9cee56460cced194d6847c27c81778b0a0d8",
+   "platform": "tickets",
+   "binding": "tickets@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+   "operation": "live",
+   "endpoint": "https://mcp.example.test/mcp",
+   "tools": {
+    "search": {
+     "operation": "discover",
+     "effect": "read-external"
+    },
+    "write": {
+     "operation": "act",
+     "effect": "act"
+    }
+   },
+   "descriptorDigests": {
+    "search": "sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50",
+    "write": "sha256:2e2013f993e38029b14552ef1d520f3e0ab52508532dc8d5a5bfcdf84c8fdac0"
+   },
+   "refusals": [
+    {
+     "name": "version-downgrade",
+     "find": "\"snapshotVersion\":\"3\"",
+     "replace": "\"snapshotVersion\":\"2\""
+    },
+    {
+     "name": "missing-operation",
+     "find": "\"operation\":\"live\",",
+     "replace": ""
+    },
+    {
+     "name": "swapped-operation",
+     "find": "\"operation\":\"live\"",
+     "replace": "\"operation\":\"write\""
+    },
+    {
+     "name": "wrong-platform",
+     "find": "\"platform\":\"tickets\"",
+     "replace": "\"platform\":\"other\""
+    },
+    {
+     "name": "missing-owner",
+     "find": "\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}",
+     "replace": "\"description\":\"unclassified\""
+    },
+    {
+     "name": "changed-owner",
+     "find": "\"effect\":\"read-external\",\"operation\":\"discover\"",
+     "replace": "\"effect\":\"act\",\"operation\":\"act\""
+    },
+    {
+     "name": "server-contradiction",
+     "find": "\"readOnlyHint\":true",
+     "replace": "\"destructiveHint\":true"
+    },
+    {
+     "name": "unknown-server-constraint",
+     "find": "\"readOnlyHint\":true",
+     "replace": "\"unknownHint\":true"
+    },
+    {
+     "name": "duplicate-metadata",
+     "find": "\"snapshotVersion\":\"3\"",
+     "replace": "\"snapshotVersion\":\"3\",\"snapshotVersion\":\"3\""
+    },
+    {
+     "name": "missing-descriptor-digest",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\",",
+     "replace": ""
+    },
+    {
+     "name": "malformed-descriptor-digest",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\"",
+     "replace": "\"descriptorDigest\":\"sha256:bad\""
+    },
+    {
+     "name": "wrong-descriptor-digest-type",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\"",
+     "replace": "\"descriptorDigest\":false"
+    }
+   ],
+   "accepts": []
+  },
+  {
+   "snapshotVersion": "4",
+   "snapshotText": "{\"binding\":\"tickets@sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"capturedAt\":\"2026-10-25T00:00:00Z\",\"executable\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"path\":\"/usr/bin/python3\",\"script\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"path\":\"/srv/tickets/server.py\"}},\"operation\":\"live\",\"platform\":\"tickets\",\"policy\":1,\"server\":{\"name\":\"example\",\"version\":\"1\"},\"snapshotVersion\":\"4\",\"tools\":{\"search\":{\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\",\"serverAnnotations\":{\"readOnlyHint\":true},\"taxonomy\":{\"effect\":\"read-external\",\"operation\":\"discover\"}},\"write\":{\"descriptorDigest\":\"sha256:2e2013f993e38029b14552ef1d520f3e0ab52508532dc8d5a5bfcdf84c8fdac0\",\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}}}}",
+   "snapshotDigest": "sha256:5b4cf0f0ea4023347d7c92a6006a55345c16d47ccf6eeb7ba432a4fcc1812e35",
+   "platform": "tickets",
+   "binding": "tickets@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+   "operation": "live",
+   "endpoint": null,
+   "tools": {
+    "search": {
+     "operation": "discover",
+     "effect": "read-external"
+    },
+    "write": {
+     "operation": "act",
+     "effect": "act"
+    }
+   },
+   "descriptorDigests": {
+    "search": "sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50",
+    "write": "sha256:2e2013f993e38029b14552ef1d520f3e0ab52508532dc8d5a5bfcdf84c8fdac0"
+   },
+   "refusals": [
+    {
+     "name": "version-downgrade-to-3",
+     "find": "\"snapshotVersion\":\"4\"",
+     "replace": "\"snapshotVersion\":\"3\""
+    },
+    {
+     "name": "missing-operation",
+     "find": "\"operation\":\"live\",",
+     "replace": ""
+    },
+    {
+     "name": "swapped-operation",
+     "find": "\"operation\":\"live\"",
+     "replace": "\"operation\":\"write\""
+    },
+    {
+     "name": "wrong-platform",
+     "find": "\"platform\":\"tickets\"",
+     "replace": "\"platform\":\"other\""
+    },
+    {
+     "name": "missing-owner",
+     "find": "\"taxonomy\":{\"effect\":\"act\",\"operation\":\"act\"}",
+     "replace": "\"description\":\"unclassified\""
+    },
+    {
+     "name": "changed-owner",
+     "find": "\"effect\":\"read-external\",\"operation\":\"discover\"",
+     "replace": "\"effect\":\"act\",\"operation\":\"act\""
+    },
+    {
+     "name": "server-contradiction",
+     "find": "\"readOnlyHint\":true",
+     "replace": "\"destructiveHint\":true"
+    },
+    {
+     "name": "unknown-server-constraint",
+     "find": "\"readOnlyHint\":true",
+     "replace": "\"unknownHint\":true"
+    },
+    {
+     "name": "duplicate-metadata",
+     "find": "\"snapshotVersion\":\"4\"",
+     "replace": "\"snapshotVersion\":\"4\",\"snapshotVersion\":\"4\""
+    },
+    {
+     "name": "missing-descriptor-digest",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\",",
+     "replace": ""
+    },
+    {
+     "name": "malformed-descriptor-digest",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\"",
+     "replace": "\"descriptorDigest\":\"sha256:bad\""
+    },
+    {
+     "name": "wrong-descriptor-digest-type",
+     "find": "\"descriptorDigest\":\"sha256:56aa9fb722d9f2d81e3c147ee32a61f38f98dcd41f0279c909003b1eee7a8d50\"",
+     "replace": "\"descriptorDigest\":false"
+    },
+    {
+     "name": "version-downgrade-to-2",
+     "find": "\"snapshotVersion\":\"4\"",
+     "replace": "\"snapshotVersion\":\"2\""
+    },
+    {
+     "name": "missing-executable",
+     "find": "\"executable\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"path\":\"/usr/bin/python3\",\"script\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"path\":\"/srv/tickets/server.py\"}},",
+     "replace": ""
+    },
+    {
+     "name": "relative-executable-path",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"path\":\"python3\""
+    },
+    {
+     "name": "malformed-executable-digest",
+     "find": "\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\"",
+     "replace": "\"digest\":\"sha256:bad\""
+    },
+    {
+     "name": "unknown-executable-member",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"path\":\"/usr/bin/python3\",\"version\":\"3\""
+    },
+    {
+     "name": "script-within-script",
+     "find": "\"path\":\"/srv/tickets/server.py\"",
+     "replace": "\"path\":\"/srv/tickets/server.py\",\"script\":{\"digest\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"path\":\"/srv/tickets/other.py\"}"
+    },
+    {
+     "name": "endpoint-on-command",
+     "find": "\"capturedAt\":\"2026-10-25T00:00:00Z\",",
+     "replace": "\"capturedAt\":\"2026-10-25T00:00:00Z\",\"endpoint\":\"https://mcp.example.test/mcp\","
+    },
+    {
+     "name": "empty-interpreters",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[],\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "interpreters-not-a-list",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "relative-interpreter-path",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"env\"}],\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "malformed-interpreter-digest",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:bad\",\"path\":\"/usr/bin/env\"}],\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "unknown-interpreter-member",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\",\"version\":\"1\"}],\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "too-many-interpreters",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"}],\"path\":\"/usr/bin/python3\""
+    },
+    {
+     "name": "interpreters-inside-script",
+     "find": "\"path\":\"/srv/tickets/server.py\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"}],\"path\":\"/srv/tickets/server.py\""
+    }
+   ],
+   "accepts": [
+    {
+     "name": "shebang-command-through-env",
+     "find": "\"path\":\"/usr/bin/python3\"",
+     "replace": "\"interpreters\":[{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"path\":\"/usr/bin/env\"},{\"digest\":\"sha256:4444444444444444444444444444444444444444444444444444444444444444\",\"path\":\"/usr/bin/python3\"}],\"path\":\"/srv/tickets/server\""
+    }
+   ]
+  }
+ ]
+}

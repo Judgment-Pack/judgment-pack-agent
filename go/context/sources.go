@@ -1186,6 +1186,36 @@ type SourceGate struct {
 	// child's gate holds its parent's through parentGate.
 	principal  *OpenedPrincipal
 	parentGate *SourceGate
+	// skillSet is this run's own loaded set, which its reads name at read version "2" (ADR-0030): a
+	// child's gate holds its own, never its parent's.
+	skillSet PrincipalSkills
+}
+
+// PrincipalSkills is the loaded set this gate's run names on its reads: its skill gate's, taken under
+// that gate's lock, or none.
+func (g *SourceGate) PrincipalSkills() []PrincipalSkill {
+	if g == nil || g.skillSet == nil {
+		return []PrincipalSkill{}
+	}
+	return g.skillSet()
+}
+
+// approvedVersion is the descriptor digest the approval of the tool records (RFC 0030 §2a): its entry's
+// descriptorDigest in the approved snapshot of a source declared in snapshot mode, of version 3 or 4;
+// nil for any other snapshot, a legacy tool list, and a source with no snapshot. Never the current
+// observation, which drift compares with the approved bytes before any read.
+func approvedVersion(entry *SourceEntry) *string {
+	if entry.Declared.Source == nil || entry.Declared.Source.DescriptorSnapshot == nil || entry.Record.Tool == nil {
+		return nil
+	}
+	snapshot, err := ReadDescriptorSnapshot(entry.Declared.Source.DescriptorSnapshot)
+	if err != nil {
+		return nil
+	}
+	if digest := snapshot.Tools[*entry.Record.Tool].DescriptorDigest; digest != "" {
+		return &digest
+	}
+	return nil
 }
 
 type loadedSchema struct {
@@ -1281,7 +1311,7 @@ func (g *SourceGate) delegated(ctx context.Context, entry *SourceEntry, count bo
 	if principal == nil {
 		return nil, nil
 	}
-	call := PrincipalCall{Source: entry.Record.ID}
+	call := PrincipalCall{Source: entry.Record.ID, Version: approvedVersion(entry), Skills: g.PrincipalSkills}
 	if entry.Record.Tool != nil {
 		call.Tool = *entry.Record.Tool
 	}

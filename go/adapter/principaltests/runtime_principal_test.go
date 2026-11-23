@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -120,7 +121,7 @@ func TestRuntimeActionUnderADelegation(t *testing.T) {
 			if got := runtimeRefusals(events); len(f.calls) != 0 || len(got) != 1 || got[0] != "out-of-scope" {
 				t.Fatalf("%d calls, refusals %v", len(f.calls), got)
 			}
-			if len(port.reads) != 1 || port.reads[0].Call != (runcontext.PrincipalAdmissionCall{Source: "runtime", Tool: "experimental_evaluate", Effect: "act", Count: false}) {
+			if len(port.reads) != 1 || !reflect.DeepEqual(port.reads[0].Call, runcontext.PrincipalAdmissionCall{Source: "runtime", Tool: "experimental_evaluate", Effect: "act", Count: false}) {
 				t.Fatalf("reads %+v", port.reads)
 			}
 		})
