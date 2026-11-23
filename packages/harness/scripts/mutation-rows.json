@@ -11021,8 +11021,8 @@
   {
    "name": "principal P2 a signature is not verified",
    "file": "principal.ts",
-   "find": "    if (!await signatureVerifies(keys.get(link.host)!.get(link.keyId)!, link.signature, signingInput(link))) return refuse('signature-mismatch', `link ${i}'s signature does not verify`)",
-   "replace": "    void link",
+   "find": "    if (!verifies) return refuse('signature-mismatch', `link ${i}'s signature does not verify`)",
+   "replace": "    void verifies",
    "tests": [
     "principal.test.ts"
    ],
