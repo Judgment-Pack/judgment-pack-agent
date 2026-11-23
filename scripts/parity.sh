@@ -305,10 +305,12 @@ $pkg/gatewayReceipt.test.ts
 $pkg/gatewayReceipt.ts
 $pkg/principal.ts
 $pkg/principal.test.ts
+$pkg/principalCredential.test.ts
 $pkg/principalChild.test.ts
 $pkg/principalGate.test.ts
 $pkg/principalPaths.test.ts
 $pkg/principalReauth.test.ts
+$pkg/principalScope.test.ts
 $pkg/approvalContinuation.test.ts
 $pkg/principalSession.test.ts
 $pkg/contract/record-shapes-v012.json
