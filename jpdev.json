@@ -94,7 +94,8 @@
         "go-race-b",
         "go-race-c",
         "go-race-d",
-        "harness-check"
+        "harness-check",
+        "advisory-exceptions"
       ]
     },
     {
@@ -159,7 +160,8 @@
         "local-paths",
         "agent-docs",
         "diff-check",
-        "python-tests"
+        "python-tests",
+        "advisory-exceptions"
       ]
     },
     {
@@ -199,6 +201,20 @@
         "diff-check",
         "dependency-audit",
         "dependency-audit-live"
+      ]
+    },
+    {
+      "paths": [
+        "scripts/advisory-exceptions.py",
+        "tests/test_advisory_exceptions.py",
+        "dev.json"
+      ],
+      "checks": [
+        "local-paths",
+        "agent-docs",
+        "diff-check",
+        "python-tests",
+        "advisory-exceptions"
       ]
     },
     {

@@ -89,6 +89,7 @@ rule.
    result. Unavailable evidence is not clean evidence. Review Go and Python dependencies separately,
    since the npm audit does not cover them. Link explicit, unexpired maintainer approvals for any
    reachability exceptions and reassess each before release; withdrawal is separate from remediation.
+   A standing exception the policy names is held at every commit by the `advisory-exceptions` check.
 4. Merge the pull request.
 5. Run the full mutation table at the merge commit, by dispatch. A push to `main` no longer runs it, and
    the nightly run is not evidence. Hold other merges until the run has started, because a dispatch runs

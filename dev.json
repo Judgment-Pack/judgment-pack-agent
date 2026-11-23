@@ -38,6 +38,7 @@
     {"name": "gateway-receipt-process", "run": "node --test scripts/gateway-receipt-process.test.mjs", "toolchain": "node", "summary": "^# (pass|fail)", "timeout": 30},
     {"name": "gateway-receipts", "run": "node scripts/gateway-receipt-check.mjs", "toolchain": "go", "summary": "^gateway receipts:", "timeout": 900},
     {"name": "go-module-path", "run": "path=$(awk '$1 == \"module\" { print $2 }' go/go.mod); if [ \"$path\" != \"github.com/Judgment-Pack/judgment-pack-agent/go\" ]; then echo \"go/go.mod declares module '$path'; it must be github.com/Judgment-Pack/judgment-pack-agent/go\"; exit 1; fi", "toolchain": "shell"},
+    {"name": "advisory-exceptions", "run": "python3 -I scripts/advisory-exceptions.py", "toolchain": "go", "summary": "^advisory exceptions:", "timeout": 1800},
     {"name": "gofmt", "run": "unformatted=$(gofmt -l go); if [ -n \"$unformatted\" ]; then echo 'not gofmt-formatted:'; echo \"$unformatted\"; exit 1; fi", "toolchain": "shell"},
     {"name": "go-vet", "run": "go vet ./...", "cwd": "go", "toolchain": "go", "timeout": 3000},
     {"name": "go-generate", "run": "go generate ./contract && git diff --exit-code -- contract", "cwd": "go", "toolchain": "go", "timeout": 3000},

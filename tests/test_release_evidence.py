@@ -98,6 +98,7 @@ FRESH_ON_MAIN = {
     'generated-docs': 'a generator that reads Go module metadata',
     'python-tests': "reads the checkout's release tags (scripts/check-upgrade-guides.py)",
     'dependency-audit-live': 'a live advisory query',
+    'advisory-exceptions': 'a live vulnerability database query',
     'build': 'its output is read by later checks of the job',
     'packed-smoke': 'packs and installs the package',
 }
