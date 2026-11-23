@@ -288,6 +288,7 @@ Not reusable, run on every branch push:
 | `build` | its output is read by later checks of the job |
 | `packed-smoke` | packs and installs the package: a packaged-consumer check |
 | `dependency-audit-live` | a live advisory query, kept fresh (and optional on main) |
+| `advisory-exceptions` | a live vulnerability database query, holding the standing advisory exceptions ([policy](security/dependency-policy.md)) |
 
 The four `contract` steps run in their own job on every event and plan no reuse. The mutation
 table plans none: a pull request's mutation sample is not shard coverage, and the full shards

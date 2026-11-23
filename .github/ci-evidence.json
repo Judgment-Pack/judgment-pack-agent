@@ -209,7 +209,8 @@
             "go-generate",
             "go-test",
             "harness-check",
-            "parity"
+            "parity",
+            "advisory-exceptions"
           ],
           "optional_skips": ["dependency-audit-live"],
           "setup": true
