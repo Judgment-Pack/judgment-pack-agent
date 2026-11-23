@@ -11,6 +11,8 @@ import {CONTEXT_DEFAULTS} from './context/policy'
 import {GateViolation} from './toolGate'
 import type {DescriptorApproval} from './descriptorSnapshot'
 import type {HostTool,McpToolResult} from './engine'
+import scopeVectors from '../../contract/vectors/principal/scope-binding.json'
+import {openPrincipal,type AdmissionRead,type PrincipalRefusal} from './principal'
 import type {SourceFigures} from './execution/state'
 import quarantine from '../../contract/vectors/tool-result/receipt-quarantine.json'
 import {contextualSession} from './context/session'
@@ -144,6 +146,34 @@ it.skipIf(!process.env.JP_AGENT_GATEWAY_FIXTURE)('refuses actual producer concur
  const concurrent=await liveGate(f,run),held:McpToolResult[]=[],sessions:string[]=[];let arrivals=0;let release!:()=>void;const both=new Promise<void>(resolve=>{release=resolve})
  const outcomes=await Promise.allSettled([0,1].map(i=>concurrent.gate.call(concurrent.tool,{id:7},parent,async(args,bounded)=>{const invocation=gatewayExecutionContext(bounded)!;sessions[i]=invocation.receiptSession;held[i]=await callProducer(f,args,invocation.receiptSession);if(++arrivals===2)release();await both;return held[1-i]!})))
  expect(sessions[0]).not.toBe(sessions[1]);for(const outcome of outcomes){expect(outcome.status).toBe('rejected');expect((outcome as PromiseRejectedResult).reason).toMatchObject({failure:{code:'tool-failed',outcome:'unknown'}})}
+})
+
+describe('a pinned gateway source under a chain bound to one scope identifier (RFC 0030 §2)',()=>{
+ const boundGate=async(fixed:string)=>{
+  const {trust}=synthetic(),seen={executions:0,scopes:[] as (string|undefined)[]},reads:AdmissionRead[]=[],refusals:PrincipalRefusal[]=[]
+  const t:HostTool={name:'query',taxonomy:{operation:'read',effect:'read-external'},description:'approved',inputSchema:{type:'object'},execute:async(_args,bounded)=>{seen.executions++;seen.scopes.push(gatewayExecutionContext(bounded!)?.scope);return {content:[]}},source:{kind:'gateway',id:'tickets',trust:'connected',toolListDigest:digest(snapshot()),descriptorSnapshot:snapshot(),descriptorApproval:approval(),currentDescriptorSnapshot:()=>snapshot(),gatewayReceipt:trust,gatewayScope:{authority:trust.authority,source:'tickets/live',scope:fixed}}}
+  const admitted=await declareSources([t],[]),rows:SourceFigures[]=[]
+  const gate=new SourceGate(admitted.entries,admitted.sources,CONTEXT_DEFAULTS,'marker',(name,detail,_reason,refusal)=>{if(refusal)refusals.push(refusal);return new GateViolation(name,detail)},()=>rows)
+  const chain=scopeVectors.statements.find(s=>s.name==='bound-root')!.chain
+  gate.usePrincipal(await openPrincipal({chain:JSON.stringify(chain),keys:scopeVectors.keys as never,software:scopeVectors.software,audience:scopeVectors.audience,clock:()=>Date.parse('2026-10-30T01:00:00.000Z'),admission:read=>{reads.push(read);return {admission:'admit'}}}))
+  return {gate,offered:admitted.hostTools[0]!,seen,reads,refusals}
+ }
+ it('sends a call of a source fixed to the bound scope with that scope',async()=>{
+  const {gate,offered,seen,refusals}=await boundGate('scope-a')
+  expect(refusals).toEqual([])
+  // The executor's empty answer carries no receipt, so the result is withheld; the call was sent with the scope.
+  await expect(gate.call(offered,{},signal(),offered.execute)).rejects.toThrow()
+  expect(seen).toEqual({executions:1,scopes:['scope-a']})
+ })
+ it('refuses a call for another scope before it leaves the harness, reading nothing',async()=>{
+  const {gate,offered,seen,reads,refusals}=await boundGate('scope-b')
+  // Refused at binding, and its call refused by the request check, which a host that ignored the binding guardrail still meets.
+  expect(refusals).toEqual([{name:'scope-id-mismatch'}])
+  await expect(gate.call(offered,{},signal(),offered.execute)).rejects.toBeInstanceOf(GateViolation)
+  expect(seen.executions).toBe(0)
+  expect(reads).toEqual([])
+  expect(refusals).toEqual([{name:'scope-id-mismatch'},{name:'scope-id-mismatch'}])
+ })
 })
 
 it('holds full approved snapshot beyond selected subset and refuses restored acquisition-only actions',async()=>{

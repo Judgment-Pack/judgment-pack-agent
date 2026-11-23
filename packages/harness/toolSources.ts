@@ -1040,7 +1040,9 @@ export class SourceGate {
   private async delegated(entry: SourceEntry, count: boolean, signal?: AbortSignal): Promise<PrincipalRefusal | undefined> {
     const principal = this.principal
     if (principal === undefined) return undefined
-    if (this.unboundSource(entry) !== undefined) return { name: 'scope-id-mismatch' }
+    // At a call, the package's unverified receipts are refused here, and the scope the call would be sent with is
+    // checked by admitCall's request check (scopeIdRefusal), before any read.
+    if (principal.chain.scopeId !== undefined && entry.record.kind === 'gateway' && entry.declared.source?.gatewayReceipt === undefined) return { name: 'scope-id-mismatch' }
     const mapped = entry.declared.source?.gatewayScope
     const audience = mapped !== undefined ? { kind: 'gateway' as const, name: mapped.authority } : entry.record.kind === 'gateway' ? undefined : { kind: 'agent-host' as const, name: principal.audience }
     const scopeId = entry.record.kind === 'gateway' ? mapped?.scope ?? null : undefined
