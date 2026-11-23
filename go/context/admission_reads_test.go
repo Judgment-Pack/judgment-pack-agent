@@ -280,7 +280,19 @@ func admissionReadsLoadCase(t *testing.T, f admissionReadsFixture, c admissionRe
 		if err := json.Unmarshal(c.Expect.Loaded, &kept); err != nil {
 			t.Fatal(err)
 		}
-		refusal, _ := lastSkillRefusal(gate)
+		refusal, guardrail := lastSkillRefusal(gate)
+		if refusal != "" {
+			var refused []string
+			for _, s := range c.Inputs.Restore {
+				if !slices.Contains(kept, s.ID) {
+					refused = append(refused, s.ID)
+				}
+			}
+			// the restore's guardrail names the skill, in both languages
+			if guardrail == nil || !slices.Contains(refused, guardrail.Tool) {
+				t.Fatalf("restore: the guardrail names %v, not a refused skill of %v", guardrail, refused)
+			}
+		}
 		if !slices.Equal(bodies, expected) || !slices.Equal(loadedIDs(state), kept) || refusal != c.Expect.Sender || len(skills.Current()) != len(kept) {
 			t.Fatalf("restore: reads %v, kept %v, refusal %q", bodies, loadedIDs(state), refusal)
 		}
@@ -633,5 +645,41 @@ func TestStandingReadUnreadNeverResent(t *testing.T) {
 		if err != nil || got == nil || got.Name != name || !slices.Equal(versions, []string{"2"}) {
 			t.Fatalf("%s: got %+v, %v, after reads at %v", name, got, err, versions)
 		}
+	}
+}
+
+// A route's preload of a skill the delegation refuses skips it, with the guardrail that names it,
+// and the run goes on (ADR-0030): the next skill still loads, and the refused one keeps its one claim
+// and claims nothing more.
+func TestRoutePreloadSkipsARefusedSkill(t *testing.T) {
+	f := loadAdmissionReads(t)
+	refused := PrincipalSkill{ID: "expense-policy", Digest: "sha256:" + strings.Repeat("a", 64)}
+	next := PrincipalSkill{ID: "issue-style", Digest: "sha256:" + strings.Repeat("b", 64)}
+	principal := f.open(t, "2", "2026-10-30T01:00:00.000Z", nil, func(_ context.Context, read PrincipalSkillLoadRead) ([]byte, error) {
+		if read.Skill.ID == refused.ID {
+			return []byte(`{"load":"refuse","refusal":"skill-refused"}`), nil
+		}
+		return []byte(`{"load":"admit"}`), nil
+	})
+	skills, gate, state, rows := skillTestGate(t, principal, []PrincipalSkill{refused, next}, nil, 0)
+	for _, s := range []PrincipalSkill{refused, next} {
+		if err := skills.preload(context.Background(), s.ID); err != nil {
+			t.Fatalf("preload %s: %v", s.ID, err)
+		}
+	}
+	if got := loadedIDs(state); !slices.Equal(got, []string{next.ID}) {
+		t.Fatalf("loaded %v", got)
+	}
+	found := false
+	for _, n := range gate.notices {
+		if g := n.Guardrail; g != nil && g.Refusal != nil && g.Refusal.Name == "skill-refused" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no guardrail names the refused preload")
+	}
+	if held := (*rows)[0].Skills; held == nil || *held != 2 {
+		t.Fatalf("the preloads claimed %v, want 2: one each", held)
 	}
 }

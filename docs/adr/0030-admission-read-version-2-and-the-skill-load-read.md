@@ -55,7 +55,10 @@ their bytes, the answers taken, the refusals, the loader, the restore and every 
 - Go: `PrincipalAdmissionRead` gains `ReadVersion string` (empty is `"1"`), and
   `PrincipalAdmissionCall` gains `Version *string` (nil is `null`) and `Skills []PrincipalSkill`
   (`{ID, Digest}`). `Value()` writes them, and `readVersion` `"2"`, only when `ReadVersion` is
-  `"2"`. Additive, so a host's port written for `"1"` compiles and receives the same values.
+  `"2"`. A port written for `"1"` receives the same values. *As built, a correction:* this is not
+  additive at the source level. `PrincipalAdmissionCall` holds a slice, so it is no longer
+  comparable with `==`, and `AdmitPrincipalStanding`, `AdmitPrincipalRuntimeCall` and `NarrowChild`
+  each gain a `skills` parameter. The v0.15.0 notes list the changes.
 - TypeScript: `AdmissionRead` becomes a union on `readVersion`, `'1'` as today and `'2'` with
   `call.version: string | null` and `call.skills: {id, digest}[]`.
 

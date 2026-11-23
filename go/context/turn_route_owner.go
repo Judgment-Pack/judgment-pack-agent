@@ -606,7 +606,7 @@ func (o *turnRouteOwner) preloadSkills(ctx context.Context) error {
 	for _, id := range o.route.Skills {
 		for name, skill := range o.c.Skills.byName {
 			if skill.ID == id {
-				if _, err := o.c.Skills.load(ctx, name); err != nil {
+				if err := o.c.Skills.preload(ctx, name); err != nil {
 					return err
 				}
 				break

@@ -590,7 +590,11 @@ func (g *SkillGate) HoldDelegation(ctx context.Context) error {
 // refusal and the run's principal, and the model is told the refusal by name and that nothing loaded.
 // The caller holds the lock.
 func (g *SkillGate) refuseLoad(principal *OpenedPrincipal, tool, name string, refusal PrincipalRefusal) string {
-	detail := "The skill " + name + " was not loaded: the delegation this run acts under does not admit it (" + refusal.Name + "). Nothing was loaded. Do not retry it; use the skills already loaded."
+	named := refusal.Name
+	if refusal.Reason != "" {
+		named += " (" + refusal.Reason + ")"
+	}
+	detail := "The skill " + name + " was not loaded: the delegation this run acts under does not admit it (" + named + "). Nothing was loaded. Do not retry it; use the skills already loaded."
 	reason := "delegation refused"
 	notice := &contract.RunEventGuardrail{Type: "guardrail", Tool: tool, Action: "refused", Detail: detail, Reason: &reason, Refusal: refusal.Contract(), Principal: principal.Record.Contract()}
 	g.sources.Notify(contract.RunEvent{Guardrail: notice})
@@ -708,19 +712,38 @@ func shownName(name any) string {
 func (g *SkillGate) load(ctx context.Context, asked any) (ToolResult, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	result, _, err := g.loadLocked(ctx, asked)
+	return result, err
+}
+
+// preload is a route's load of one of its skills before the first model call (turn_route_owner.go).
+// A load the delegation refuses is skipped, with the guardrail that names it, and the run goes on
+// (ADR-0030): its claim is kept, as a refused load_skill's is, and nothing else is claimed.
+func (g *SkillGate) preload(ctx context.Context, name string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	_, refused, err := g.loadLocked(ctx, name)
+	if refused {
+		return nil
+	}
+	return err
+}
+
+// loadLocked is load_skill with the lock held; refused says the delegation refused the load.
+func (g *SkillGate) loadLocked(ctx context.Context, asked any) (ToolResult, bool, error) {
 	name, _ := asked.(string)
 	skill, ok := g.byName[name]
 	if !ok {
-		return ToolResult{}, failure.ToolInput(LoadSkill + " loads a catalogued skill, and " + QuoteJSON(shownName(asked)) + " is not one; nothing was loaded.")
+		return ToolResult{}, false, failure.ToolInput(LoadSkill + " loads a catalogued skill, and " + QuoteJSON(shownName(asked)) + " is not one; nothing was loaded.")
 	}
 	if g.isLoaded(skill.ID) {
 		// The agent wire sends the state once per run, so the critic's run never saw what the author
 		// loaded: its load of a skill already loaded is answered with the block, counted nothing.
 		if g.agentWire && g.critic() {
 			value := ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(AlreadyLoadedCriticNote))
-			return ResultOf([]Content{TextContent(value.Text() + "\n" + SkillSection([]Skill{skill.Skill}, g.marker))}, nil), nil
+			return ResultOf([]Content{TextContent(value.Text() + "\n" + SkillSection([]Skill{skill.Skill}, g.marker))}, nil), false, nil
 		}
-		return Answer(ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(AlreadyLoadedNote))), nil
+		return Answer(ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(AlreadyLoadedNote))), false, nil
 	}
 	if !g.sources.claimSkillLoad(skill.Source.ID, g.limit) {
 		plural := "s"
@@ -730,7 +753,7 @@ func (g *SkillGate) load(ctx context.Context, asked any) (ToolResult, error) {
 		detail := fmt.Sprintf("This response has loaded skills %d time%s, the most one response may (skillsPerRun); %s was not loaded. Use the skills already loaded.", g.limit, plural, skill.Name)
 		reason := "skill budget"
 		g.sources.Notify(contract.RunEvent{Guardrail: &contract.RunEventGuardrail{Type: "guardrail", Tool: LoadSkill, Action: "refused", Detail: detail, Reason: &reason}})
-		return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
+		return ToolResult{}, false, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
 	}
 	// ADR-0030: at read version "2", a delegated run loads a skill only on the issuing host's skill-load
 	// read, made here: after the name, the loaded set and the budget claim, and before the checkpoint is
@@ -738,11 +761,11 @@ func (g *SkillGate) load(ctx context.Context, asked any) (ToolResult, error) {
 	if principal := g.sources.Principal(); principal.SkillLoadRead() {
 		refusal, err := principal.AdmitPrincipalSkillLoad(ctx, PrincipalSkill{ID: skill.ID, Digest: skill.Digest}, g.principalSkillsLocked())
 		if err != nil {
-			return ToolResult{}, err
+			return ToolResult{}, false, err
 		}
 		if refusal != nil {
 			detail := g.refuseLoad(principal, LoadSkill, skill.Name, *refusal)
-			return ToolResult{}, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
+			return ToolResult{}, true, failure.NewError(contract.Failure{Version: 1, Code: "tool-failed", Source: "tool", Outcome: "not-started", Detail: &detail})
 		}
 	}
 	g.loaded = append(g.loaded, skill)
@@ -754,10 +777,10 @@ func (g *SkillGate) load(ctx context.Context, asked any) (ToolResult, error) {
 	}
 	value := ObjectOf("skill", loadedSkillValue(skill), "bytes", Number(float64(skill.Bytes)), "note", String(note))
 	if !g.agentWire {
-		return Answer(value), nil
+		return Answer(value), false, nil
 	}
 	// The agent wire sends the state once per run: the block reaches the agent in this answer.
-	return ResultOf([]Content{TextContent(value.Text() + "\n" + SkillSection([]Skill{skill.Skill}, g.marker))}, nil), nil
+	return ResultOf([]Content{TextContent(value.Text() + "\n" + SkillSection([]Skill{skill.Skill}, g.marker))}, nil), false, nil
 }
 
 func (g *SkillGate) unload(asked any) (ToolResult, error) {

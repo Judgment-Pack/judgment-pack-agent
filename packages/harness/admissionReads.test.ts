@@ -74,6 +74,11 @@ describe('the specification admission read cases (ADR-0030)', () => {
         expect(ids(run.state)).toEqual(c.expect.loaded)
         expect(run.gate.current().map(s => s.id)).toEqual(c.expect.loaded)
         expect(run.refusal()?.refusal?.name).toBe(c.expect.sender)
+        // the restore's guardrail names the skill, in both languages
+        if (run.refusal()?.refusal !== undefined) {
+          const kept = c.expect.loaded as string[]
+          expect(c.inputs.restore.filter(s => !kept.includes(s.id)).map(s => s.id)).toContain((run.refusal() as {tool?: string}).tool)
+        }
         expect(run.rows[0]!.skills).toBe(0)
         return
       }
@@ -198,4 +203,16 @@ describe('a standing read at "2" the issuing host did not read (ADR-0030)', () =
       expect(versions).toEqual(['2'])
     })
   }
+})
+
+describe('a route preload the delegation refuses (ADR-0030)', () => {
+  it('skips the skill with its guardrail, and the run goes on: the next still loads, one claim each', async () => {
+    const refused = {id: 'expense-policy', digest: `sha256:${'a'.repeat(64)}`}, next = {id: 'issue-style', digest: `sha256:${'b'.repeat(64)}`}
+    const load: SkillLoadPort = read => read.load.skill.id === refused.id ? {load: 'refuse', refusal: 'skill-refused'} : {load: 'admit'}
+    const run = gateOf(await open('2', '2026-10-30T01:00:00.000Z', admitAll, load), [refused, next], [])
+    for (const s of [refused, next]) await run.gate.preload(s.id)
+    expect(ids(run.state)).toEqual([next.id])
+    expect(run.events.some(e => e.type === 'guardrail' && (e as {refusal?: {name: string}}).refusal?.name === 'skill-refused')).toBe(true)
+    expect(run.rows[0]!.skills).toBe(2)
+  })
 })

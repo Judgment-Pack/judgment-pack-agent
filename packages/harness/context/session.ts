@@ -1030,7 +1030,7 @@ export async function contextualSession<T extends EngineSession>(session:T,engin
  declared.sources.push(...skills.sources)
  if(declared.sources.length)context.openSources(declared,offeredCatalogue,session.context?.link?.sources?.(),session.context?.phase??'work')
  if(selectedSkills?.length)context.openSkills(skills,'agent'in session)
- await context.skills?.holdDelegation()
+ await context.skills?.holdDelegation(session.signal)
  if(admittedSubagents){
   const admitted=admittedSubagents
   const catalogue=catalogueSubagents(admitted.subagents,context.policy,context.marker)

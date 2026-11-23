@@ -102,7 +102,7 @@ export class TurnRouteOwner {
   await this.#publish(route,'route_decided')
   await this.#preloadSkills(route)
  }
- async #preloadSkills(route:TurnRoute){for(const id of route.skills){const skill=this.context.skills?.routingSkills().find(s=>s.id===id);if(!skill)throw Error('TurnRouteSkillChanged');await this.context.skills!.loadTool().execute({name:skill.name},this.session.signal)}}
+ async #preloadSkills(route:TurnRoute){for(const id of route.skills){const skill=this.context.skills?.routingSkills().find(s=>s.id===id);if(!skill)throw Error('TurnRouteSkillChanged');await this.context.skills!.preload(skill.name)}}
  async widen(){if(this.catalogue.native&&!this.#nativeClaim||this.#nativeReleaseBlocked)throw new ProviderReleaseUnknown();if(!this.#route||!this.#pending)throw Error('TurnRouteWidenRefused');const next=widenedTurnRoute(this.#route,this.catalogue,this.#pending);await this.#publish(next,'route_widened');this.#pending=undefined}
  /** Called only inside the original writer's acknowledged exact native execution. */
  async nativeAttempt(request:import('../agent').AgentRequest,callbacks:import('../agent').AgentCallbacks,run:import('../agent').AgentRun,witness?:object,claim?:object):Promise<void>{

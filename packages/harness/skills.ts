@@ -420,7 +420,8 @@ export class SkillGate {
         const asked = { id: skill.id, digest: skill.digest }
         const refusal = await admitSkillLoad(principal, asked, before, signal)
         if (refusal !== undefined) {
-          this.refuseLoad(principal, skill, refusal)
+          // the restore's guardrail names the skill, as Restore's notices do (Go names it alike)
+          this.refuseLoad(principal, skill, refusal, skill.id)
           dropped = true
           continue
         }
@@ -435,11 +436,32 @@ export class SkillGate {
   }
 
   /** A load the delegation refused: the guardrail that names the refusal, and the failure the call ends with. */
-  private refuseLoad(principal: OpenedPrincipal, skill: Skill, refusal: PrincipalRefusal): AIFailureError {
+  /** The failures `refuseLoad` made: a route's preload skips the load they end (ADR-0030). */
+  private readonly refusals = new WeakSet<Error>()
+
+  /**
+   * A route's load of one of its skills before the first model call (storage/turnRouteOwner.ts). A load the
+   * delegation refuses is skipped, with the guardrail that names it, and the run goes on (ADR-0030): its claim
+   * is kept, as a refused `load_skill`'s is, and nothing else is claimed.
+   */
+  async preload(name: string): Promise<void> {
+    await this.locked(async () => {
+      try {
+        await this.load(name)
+      } catch (error) {
+        if (error instanceof Error && this.refusals.has(error)) return
+        throw error
+      }
+    })
+  }
+
+  private refuseLoad(principal: OpenedPrincipal, skill: Skill, refusal: PrincipalRefusal, tool: string = LOAD_SKILL): AIFailureError {
     const named = refusal.name + (refusal.reason ? ` (${refusal.reason})` : '')
     const detail = `The skill ${skill.name} was not loaded: the delegation this run acts under does not admit it (${named}). Nothing was loaded. Do not retry it; use the skills already loaded.`
-    this.run.notify({ type: 'guardrail', tool: LOAD_SKILL, action: 'refused', detail, reason: 'delegation refused', refusal: { ...refusal }, principal: structuredClone(principal.record) })
-    return new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail })
+    this.run.notify({ type: 'guardrail', tool, action: 'refused', detail, reason: 'delegation refused', refusal: { ...refusal }, principal: structuredClone(principal.record) })
+    const failure = new AIFailureError({ version: 1, code: 'tool-failed', source: 'tool', outcome: 'not-started', detail })
+    this.refusals.add(failure)
+    return failure
   }
 
   /** `sourceIds`: every source a skill is declared from, whose row counts its loads from 0. */
